@@ -571,6 +571,11 @@ class ExpressionChecker
         if (!is_string($stmt->name)) {
             return self::analyze($statements_checker, $stmt->name, $context);
         }
+        // FIXME Hack: TODO replace with Superglobal config
+        if ($stmt->name === '_TAG') {
+            $stmt->inferredType = Type::parseString('tag_global');
+            return null;
+        }
 
         if ($passed_by_reference && $by_ref_type) {
             self::assignByRefParam($statements_checker, $stmt, $by_ref_type, $context);
