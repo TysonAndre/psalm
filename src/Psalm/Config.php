@@ -409,6 +409,7 @@ class Config
         }
 
         if ($config->autoloader) {
+            echo "The autoloader is $base_dir" . DIRECTORY_SEPARATOR . $config->autoloader . "\n";
             require_once($base_dir . DIRECTORY_SEPARATOR . $config->autoloader);
         }
 

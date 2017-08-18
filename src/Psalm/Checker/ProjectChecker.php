@@ -416,6 +416,8 @@ class ProjectChecker
 
         while ($this->files_to_scan || $this->classes_to_scan) {
             if ($this->files_to_scan) {
+                // TODO: array_shift is slow, reorders array?
+                // Try SqlQueue or reset(), unset($key) instead
                 $file_path = array_shift($this->files_to_scan);
 
                 if (!isset($this->scanned_files[$file_path])) {
@@ -1351,6 +1353,10 @@ class ProjectChecker
 
             // do not cache any results here (as case-sensitive filenames can screw things up)
 
+            return false;
+        } catch (\Error $e) {
+            printf("Caught %s at %s:%d: %s\n", get_class($e), __FILE__, __LINE__, $e->getMessage());
+            error_reporting($old_level);
             return false;
         }
 
