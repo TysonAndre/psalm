@@ -370,14 +370,18 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             || $node instanceof PhpParser\Node\Expr\AssignRef
         ) {
             if ($doc_comment = $node->getDocComment()) {
-                $var_comment = CommentChecker::getTypeFromComment(
-                    (string)$doc_comment,
-                    null,
-                    $this->file_checker,
-                    $this->aliases,
-                    null,
-                    null
-                );
+                try {
+                    $var_comment = CommentChecker::getTypeFromComment(
+                        (string)$doc_comment,
+                        null,
+                        $this->file_checker,
+                        $this->aliases,
+                        null,
+                        null
+                    );
+                } catch (\Exception $e) {
+                    $var_comment = null;
+                }
 
                 if ($var_comment) {
                     $var_type = Type::parseString($var_comment->type);
@@ -951,13 +955,18 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             $docblock_param_vars[$param_name] = true;
 
-            $new_param_type = Type::parseString(
-                FunctionLikeChecker::fixUpLocalType(
-                    $docblock_param['type'],
-                    $this->aliases,
-                    $this->function_template_types + $this->class_template_types
-                )
-            );
+            try {
+                $new_param_type = Type::parseString(
+                    FunctionLikeChecker::fixUpLocalType(
+                        $docblock_param['type'],
+                        $this->aliases,
+                        $this->function_template_types + $this->class_template_types
+                    )
+                );
+            } catch (\InvalidArgumentException $e) {
+                // FIXME warn
+                continue;
+            }
 
             $new_param_type->queueClassLikesForScanning(
                 $this->project_checker,

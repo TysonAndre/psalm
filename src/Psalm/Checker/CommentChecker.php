@@ -60,7 +60,7 @@ class CommentChecker
                 try {
                     $line_parts = self::splitDocLine($var_line);
                 } catch (DocblockParseException $e) {
-                    throw $e;
+                    continue;
                 }
 
                 if ($line_parts && $line_parts[0]) {
