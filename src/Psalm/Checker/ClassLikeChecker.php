@@ -402,16 +402,19 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
 
         foreach ($this->class->stmts as $stmt) {
             if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
-                $method_checker = $this->analyzeClassMethod(
-                    $stmt,
-                    $this,
-                    $class_context,
-                    $global_context,
-                    $update_docblocks
-                );
+                try {
+                    $method_checker = $this->analyzeClassMethod(
+                        $stmt,
+                        $this,
+                        $class_context,
+                        $global_context,
+                        $update_docblocks
+                    );
 
-                if ($stmt->name === '__construct') {
-                    $constructor_checker = $method_checker;
+                    if ($stmt->name === '__construct') {
+                        $constructor_checker = $method_checker;
+                    }
+                } catch (\UnexpectedValueException $e) {
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\TraitUse) {
                 $previous_context_include_location = $class_context->include_location;
@@ -657,27 +660,31 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         }
 
         foreach ($this->class->stmts as $stmt) {
-            if ($stmt instanceof PhpParser\Node\Stmt\Property) {
-                $this->checkForMissingPropertyType($project_checker, $stmt);
-            } elseif ($stmt instanceof PhpParser\Node\Stmt\TraitUse) {
-                foreach ($stmt->traits as $trait) {
-                    $fq_trait_name = self::getFQCLNFromNameObject(
-                        $trait,
-                        $this->source->getAliases()
-                    );
+            try {
+                if ($stmt instanceof PhpParser\Node\Stmt\Property) {
+                    $this->checkForMissingPropertyType($project_checker, $stmt);
+                } elseif ($stmt instanceof PhpParser\Node\Stmt\TraitUse) {
+                    foreach ($stmt->traits as $trait) {
+                        $fq_trait_name = self::getFQCLNFromNameObject(
+                            $trait,
+                            $this->source->getAliases()
+                        );
 
-                    if (!isset(self::$trait_checkers[strtolower($fq_trait_name)])) {
-                        throw new \UnexpectedValueException('Expecting trait statements to exist');
-                    }
+                        if (!isset(self::$trait_checkers[strtolower($fq_trait_name)])) {
+                            throw new \UnexpectedValueException('Expecting trait statements to exist');
+                        }
 
-                    $trait_checker = self::$trait_checkers[strtolower($fq_trait_name)];
+                        $trait_checker = self::$trait_checkers[strtolower($fq_trait_name)];
 
-                    foreach ($trait_checker->class->stmts as $trait_stmt) {
-                        if ($trait_stmt instanceof PhpParser\Node\Stmt\Property) {
-                            $this->checkForMissingPropertyType($project_checker, $trait_stmt);
+                        foreach ($trait_checker->class->stmts as $trait_stmt) {
+                            if ($trait_stmt instanceof PhpParser\Node\Stmt\Property) {
+                                $this->checkForMissingPropertyType($project_checker, $trait_stmt);
+                            }
                         }
                     }
                 }
+            } catch (\Exception $e) {
+
             }
         }
     }

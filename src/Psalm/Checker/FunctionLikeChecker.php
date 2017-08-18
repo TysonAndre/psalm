@@ -150,7 +150,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $declaring_method_id = MethodChecker::getDeclaringMethodId($project_checker, $method_id);
 
             if (!is_string($declaring_method_id)) {
-                throw new \UnexpectedValueException('$declaring_method_id should be a string');
+                throw new \UnexpectedValueException('$declaring_method_id should be a string, got ' . $declaring_method_id);
             }
 
             $fq_class_name = (string)$context->self;
