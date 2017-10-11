@@ -317,6 +317,75 @@ class TypeAlgebraTest extends TestCase
                         }
                     }',
             ],
+            'noParadoxAfterAssignment' => [
+                '<?php
+                    function get_bool() : bool {
+                        return rand() % 2 > 0;
+                    }
+
+                    function leftover() : bool {
+                        $res = get_bool();
+                        if ($res === false) {
+                            return true;
+                        }
+                        $res = get_bool();
+                        if ($res === false) {
+                            return false;
+                        }
+                        return true;
+                    }'
+            ],
+            'noParadoxAfterArrayAppending' => [
+                '<?php
+                    /** @return array|false */
+                    function array_append2(array $errors) {
+                        if ($errors) {
+                            return $errors;
+                        }
+                        $errors[] = "deterministic";
+                        if ($errors) {
+                            return false;
+                        }
+                        return $errors;
+                    }
+
+                    /** @return array|false */
+                    function array_append(array $errors) {
+                        if ($errors) {
+                            return $errors;
+                        }
+                        if (rand() % 2 > 0) {
+                            $errors[] = "unlucky";
+                        }
+                        if ($errors) {
+                            return false;
+                        }
+                        return $errors;
+                    }'
+            ],
+            'noParadoxInCatch' => [
+                '<?php
+                    function maybe_returns_array() : ?array {
+                        if (rand() % 2 > 0) {
+                            return ["key" => "value"];
+                        }
+                        if (rand() % 3 > 0) {
+                            throw new Exception("An exception occurred");
+                        }
+                        return null;
+                    }
+
+                    function try_catch_check() : array {
+                        $arr = null;
+                        try {
+                            $arr = maybe_returns_array();
+                            if (!$arr) { return [];  }
+                        } catch (Exception $e) {
+                            if (!$arr) { return []; }
+                        }
+                        return $arr;
+                    }'
+            ]
         ];
     }
 
