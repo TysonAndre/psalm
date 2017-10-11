@@ -166,6 +166,40 @@ class IssueBuffer
     }
 
     /**
+     * @param  array{severity: string, line_number: string, type: string, message: string, file_name: string,
+     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int,
+     *  column: int} $issue_data
+     * @param  bool  $use_color
+     *
+     * @return string
+     */
+    protected static function getPylintOutput(array $issue_data)
+    {
+        $issue_string = '';
+
+        // TODO: context?
+        $message = sprintf(
+            "%s: %s",
+            $issue_data['type'],
+            $issue_data['message']
+        );
+        if ($issue_data['severity'] === Config::REPORT_ERROR) {
+            $code = 'E0001';
+        } else {
+            $code = 'W0001';
+        }
+        // https://docs.pylint.org/en/1.6.0/output.html doesn't mention what to do about 'column'.
+        // Have to check if jenkins can parse other formats.
+        $issue_string = sprintf("%s:%d: [%s] %s",
+            $issue_data['file_name'],
+            $issue_data['line_number'],
+            $code,
+            $message
+        );
+        return $issue_string;
+    }
+
+    /**
      * @return array<int, array{severity: string, line_number: string, type: string, message: string, file_name: string,
      *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int, column: int}>
      */
@@ -246,20 +280,27 @@ class IssueBuffer
 
             return $xml->saveXML();
         } elseif ($format === ProjectChecker::TYPE_EMACS) {
-            $output = '';
+            $output = [];
             foreach (self::$issues_data as $issue_data) {
-                $output .= self::getEmacsOutput($issue_data) . PHP_EOL;
+                $output[] = self::getEmacsOutput($issue_data) . PHP_EOL;
             }
 
-            return $output;
+            return implode('', $output);
+        } elseif ($format === ProjectChecker::TYPE_PYLINT) {
+            $output = [];
+            foreach (self::$issues_data as $issue_data) {
+                $output[] = self::getPylintOutput($issue_data) . PHP_EOL;
+            }
+
+            return implode('', $output);
         }
 
-        $output = '';
+        $output = [];
         foreach (self::$issues_data as $issue_data) {
-            $output .= self::getConsoleOutput($issue_data, $useColor) . PHP_EOL . PHP_EOL;
+            $output[] = self::getConsoleOutput($issue_data, $useColor) . PHP_EOL . PHP_EOL;
         }
 
-        return $output;
+        return implode('', $output);
     }
 
     /**
