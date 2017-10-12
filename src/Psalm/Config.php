@@ -248,6 +248,7 @@ class Config
         // Enable user error handling
         libxml_use_internal_errors(true);
 
+        // TODO(tyson): Figure out how to add custom fields to config.xsd
         if (!$dom_document->schemaValidate($schema_path)) {
             $errors = libxml_get_errors();
             foreach ($errors as $error) {

@@ -63,6 +63,7 @@ class CommentChecker
                     continue;
                 }
 
+                $line_parts[0] = self::getRenamedType($line_parts[0]);
                 if ($line_parts && $line_parts[0]) {
                     $var_type_string = FunctionLikeChecker::fixUpLocalType(
                         $line_parts[0],
@@ -117,6 +118,32 @@ class CommentChecker
     }
 
     /**
+     * @param string $comment_type
+     * @return string
+     * @psalm-suppress MixedArrayAccess
+     * @psalm-suppress MixedInferredReturnType
+     */
+    public static function getRenamedType($comment_type)
+    {
+        // FIXME make this configurable
+        /** @var array<string, string> $renamings */
+        static $renamings = [
+            'arrays' => 'array',
+            'associative' => 'array',
+            'char' => 'string',
+            'function' => 'callable',
+            'long' => 'int',
+            'number' => 'int|float',
+            'scalar' => 'int|float|string|null',
+            'str' => 'string',
+            'unknown' => 'mixed',
+            'unknown_type' => 'mixed',
+            'url' => 'string',
+        ];
+        return $renamings[$comment_type] ?? $comment_type;
+    }
+
+    /**
      * @param  string  $comment
      * @param  int     $line_number
      *
@@ -144,6 +171,7 @@ class CommentChecker
             } catch (DocblockParseException $e) {
                 throw $e;
             }
+            $line_parts[0] = self::getRenamedType($line_parts[0]);
 
             if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
                 && !preg_match('/\[[^\]]+\]/', $line_parts[0])
@@ -177,6 +205,7 @@ class CommentChecker
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
                     array_unshift($line_parts, 'mixed');
                 }
+                $line_parts[0] = self::getRenamedType($line_parts[0]);
 
                 if (count($line_parts) > 1) {
                     if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
@@ -305,6 +334,7 @@ class CommentChecker
                     array_unshift($line_parts, 'mixed');
                 }
 
+                $line_parts[0] = self::getRenamedType($line_parts[0]);
                 if (count($line_parts) > 1) {
                     if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
                         && !preg_match('/\[[^\]]+\]/', $line_parts[0])

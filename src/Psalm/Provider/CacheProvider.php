@@ -51,8 +51,18 @@ class CacheProvider
             is_readable($cache_location) &&
             filemtime($cache_location) > $file_modified_time
         ) {
-            /** @var array<int, \PhpParser\Node\Stmt> */
-            return unserialize((string)file_get_contents($cache_location)) ?: null;
+            $contents = (string)file_get_contents($cache_location);
+            if ($contents === '') {
+                return null;
+            }
+            if (\substr($contents, 0, 4)  === "\x00\x00\x00\x02") {
+                // igbinary header
+                /** @var array<int, \PhpParser\Node\Stmt> */
+                return igbinary_unserialize($contents) ?: null;
+            } else {
+                /** @var array<int, \PhpParser\Node\Stmt> */
+                return unserialize($contents) ?: null;
+            }
         }
     }
 
@@ -103,7 +113,12 @@ class CacheProvider
                 mkdir($parser_cache_directory, 0777, true);
             }
 
-            file_put_contents($cache_location, serialize($stmts));
+            if (function_exists('igbinary_serialize')) {
+                $serialization = igbinary_serialize($stmts);
+            } else {
+                $serialization = serialize($stmts);
+            }
+            file_put_contents($cache_location, $serialization);
 
             $this->file_content_hashes[$file_cache_key] = $file_content_hash;
 

@@ -44,6 +44,7 @@
         </xs:choice>
     </xs:complexType>
 
+	<!-- TODO: Add phpdoc renaming to xsd -->
     <xs:complexType name="NameAttributeType">
         <xs:attribute name="name" type="xs:string" use="required" />
     </xs:complexType>
