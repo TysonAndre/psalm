@@ -46,16 +46,6 @@ class TypeParseTest extends TestCase
     }
 
     /**
-     * @expectedException \Psalm\Exception\TypeParseTreeException
-     *
-     * @return void
-     */
-    public function testInvalidType()
-    {
-        Type::parseString('array(A)');
-    }
-
-    /**
      * @return void
      */
     public function testObjectLike()
