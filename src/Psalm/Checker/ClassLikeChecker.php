@@ -684,7 +684,7 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         }
 
         foreach ($this->class->stmts as $stmt) {
-            try {
+            //try {
                 if ($stmt instanceof PhpParser\Node\Stmt\Property) {
                     $this->checkForMissingPropertyType($project_checker, $stmt);
                 } elseif ($stmt instanceof PhpParser\Node\Stmt\TraitUse) {
@@ -709,9 +709,9 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
                         }
                     }
                 }
-            } catch (\Exception $e) {
-
-            }
+            //  } catch (\Exception $e) {
+            //
+            //  }
         }
     }
 

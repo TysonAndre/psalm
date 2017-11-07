@@ -329,7 +329,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 try {
                     $class_checker = (new ClassChecker($stmt, $this->source, $stmt->name));
                     $class_checker->analyze(null, $global_context);
-                } catch (\Exception $e) {
+                } catch (\InvalidArgumentException $e) {
                     // Fatal error: Uncaught InvalidArgumentException: Could not get class storage for OutException in /usr/local/workspace2/web/vendor/vimeo/psalm/src/Psalm/Provider/ClassLikeStorageProvider.php:21
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Nop) {
