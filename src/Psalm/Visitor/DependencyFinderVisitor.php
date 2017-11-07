@@ -17,6 +17,7 @@ use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Exception\DocblockParseException;
 use Psalm\Exception\FileIncludeException;
+use Psalm\Exception\TypeParseTreeException;
 use Psalm\FunctionLikeParameter;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
@@ -81,6 +82,9 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /** @var ClassLikeStorage[] */
     protected $classlike_storages = [];
 
+    /** @var \Psalm\Plugin[] */
+    protected $plugins;
+
     /**
      * @param ProjectChecker $project_checker
      * @param string $file_path
@@ -94,6 +98,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         $this->config = Config::getInstance();
         $this->aliases = $this->file_aliases = new Aliases();
         $this->file_storage = $project_checker->file_storage_provider->get($this->file_path);
+        $this->plugins = $this->config->getPlugins();
     }
 
     public function enterNode(PhpParser\Node $node)
@@ -412,7 +417,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 throw new \LogicException('$this->fq_classlike_names should not be empty');
             }
 
-            $fq_classlike_name = $this->fq_classlike_names[count($this->fq_classlike_names) - 1];
+            $fq_classlike_name = array_pop($this->fq_classlike_names);
 
             if (ClassLikeChecker::inPropertyMap($fq_classlike_name)) {
                 $public_mapped_properties = ClassLikeChecker::getPropertyMap()[strtolower($fq_classlike_name)];
@@ -442,9 +447,26 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 }
             }
 
-            array_pop($this->classlike_storages);
+            $classlike_storage = array_pop($this->classlike_storages);
 
             $this->class_template_types = [];
+
+            if ($this->plugins) {
+                $file_manipulations = [];
+
+                foreach ($this->plugins as $plugin) {
+                    $plugin->visitClassLike(
+                        $node,
+                        $classlike_storage,
+                        $this->file_checker,
+                        $this->aliases,
+                        $file_manipulations
+                    );
+                }
+
+                if ($file_manipulations) {
+                }
+            }
         } elseif ($node instanceof PhpParser\Node\Stmt\Function_
             || $node instanceof PhpParser\Node\Stmt\ClassMethod
         ) {
@@ -794,7 +816,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         $storage->return_type = Type::parseString($fixed_type_string);
                         $storage->return_type->setFromDocblock();
                         $storage->return_type->queueClassLikesForScanning($this->project_checker, $this->file_path);
-                    } catch (\Psalm\Exception\TypeParseTreeException $e) {
+                    } catch (TypeParseTreeException $e) {
                         if (IssueBuffer::accepts(
                             new InvalidDocblock(
                                 $e->getMessage() . ' in docblock for ' . $cased_function_id,
@@ -963,9 +985,19 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         $this->function_template_types + $this->class_template_types
                     )
                 );
+            } catch (TypeParseTreeException $e) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        $e->getMessage() . ' in docblock for ' . $cased_method_id,
+                        $code_location
+                    )
+                )) {
+                    // fall through
+                }
+
+                continue;
             } catch (\InvalidArgumentException $e) {
                 // FIXME warn
-                continue;
             }
 
             $new_param_type->queueClassLikesForScanning(

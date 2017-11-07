@@ -15,10 +15,13 @@ use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Exception\FileIncludeException;
+use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\ContinueOutsideLoop;
 use Psalm\Issue\InvalidGlobal;
+use Psalm\Issue\MissingFile;
 use Psalm\Issue\UnevaluatedCode;
 use Psalm\Issue\UnrecognizedStatement;
+use Psalm\Issue\UnresolvableInclude;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Type;
@@ -87,25 +90,11 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
         $project_checker = $this->getFileChecker()->project_checker;
 
+        $file_replacements = [];
+
+        $plugins = Config::getInstance()->getPlugins();
+
         foreach ($stmts as $stmt) {
-            $plugins = Config::getInstance()->getPlugins();
-
-            if ($plugins) {
-                $code_location = new CodeLocation($this->source, $stmt);
-
-                foreach ($plugins as $plugin) {
-                    if ($plugin->checkStatement(
-                        $this,
-                        $stmt,
-                        $context,
-                        $code_location,
-                        $this->getSuppressedIssues()
-                    ) === false) {
-                        return false;
-                    }
-                }
-            }
-
             if ($has_returned && !($stmt instanceof PhpParser\Node\Stmt\Nop) &&
                 !($stmt instanceof PhpParser\Node\Stmt\InlineHTML)
             ) {
@@ -128,6 +117,33 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 var_dump($stmt->getLine() . ' ' . $context->vars_in_scope['$failed_reconciliation']);
             }
             */
+
+            $new_issues = null;
+
+            if ($docblock = $stmt->getDocComment()) {
+                $comments = CommentChecker::parseDocComment((string)$docblock);
+                if (isset($comments['specials']['psalm-suppress'])) {
+                    $suppressed = array_filter(
+                        array_map(
+                            /**
+                             * @param string $line
+                             *
+                             * @return string
+                             */
+                            function ($line) {
+                                return explode(' ', trim($line))[0];
+                            },
+                            $comments['specials']['psalm-suppress']
+                        )
+                    );
+
+                    if ($suppressed) {
+                        $new_issues = array_diff($suppressed, $this->source->getSuppressedIssues());
+                        /** @psalm-suppress TypeCoercion */
+                        $this->addSuppressedIssues($new_issues);
+                    }
+                }
+            }
 
             if ($stmt instanceof PhpParser\Node\Stmt\If_) {
                 IfChecker::analyze($this, $stmt, $context, $loop_context);
@@ -230,7 +246,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Expr) {
-                ExpressionChecker::analyze($this, $stmt, $context);
+                if (ExpressionChecker::analyze($this, $stmt, $context) === false) {
+                    return false;
+                }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\InlineHTML) {
                 // do nothing
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Global_) {
@@ -349,6 +367,33 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 )) {
                     return false;
                 }
+            }
+
+            if ($plugins) {
+                $file_manipulations = [];
+                $code_location = new CodeLocation($this->source, $stmt);
+
+                foreach ($plugins as $plugin) {
+                    if ($plugin->afterStatementCheck(
+                        $this,
+                        $stmt,
+                        $context,
+                        $code_location,
+                        $this->getSuppressedIssues(),
+                        $file_manipulations
+                    ) === false) {
+                        return false;
+                    }
+                }
+
+                if ($file_manipulations) {
+                    FileManipulationBuffer::add($this->getFilePath(), $file_manipulations);
+                }
+            }
+
+            if ($new_issues) {
+                /** @psalm-suppress TypeCoercion */
+                $this->removeSuppressedIssues($new_issues);
             }
         }
 
@@ -990,6 +1035,26 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
 
                 return null;
+            }
+
+            if (IssueBuffer::accepts(
+                new MissingFile(
+                    'Cannot find file ' . $path_to_file . ' to include',
+                    new CodeLocation($this->source, $stmt)
+                ),
+                $this->source->getSuppressedIssues()
+            )) {
+                // fall through
+            }
+        } else {
+            if (IssueBuffer::accepts(
+                new UnresolvableInclude(
+                    'Cannot resolve the given expression to a file path',
+                    new CodeLocation($this->source, $stmt)
+                ),
+                $this->source->getSuppressedIssues()
+            )) {
+                // fall through
             }
         }
 

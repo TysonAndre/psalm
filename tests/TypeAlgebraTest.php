@@ -384,8 +384,80 @@ class TypeAlgebraTest extends TestCase
                             if (!$arr) { return []; }
                         }
                         return $arr;
-                    }'
-            ]
+                    }',
+            ],
+            'lotsaTruthyStatements' => [
+                '<?php
+                    class A {
+                       /**
+                        * @var ?string
+                        */
+                       public $a = null;
+                       /**
+                        * @var ?string
+                        */
+                       public $b = null;
+                    }
+                    function f(A $obj): string {
+                      if (($obj->a !== null) == true) {
+                        return $obj->a; // definitely not null
+                      } elseif (!is_null($obj->b) == true) {
+                        return $obj->b;
+                      } else {
+                        throw new \InvalidArgumentException("$obj->a or $obj->b must be set");
+                      }
+                    }',
+            ],
+            'lotsaFalsyStatements' => [
+                '<?php
+                    class A {
+                       /**
+                        * @var ?string
+                        */
+                       public $a = null;
+                       /**
+                        * @var ?string
+                        */
+                       public $b = null;
+                    }
+                    function f(A $obj): string {
+                      if (($obj->a === null) == false) {
+                        return $obj->a; // definitely not null
+                      } elseif (is_null($obj->b) == false) {
+                        return $obj->b;
+                      } else {
+                        throw new \InvalidArgumentException("$obj->a or $obj->b must be set");
+                      }
+                    }',
+            ],
+            'ifGetClass' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                      public function foo() : void {}
+                    }
+
+                    function takesA(A $a) : void {
+                      if (get_class($a) === "B") {
+                        $a->foo();
+                      }
+                    }',
+            ],
+            'ifNotEqualsGetClass' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                      public function foo() : void {}
+                    }
+
+                    function takesA(A $a) : void {
+                      if (get_class($a) !== "B") {
+                        // do nothing
+                      } else {
+                        $a->foo();
+                      }
+                    }',
+            ],
         ];
     }
 

@@ -18,6 +18,7 @@ use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\ForbiddenCode;
 use Psalm\Issue\InvalidCast;
 use Psalm\Issue\InvalidClone;
@@ -322,6 +323,7 @@ class ExpressionChecker
                     $stmt->expr->inferredType,
                     $container_type,
                     true,
+                    false,
                     $has_scalar_match
                 )
                 && !$has_scalar_match
@@ -462,18 +464,24 @@ class ExpressionChecker
         $plugins = Config::getInstance()->getPlugins();
 
         if ($plugins) {
+            $file_manipulations = [];
             $code_location = new CodeLocation($statements_checker->getSource(), $stmt);
 
             foreach ($plugins as $plugin) {
-                if ($plugin->checkExpression(
+                if ($plugin->afterExpressionCheck(
                     $statements_checker,
                     $stmt,
                     $context,
                     $code_location,
-                    $statements_checker->getSuppressedIssues()
+                    $statements_checker->getSuppressedIssues(),
+                    $file_manipulations
                 ) === false) {
                     return false;
                 }
+            }
+
+            if ($file_manipulations) {
+                FileManipulationBuffer::add($statements_checker->getFilePath(), $file_manipulations);
             }
         }
 
@@ -640,6 +648,7 @@ class ExpressionChecker
      * @param  StatementsChecker    $statements_checker
      * @param  PhpParser\Node\Expr  $stmt
      * @param  Type\Union           $by_ref_type
+     * @param  bool                 $constrain_type
      * @param  Context              $context
      *
      * @return void
@@ -648,7 +657,8 @@ class ExpressionChecker
         StatementsChecker $statements_checker,
         PhpParser\Node\Expr $stmt,
         Type\Union $by_ref_type,
-        Context $context
+        Context $context,
+        $constrain_type = true
     ) {
         $var_id = self::getVarId(
             $stmt,
@@ -657,7 +667,7 @@ class ExpressionChecker
         );
 
         if ($var_id) {
-            if (!$by_ref_type->isMixed()) {
+            if (!$by_ref_type->isMixed() && $constrain_type) {
                 $context->byref_constraints[$var_id] = new \Psalm\ReferenceConstraint($by_ref_type);
             }
 
@@ -934,7 +944,7 @@ class ExpressionChecker
 
                 if ($var_id && isset($context->vars_in_scope[$var_id])) {
                     $left_inferred_reconciled = TypeChecker::reconcileTypes(
-                        '!empty',
+                        '!falsy',
                         $context->vars_in_scope[$var_id],
                         '',
                         $statements_checker,
@@ -1549,6 +1559,7 @@ class ExpressionChecker
                 $left_type,
                 Type::getString(),
                 true,
+                false,
                 $left_has_scalar_match
             );
 
@@ -1557,6 +1568,7 @@ class ExpressionChecker
                 $right_type,
                 Type::getString(),
                 true,
+                false,
                 $right_has_scalar_match
             );
 
@@ -2062,7 +2074,7 @@ class ExpressionChecker
         } elseif ($stmt->cond) {
             if (isset($stmt->cond->inferredType)) {
                 $if_return_type_reconciled = TypeChecker::reconcileTypes(
-                    '!empty',
+                    '!falsy',
                     $stmt->cond->inferredType,
                     '',
                     $statements_checker,

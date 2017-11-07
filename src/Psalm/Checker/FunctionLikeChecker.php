@@ -991,6 +991,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 $inferred_return_type,
                 $declared_return_type,
                 $ignore_nullable_issues,
+                false,
                 $has_scalar_match,
                 $type_coerced
             )) {
@@ -1318,6 +1319,26 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
     public function getSuppressedIssues()
     {
         return $this->suppressed_issues;
+    }
+
+    /**
+     * @param array<int, string> $new_issues
+     *
+     * @return void
+     */
+    public function addSuppressedIssues(array $new_issues)
+    {
+        $this->suppressed_issues = array_merge($new_issues, $this->suppressed_issues);
+    }
+
+    /**
+     * @param array<int, string> $new_issues
+     *
+     * @return void
+     */
+    public function removeSuppressedIssues(array $new_issues)
+    {
+        $this->suppressed_issues = array_diff($this->suppressed_issues, $new_issues);
     }
 
     /**

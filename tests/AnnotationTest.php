@@ -234,6 +234,32 @@ class AnnotationTest extends TestCase
                         }
                     }',
             ],
+            'psalmVar' => [
+                '<?php
+                    class A
+                    {
+                        /** @psalm-var array<int, string> */
+                        public $foo = [];
+
+                        public function updateFoo() : void {
+                            $this->foo[5] = "hello";
+                        }
+                    }',
+            ],
+            'psalmParam' => [
+                '<?php
+                    function takesInt(int $a) : void {}
+
+                    /**
+                     * @psalm-param  array<int, string> $a
+                     * @param string[] $a
+                     */
+                    function foo(array $a) : void {
+                        foreach ($a as $key => $value) {
+                            takesInt($key);
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -380,13 +406,14 @@ class AnnotationTest extends TestCase
                      * @property string $foo
                      */
                     class A {
-                         public function __get($name) : ?string {
+                         public function __get(string $name) : ?string {
                               if ($name === "foo") {
                                    return "hello";
                               }
                          }
 
-                         public function __set($name, $value) : void {
+                         /** @param mixed $value */
+                         public function __set(string $name, $value) : void {
                          }
                     }
 
@@ -489,6 +516,19 @@ class AnnotationTest extends TestCase
                 'error_message' => 'UntypedParam - src/somefile.php:7 - Parameter $s has no provided type,'
                     . ' could not infer',
                 'error_levels' => ['MixedArgument', 'InvalidReturnType', 'MixedAssignment'],
+            ],
+            'psalmInvalidVar' => [
+                '<?php
+                    class A
+                    {
+                        /** @psalm-var array<int, string> */
+                        public $foo = [];
+
+                        public function updateFoo() : void {
+                            $this->foo["boof"] = "hello";
+                        }
+                    }',
+                'error_message' => 'InvalidPropertyAssignment',
             ],
         ];
     }

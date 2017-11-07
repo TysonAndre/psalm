@@ -120,7 +120,7 @@ class PropertyTypeTest extends TestCase
                         $b = $a->foo;
                     }',
                 'assertions' => [
-                    '$b' => 'null|string|int',
+                    '$b' => 'null|int|string',
                 ],
             ],
             'sharedPropertyInElseIf' => [
@@ -144,7 +144,7 @@ class PropertyTypeTest extends TestCase
                         $b = $a->foo;
                     }',
                 'assertions' => [
-                    '$b' => 'null|string|int',
+                    '$b' => 'null|int|string',
                 ],
             ],
             'nullablePropertyCheck' => [
@@ -531,17 +531,6 @@ final class B extends A {}',
                         }
                     }',
                 'error_message' => 'UndefinedThisPropertyFetch',
-            ],
-            'missingPropertyDeclaration' => [
-                '<?php
-                    class A {
-                    }
-
-                    /** @psalm-suppress UndefinedPropertyAssignment */
-                    function fooDo() : void {
-                        (new A)->foo = "cool";
-                    }',
-                'error_message' => 'MissingPropertyDeclaration',
             ],
             'missingPropertyType' => [
                 '<?php

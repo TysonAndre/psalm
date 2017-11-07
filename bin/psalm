@@ -18,7 +18,7 @@ $options = getopt(
         'help', 'debug', 'config:', 'monochrome', 'show-info:', 'diff',
         'file:', 'self-check', 'update-docblocks', 'output-format:',
         'find-dead-code', 'init', 'find-references-to:', 'root:', 'threads:',
-        'report:', 'clear-cache',
+        'report:', 'clear-cache', 'no-cache',
     ]
 );
 
@@ -80,7 +80,7 @@ Options:
         Adds correct return types to the given file(s)
 
     --output-format=console
-        Changes the output format
+        Changes the output format. Possible values: console, json, xml
 
     --find-dead-code
         Look for dead code
@@ -98,6 +98,9 @@ Options:
 
     --clear-cache
         Clears all cache files that Psalm uses
+
+    --no-cache
+        Runs Psalm without using cache
 
 HELP;
 
@@ -170,11 +173,16 @@ foreach ($autoload_files as $file) {
 (new \Composer\XdebugHandler(\Composer\Factory::createOutput()))->check();
 
 if (isset($options['i'])) {
-    $args = array_slice($argv, 2);
-
     if (file_exists('psalm.xml')) {
         die('A config file already exists in the current directory' . PHP_EOL);
     }
+
+    $args = array_filter(
+        array_slice($argv, 2),
+        function ($arg) {
+            return $arg !== '--ansi' && $arg !== '--no-ansi';
+        }
+    );
 
     $level = 3;
     $source_dir = 'src';
@@ -314,9 +322,13 @@ $update_docblocks = isset($options['update-docblocks']);
 
 $threads = isset($options['threads']) ? (int)$options['threads'] : 1;
 
+$cache_provider = isset($options['no-cache'])
+    ? new Psalm\Provider\Cache\NoParserCacheProvider()
+    : new Psalm\Provider\ParserCacheProvider();
+
 $project_checker = new ProjectChecker(
     new Psalm\Provider\FileProvider(),
-    new Psalm\Provider\CacheProvider(),
+    $cache_provider,
     $use_color,
     $show_info,
     $output_format,
