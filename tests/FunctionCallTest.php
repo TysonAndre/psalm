@@ -281,6 +281,24 @@ class FunctionCallTest extends TestCase
                     fooFoo($a->foo);
                     fooFoo($b);',
             ],
+            'arrayRand' => [
+                '<?php
+                    $vars = ["x" => "a", "y" => "b"];
+                    $c = array_rand($vars);
+                    $d = $vars[$c];',
+
+                'assertions' => [
+                    '$vars' => 'array{x:string, y:string}',
+                    '$c' => 'string',
+                    '$d' => 'string',
+                ],
+            ],
+            'compact' => [
+                '<?php
+                    function test() : array {
+                        return compact(["val"]);
+                    }',
+            ],
         ];
     }
 
