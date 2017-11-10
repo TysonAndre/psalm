@@ -2,7 +2,6 @@
 namespace Psalm\Checker;
 
 use PhpParser;
-use Psalm\StatementsSource;
 use Psalm\TraitSource;
 
 class TraitChecker extends ClassLikeChecker
@@ -13,9 +12,9 @@ class TraitChecker extends ClassLikeChecker
     private $method_map = [];
 
     /**
-     * @param  PhpParser\Node\Stmt\Trait_       $class
-     * @param   StatementsSource                $source
-     * @param   string                          $fq_class_name
+     * @param  PhpParser\Node\Stmt\Trait_ $class
+     * @param  TraitSource                $trait_source
+     * @param  string                     $fq_class_name
      */
     public function __construct(PhpParser\Node\Stmt\Trait_ $class, TraitSource $trait_source, $fq_class_name)
     {
