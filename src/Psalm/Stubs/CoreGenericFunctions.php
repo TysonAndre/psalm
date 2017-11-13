@@ -107,3 +107,21 @@ function array_pop(array $arr) {}
  * @return array<TKey, TValue>
  */
 function array_reverse(array $arr) {}
+
+/**
+ * @template TKey
+ * @template TValue
+ *
+ * @param array<TKey, TValue> $arr
+ * @return TValue|false
+ */
+function reset(array &$arr) {}
+
+/**
+ * @template TKey
+ * @template TValue
+ *
+ * @param array<TKey, TValue> $arr
+ * @return TValue|false
+ */
+function end(array &$arr) {}
