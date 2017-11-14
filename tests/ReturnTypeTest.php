@@ -497,7 +497,7 @@ class ReturnTypeTest extends TestCase
                     function fooFoo() : string {
                         return rand(0, 5) ? "hello" : null;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'missingReturnType' => [
                 '<?php
