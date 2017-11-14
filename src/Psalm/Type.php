@@ -22,6 +22,13 @@ use Psalm\Type\ParseTree;
 use Psalm\Type\TypeCombination;
 use Psalm\Type\Union;
 
+use function preg_replace;
+use function count;
+use function strpos;
+use function str_replace;
+use function strtolower;
+use function trim;
+
 abstract class Type
 {
     /**
