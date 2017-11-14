@@ -493,6 +493,7 @@ class TypeChecker
      * @param  bool         &$has_scalar_match
      * @param  bool         &$type_coerced    whether or not there was type coercion involved
      * @param  bool         &$to_string_cast
+     * @param  bool         &$has_partial_match
      *
      * @return bool
      */
@@ -504,15 +505,15 @@ class TypeChecker
         $ignore_false = false,
         &$has_scalar_match = null,
         &$type_coerced = null,
-        &$to_string_cast = null
+        &$to_string_cast = null,
+        &$has_partial_match = null
     ) {
         $has_scalar_match = true;
+        $has_partial_match = false;
 
         if ($container_type->isMixed()) {
             return true;
         }
-
-        $type_match_found = false;
 
         foreach ($input_type->types as $input_type_part) {
             if ($input_type_part instanceof TNull && $ignore_null) {
@@ -569,11 +570,13 @@ class TypeChecker
             // only set this flag if we're definite that the only
             // reason the type match has been found is because there
             // was a __toString cast
-            if ($all_to_string_cast && $type_match_found) {
-                $to_string_cast = true;
-            }
-
-            if (!$type_match_found) {
+            if ($type_match_found) {
+                if ($all_to_string_cast) {
+                    $to_string_cast = true;
+                } else {
+                    $has_partial_match = true;
+                }
+            } else {
                 if (!$scalar_type_match_found) {
                     $has_scalar_match = false;
                 }

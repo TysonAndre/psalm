@@ -16,6 +16,7 @@ use Psalm\FunctionLikeParameter;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidParamDefault;
 use Psalm\Issue\InvalidReturnType;
+use Psalm\Issue\PossiblyInvalidReturnType;
 use Psalm\Issue\InvalidToString;
 use Psalm\Issue\LessSpecificReturnType;
 use Psalm\Issue\MethodSignatureMismatch;
@@ -998,7 +999,9 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 $ignore_nullable_issues,
                 false,
                 $has_scalar_match,
-                $type_coerced
+                $type_coerced,
+                $ignored_to_string_cast,
+                $has_partial_match
             )) {
                 if ($project_checker->update_docblocks) {
                     if (!in_array('InvalidReturnType', $this->suppressed_issues, true)) {
@@ -1021,15 +1024,28 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         return false;
                     }
                 } else {
-                    if (IssueBuffer::accepts(
-                        new InvalidReturnType(
-                            'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
-                                ' is incorrect, got \'' . $inferred_return_type . '\'',
-                            $secondary_return_type_location ?: $return_type_location
-                        ),
-                        $this->suppressed_issues
-                    )) {
-                        return false;
+                    if ($has_partial_match) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyInvalidReturnType(
+                                'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
+                                    ' is incorrect but has some compatible types, got \'' . $inferred_return_type . '\'',
+                                $secondary_return_type_location ?: $return_type_location
+                            ),
+                            $this->suppressed_issues
+                        )) {
+                            return false;
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new InvalidReturnType(
+                                'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
+                                    ' is incorrect, got \'' . $inferred_return_type . '\'',
+                                $secondary_return_type_location ?: $return_type_location
+                            ),
+                            $this->suppressed_issues
+                        )) {
+                            return false;
+                        }
                     }
                 }
             } elseif (!$inferred_return_type->isNullable() && $declared_return_type->isNullable()) {
