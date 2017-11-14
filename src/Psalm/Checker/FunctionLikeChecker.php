@@ -1173,6 +1173,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 if ($return_type_token[0] === '$') {
                     if ($return_type === '$this') {
                         $return_type_token = 'static';
+                    } else {
+                        return '';
                     }
 
                     continue;
