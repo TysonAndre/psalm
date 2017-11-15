@@ -908,6 +908,7 @@ class FetchChecker
         ) === false) {
             return false;
         }
+        $original_key_type = $key_type;
 
         $inferred_key_type = null;
 
@@ -977,11 +978,14 @@ class FetchChecker
                                     $type->type_params[0] = $key_type;
                                 }
                             } else {
+                                echo "Fetched key type: " . (string)$key_type . "\n";
+                                // TODO: What are inferred_key_type and key_type meant to be?
                                 if ($key_type) {
                                     $key_type = Type::combineUnionTypes($key_type, $type->type_params[0]);
                                 } else {
                                     $key_type = $type->type_params[0];
                                 }
+                                echo "Modified key type: " . (string)$key_type . "\n";
 
                                 if ($inferred_key_type) {
                                     $inferred_key_type = Type::combineUnionTypes(
@@ -1258,6 +1262,13 @@ class FetchChecker
         }
 
         if ($stmt->dim) {
+            //echo "Saw dim\n";
+            //var_export($stmt->dim);
+            echo "Saw key type\n";
+            var_export($key_type);
+            echo "Saw inferred type\n";
+            var_export($stmt->dim->inferredType);
+            echo "\n";
             if (isset($stmt->dim->inferredType) && $key_type && !$key_type->isEmpty()) {
                 foreach ($stmt->dim->inferredType->types as $at) {
                     if (($at instanceof TMixed || $at instanceof TEmpty) &&
