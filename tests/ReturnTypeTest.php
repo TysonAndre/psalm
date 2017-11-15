@@ -434,8 +434,9 @@ class ReturnTypeTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
+            // TODO: return existence check?
             'switchReturnTypeWithFallthroughAndConditionalBreak' => [
                 '<?php
                     class A {
@@ -451,7 +452,7 @@ class ReturnTypeTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'switchReturnTypeWithNoDefault' => [
                 '<?php
@@ -465,7 +466,7 @@ class ReturnTypeTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'wrongReturnType1' => [
                 '<?php
@@ -479,7 +480,7 @@ class ReturnTypeTest extends TestCase
                     function fooFoo() : string {
                         return rand(0, 5) ? "hello" : null;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'wrongReturnTypeInNamespace1' => [
                 '<?php

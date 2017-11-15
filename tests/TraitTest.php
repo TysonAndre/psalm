@@ -428,7 +428,7 @@ class TraitTest extends TestCase
                         }
                     }',
                 'error_message' => 'MissingPropertyType - src/somefile.php:3 - Property T::$foo does not have a ' .
-                    'declared type - consider int|nul',
+                    'declared type - consider int|null',
             ],
             'redefinedTraitMethodInSubclass' => [
                 '<?php
