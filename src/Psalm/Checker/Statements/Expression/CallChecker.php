@@ -35,6 +35,7 @@ use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\PossiblyFalseArgument;
 use Psalm\Issue\PossiblyFalseReference;
 use Psalm\Issue\PossiblyInvalidArgument;
+use Psalm\Issue\PossiblyInvalidMethodCall;
 use Psalm\Issue\PossiblyNullArgument;
 use Psalm\Issue\PossiblyNullFunctionCall;
 use Psalm\Issue\PossiblyNullReference;
@@ -769,6 +770,9 @@ class CallChecker
         if ($class_type && is_string($stmt->name)) {
             $return_type = null;
 
+            /** @var InvalidMethodCall[] $deferred_issues */
+            $deferred_issues = [];
+            $has_any_valid_classes = false;
             foreach ($class_type->types as $class_type_part) {
                 if (!$class_type_part instanceof TNamedObject) {
                     switch (get_class($class_type_part)) {
@@ -782,15 +786,10 @@ class CallChecker
                         case 'Psalm\\Type\\Atomic\\TArray':
                         case 'Psalm\\Type\\Atomic\\TString':
                         case 'Psalm\\Type\\Atomic\\TNumericString':
-                            if (IssueBuffer::accepts(
-                                new InvalidMethodCall(
-                                    'Cannot call method ' . $stmt->name . ' on ' . $class_type . ' variable ' . $var_id,
-                                    $code_location
-                                ),
-                                $statements_checker->getSuppressedIssues()
-                            )) {
-                                return false;
-                            }
+                            $deferred_issues[] = new InvalidMethodCall(
+                                'Cannot call method ' . $stmt->name . ' on ' . $class_type . ' variable ' . $var_id,
+                                $code_location
+                            );
                             break;
 
                         case 'Psalm\\Type\\Atomic\\TMixed':
@@ -825,6 +824,7 @@ class CallChecker
                 if ($is_mock ||
                     $context->isPhantomClass($fq_class_name)
                 ) {
+                    $has_any_valid_classes = true;
                     $return_type = Type::getMixed();
                     continue;
                 }
@@ -872,6 +872,7 @@ class CallChecker
                             $statements_checker->getSource()
                         )
                     ) {
+                        $has_any_valid_classes = true;
                         $return_type = Type::getMixed();
                         continue;
                     }
@@ -903,6 +904,7 @@ class CallChecker
                     $non_existent_method_ids[] = $method_id;
                     continue;
                 }
+                $has_any_valid_classes = true;
 
                 $existent_method_ids[] = $method_id;
 
@@ -1027,6 +1029,22 @@ class CallChecker
                     }
                 } else {
                     $return_type = Type::getMixed();
+                }
+            }
+            foreach ($deferred_issues as $issue) {
+                if ($has_any_valid_classes) {
+                    if ($issue instanceof InvalidMethodCall) {
+                        $issue = new PossiblyInvalidMethodCall(
+                            $issue->getMessage() . ', but other types in the union type have that method',
+                            $issue->getLocation()
+                        );
+                    }
+                }
+                if (IssueBuffer::accepts(
+                    $issue,
+                    $statements_checker->getSuppressedIssues()
+                )) {
+                    return false;
                 }
             }
 

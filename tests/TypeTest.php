@@ -1196,6 +1196,29 @@ class TypeTest extends TestCase
                     $one->barBar();',
                 'error_message' => 'PossiblyUndefinedMethod',
             ],
+            'variableReassignmentToScalarInIfWithOutsideCall' => [
+                '<?php
+                    class One {
+                        /** @return void */
+                        public function fooFoo() {}
+                    }
+
+                    class Two {
+                        /** @return void */
+                        public function barBar() {}
+                    }
+
+                    $one = "str";
+
+                    if (1 + 1 === 2) {
+                        $one = new Two();
+
+                        $one->barBar();
+                    }
+
+                    $one->barBar();',
+                'error_message' => 'PossiblyInvalidMethodCall',
+            ],
             'unnecessaryInstanceof' => [
                 '<?php
                     class One {
