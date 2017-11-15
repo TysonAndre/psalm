@@ -862,8 +862,6 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $this->improveParamsFromDocblock(
                 $storage,
                 $docblock_info->params,
-                $template_types,
-                $stmt,
                 new CodeLocation($this->file_checker, $stmt, null, true)
             );
         }
@@ -955,8 +953,6 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     protected function improveParamsFromDocblock(
         FunctionLikeStorage $storage,
         array $docblock_params,
-        $template_types,
-        $function,
         CodeLocation $code_location
     ) {
         $base = $this->fq_classlike_names

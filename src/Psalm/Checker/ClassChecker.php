@@ -45,8 +45,8 @@ class ClassChecker extends ClassLikeChecker
     /**
      * Determine whether or not a given class exists
      *
-     * @param  string       $fq_class_name
-     * @param  FileChecker  $file_checker
+     * @param  ProjectChecker $project_checker
+     * @param  string         $fq_class_name
      *
      * @return bool
      */
