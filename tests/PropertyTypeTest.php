@@ -597,6 +597,20 @@ final class B extends A {}',
                     }',
                 'error_message' => 'InvalidPropertyAssignment',
             ],
+            'possiblyBadAssignment' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        /** @param string|false $new_value */
+                        public function barBar($new_value) : void
+                        {
+                            $this->foo = $new_value;
+                        }
+                    }',
+                'error_message' => 'PossiblyInvalidPropertyAssignment',
+            ],
             'badAssignmentAsWell' => [
                 '<?php
                     $a = "hello";

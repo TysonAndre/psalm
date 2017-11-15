@@ -26,6 +26,7 @@ use Psalm\Issue\MixedPropertyAssignment;
 use Psalm\Issue\MixedStringOffsetAssignment;
 use Psalm\Issue\NoInterfaceProperties;
 use Psalm\Issue\NullPropertyAssignment;
+use Psalm\Issue\PossiblyInvalidPropertyAssignment;
 use Psalm\Issue\PossiblyNullPropertyAssignment;
 use Psalm\Issue\ReferenceConstraintViolation;
 use Psalm\Issue\UndefinedClass;
@@ -803,18 +804,34 @@ class AssignmentChecker
                 $project_checker,
                 $assignment_value_type,
                 $class_property_type,
-                $assignment_value_type->ignore_nullable_issues
+                $assignment_value_type->ignore_nullable_issues,
+                false,
+                $unused_has_scalar_match,
+                $unused_type_coerced,
+                $unused_to_string_cast,
+                $has_partial_match
             )) {
-                if (IssueBuffer::accepts(
-                    new InvalidPropertyAssignment(
+                $location = new CodeLocation(
+                    $statements_checker->getSource(),
+                    $assignment_value ?: $stmt,
+                    $context->include_location
+                );
+                if ($has_partial_match) {
+                    $issue = new PossiblyInvalidPropertyAssignment(
+                        $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
+                            $assignment_value_type . '\', but some types are compatible',
+                        $location
+                    );
+                } else {
+                    $issue = new InvalidPropertyAssignment(
                         $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
                             $assignment_value_type . '\'',
-                        new CodeLocation(
-                            $statements_checker->getSource(),
-                            $assignment_value ?: $stmt,
-                            $context->include_location
-                        )
-                    ),
+                        $location
+                    );
+                }
+
+                if (IssueBuffer::accepts(
+                    $issue,
                     $statements_checker->getSuppressedIssues()
                 )) {
                     return false;
@@ -947,17 +964,33 @@ class AssignmentChecker
         if (!TypeChecker::isContainedBy(
             $project_checker,
             $assignment_value_type,
-            $class_property_type
+            $class_property_type,
+            false,
+            false,
+            $unused_has_scalar_match,
+            $unused_type_coerced,
+            $unused_to_string_cast,
+            $has_partial_match
         )) {
-            if (IssueBuffer::accepts(
-                new InvalidPropertyAssignment(
+            $location = new CodeLocation(
+                $statements_checker->getSource(),
+                $assignment_value ?: $stmt
+            );
+            if ($has_partial_match) {
+                $issue = new PossiblyInvalidPropertyAssignment(
+                    $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
+                        $assignment_value_type . '\', but some types are compatible',
+                    $location
+                );
+            } else {
+                $issue = new InvalidPropertyAssignment(
                     $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
                         $assignment_value_type . '\'',
-                    new CodeLocation(
-                        $statements_checker->getSource(),
-                        $assignment_value ?: $stmt
-                    )
-                ),
+                    $location
+                );
+            }
+            if (IssueBuffer::accepts(
+                $issue,
                 $statements_checker->getSuppressedIssues()
             )) {
                 return false;
