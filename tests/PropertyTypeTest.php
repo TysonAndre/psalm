@@ -623,6 +623,24 @@ final class B extends A {}',
                     echo $a->foo;',
                 'error_message' => 'InvalidPropertyFetch',
             ],
+            'possiblyBadFetch' => [
+                '<?php
+                    class HasProp {
+                        /** @var string */
+                        public $prop = "value";
+                    }
+
+                    /** @return HasProp|string */
+                    function get_result(bool $object) {
+                        return $object ? new HasProp() : "prop:value";
+                    }
+
+                    function main() {
+                        $result = get_result(true);
+                        echo $result->prop;
+                    }',
+                'error_message' => 'PossiblyInvalidPropertyFetch',
+            ],
             'mixedPropertyFetch' => [
                 '<?php
                     class Foo {
