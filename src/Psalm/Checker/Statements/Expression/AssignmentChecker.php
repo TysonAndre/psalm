@@ -853,6 +853,9 @@ class AssignmentChecker
                     (string)$class_property_type,
                     (string)$assignment_value_type,
                 ];
+                if ($has_partial_match) {
+                    $has_valid_assignment_value_type = true;
+                }
             } else {
                 $has_valid_assignment_value_type = true;
             }
