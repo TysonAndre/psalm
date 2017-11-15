@@ -4,6 +4,7 @@ namespace Psalm\Checker;
 use Psalm\Aliases;
 use Psalm\ClassLikeDocblockComment;
 use Psalm\Exception\DocblockParseException;
+use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\FunctionDocblockComment;
 use Psalm\StatementsSource;
@@ -65,6 +66,10 @@ class CommentChecker
 
                 $line_parts[0] = self::getRenamedType($line_parts[0]);
                 if ($line_parts && $line_parts[0]) {
+                    if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
+                        throw new IncorrectDocblockException('Misplaced variable');
+                    }
+
                     $var_type_string = FunctionLikeChecker::fixUpLocalType(
                         $line_parts[0],
                         $aliases,
@@ -179,7 +184,9 @@ class CommentChecker
                 && $line_parts[0][0] !== '{'
             ) {
                 if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
-                    throw new DocblockParseException('Badly-formatted @param type');
+                    if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
+                        throw new IncorrectDocblockException('Misplaced variable');
+                    }
                 }
 
                 $info->return_type = $line_parts[0];
@@ -223,7 +230,7 @@ class CommentChecker
                         }
 
                         if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
-                            throw new DocblockParseException('Badly-formatted @param type');
+                            throw new IncorrectDocblockException('Misplaced variable');
                         }
 
                         $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);
@@ -270,7 +277,7 @@ class CommentChecker
                 $typeof_parts = preg_split('/[\s]+/', $template_typeof);
 
                 if (count($typeof_parts) < 2 || $typeof_parts[1][0] !== '$') {
-                    throw new DocblockParseException('Badly-formatted @template-typeof');
+                    throw new IncorrectDocblockException('Misplaced variable');
                 }
 
                 $info->template_typeofs[] = [
@@ -351,7 +358,7 @@ class CommentChecker
                         }
 
                         if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
-                            throw new DocblockParseException('Badly-formatted @param type');
+                            throw new IncorrectDocblockException('Misplaced variable');
                         }
 
                         $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);

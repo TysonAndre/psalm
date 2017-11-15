@@ -11,9 +11,12 @@ use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Exception\DocblockParseException;
+use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidIterator;
 use Psalm\Issue\NullIterator;
 use Psalm\Issue\PossiblyNullIterator;
+use Psalm\Issue\RawObjectIteration;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 
@@ -195,6 +198,16 @@ class ForeachChecker
                         } else {
                             $value_type = Type::getMixed();
                         }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new RawObjectIteration(
+                                'Possibly undesired iteration over regular object ' . $iterator_type->value,
+                                new CodeLocation($statements_checker->getSource(), $stmt->expr)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
                     }
                 }
             }
@@ -227,11 +240,22 @@ class ForeachChecker
         $doc_comment_text = (string)$stmt->getDocComment();
 
         if ($doc_comment_text) {
-            $var_comment = CommentChecker::getTypeFromComment(
-                $doc_comment_text,
-                $statements_checker->getSource(),
-                $statements_checker->getSource()->getAliases()
-            );
+            try {
+                $var_comment = CommentChecker::getTypeFromComment(
+                    $doc_comment_text,
+                    $statements_checker->getSource(),
+                    $statements_checker->getSource()->getAliases()
+                );
+            } catch (DocblockParseException $e) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        (string)$e->getMessage(),
+                        new CodeLocation($statements_checker, $stmt)
+                    )
+                )) {
+                    // fall through
+                }
+            }
 
             if ($var_comment && $var_comment->var_id) {
                 $comment_type = ExpressionChecker::fleshOutType(

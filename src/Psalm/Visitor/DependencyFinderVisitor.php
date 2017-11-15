@@ -17,11 +17,13 @@ use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Exception\DocblockParseException;
 use Psalm\Exception\FileIncludeException;
+use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\FunctionLikeParameter;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\MisplacedRequiredParam;
+use Psalm\Issue\MissingDocblockType;
 use Psalm\IssueBuffer;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
@@ -273,7 +275,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         ) {
             $fq_classlike_name = ClassLikeChecker::getFQCLNFromNameObject($node->class, $this->aliases);
 
-            if (!in_array($fq_classlike_name, ['self', 'static', 'parent'], true)) {
+            if (!in_array(strtolower($fq_classlike_name), ['self', 'static', 'parent'], true)) {
                 $this->project_checker->queueClassLikeForScanning($fq_classlike_name, $this->file_path);
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\TryCatch) {
@@ -281,7 +283,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 foreach ($catch->types as $catch_type) {
                     $catch_fqcln = ClassLikeChecker::getFQCLNFromNameObject($catch_type, $this->aliases);
 
-                    if (!in_array($catch_fqcln, ['self', 'static', 'parent'], true)) {
+                    if (!in_array(strtolower($catch_fqcln), ['self', 'static', 'parent'], true)) {
                         $this->project_checker->queueClassLikeForScanning($catch_fqcln, $this->file_path);
                     }
                 }
@@ -396,14 +398,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         null
                     );
                 } catch (DocblockParseException $e) {
-                    if (IssueBuffer::accepts(
-                        new InvalidDocblock(
-                            (string)$e->getMessage(),
-                            new CodeLocation($this->file_checker, $node, null, true)
-                        )
-                    )) {
-                        // fall through
-                    }
+                    // do nothing
                 }
 
                 if ($var_comment) {
@@ -706,7 +701,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     $this->aliases
                 );
 
-                if (!in_array($return_type_fq_classlike_name, ['self', 'static', 'parent'], true)) {
+                if (!in_array(strtolower($return_type_fq_classlike_name), ['self', 'static', 'parent'], true)) {
                     $this->project_checker->queueClassLikeForScanning(
                         $return_type_fq_classlike_name,
                         $this->file_path
@@ -743,6 +738,15 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 (string)$doc_comment,
                 $doc_comment->getLine()
             );
+        } catch (IncorrectDocblockException $e) {
+            if (IssueBuffer::accepts(
+                new MissingDocblockType(
+                    $e->getMessage() . ' in docblock for ' . $cased_function_id,
+                    new CodeLocation($this->file_checker, $stmt, null, true)
+                )
+            )) {
+                // fall through
+            }
         } catch (DocblockParseException $e) {
             if (IssueBuffer::accepts(
                 new InvalidDocblock(
@@ -894,11 +898,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             } elseif ($param_typehint instanceof PhpParser\Node\Name\FullyQualified) {
                 $param_type_string = (string)$param_typehint;
                 $this->project_checker->queueClassLikeForScanning($param_type_string, $this->file_path);
-            } elseif ($param_typehint->parts === ['self']) {
+            } elseif (strtolower($param_typehint->parts[0]) === 'self') {
                 $param_type_string = $this->fq_classlike_names[count($this->fq_classlike_names) - 1];
             } else {
                 $param_type_string = ClassLikeChecker::getFQCLNFromNameObject($param_typehint, $this->aliases);
-                if (!in_array($param_type_string, ['self', 'static', 'parent'], true)) {
+                if (!in_array(strtolower($param_type_string), ['self', 'static', 'parent'], true)) {
                     $this->project_checker->queueClassLikeForScanning($param_type_string, $this->file_path);
                 }
             }
@@ -1096,10 +1100,19 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     $this->function_template_types + $this->class_template_types,
                     $property_type_line_number
                 );
+            } catch (IncorrectDocblockException $e) {
+                if (IssueBuffer::accepts(
+                    new MissingDocblockType(
+                        $e->getMessage(),
+                        new CodeLocation($this->file_checker, $stmt, null, true)
+                    )
+                )) {
+                    // fall through
+                }
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
                     new InvalidDocblock(
-                        (string)$e->getMessage(),
+                        $e->getMessage(),
                         new CodeLocation($this->file_checker, $stmt, null, true)
                     )
                 )) {

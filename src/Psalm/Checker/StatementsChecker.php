@@ -14,9 +14,11 @@ use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\Exception\DocblockParseException;
 use Psalm\Exception\FileIncludeException;
 use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\ContinueOutsideLoop;
+use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidGlobal;
 use Psalm\Issue\MissingFile;
 use Psalm\Issue\UnevaluatedCode;
@@ -332,11 +334,22 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Nop) {
                 if ((string)$stmt->getDocComment()) {
-                    $var_comment = CommentChecker::getTypeFromComment(
-                        (string)$stmt->getDocComment(),
-                        $this->getSource(),
-                        $this->getSource()->getAliases()
-                    );
+                    try {
+                        $var_comment = CommentChecker::getTypeFromComment(
+                            (string)$stmt->getDocComment(),
+                            $this->getSource(),
+                            $this->getSource()->getAliases()
+                        );
+                    } catch (DocblockParseException $e) {
+                        if (IssueBuffer::accepts(
+                            new InvalidDocblock(
+                                (string)$e->getMessage(),
+                                new CodeLocation($this->getSource(), $stmt, null, true)
+                            )
+                        )) {
+                            // fall through
+                        }
+                    }
 
                     if ($var_comment && $var_comment->var_id) {
                         $comment_type = ExpressionChecker::fleshOutType(
@@ -894,11 +907,22 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         $var_comment = null;
 
         if ($doc_comment_text) {
-            $var_comment = CommentChecker::getTypeFromComment(
-                $doc_comment_text,
-                $this->source,
-                $this->source->getAliases()
-            );
+            try {
+                $var_comment = CommentChecker::getTypeFromComment(
+                    $doc_comment_text,
+                    $this->source,
+                    $this->source->getAliases()
+                );
+            } catch (DocblockParseException $e) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        (string)$e->getMessage(),
+                        new CodeLocation($this->source, $stmt)
+                    )
+                )) {
+                    // fall through
+                }
+            }
 
             if ($var_comment && $var_comment->var_id) {
                 $comment_type = ExpressionChecker::fleshOutType(

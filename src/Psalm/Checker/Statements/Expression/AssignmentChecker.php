@@ -15,12 +15,14 @@ use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
+use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Issue\DeprecatedProperty;
 use Psalm\Issue\FailedTypeResolution;
 use Psalm\Issue\InvalidArrayAssignment;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidPropertyAssignment;
 use Psalm\Issue\InvalidScope;
+use Psalm\Issue\MissingDocblockType;
 use Psalm\Issue\MixedAssignment;
 use Psalm\Issue\MixedPropertyAssignment;
 use Psalm\Issue\MixedStringOffsetAssignment;
@@ -80,9 +82,7 @@ class AssignmentChecker
         $comment_type = null;
 
         if ($doc_comment) {
-            $var_comment = null;
             try {
-                // TODO: Make sure emitted issues for line doc comments are on the same line? E.g. "$a = \nexpr($b);";
                 $var_comment = CommentChecker::getTypeFromComment(
                     $doc_comment,
                     $statements_checker->getSource(),
@@ -90,11 +90,20 @@ class AssignmentChecker
                     null,
                     $came_from_line_number
                 );
+            } catch (IncorrectDocblockException $e) {
+                if (IssueBuffer::accepts(
+                    new MissingDocblockType(
+                        (string)$e->getMessage(),
+                        new CodeLocation($statements_checker->getSource(), $assign_var)
+                    )
+                )) {
+                    // fall through
+                }
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
                     new InvalidDocblock(
                         (string)$e->getMessage(),
-                        new CodeLocation($statements_checker->getFileChecker(), $assign_var, null, true)
+                        new CodeLocation($statements_checker->getSource(), $assign_var)
                     )
                 )) {
                     // fall through
