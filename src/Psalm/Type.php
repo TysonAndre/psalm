@@ -22,6 +22,13 @@ use Psalm\Type\ParseTree;
 use Psalm\Type\TypeCombination;
 use Psalm\Type\Union;
 
+use function preg_replace;
+use function count;
+use function strpos;
+use function str_replace;
+use function strtolower;
+use function trim;
+
 abstract class Type
 {
     /**
@@ -38,6 +45,10 @@ abstract class Type
 
         if (strpos($type_string, '[') !== false) {
             $type_string = self::convertSquareBrackets($type_string);
+        }
+
+        if (preg_match('/[\[\]()]/', $type_string)) {
+            throw new TypeParseTreeException('Invalid characters in type');
         }
 
         $type_string = str_replace('?', 'null|', $type_string);

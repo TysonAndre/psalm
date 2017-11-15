@@ -27,6 +27,7 @@ use Psalm\Issue\NullPropertyFetch;
 use Psalm\Issue\NullReference;
 use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\PossiblyInvalidArrayAccess;
+use Psalm\Issue\PossiblyInvalidPropertyFetch;
 use Psalm\Issue\PossiblyNullArrayAccess;
 use Psalm\Issue\PossiblyNullPropertyFetch;
 use Psalm\Issue\PossiblyNullReference;
@@ -167,22 +168,20 @@ class FetchChecker
             return null;
         }
 
+        /** @var array<int, InvalidPropertyFetch> $deferred_issues */
+        $deferred_issues = [];
+        $has_valid_casts = false;
+
         foreach ($stmt_var_type->types as $lhs_type_part) {
             if ($lhs_type_part instanceof TNull) {
                 continue;
             }
 
             if (!$lhs_type_part instanceof TNamedObject && !$lhs_type_part instanceof TObject) {
-                if (IssueBuffer::accepts(
-                    new InvalidPropertyFetch(
-                        'Cannot fetch property on non-object ' . $stmt_var_id . ' of type ' . $lhs_type_part,
-                        new CodeLocation($statements_checker->getSource(), $stmt)
-                    ),
-                    $statements_checker->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-
+                $deferred_issues[] = new InvalidPropertyFetch(
+                    'Cannot fetch property on non-object ' . $stmt_var_id . ' of type ' . $lhs_type_part,
+                    new CodeLocation($statements_checker->getSource(), $stmt)
+                );
                 continue;
             }
 
@@ -194,11 +193,13 @@ class FetchChecker
                     in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement'], true)
                 )
             ) {
+                $has_valid_casts = true;
                 $stmt->inferredType = Type::getMixed();
                 continue;
             }
 
             if (ExpressionChecker::isMock($lhs_type_part->value)) {
+                $has_valid_casts = true;
                 $stmt->inferredType = Type::getMixed();
                 continue;
             }
@@ -245,6 +246,7 @@ class FetchChecker
                         $stmt->inferredType = Type::getMixed();
                     }
 
+                    $has_valid_casts = true;
                     continue;
                 }
             }
@@ -358,12 +360,33 @@ class FetchChecker
                 }
             }
 
+            $has_valid_casts = true;
             if (isset($stmt->inferredType)) {
                 $stmt->inferredType = Type::combineUnionTypes($class_property_type, $stmt->inferredType);
             } else {
                 $stmt->inferredType = $class_property_type;
             }
         }
+
+        // TODO: This won't be called if the above checks return early. Consider fixing that (e.g. finally{})
+        foreach ($deferred_issues as $issue) {
+            if ($has_valid_casts) {
+                if ($issue instanceof InvalidPropertyFetch) {
+                    $issue = new PossiblyInvalidPropertyFetch(
+                        $issue->getMessage() . ', but other types in the union type have that property',
+                        $issue->getLocation()
+                    );
+                }
+            }
+            // Emit the deferred issue.
+            if (IssueBuffer::accepts(
+                $issue,
+                $statements_checker->getSuppressedIssues()
+            )) {
+                // fall through
+            }
+        }
+
 
         if ($var_id) {
             $context->vars_in_scope[$var_id] = isset($stmt->inferredType) ? $stmt->inferredType : Type::getMixed();

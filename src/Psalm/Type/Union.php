@@ -87,9 +87,9 @@ class Union
      */
     public function toNamespacedString(array $aliased_classes, $this_class, $use_phpdoc_format)
     {
-        return implode(
+        return \implode(
             '|',
-            array_map(
+            \array_map(
                 /**
                  * @return string
                  */

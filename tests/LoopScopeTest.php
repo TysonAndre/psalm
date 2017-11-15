@@ -425,7 +425,7 @@ class LoopScopeTest extends TestCase
                       }
                       return $x;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'possiblyNullCheckInsideForeachWithNoLeaveStatement' => [
                 '<?php

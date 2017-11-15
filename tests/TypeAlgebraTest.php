@@ -333,7 +333,7 @@ class TypeAlgebraTest extends TestCase
                             return false;
                         }
                         return true;
-                    }'
+                    }',
             ],
             'noParadoxAfterArrayAppending' => [
                 '<?php
@@ -361,7 +361,7 @@ class TypeAlgebraTest extends TestCase
                             return false;
                         }
                         return $errors;
-                    }'
+                    }',
             ],
             'noParadoxInCatch' => [
                 '<?php
@@ -486,7 +486,7 @@ class TypeAlgebraTest extends TestCase
                             takesString($d);
                         }
                     }',
-                'error_message' => 'NullArgument',
+                'error_message' => 'PossiblyNullArgument',
             ],
             'threeVarLogicWithException' => [
                 '<?php
@@ -509,7 +509,7 @@ class TypeAlgebraTest extends TestCase
                             takesString($d);
                         }
                     }',
-                'error_message' => 'NullArgument',
+                'error_message' => 'PossiblyNullArgument',
             ],
             'invertedTwoVarLogicNotNestedWithVarChange' => [
                 '<?php
@@ -523,7 +523,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'invertedTwoVarLogicNotNestedWithElseif' => [
                 '<?php
@@ -539,7 +539,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'threeVarLogicWithElseifAndAnd' => [
                 '<?php
@@ -556,7 +556,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'twoVarLogicNotNestedWithElseifNegatedInIf' => [
                 '<?php
@@ -572,7 +572,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'twoVarLogicNotNestedWithElseifIncorrectlyReinforcedInIf' => [
                 '<?php
@@ -588,7 +588,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'PossiblyInvalidReturnType',
             ],
             'repeatedIfStatements' => [
                 '<?php

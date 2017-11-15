@@ -14,9 +14,11 @@ use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Exception\DocblockParseException;
 use Psalm\Issue\DeprecatedProperty;
 use Psalm\Issue\FailedTypeResolution;
 use Psalm\Issue\InvalidArrayAssignment;
+use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidPropertyAssignment;
 use Psalm\Issue\InvalidScope;
 use Psalm\Issue\MixedAssignment;
@@ -24,6 +26,7 @@ use Psalm\Issue\MixedPropertyAssignment;
 use Psalm\Issue\MixedStringOffsetAssignment;
 use Psalm\Issue\NoInterfaceProperties;
 use Psalm\Issue\NullPropertyAssignment;
+use Psalm\Issue\PossiblyInvalidPropertyAssignment;
 use Psalm\Issue\PossiblyNullPropertyAssignment;
 use Psalm\Issue\ReferenceConstraintViolation;
 use Psalm\Issue\UndefinedClass;
@@ -77,13 +80,26 @@ class AssignmentChecker
         $comment_type = null;
 
         if ($doc_comment) {
-            $var_comment = CommentChecker::getTypeFromComment(
-                $doc_comment,
-                $statements_checker->getSource(),
-                $statements_checker->getAliases(),
-                null,
-                $came_from_line_number
-            );
+            $var_comment = null;
+            try {
+                // TODO: Make sure emitted issues for line doc comments are on the same line? E.g. "$a = \nexpr($b);";
+                $var_comment = CommentChecker::getTypeFromComment(
+                    $doc_comment,
+                    $statements_checker->getSource(),
+                    $statements_checker->getAliases(),
+                    null,
+                    $came_from_line_number
+                );
+            } catch (DocblockParseException $e) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        (string)$e->getMessage(),
+                        new CodeLocation($statements_checker->getFileChecker(), $assign_var, null, true)
+                    )
+                )) {
+                    // fall through
+                }
+            }
 
             if ($var_comment) {
                 $comment_type = ExpressionChecker::fleshOutType(
@@ -788,18 +804,34 @@ class AssignmentChecker
                 $project_checker,
                 $assignment_value_type,
                 $class_property_type,
-                $assignment_value_type->ignore_nullable_issues
+                $assignment_value_type->ignore_nullable_issues,
+                false,
+                $unused_has_scalar_match,
+                $unused_type_coerced,
+                $unused_to_string_cast,
+                $has_partial_match
             )) {
-                if (IssueBuffer::accepts(
-                    new InvalidPropertyAssignment(
+                $location = new CodeLocation(
+                    $statements_checker->getSource(),
+                    $assignment_value ?: $stmt,
+                    $context->include_location
+                );
+                if ($has_partial_match) {
+                    $issue = new PossiblyInvalidPropertyAssignment(
+                        $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
+                            $assignment_value_type . '\', but some types are compatible',
+                        $location
+                    );
+                } else {
+                    $issue = new InvalidPropertyAssignment(
                         $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
                             $assignment_value_type . '\'',
-                        new CodeLocation(
-                            $statements_checker->getSource(),
-                            $assignment_value ?: $stmt,
-                            $context->include_location
-                        )
-                    ),
+                        $location
+                    );
+                }
+
+                if (IssueBuffer::accepts(
+                    $issue,
                     $statements_checker->getSuppressedIssues()
                 )) {
                     return false;
@@ -932,17 +964,33 @@ class AssignmentChecker
         if (!TypeChecker::isContainedBy(
             $project_checker,
             $assignment_value_type,
-            $class_property_type
+            $class_property_type,
+            false,
+            false,
+            $unused_has_scalar_match,
+            $unused_type_coerced,
+            $unused_to_string_cast,
+            $has_partial_match
         )) {
-            if (IssueBuffer::accepts(
-                new InvalidPropertyAssignment(
+            $location = new CodeLocation(
+                $statements_checker->getSource(),
+                $assignment_value ?: $stmt
+            );
+            if ($has_partial_match) {
+                $issue = new PossiblyInvalidPropertyAssignment(
+                    $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
+                        $assignment_value_type . '\', but some types are compatible',
+                    $location
+                );
+            } else {
+                $issue = new InvalidPropertyAssignment(
                     $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
                         $assignment_value_type . '\'',
-                    new CodeLocation(
-                        $statements_checker->getSource(),
-                        $assignment_value ?: $stmt
-                    )
-                ),
+                    $location
+                );
+            }
+            if (IssueBuffer::accepts(
+                $issue,
                 $statements_checker->getSuppressedIssues()
             )) {
                 return false;

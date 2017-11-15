@@ -597,6 +597,20 @@ final class B extends A {}',
                     }',
                 'error_message' => 'InvalidPropertyAssignment',
             ],
+            'possiblyBadAssignment' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        /** @param string|false $new_value */
+                        public function barBar($new_value) : void
+                        {
+                            $this->foo = $new_value;
+                        }
+                    }',
+                'error_message' => 'PossiblyInvalidPropertyAssignment',
+            ],
             'badAssignmentAsWell' => [
                 '<?php
                     $a = "hello";
@@ -608,6 +622,24 @@ final class B extends A {}',
                     $a = "hello";
                     echo $a->foo;',
                 'error_message' => 'InvalidPropertyFetch',
+            ],
+            'possiblyBadFetch' => [
+                '<?php
+                    class HasProp {
+                        /** @var string */
+                        public $prop = "value";
+                    }
+
+                    /** @return HasProp|string */
+                    function get_result(bool $object) {
+                        return $object ? new HasProp() : "prop:value";
+                    }
+
+                    function main() {
+                        $result = get_result(true);
+                        echo $result->prop;
+                    }',
+                'error_message' => 'PossiblyInvalidPropertyFetch',
             ],
             'mixedPropertyFetch' => [
                 '<?php
