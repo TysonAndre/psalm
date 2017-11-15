@@ -168,9 +168,9 @@ class FetchChecker
             return null;
         }
 
-        /** @var array<int, InvalidPropertyFetch> $deferred_issues */
-        $deferred_issues = [];
-        $has_valid_casts = false;
+        /** @var array<int, string> $invalid_fetch_types */
+        $invalid_fetch_types = [];
+        $has_valid_fetch_type = false;
 
         foreach ($stmt_var_type->types as $lhs_type_part) {
             if ($lhs_type_part instanceof TNull) {
@@ -178,12 +178,12 @@ class FetchChecker
             }
 
             if (!$lhs_type_part instanceof TNamedObject && !$lhs_type_part instanceof TObject) {
-                $deferred_issues[] = new InvalidPropertyFetch(
-                    'Cannot fetch property on non-object ' . $stmt_var_id . ' of type ' . $lhs_type_part,
-                    new CodeLocation($statements_checker->getSource(), $stmt)
-                );
+                $invalid_fetch_types[] = (string)$lhs_type_part;
+
                 continue;
             }
+
+            $has_valid_fetch_type = true;
 
             // stdClass and SimpleXMLElement are special cases where we cannot infer the return types
             // but we don't want to throw an error
@@ -368,25 +368,31 @@ class FetchChecker
             }
         }
 
-        // TODO: This won't be called if the above checks return early. Consider fixing that (e.g. finally{})
-        foreach ($deferred_issues as $issue) {
-            if ($has_valid_casts) {
-                if ($issue instanceof InvalidPropertyFetch) {
-                    $issue = new PossiblyInvalidPropertyFetch(
-                        $issue->getMessage() . ', but other types in the union type have that property',
-                        $issue->getLocation()
-                    );
+        if ($invalid_fetch_types) {
+            $lhs_type_part = $invalid_fetch_types[0];
+
+            if ($has_valid_fetch_type) {
+                if (IssueBuffer::accepts(
+                    new PossiblyInvalidPropertyFetch(
+                        'Cannot fetch property on possible non-object ' . $stmt_var_id . ' of type ' . $lhs_type_part,
+                        new CodeLocation($statements_checker->getSource(), $stmt)
+                    ),
+                    $statements_checker->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            } else {
+                if (IssueBuffer::accepts(
+                    new InvalidPropertyFetch(
+                        'Cannot fetch property on non-object ' . $stmt_var_id . ' of type ' . $lhs_type_part,
+                        new CodeLocation($statements_checker->getSource(), $stmt)
+                    ),
+                    $statements_checker->getSuppressedIssues()
+                )) {
+                    // fall through
                 }
             }
-            // Emit the deferred issue.
-            if (IssueBuffer::accepts(
-                $issue,
-                $statements_checker->getSuppressedIssues()
-            )) {
-                // fall through
-            }
         }
-
 
         if ($var_id) {
             $context->vars_in_scope[$var_id] = isset($stmt->inferredType) ? $stmt->inferredType : Type::getMixed();

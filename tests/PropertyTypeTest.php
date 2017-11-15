@@ -625,20 +625,8 @@ final class B extends A {}',
             ],
             'possiblyBadFetch' => [
                 '<?php
-                    class HasProp {
-                        /** @var string */
-                        public $prop = "value";
-                    }
-
-                    /** @return HasProp|string */
-                    function get_result(bool $object) {
-                        return $object ? new HasProp() : "prop:value";
-                    }
-
-                    function main() {
-                        $result = get_result(true);
-                        echo $result->prop;
-                    }',
+                    $a = rand(0, 5) > 3 ? "hello" : new stdClass;
+                    echo $a->foo;',
                 'error_message' => 'PossiblyInvalidPropertyFetch',
             ],
             'mixedPropertyFetch' => [
@@ -727,7 +715,26 @@ final class B extends A {}',
                     $c = new C;
                     $c->bb = [new A, new B];',
                 'error_message' => 'InvalidPropertyAssignment',
-                'error_levels' => ['MixedAssignment'],
+            ],
+            'possiblyBadArrayProperty' => [
+                '<?php
+                    class A {}
+
+                    class B {}
+
+                    class C {
+                        /** @var array<int, B> */
+                        public $bb;
+                    }
+
+                    class D {
+                        /** @var array<int, A|B> */
+                        public $bb;
+                    }
+
+                    $c = rand(0, 5) > 3 ? new C : new D;
+                    $c->bb = [new A, new B];',
+                'error_message' => 'PossiblyInvalidPropertyAssignment',
             ],
             'notSetInEmptyConstructor' => [
                 '<?php

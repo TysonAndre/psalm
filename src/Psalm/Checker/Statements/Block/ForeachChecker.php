@@ -198,7 +198,16 @@ class ForeachChecker
                         } else {
                             $value_type = Type::getMixed();
                         }
-                    } else {
+                    } elseif (ClassChecker::classImplements(
+                        $project_checker,
+                        $iterator_type->value,
+                        'Traversable'
+                    )) {
+                        // @todo try and get value type
+                    } elseif (!in_array(
+                        strtolower($iterator_type->value),
+                        ['iterator', 'iterable', 'traversable'], true
+                    )) {
                         if (IssueBuffer::accepts(
                             new RawObjectIteration(
                                 'Possibly undesired iteration over regular object ' . $iterator_type->value,

@@ -765,6 +765,9 @@ class CallChecker
         $non_existent_method_ids = [];
         $existent_method_ids = [];
 
+        $invalid_method_call_types = [];
+        $has_valid_method_call_type = false;
+
         $code_location = new CodeLocation($source, $stmt);
 
         if ($class_type && is_string($stmt->name)) {
@@ -786,10 +789,7 @@ class CallChecker
                         case 'Psalm\\Type\\Atomic\\TArray':
                         case 'Psalm\\Type\\Atomic\\TString':
                         case 'Psalm\\Type\\Atomic\\TNumericString':
-                            $deferred_issues[] = new InvalidMethodCall(
-                                'Cannot call method ' . $stmt->name . ' on ' . $class_type . ' variable ' . $var_id,
-                                $code_location
-                            );
+                            $invalid_method_call_types[] = (string)$class_type_part;
                             break;
 
                         case 'Psalm\\Type\\Atomic\\TMixed':
@@ -808,6 +808,8 @@ class CallChecker
 
                     continue;
                 }
+
+                $has_valid_method_call_type = true;
 
                 $fq_class_name = $class_type_part->value;
 
@@ -1045,6 +1047,32 @@ class CallChecker
                     $statements_checker->getSuppressedIssues()
                 )) {
                     return false;
+                }
+            }
+
+            if ($invalid_method_call_types) {
+                $class_type = $invalid_method_call_types[0];
+
+                if ($has_valid_method_call_type) {
+                    if (IssueBuffer::accepts(
+                        new PossiblyInvalidMethodCall(
+                            'Cannot call method on possible ' . $class_type . ' variable ' . $var_id,
+                            $code_location
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new InvalidMethodCall(
+                            'Cannot call method on ' . $class_type . ' variable ' . $var_id,
+                            $code_location
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
                 }
             }
 
