@@ -249,6 +249,7 @@ class ForeachChecker
         $doc_comment_text = (string)$stmt->getDocComment();
 
         if ($doc_comment_text) {
+            $var_comment = null;
             try {
                 $var_comment = CommentChecker::getTypeFromComment(
                     $doc_comment_text,
