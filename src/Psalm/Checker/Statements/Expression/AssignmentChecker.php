@@ -258,7 +258,7 @@ class AssignmentChecker
                         $statements_checker,
                         $var,
                         null,
-                        $assign_value_type->types['array']->properties[$offset],
+                        $assign_value_type->types['array']->properties[(string)$offset],
                         $context,
                         $doc_comment
                     );
@@ -661,9 +661,9 @@ class AssignmentChecker
                 if ($lhs_var_id !== '$this' &&
                     MethodChecker::methodExists($project_checker, $lhs_type_part . '::__set')
                 ) {
-                    if ($var_id) {
-                        $class_storage = $project_checker->classlike_storage_provider->get((string)$lhs_type_part);
+                    $class_storage = $project_checker->classlike_storage_provider->get((string)$lhs_type_part);
 
+                    if ($var_id) {
                         if (isset($class_storage->pseudo_property_set_types['$' . $prop_name])) {
                             $class_property_types[] =
                                 clone $class_storage->pseudo_property_set_types['$' . $prop_name];
@@ -674,7 +674,14 @@ class AssignmentChecker
 
                         $context->vars_in_scope[$var_id] = Type::getMixed();
                     }
-                    continue;
+
+                    /*
+                     * If we have an explicit list of all allowed magic properties on the class, and we're
+                     * not in that list, fall through
+                     */
+                    if (!$var_id || !$class_storage->sealed_properties) {
+                        continue;
+                    }
                 }
 
                 $has_regular_setter = true;
@@ -733,7 +740,7 @@ class AssignmentChecker
 
                 $class_storage = $project_checker->classlike_storage_provider->get((string)$declaring_property_class);
 
-                $property_storage = $class_storage->properties[$stmt->name];
+                $property_storage = $class_storage->properties[$prop_name];
 
                 if ($property_storage->deprecated) {
                     if (IssueBuffer::accepts(
@@ -979,7 +986,7 @@ class AssignmentChecker
 
         $class_storage = $project_checker->classlike_storage_provider->get((string)$declaring_property_class);
 
-        $property_storage = $class_storage->properties[$stmt->name];
+        $property_storage = $class_storage->properties[$prop_name];
 
         if ($var_id) {
             $context->vars_in_scope[$var_id] = $assignment_value_type;
@@ -1196,7 +1203,7 @@ class AssignmentChecker
                 if (IssueBuffer::accepts(
                     new InvalidArrayAssignment(
                         'Cannot assign value on variable ' . $var_id . ' of scalar type ' .
-                            $context->vars_in_scope[$var_id],
+                            $stmt->var->inferredType,
                         new CodeLocation($statements_checker->getSource(), $stmt)
                     ),
                     $statements_checker->getSuppressedIssues()
@@ -1232,14 +1239,16 @@ class AssignmentChecker
 
                 if (!$nesting) {
                     /** @var Type\Atomic\TArray|null */
-                    $array_type = isset($context->vars_in_scope[$var_id]->types['array'])
+                    $array_type = $var_id
+                                    && isset($context->vars_in_scope[$var_id]->types['array'])
                                     && $context->vars_in_scope[$var_id]->types['array'] instanceof Type\Atomic\TArray
                                     ? $context->vars_in_scope[$var_id]->types['array']
                                     : null;
 
                     if ($assignment_key_type->hasString()
                         && $assignment_key_value
-                        && (!$context->hasVariable($var_id)
+                        && (!$var_id
+                            || !$context->hasVariable($var_id)
                             || $context->vars_in_scope[$var_id]->hasObjectLike()
                             || ($array_type && $array_type->type_params[0]->isEmpty()))
                     ) {

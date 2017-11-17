@@ -9,6 +9,7 @@ use Psalm\Checker\MethodChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TraitChecker;
+use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\DeprecatedProperty;
@@ -16,6 +17,7 @@ use Psalm\Issue\EmptyArrayAccess;
 use Psalm\Issue\InaccessibleClassConstant;
 use Psalm\Issue\InvalidArrayAccess;
 use Psalm\Issue\InvalidArrayAssignment;
+use Psalm\Issue\InvalidArrayOffset;
 use Psalm\Issue\InvalidPropertyFetch;
 use Psalm\Issue\MissingPropertyType;
 use Psalm\Issue\MixedArrayAccess;
@@ -27,6 +29,7 @@ use Psalm\Issue\NullPropertyFetch;
 use Psalm\Issue\NullReference;
 use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\PossiblyInvalidArrayAccess;
+use Psalm\Issue\PossiblyInvalidArrayOffset;
 use Psalm\Issue\PossiblyInvalidPropertyFetch;
 use Psalm\Issue\PossiblyNullArrayAccess;
 use Psalm\Issue\PossiblyNullPropertyFetch;
@@ -168,7 +171,6 @@ class FetchChecker
             return null;
         }
 
-        /** @var array<int, string> $invalid_fetch_types */
         $invalid_fetch_types = [];
         $has_valid_fetch_type = false;
 
@@ -193,13 +195,11 @@ class FetchChecker
                     in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement'], true)
                 )
             ) {
-                $has_valid_casts = true;
                 $stmt->inferredType = Type::getMixed();
                 continue;
             }
 
             if (ExpressionChecker::isMock($lhs_type_part->value)) {
-                $has_valid_casts = true;
                 $stmt->inferredType = Type::getMixed();
                 continue;
             }
@@ -246,8 +246,13 @@ class FetchChecker
                         $stmt->inferredType = Type::getMixed();
                     }
 
-                    $has_valid_casts = true;
-                    continue;
+                    /*
+                     * If we have an explicit list of all allowed magic properties on the class, and we're
+                     * not in that list, fall through
+                     */
+                    if (!$class_storage->sealed_properties) {
+                        continue;
+                    }
                 }
             }
 
@@ -360,7 +365,6 @@ class FetchChecker
                 }
             }
 
-            $has_valid_casts = true;
             if (isset($stmt->inferredType)) {
                 $stmt->inferredType = Type::combineUnionTypes($class_property_type, $stmt->inferredType);
             } else {
@@ -762,7 +766,7 @@ class FetchChecker
         $assignment_key_value = null
     ) {
         $var_type = null;
-        $key_type = null;
+        $used_key_type = null;
         $string_key_value = null;
         $int_key_value = null;
 
@@ -798,7 +802,7 @@ class FetchChecker
         if ($stmt->dim) {
             if (isset($stmt->dim->inferredType)) {
                 /** @var Type\Union */
-                $key_type = $stmt->dim->inferredType;
+                $used_key_type = $stmt->dim->inferredType;
 
                 if ($stmt->dim instanceof PhpParser\Node\Scalar\String_) {
                     $string_key_value = $stmt->dim->value;
@@ -806,10 +810,10 @@ class FetchChecker
                     $int_key_value = $stmt->dim->value;
                 }
             } else {
-                $key_type = Type::getMixed();
+                $used_key_type = Type::getMixed();
             }
         } else {
-            $key_type = Type::getInt();
+            $used_key_type = Type::getInt();
         }
 
         $keyed_assignment_type = null;
@@ -902,13 +906,12 @@ class FetchChecker
             $stmt->var,
             $context,
             $array_assignment,
-            $key_type,
+            $used_key_type,
             $keyed_assignment_type,
             $string_key_value
         ) === false) {
             return false;
         }
-        $inferred_key_type = null;
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
@@ -938,6 +941,9 @@ class FetchChecker
 
             $has_array_access = false;
             $non_array_types = [];
+
+            $has_valid_offset = false;
+            $invalid_offset_types = [];
 
             foreach ($var_type->types as &$type) {
                 if ($type instanceof TNull) {
@@ -972,24 +978,16 @@ class FetchChecker
                         if ($value_index) {
                             // if we're assigning to an empty array with a key offset, refashion that array
                             if ($array_assignment && $type->type_params[0]->isEmpty()) {
-                                if ($key_type) {
-                                    $type->type_params[0] = $key_type;
-                                }
-                            } else {
-                                // TODO: What are inferred_key_type and key_type meant to be?
-                                if ($key_type) {
-                                    $key_type = Type::combineUnionTypes($key_type, $type->type_params[0]);
+                                $type->type_params[0] = $used_key_type;
+                            } elseif (!$type->type_params[0]->isEmpty()) {
+                                if (!TypeChecker::isContainedBy(
+                                    $project_checker,
+                                    $used_key_type,
+                                    $type->type_params[0]
+                                )) {
+                                    $invalid_offset_types[] = (string)$type->type_params[0];
                                 } else {
-                                    $key_type = $type->type_params[0];
-                                }
-
-                                if ($inferred_key_type) {
-                                    $inferred_key_type = Type::combineUnionTypes(
-                                        $inferred_key_type,
-                                        $type->type_params[0]
-                                    );
-                                } else {
-                                    $inferred_key_type = $type->type_params[0];
+                                    $has_valid_offset = true;
                                 }
                             }
                         }
@@ -1022,7 +1020,7 @@ class FetchChecker
                             if ($type instanceof Type\Atomic\ObjectLike ||
                                 (
                                     $type instanceof TArray &&
-                                    !$key_type->hasInt() &&
+                                    !$used_key_type->hasInt() &&
                                     $type->type_params[1]->isEmpty()
                                 )
                             ) {
@@ -1041,7 +1039,7 @@ class FetchChecker
 
                                     $assignment_type = new Type\Union([
                                         new Type\Atomic\TArray([
-                                            $key_type,
+                                            $used_key_type,
                                             $keyed_assignment_type,
                                         ]),
                                     ]);
@@ -1053,7 +1051,7 @@ class FetchChecker
 
                                 $assignment_type = new Type\Union([
                                     new Type\Atomic\TArray([
-                                        $key_type,
+                                        $used_key_type,
                                         $keyed_assignment_type,
                                     ]),
                                 ]);
@@ -1071,8 +1069,10 @@ class FetchChecker
                             }
                         }
 
-                        if ($type instanceof Type\Atomic\TArray &&
-                            $type->type_params[$value_index]->isEmpty()
+                        if ($type instanceof Type\Atomic\TArray
+                            && $value_index
+                            && $var_id
+                            && $type->type_params[$value_index]->isEmpty()
                         ) {
                             $empty_type = Type::getEmptyArray();
 
@@ -1097,7 +1097,7 @@ class FetchChecker
                                             $new_empty = clone $empty_type;
                                             /** @var Type\Atomic\TArray */
                                             $new_atomic_empty = $new_empty->types['array'];
-                                            $new_atomic_empty->type_params[0] = $key_type;
+                                            $new_atomic_empty->type_params[0] = $used_key_type;
 
                                             $atomic_array->type_params[1] = $new_empty;
                                             continue;
@@ -1105,7 +1105,7 @@ class FetchChecker
 
                                         $array_type = $atomic_array->type_params[1];
                                     } else {
-                                        $atomic_array->type_params[0] = $key_type;
+                                        $atomic_array->type_params[0] = $used_key_type;
 
                                         if ($nesting === 0 && $keyed_assignment_type) {
                                             $atomic_array->type_params[1] = $keyed_assignment_type;
@@ -1119,7 +1119,15 @@ class FetchChecker
                             }
                         }
                     } elseif ($type instanceof Type\Atomic\TArray && $value_index !== null) {
-                        $stmt->inferredType = $type->type_params[$value_index];
+                        if (!isset($stmt->inferredType)) {
+                            $stmt->inferredType = $type->type_params[$value_index];
+                        } else {
+                            $stmt->inferredType = Type::combineUnionTypes(
+                                $stmt->inferredType,
+                                $type->type_params[$value_index]
+                            );
+                        }
+
                         if ($stmt->inferredType->isEmpty()) {
                             if (IssueBuffer::accepts(
                                 new EmptyArrayAccess(
@@ -1136,55 +1144,74 @@ class FetchChecker
                             }
                         }
                     } elseif ($type instanceof Type\Atomic\ObjectLike) {
-                        $object_like_keys = array_keys($type->properties);
-                        if ($object_like_keys) {
-                            if (count($object_like_keys) === 1) {
-                                $expected_keys_string = '\'' . $object_like_keys[0] . '\'';
-                            } else {
-                                $last_key = array_pop($object_like_keys);
-                                $expected_keys_string = '\'' . implode('\', \'', $object_like_keys) .
-                                    '\' or \'' . $last_key . '\'';
-                            }
-                        } else {
-                            $expected_keys_string = 'string';
-                        }
+                        if ($string_key_value || $int_key_value !== null) {
+                            if ($string_key_value && isset($type->properties[$string_key_value])) {
+                                $has_valid_offset = true;
 
-                        if ($string_key_value && isset($type->properties[$string_key_value])) {
-                            $stmt->inferredType = clone $type->properties[$string_key_value];
-                        } elseif ($int_key_value !== null && isset($type->properties[$int_key_value])) {
-                            $stmt->inferredType = clone $type->properties[$int_key_value];
-                        } elseif ($key_type->hasInt()) {
-                            if (IssueBuffer::accepts(
-                                new InvalidArrayAccess(
-                                    'Cannot access value on array variable ' . $var_id . ' using int offset - ' .
-                                        'expecting ' . $expected_keys_string,
-                                    new CodeLocation($statements_checker->getSource(), $stmt)
-                                ),
-                                $statements_checker->getSuppressedIssues()
-                            )) {
-                                return false;
+                                if (!isset($stmt->inferredType)) {
+                                    $stmt->inferredType = clone $type->properties[$string_key_value];
+                                } else {
+                                    $stmt->inferredType = Type::combineUnionTypes(
+                                        $stmt->inferredType,
+                                        $type->properties[$string_key_value]
+                                    );
+                                }
+                            } elseif ($int_key_value !== null && isset($type->properties[(string)$int_key_value])) {
+                                $has_valid_offset = true;
+
+                                if (!isset($stmt->inferredType)) {
+                                    $stmt->inferredType = clone $type->properties[(string)$int_key_value];
+                                } else {
+                                    $stmt->inferredType = Type::combineUnionTypes(
+                                        $stmt->inferredType,
+                                        $type->properties[(string)$int_key_value]
+                                    );
+                                }
+                            } else {
+                                $invalid_offset_types[] = '"' . ($string_key_value ?: $int_key_value) . '"';
                             }
-                        } elseif ($key_type->hasString()) {
-                            $stmt->inferredType = $type->getGenericTypeParam();
+                        } elseif (TypeChecker::isContainedBy(
+                            $project_checker,
+                            $used_key_type,
+                            Type::getString()
+                        )) {
+                            if (!isset($stmt->inferredType)) {
+                                $stmt->inferredType = $type->getGenericTypeParam();
+                            } else {
+                                $stmt->inferredType = Type::combineUnionTypes(
+                                    $stmt->inferredType,
+                                    $type->getGenericTypeParam()
+                                );
+                            }
+
+                            $has_valid_offset = true;
+                        } else {
+                            $invalid_offset_types[] = 'string';
                         }
                     }
                     continue;
                 }
 
                 if ($type instanceof TString) {
-                    if ($key_type) {
-                        $key_type = Type::combineUnionTypes($key_type, Type::getInt());
+                    if (!TypeChecker::isContainedBy(
+                        $project_checker,
+                        $used_key_type,
+                        Type::getInt()
+                    )) {
+                        $invalid_offset_types[] = 'int';
                     } else {
-                        $key_type = Type::getInt();
+                        $has_valid_offset = true;
                     }
 
-                    if (!$inferred_key_type) {
-                        $inferred_key_type = Type::getInt();
+                    if (!isset($stmt->inferredType)) {
+                        $stmt->inferredType = Type::getString();
                     } else {
-                        $inferred_key_type = Type::combineUnionTypes($inferred_key_type, Type::getInt());
+                        $stmt->inferredType = Type::combineUnionTypes(
+                            $stmt->inferredType,
+                            Type::getString()
+                        );
                     }
 
-                    $stmt->inferredType = Type::getString();
                     continue;
                 }
 
@@ -1240,6 +1267,46 @@ class FetchChecker
                     $stmt->inferredType = Type::getMixed();
                 }
             }
+
+            if ($used_key_type->isMixed()) {
+                if (IssueBuffer::accepts(
+                    new MixedArrayOffset(
+                        'Cannot access value on variable ' . $var_id . ' using mixed offset',
+                        new CodeLocation($statements_checker->getSource(), $stmt)
+                    ),
+                    $statements_checker->getSuppressedIssues()
+                )) {
+                    return false;
+                }
+            }
+
+            if ($invalid_offset_types) {
+                $invalid_offset_type = $invalid_offset_types[0];
+
+                if ($has_valid_offset) {
+                    if (IssueBuffer::accepts(
+                        new PossiblyInvalidArrayOffset(
+                            'Cannot access value on variable ' . $var_id . ' using ' . $used_key_type
+                                . ' offset, expecting ' . $invalid_offset_type,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new InvalidArrayOffset(
+                            'Cannot access value on variable ' . $var_id . ' using ' . $used_key_type
+                                . ' offset, expecting ' . $invalid_offset_type,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                }
+            }
         }
 
         if ($keyed_array_var_id && $context->hasVariable($keyed_array_var_id)) {
@@ -1248,47 +1315,6 @@ class FetchChecker
 
         if (!isset($stmt->inferredType)) {
             $stmt->inferredType = Type::getMixed();
-        }
-
-        if (!$key_type) {
-            $key_type = new Type\Union([
-                new TInt,
-                new TString,
-            ]);
-        }
-
-        if ($stmt->dim) {
-            if (isset($stmt->dim->inferredType) && $inferred_key_type && !$inferred_key_type->isEmpty()) {
-                foreach ($stmt->dim->inferredType->types as $at) {
-                    if (($at instanceof TMixed || $at instanceof TEmpty) &&
-                        $inferred_key_type &&
-                        !$inferred_key_type->isMixed() &&
-                        !$inferred_key_type->isEmpty()
-                    ) {
-                        if (IssueBuffer::accepts(
-                            new MixedArrayOffset(
-                                'Cannot access value on variable ' . $var_id . ' using mixed offset - expecting ' .
-                                    $inferred_key_type,
-                                new CodeLocation($statements_checker->getSource(), $stmt)
-                            ),
-                            $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
-                    } elseif (!$at->isIn($project_checker, $inferred_key_type)) {
-                        if (IssueBuffer::accepts(
-                            new InvalidArrayAccess(
-                                'Cannot access value on variable ' . $var_id . ' using ' . $at . ' offset - ' .
-                                    'expecting ' . $inferred_key_type,
-                                new CodeLocation($statements_checker->getSource(), $stmt)
-                            ),
-                            $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
-                    }
-                }
-            }
         }
 
         return null;

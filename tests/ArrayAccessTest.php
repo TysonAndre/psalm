@@ -73,9 +73,10 @@ class ArrayAccessTest extends TestCase
                 '<?php
                     $a = rand(0, 1) ? [1, 2] : null;
                     echo $a[0];',
+                'assertions' => [],
                 'error_levels' => ['PossiblyNullArrayAccess'],
             ],
-            'ignorePossiblyNullArrayAccess' => [
+            'ignoreEmptyArrayAccess' => [
                 '<?php
                     $arr = [];
                     $x = $arr[0];
@@ -99,6 +100,37 @@ class ArrayAccessTest extends TestCase
                     $a = 5;
                     echo $a[0];',
                 'error_message' => 'InvalidArrayAccess',
+            ],
+            'invalidArrayOffset' => [
+                '<?php
+                    $x = ["a"];
+                    $y = $x["b"];',
+                'error_message' => 'InvalidArrayOffset',
+            ],
+            'possiblyInvalidArrayOffsetWithInt' => [
+                '<?php
+                    $x = rand(0, 5) > 2 ? ["a" => 5] : "hello";
+                    $y = $x[0];',
+                'error_message' => 'PossiblyInvalidArrayOffset',
+            ],
+            'possiblyInvalidArrayOffsetWithString' => [
+                '<?php
+                    $x = rand(0, 5) > 2 ? ["a" => 5] : "hello";
+                    $y = $x["a"];',
+                'error_message' => 'PossiblyInvalidArrayOffset',
+            ],
+            'possiblyInvalidArrayAccessWithNestedArray' => [
+                '<?php
+                    /**
+                     * @return array<int,array<string,float>>|string
+                     * @return string
+                     */
+                    function return_array() {
+                        return rand() % 5 > 3 ? [["key" => 3.5]] : "key:3.5";
+                    }
+                    $result = return_array();
+                    $v = $result[0]["key"];',
+                'error_message' => 'PossiblyInvalidArrayOffset',
             ],
             'possiblyInvalidArrayAccess' => [
                 '<?php

@@ -103,6 +103,7 @@
             <xs:element name="InvalidArgument" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidArrayAccess" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidArrayAssignment" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="InvalidArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidCast" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidClass" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidClone" type="IssueHandlerType" minOccurs="0" />
@@ -159,6 +160,7 @@
             <xs:element name="PossiblyFalseReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidArgument" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidArrayAccess" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidMethodCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyFetch" type="IssueHandlerType" minOccurs="0" />
