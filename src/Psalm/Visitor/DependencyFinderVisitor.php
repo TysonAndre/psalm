@@ -948,8 +948,6 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /**
      * @param  array<int, array{type:string,name:string,line_number:int}>  $docblock_params
      * @param  FunctionLikeStorage          $storage
-     * @param  array<string, string>|null   $template_types
-     * @param  PhpParser\Node\FunctionLike  $function
      * @param  CodeLocation                 $code_location
      *
      * @return void
