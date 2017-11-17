@@ -336,46 +336,49 @@ class CommentChecker
             }
         }
 
-        if (isset($comments['specials']['property'])) {
-            /** @var string $property */
-            foreach ($comments['specials']['property'] as $line_number => $property) {
-                try {
-                    $line_parts = self::splitDocLine($property);
-                } catch (DocblockParseException $e) {
-                    throw $e;
-                }
+        // Use `+` instead of array_merge so that line numbers are preserved.
+        $magic_properties =
+            (isset($comments['specials']['property']) ? $comments['specials']['property'] : []) +
+            (isset($comments['specials']['property-write']) ? $comments['specials']['property-write'] : []) +
+            (isset($comments['specials']['property-read']) ? $comments['specials']['property-read'] : []);
 
-                if (count($line_parts) === 1 && $line_parts[0][0] === '$') {
-                    array_unshift($line_parts, 'mixed');
-                }
+        /** @var string $property */
+        foreach ($magic_properties as $line_number => $property) {
+            try {
+                $line_parts = self::splitDocLine($property);
+            } catch (DocblockParseException $e) {
+                throw $e;
+            }
 
-                $line_parts[0] = self::getRenamedType($line_parts[0]);
-                if (count($line_parts) > 1) {
-                    if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
-                        && !preg_match('/\[[^\]]+\]/', $line_parts[0])
-                        && preg_match('/^(\.\.\.)?&?\$[A-Za-z0-9_]+,?$/', $line_parts[1])
-                        && !strpos($line_parts[0], '::')
-                        && $line_parts[0][0] !== '{'
-                    ) {
-                        if ($line_parts[1][0] === '&') {
-                            $line_parts[1] = substr($line_parts[1], 1);
-                        }
+            if (count($line_parts) === 1 && $line_parts[0][0] === '$') {
+                array_unshift($line_parts, 'mixed');
+            }
 
-                        if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
-                            throw new IncorrectDocblockException('Misplaced variable');
-                        }
-
-                        $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);
-
-                        $info->properties[] = [
-                            'name' => $line_parts[1],
-                            'type' => $line_parts[0],
-                            'line_number' => $line_number,
-                        ];
+            if (count($line_parts) > 1) {
+                if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
+                    && !preg_match('/\[[^\]]+\]/', $line_parts[0])
+                    && preg_match('/^(\.\.\.)?&?\$[A-Za-z0-9_]+,?$/', $line_parts[1])
+                    && !strpos($line_parts[0], '::')
+                    && $line_parts[0][0] !== '{'
+                ) {
+                    if ($line_parts[1][0] === '&') {
+                        $line_parts[1] = substr($line_parts[1], 1);
                     }
-                } else {
-                    throw new DocblockParseException('Badly-formatted @param');
+
+                    if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
+                        throw new IncorrectDocblockException('Misplaced variable');
+                    }
+
+                    $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);
+
+                    $info->properties[] = [
+                        'name' => $line_parts[1],
+                        'type' => $line_parts[0],
+                        'line_number' => $line_number,
+                    ];
                 }
+            } else {
+                throw new DocblockParseException('Badly-formatted @param');
             }
         }
 

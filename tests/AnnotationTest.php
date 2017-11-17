@@ -422,6 +422,27 @@ class AnnotationTest extends TestCase
                     $a->foo = 5;',
                 'error_message' => 'InvalidPropertyAssignment',
             ],
+            'propertyWriteDocblockInvalidAssignment' => [
+                '<?php
+                    /**
+                     * @property-write string $foo
+                     */
+                    class A {
+                         public function __get(string $name) : ?string {
+                              if ($name === "foo") {
+                                   return "hello";
+                              }
+                         }
+
+                         /** @param mixed $value */
+                         public function __set(string $name, $value) : void {
+                         }
+                    }
+
+                    $a = new A();
+                    $a->foo = 5;',
+                'error_message' => 'InvalidPropertyAssignment',
+            ],
             'propertySealedDocblockUndefinedPropertyAssignment' => [
                 '<?php
                     /**
