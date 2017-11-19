@@ -47,6 +47,8 @@ use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TString;
 
+use function is_string;
+
 class ExpressionChecker
 {
     /**

@@ -3,6 +3,8 @@ namespace Psalm\Provider;
 
 use Psalm\Storage\ClassLikeStorage;
 
+use function strtolower;
+
 class ClassLikeStorageProvider
 {
     /** @var array<string, ClassLikeStorage> */

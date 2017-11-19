@@ -22,6 +22,15 @@ use Psalm\Type\ParseTree;
 use Psalm\Type\TypeCombination;
 use Psalm\Type\Union;
 
+use function array_merge;
+use function array_values;
+use function count;
+use function in_array;
+use function str_replace;
+use function str_split;
+use function strtolower;
+use function substr;
+
 abstract class Type
 {
     /**
