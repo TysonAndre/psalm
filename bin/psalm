@@ -409,3 +409,4 @@ if (array_key_exists('self-check', $options)) {
         }
     }
 }
+echo "Final count: " . Psalm\Type\Union::$counts . "\n";

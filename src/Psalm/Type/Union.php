@@ -46,6 +46,7 @@ class Union
      */
     public $ignore_nullable_issues = false;
 
+    public static $counts = 0;
     /**
      * Constructs an Union instance
      *
@@ -56,10 +57,17 @@ class Union
         foreach ($types as $type) {
             $this->types[$type->getKey()] = $type;
         }
+        self::$counts++;
+    }
+
+    public function __destruct()
+    {
+        self::$counts--;
     }
 
     public function __clone()
     {
+        self::$counts++;
         foreach ($this->types as &$type) {
             $type = clone $type;
         }

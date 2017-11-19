@@ -23,7 +23,7 @@ class ParseTree
     /**
      * @var null|ParseTree
      */
-    public $parent;
+    private $parent;
 
     /**
      * @param string|null    $value
@@ -189,7 +189,19 @@ class ParseTree
                     $current_leaf = $new_leaf;
             }
         }
+        $parse_tree->freeParentNodes();
 
         return $parse_tree;
+    }
+
+    /**
+     * @return void
+     */
+    private function freeParentNodes()
+    {
+        $this->parent = null;
+        foreach ($this->children as $child_node) {
+            $child_node->freeParentNodes();
+        }
     }
 }

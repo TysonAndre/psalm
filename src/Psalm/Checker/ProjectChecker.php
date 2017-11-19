@@ -436,6 +436,10 @@ class ProjectChecker
             }
         }
 
+        echo "Final count: " . \Psalm\Type\Union::$counts . "\n";
+        $objects = runkit_count_objects();
+        asort($objects);
+        var_export($objects);
         IssueBuffer::finish($this, true, (int)$start_checks, $this->scanned_files);
     }
 
