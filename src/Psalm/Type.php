@@ -22,11 +22,16 @@ use Psalm\Type\ParseTree;
 use Psalm\Type\TypeCombination;
 use Psalm\Type\Union;
 
-use function preg_replace;
+use function array_merge;
+use function array_values;
 use function count;
+use function in_array;
+use function preg_replace;
 use function strpos;
 use function str_replace;
+use function str_split;
 use function strtolower;
+use function substr;
 use function trim;
 
 abstract class Type
@@ -573,6 +578,34 @@ abstract class Type
 
         foreach ($combination->type_params as $generic_type => $generic_type_params) {
             if ($generic_type === 'array') {
+                if ($combination->objectlike_entries) {
+                    $object_like_generic_type = null;
+
+                    foreach ($combination->objectlike_entries as $property_key => $property_type) {
+                        if ($object_like_generic_type) {
+                            $object_like_generic_type = Type::combineUnionTypes(
+                                $property_type,
+                                $object_like_generic_type
+                            );
+                        } else {
+                            $object_like_generic_type = $property_type;
+                        }
+                    }
+
+                    if (!$object_like_generic_type) {
+                        throw new \InvalidArgumentException('Cannot be null');
+                    }
+
+                    $generic_type_params[0] = Type::combineUnionTypes(
+                        $generic_type_params[0],
+                        Type::getString()
+                    );
+                    $generic_type_params[1] = Type::combineUnionTypes(
+                        $generic_type_params[1],
+                        $object_like_generic_type
+                    );
+                }
+
                 $new_types[] = new TArray($generic_type_params);
             } elseif (!isset($combination->value_types[$generic_type])) {
                 $new_types[] = new TGenericObject($generic_type, $generic_type_params);

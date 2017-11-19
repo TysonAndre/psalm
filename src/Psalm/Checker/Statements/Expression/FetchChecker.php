@@ -40,6 +40,7 @@ use Psalm\Issue\UndefinedPropertyFetch;
 use Psalm\Issue\UndefinedThisPropertyFetch;
 use Psalm\IssueBuffer;
 use Psalm\Type;
+use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TBool;
@@ -827,7 +828,7 @@ class FetchChecker
             if (!$keyed_assignment_type || $keyed_assignment_type->isEmpty()) {
                 if (!$assignment_key_type->isMixed() && !$assignment_key_type->hasInt() && $assignment_key_value) {
                     $keyed_assignment_type = new Type\Union([
-                        new Type\Atomic\ObjectLike([
+                        new ObjectLike([
                             $assignment_key_value => $assignment_value_type,
                         ]),
                     ]);
@@ -887,14 +888,35 @@ class FetchChecker
                         }
 
                         $type = $refined_type;
-                    } elseif ($type instanceof Type\Atomic\ObjectLike && $assignment_key_value) {
-                        if (isset($type->properties[$assignment_key_value])) {
-                            $type->properties[$assignment_key_value] = Type::combineUnionTypes(
-                                $type->properties[$assignment_key_value],
-                                $assignment_value_type
-                            );
+                    } elseif ($type instanceof ObjectLike) {
+                        if ($assignment_key_value) {
+                            if (isset($type->properties[$assignment_key_value])) {
+                                $type->properties[$assignment_key_value] = Type::combineUnionTypes(
+                                    $type->properties[$assignment_key_value],
+                                    $assignment_value_type
+                                );
+                            } else {
+                                $type->properties[$assignment_key_value] = $assignment_value_type;
+                            }
                         } else {
-                            $type->properties[$assignment_key_value] = $assignment_value_type;
+                            $refined_type = self::refineArrayType(
+                                $statements_checker,
+                                $type,
+                                $assignment_key_type,
+                                $assignment_value_type,
+                                $var_id,
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            );
+
+                            if ($refined_type === false) {
+                                return false;
+                            }
+
+                            if ($refined_type === null) {
+                                continue;
+                            }
+
+                            $type = $refined_type;
                         }
                     }
                 }
@@ -967,11 +989,11 @@ class FetchChecker
                     continue;
                 }
 
-                if ($type instanceof Type\Atomic\TArray || $type instanceof Type\Atomic\ObjectLike) {
+                if ($type instanceof TArray || $type instanceof ObjectLike) {
                     $value_index = null;
                     $has_array_access = true;
 
-                    if ($type instanceof Type\Atomic\TArray) {
+                    if ($type instanceof TArray) {
                         // create a union type to pass back to the statement
                         $value_index = count($type->type_params) - 1;
 
@@ -1026,7 +1048,7 @@ class FetchChecker
                         }
 
                         if ($array_var_id === $var_id) {
-                            if ($type instanceof Type\Atomic\ObjectLike ||
+                            if ($type instanceof ObjectLike ||
                                 (
                                     $type instanceof TArray &&
                                     !$used_key_type->hasInt() &&
@@ -1039,7 +1061,7 @@ class FetchChecker
 
                                 if ($properties) {
                                     $assignment_type = new Type\Union([
-                                        new Type\Atomic\ObjectLike($properties),
+                                        new ObjectLike($properties),
                                     ]);
                                 } else {
                                     if (!$keyed_assignment_type) {
@@ -1152,7 +1174,7 @@ class FetchChecker
                                 $stmt->inferredType = Type::getMixed();
                             }
                         }
-                    } elseif ($type instanceof Type\Atomic\ObjectLike) {
+                    } elseif ($type instanceof ObjectLike) {
                         if ($string_key_value || $int_key_value !== null) {
                             if ($string_key_value && isset($type->properties[$string_key_value])) {
                                 $has_valid_offset = true;
@@ -1375,8 +1397,9 @@ class FetchChecker
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
-        if (!$type instanceof TArray &&
-            (!$type instanceof TNamedObject
+        if (!$type instanceof TArray
+            && !$type instanceof ObjectLike
+            && (!$type instanceof TNamedObject
                 || !ClassChecker::classImplements($project_checker, $type->value, 'ArrayAccess'))
         ) {
             if (IssueBuffer::accepts(
@@ -1391,6 +1414,13 @@ class FetchChecker
             }
 
             return $type;
+        }
+
+        if ($type instanceof ObjectLike) {
+            $type = new TArray([
+                Type::getString(),
+                $type->getGenericTypeParam(),
+            ]);
         }
 
         if ($type instanceof Type\Atomic\Generic && $type instanceof TArray) {

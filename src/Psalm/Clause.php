@@ -1,6 +1,9 @@
 <?php
 namespace Psalm;
 
+use function count;
+use function array_diff;
+
 class Clause
 {
     /**
