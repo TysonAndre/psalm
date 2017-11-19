@@ -436,7 +436,6 @@ class ProjectChecker
             }
         }
 
-        echo "Final count: " . \Psalm\Type\Union::$counts . "\n";
         $objects = runkit_count_objects();
         asort($objects);
         var_export($objects);

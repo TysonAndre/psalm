@@ -88,6 +88,7 @@ class ParseTree
                 case '}':
                     do {
                         if ($current_leaf->parent === null) {
+                            $parse_tree->freeParentNodes();
                             throw new TypeParseTreeException('Cannot parse array type');
                         }
 
@@ -109,10 +110,12 @@ class ParseTree
                     }
 
                     if (!$context_node) {
+                        $parse_tree->freeParentNodes();
                         throw new TypeParseTreeException('Cannot parse comma in non-generic/array type');
                     }
 
                     if (!$current_parent) {
+                        $parse_tree->freeParentNodes();
                         throw new TypeParseTreeException('Cannot parse comma in with no parent node');
                     }
 
@@ -181,6 +184,7 @@ class ParseTree
                     $new_leaf = new self($type_token, $current_leaf->parent);
 
                     if (!isset($current_leaf->parent)) {
+                        $parse_tree->freeParentNodes();
                         throw new TypeParseTreeException('Current leaf must have a parent');
                     }
 

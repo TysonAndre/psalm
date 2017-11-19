@@ -107,6 +107,7 @@ class FileChecker extends SourceChecker implements StatementsSource
         ProjectChecker $project_checker,
         $will_analyze = true
     ) {
+        echo "Created FileChecker\n";
         $this->file_path = $file_path;
         $this->file_name = Config::getInstance()->shortenFileName($this->file_path);
         $this->project_checker = $project_checker;
@@ -132,6 +133,7 @@ class FileChecker extends SourceChecker implements StatementsSource
      */
     public function analyze(Context $file_context = null, $preserve_checkers = false)
     {
+        echo "Started analysis\n";
         if ($file_context) {
             $this->context = $file_context;
         }
@@ -220,8 +222,16 @@ class FileChecker extends SourceChecker implements StatementsSource
         }
 
         if (!$preserve_checkers) {
+            $checkers = array_merge($this->class_checkers_to_analyze, $this->namespace_checkers, $this->function_checkers, $this->interface_checkers_to_analyze);
             $this->class_checkers_to_analyze = [];
             $this->function_checkers = [];
+            $this->namespace_checkers = [];
+            $this->interface_checkers_to_analyze = [];
+            foreach ($checkers as $v) {
+                $v->free();
+            }
+            var_dump($this);
+            echo "Done freeing namespace checkers\n";
         }
     }
 
@@ -232,6 +242,7 @@ class FileChecker extends SourceChecker implements StatementsSource
      */
     public function populateCheckers(array $stmts)
     {
+        echo "Called populateCheckers\n";
         /** @var array<int, PhpParser\Node\Expr|PhpParser\Node\Stmt> */
         $leftover_stmts = [];
 
@@ -247,6 +258,8 @@ class FileChecker extends SourceChecker implements StatementsSource
                 $this->namespace_aliased_classes[$namespace_name] = $namespace_checker->getAliases()->uses;
                 $this->namespace_aliased_classes_flipped[$namespace_name] =
                     $namespace_checker->getAliasedClassesFlipped();
+
+                $this->namespace_checkers[] = $namespace_checker;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Use_) {
                 $this->visitUse($stmt);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\GroupUse) {

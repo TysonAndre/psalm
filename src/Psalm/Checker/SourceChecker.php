@@ -212,4 +212,16 @@ abstract class SourceChecker implements StatementsSource
 
         return $this->source->isStatic();
     }
+
+    /** @return void */
+    public function free() {
+        $source = $this->source;
+        if ($source) {
+            foreach ($this as $key => $v) {
+                $this->{$key} = null;
+            }
+            var_export($this);
+            $source->free();
+        }
+    }
 }

@@ -7,6 +7,7 @@ use Psalm\Config;
 
 // show all errors
 error_reporting(-1);
+gc_disable();
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 ini_set('memory_limit', '2048M');
@@ -409,4 +410,3 @@ if (array_key_exists('self-check', $options)) {
         }
     }
 }
-echo "Final count: " . Psalm\Type\Union::$counts . "\n";

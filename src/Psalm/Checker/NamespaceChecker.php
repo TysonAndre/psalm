@@ -27,21 +27,6 @@ class NamespaceChecker extends SourceChecker implements StatementsSource
     private $namespace_name;
 
     /**
-     * @var array<int, FunctionChecker>
-     */
-    public $function_checkers = [];
-
-    /**
-     * @var array<int, ClassChecker>
-     */
-    public $class_checkers = [];
-
-    /**
-     * @var array<int, ClassChecker>
-     */
-    public $interface_checkers = [];
-
-    /**
      * A lookup table for public namespace constants
      *
      * @var array<string, array<string, Type\Union>>
@@ -110,6 +95,7 @@ class NamespaceChecker extends SourceChecker implements StatementsSource
             $context->collect_references = $this->getFileChecker()->project_checker->collect_references;
             $statements_checker->analyze($leftover_stmts, $context);
         }
+        $this->namespace = null;
     }
 
     /**
@@ -183,5 +169,18 @@ class NamespaceChecker extends SourceChecker implements StatementsSource
     public function getFileChecker()
     {
         return $this->source;
+    }
+
+    /** @return void */
+    public function free() {
+        $source = $this->source;
+        if ($source) {
+            foreach ($this as $key => $v) {
+                $this->{$key} = null;
+            }
+            var_export($this);
+            $this->source = null;
+            $source->free();
+        }
     }
 }
