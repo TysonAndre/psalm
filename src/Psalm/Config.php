@@ -31,6 +31,7 @@ class Config
     protected static $MIXED_ISSUES = [
         'MixedArgument',
         'MixedArrayAccess',
+        'MixedArrayAssignment',
         'MixedArrayOffset',
         'MixedAssignment',
         'MixedInferredReturnType',
@@ -39,6 +40,7 @@ class Config
         'MixedPropertyFetch',
         'MixedPropertyAssignment',
         'MixedStringOffsetAssignment',
+        'MixedTypeCoercion',
     ];
 
     /**
@@ -694,6 +696,7 @@ class Config
      * @return void
      * @psalm-suppress InvalidPropertyAssignment
      * @psalm-suppress MixedAssignment
+     * @psalm-suppress MixedArrayOffset
      */
     public function collectPredefinedFunctions()
     {

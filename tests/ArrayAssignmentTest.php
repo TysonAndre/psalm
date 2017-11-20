@@ -69,7 +69,7 @@ class ArrayAssignmentTest extends TestCase
     public function providerFileCheckerValidCodeParse()
     {
         return [
-            'genericArrayCreation' => [
+            'genericArrayCreationWithInt' => [
                 '<?php
                     $out = [];
 
@@ -473,6 +473,183 @@ class ArrayAssignmentTest extends TestCase
                     '$foo' => 'array{a:int, b:array<int, int>}',
                 ],
             ],
+            'nestedObjectLikeArrayAddition' => [
+                '<?php
+                    $foo = [];
+                    $foo["root"]["a"] = 1;
+                    $foo["root"] += ["b" => [2, 3]];',
+                'assertions' => [
+                    '$foo' => 'array{root:array{a:int, b:array<int, int>}}',
+                ],
+            ],
+            'updateStringIntKey' => [
+                '<?php
+                    $string = "c";
+                    $int = 5;
+
+                    $a = [];
+
+                    $a["a"] = 5;
+                    $a[0] = 3;
+
+                    $b = [];
+
+                    $b[$string] = 5;
+                    $b[0] = 3;
+
+                    $c = [];
+
+                    $c[0] = 3;
+                    $c[$string] = 5;
+
+                    $d = [];
+
+                    $d[$int] = 3;
+                    $d["a"] = 5;
+
+                    $e = [];
+
+                    $e[$int] = 3;
+                    $e[$string] = 5;',
+                'assertions' => [
+                    '$a' => 'array<int|string, int>',
+                    '$b' => 'array<string|int, int>',
+                    '$c' => 'array<int|string, int>',
+                    '$d' => 'array<int|string, int>',
+                    '$e' => 'array<int|string, int>',
+                ],
+            ],
+            'updateStringIntKeyWithIntRootAndNumberOffset' => [
+                '<?php
+                    $string = "c";
+                    $int = 5;
+
+                    $a = [];
+
+                    $a[0]["a"] = 5;
+                    $a[0][0] = 3;',
+                'assertions' => [
+                    '$a' => 'array<int, array<int|string, int>>',
+                ],
+            ],
+            'updateStringIntKeyWithIntRoot' => [
+                '<?php
+                    $string = "c";
+                    $int = 5;
+
+                    $b = [];
+
+                    $b[0][$string] = 5;
+                    $b[0][0] = 3;
+
+                    $c = [];
+
+                    $c[0][0] = 3;
+                    $c[0][$string] = 5;
+
+                    $d = [];
+
+                    $d[0][$int] = 3;
+                    $d[0]["a"] = 5;
+
+                    $e = [];
+
+                    $e[0][$int] = 3;
+                    $e[0][$string] = 5;',
+                'assertions' => [
+                    '$b' => 'array<int, array<string|int, int>>',
+                    '$c' => 'array<int, array<int|string, int>>',
+                    '$d' => 'array<int, array<int|string, int>>',
+                    '$e' => 'array<int, array<int|string, int>>',
+                ],
+            ],
+            'updateStringIntKeyWithObjectLikeRootAndNumberOffset' => [
+                '<?php
+                    $string = "c";
+                    $int = 5;
+
+                    $a = [];
+
+                    $a["root"]["a"] = 5;
+                    $a["root"][0] = 3;',
+                'assertions' => [
+                    '$a' => 'array{root:array<int|string, int>}',
+                ],
+            ],
+            'updateStringIntKeyWithObjectLikeRoot' => [
+                '<?php
+                    $string = "c";
+                    $int = 5;
+
+                    $b = [];
+
+                    $b["root"][$string] = 5;
+                    $b["root"][0] = 3;
+
+                    $c = [];
+
+                    $c["root"][0] = 3;
+                    $c["root"][$string] = 5;
+
+                    $d = [];
+
+                    $d["root"][$int] = 3;
+                    $d["root"]["a"] = 5;
+
+                    $e = [];
+
+                    $e["root"][$int] = 3;
+                    $e["root"][$string] = 5;',
+                'assertions' => [
+                    '$b' => 'array{root:array<string|int, int>}',
+                    '$c' => 'array{root:array<int|string, int>}',
+                    '$d' => 'array{root:array<int|string, int>}',
+                    '$e' => 'array{root:array<int|string, int>}',
+                ],
+            ],
+            'mixedArrayAssignmentWithStringKeys' => [
+                '<?php
+                    /** @var array<mixed, mixed> */
+                    $a = [];
+                    $a["b"]["c"] = 5;
+                    echo $a["b"]["d"];',
+                'assertions' => [
+                    '$a' => 'array<mixed, mixed>',
+                ],
+                'error_levels' => ['MixedArrayAssignment', 'MixedArrayAccess', 'MixedArgument'],
+            ],
+            'mixedArrayCoercion' => [
+                '<?php
+                    /** @param int[] $arg */
+                    function expect_int_array($arg) : void { }
+                    /** @return array */
+                    function generic_array() { return []; }
+
+                    expect_int_array(generic_array());
+
+                    function expect_int(int $arg) : void {}
+                    /** @return mixed */
+                    function return_mixed() { return 2; }
+                    expect_int(return_mixed());',
+                'assertions' => [],
+                'error_levels' => ['MixedTypeCoercion', 'MixedArgument'],
+            ],
+            'suppressMixedObjectOffset' => [
+                '<?php
+                    function getThings() : array {
+                      return [];
+                    }
+
+                    $arr = [];
+
+                    foreach (getThings() as $a) {
+                      $arr[$a->id] = $a;
+                    }
+
+                    echo $arr[0];',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment', 'MixedPropertyFetch', 'MixedArrayOffset', 'MixedArgument'],
+            ],
         ];
     }
 
@@ -512,7 +689,7 @@ class ArrayAssignmentTest extends TestCase
                     }
 
                     barBar([1, "2"]);',
-                'error_message' => 'TypeCoercion',
+                'error_message' => 'MixedTypeCoercion',
                 'error_level' => ['MixedAssignment'],
             ],
             'arrayPropertyAssignment' => [

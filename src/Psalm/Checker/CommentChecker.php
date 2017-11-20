@@ -232,13 +232,12 @@ class CommentChecker
                         if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
                             throw new IncorrectDocblockException('Misplaced variable');
                         }
-
                         $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);
 
                         $info->params[] = [
                             'name' => $line_parts[1],
                             'type' => $line_parts[0],
-                            'line_number' => $line_number,
+                            'line_number' => (int)$line_number,
                         ];
                     }
                 } else {
