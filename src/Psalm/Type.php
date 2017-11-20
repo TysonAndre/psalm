@@ -52,11 +52,11 @@ abstract class Type
             $type_string = self::convertSquareBrackets($type_string);
         }
 
-        if (preg_match('/[\[\]()]/', $type_string)) {
+        $type_string = preg_replace('/\?(?=[a-zA-Z])/', 'null|', $type_string);
+
+        if (preg_match('/[\[\]()\?]/', $type_string)) {
             throw new TypeParseTreeException('Invalid characters in type');
         }
-
-        $type_string = str_replace('?', 'null|', $type_string);
 
         $type_tokens = self::tokenize($type_string);
 

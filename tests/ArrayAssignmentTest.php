@@ -650,6 +650,40 @@ class ArrayAssignmentTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment', 'MixedPropertyFetch', 'MixedArrayOffset', 'MixedArgument'],
             ],
+            'changeObjectLikeType' => [
+                '<?php
+                    $a = ["b" => "c"];
+                    $a["d"] = ["e" => "f"];
+                    $a["b"] = 4;
+                    $a["d"]["e"] = 5;',
+                'assertions' => [
+                    '$a[\'b\']' => 'int',
+                    '$a[\'d\']' => 'array{e:int}',
+                    '$a[\'d\'][\'e\']' => 'int',
+                    '$a' => 'array{b:int, d:array{e:int}}',
+                ],
+            ],
+            'changeObjectLikeTypeInIf' => [
+                '<?php
+                    $a = [];
+
+                    if (rand(0, 5) > 3) {
+                      $a["b"] = new stdClass;
+                    } else {
+                      $a["b"] = ["e" => "f"];
+                    }
+
+                    if ($a["b"] instanceof stdClass) {
+                      $a["b"] = [];
+                    }
+
+                    $a["b"]["e"] = "d";',
+                'assertions' => [
+                    '$a' => 'array{b:array{e:string}}',
+                    '$a[\'b\']' => 'array{e:string}',
+                    '$a[\'b\'][\'e\']' => 'string',
+                ],
+            ],
         ];
     }
 

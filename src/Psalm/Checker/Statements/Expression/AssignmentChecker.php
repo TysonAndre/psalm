@@ -1215,6 +1215,10 @@ class AssignmentChecker
                 $child_stmts ? null : $assignment_type
             );
 
+            if (!$child_stmts) {
+                $child_stmt->inferredType = $assignment_type;
+            }
+
             $current_type = $child_stmt->inferredType;
             $current_dim = $child_stmt->dim;
 
@@ -1225,17 +1229,42 @@ class AssignmentChecker
 
         if ($root_var_id) {
             $array_var_id = $root_var_id . implode('', $var_id_additions);
-            $context->vars_in_scope[$array_var_id] = clone $current_type;
+            $context->vars_in_scope[$array_var_id] = clone $assignment_type;
         }
 
         // only update as many child stmts are we were able to process above
         foreach ($reversed_child_stmts as $child_stmt) {
+            if (!isset($child_stmt->inferredType)) {
+                throw new \InvalidArgumentException('Should never get here');
+            }
+
             if ($current_dim instanceof PhpParser\Node\Scalar\String_) {
                 $string_key_value = $current_dim->value;
 
-                $array_assignment_type = new Type\Union([
-                    new ObjectLike([$string_key_value => $current_type]),
-                ]);
+                $has_matching_objectlike_property = false;
+
+                foreach ($child_stmt->inferredType->types as $type) {
+                    if ($type instanceof ObjectLike) {
+                        if (isset($type->properties[$string_key_value])) {
+                            $has_matching_objectlike_property = true;
+
+                            $type->properties[$string_key_value] = clone $current_type;
+                        }
+                    }
+                }
+
+                if (!$has_matching_objectlike_property) {
+                    $array_assignment_type = new Type\Union([
+                        new ObjectLike([$string_key_value => $current_type]),
+                    ]);
+
+                    $new_child_type = Type::combineUnionTypes(
+                        $child_stmt->inferredType,
+                        $array_assignment_type
+                    );
+                } else {
+                    $new_child_type = $child_stmt->inferredType; // noop
+                }
             } else {
                 $array_assignment_type = new Type\Union([
                     new TArray([
@@ -1243,17 +1272,15 @@ class AssignmentChecker
                         $current_type,
                     ]),
                 ]);
-            }
 
-            if (!isset($child_stmt->inferredType)) {
-                throw new \InvalidArgumentException('Should never get here');
-            }
-
-            if (!$child_stmt->inferredType->hasObjectType()) {
-                $child_stmt->inferredType = Type::combineUnionTypes(
+                $new_child_type = Type::combineUnionTypes(
                     $child_stmt->inferredType,
                     $array_assignment_type
                 );
+            }
+
+            if (!$child_stmt->inferredType->hasObjectType()) {
+                $child_stmt->inferredType = $new_child_type;
             }
 
             $current_type = $child_stmt->inferredType;
@@ -1270,9 +1297,30 @@ class AssignmentChecker
         if ($current_dim instanceof PhpParser\Node\Scalar\String_) {
             $string_key_value = $current_dim->value;
 
-            $array_assignment_type = new Type\Union([
-                new ObjectLike([$string_key_value => $current_type]),
-            ]);
+            $has_matching_objectlike_property = false;
+
+            foreach ($root_type->types as $type) {
+                if ($type instanceof ObjectLike) {
+                    if (isset($type->properties[$string_key_value])) {
+                        $has_matching_objectlike_property = true;
+
+                        $type->properties[$string_key_value] = clone $current_type;
+                    }
+                }
+            }
+
+            if (!$has_matching_objectlike_property) {
+                $array_assignment_type = new Type\Union([
+                    new ObjectLike([$string_key_value => $current_type]),
+                ]);
+
+                $new_child_type = Type::combineUnionTypes(
+                    $root_type,
+                    $array_assignment_type
+                );
+            } else {
+                $new_child_type = $root_type; // noop
+            }
         } else {
             $array_assignment_type = new Type\Union([
                 new TArray([
@@ -1280,13 +1328,15 @@ class AssignmentChecker
                     $current_type,
                 ]),
             ]);
-        }
 
-        if (!$root_type->hasObjectType()) {
-            $root_type = Type::combineUnionTypes(
+            $new_child_type = Type::combineUnionTypes(
                 $root_type,
                 $array_assignment_type
             );
+        }
+
+        if (!$root_type->hasObjectType()) {
+            $root_type = $new_child_type;
         }
 
         $root_array_expr->inferredType = $root_type;

@@ -84,20 +84,22 @@ function array_diff(array $arr, array $arr2, array $arr3 = null, array $arr4 = n
 function array_diff_key(array $arr, array $arr2, array $arr3 = null, array $arr4 = null) {}
 
 /**
+ * @template TKey
  * @template TValue
  *
- * @param array<mixed, TValue> $arr
+ * @param array<TKey, TValue> $arr
  * @return TValue
  */
-function array_shift(array $arr) {}
+function array_shift(array &$arr) {}
 
 /**
+ * @template TKey
  * @template TValue
  *
- * @param array<mixed, TValue> $arr
+ * @param array<TKey, TValue> $arr
  * @return TValue
  */
-function array_pop(array $arr) {}
+function array_pop(array &$arr) {}
 
 /**
  * @template TKey
