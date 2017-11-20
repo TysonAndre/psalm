@@ -532,6 +532,50 @@ class AnnotationTest extends TestCase
                     echo $a->bar;',
                 'error_message' => 'UndefinedPropertyFetch',
             ],
+            'propertySealedDocblockUndefinedPropertyAssignment' => [
+                '<?php
+                    /**
+                     * @property string $foo
+                     * @phan-forbid-undeclared-magic-properties
+                     */
+                    class A {
+                         public function __get(string $name) : ?string {
+                              if ($name === "foo") {
+                                   return "hello";
+                              }
+                         }
+
+                         /** @param mixed $value */
+                         public function __set(string $name, $value) : void {
+                         }
+                    }
+
+                    $a = new A();
+                    $a->bar = 5;',
+                'error_message' => 'UndefinedPropertyAssignment',
+            ],
+            'propertySealedDocblockUndefinedPropertyFetch' => [
+                '<?php
+                    /**
+                     * @property string $foo
+                     * @phan-forbid-undeclared-magic-properties
+                     */
+                    class A {
+                         public function __get(string $name) : ?string {
+                              if ($name === "foo") {
+                                   return "hello";
+                              }
+                         }
+
+                         /** @param mixed $value */
+                         public function __set(string $name, $value) : void {
+                         }
+                    }
+
+                    $a = new A();
+                    echo $a->bar;',
+                'error_message' => 'UndefinedPropertyFetch',
+            ],
             'noStringParamType' => [
                 '<?php
                     function fooFoo($a) : void {

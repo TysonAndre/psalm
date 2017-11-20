@@ -324,7 +324,7 @@ class CommentChecker
             $info->deprecated = true;
         }
 
-        if (isset($comments['specials']['psalm-seal-properties'])) {
+        if (isset($comments['specials']['psalm-seal-properties']) || isset($comments['specials']['phan-forbid-undeclared-magic-properties'])) {
             $info->sealed_properties = true;
         }
 
