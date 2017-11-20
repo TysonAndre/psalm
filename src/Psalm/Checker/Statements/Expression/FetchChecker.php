@@ -926,7 +926,7 @@ class FetchChecker
                                     $type->properties[$int_key_value]
                                 );
                             }
-                        } elseif ($string_key_value && $in_assignment && $string_key_value) {
+                        } elseif ($string_key_value && $in_assignment) {
                             $type->properties[$string_key_value] = new Type\Union([new TEmpty]);
 
                             if (!$array_access_type) {
@@ -1011,9 +1011,19 @@ class FetchChecker
                 if (!TypeChecker::isContainedBy(
                     $project_checker,
                     $offset_type,
-                    Type::getInt()
+                    Type::getInt(),
+                    false,
+                    false,
+                    $unused_has_scalar_match,
+                    $unused_type_coerced,
+                    $unused_type_coerced_from_mixed,
+                    $unused_to_string_cast,
+                    $has_partial_match
                 )) {
                     $invalid_offset_types[] = 'int';
+                    if ($has_partial_match) {
+                        $has_valid_offset = true;
+                    }
                 } else {
                     $has_valid_offset = true;
                 }
