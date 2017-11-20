@@ -1166,7 +1166,8 @@ class FetchChecker
         }
 
         if ($array_access_type === null) {
-            throw new \InvalidArgumentException('This is a bad place');
+            return Type::getMixed();
+            // throw new \InvalidArgumentException('This is a bad place in ' . $statements_checker->getSource()->getCheckedFilePath() . ': ' . var_export($stmt->getAttributes(), true));
         }
 
         return $array_access_type;
