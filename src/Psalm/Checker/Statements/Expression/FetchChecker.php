@@ -171,6 +171,7 @@ class FetchChecker
             return null;
         }
 
+        /** @var array<int, string> $invalid_fetch_types */
         $invalid_fetch_types = [];
         $has_valid_fetch_type = false;
 
