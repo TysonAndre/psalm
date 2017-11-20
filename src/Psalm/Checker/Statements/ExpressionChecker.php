@@ -315,9 +315,10 @@ class ExpressionChecker
                     $container_type,
                     true,
                     false,
-                    $has_scalar_match
+                    $tmp_info
                 )
-                && !$has_scalar_match
+                && $tmp_info // TODO: Allow indicating output reference is non-null
+                && !$tmp_info->has_scalar_match
             ) {
                 if (IssueBuffer::accepts(
                     new InvalidCast(
@@ -1562,7 +1563,7 @@ class ExpressionChecker
                 Type::getString(),
                 true,
                 false,
-                $left_has_scalar_match
+                $left_type_match_info
             );
 
             $right_type_match = TypeChecker::isContainedBy(
@@ -1571,10 +1572,14 @@ class ExpressionChecker
                 Type::getString(),
                 true,
                 false,
-                $right_has_scalar_match
+                $right_type_match_info
             );
 
-            if (!$left_type_match && (!$left_has_scalar_match || $config->strict_binary_operands)) {
+            /** (TODO: Allow indicating output reference is non-null) */
+            assert($left_type_match_info !== null);
+            assert($right_type_match_info !== null);
+
+            if (!$left_type_match && (!$left_type_match_info->has_scalar_match || $config->strict_binary_operands)) {
                 if (IssueBuffer::accepts(
                     new InvalidOperand(
                         'Cannot concatenate with a ' . $left_type,
@@ -1586,7 +1591,8 @@ class ExpressionChecker
                 }
             }
 
-            if (!$right_type_match && (!$right_has_scalar_match || $config->strict_binary_operands)) {
+            /** @var TypeCheckInfo $right_type_match_info (TODO: Allow indicating output reference is non-null) */
+            if (!$right_type_match && (!$right_type_match_info->has_scalar_match || $config->strict_binary_operands)) {
                 if (IssueBuffer::accepts(
                     new InvalidOperand(
                         'Cannot concatenate with a ' . $right_type,

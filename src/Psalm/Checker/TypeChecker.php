@@ -492,10 +492,7 @@ class TypeChecker
      * @param  ProjectChecker  $project_checker
      * @param  bool         $ignore_null
      * @param  bool         $ignore_false
-     * @param  bool         &$has_scalar_match
-     * @param  bool         &$type_coerced    whether or not there was type coercion involved
-     * @param  bool         &$type_coerced_from_mixed
-     * @param  bool         &$to_string_cast
+     * @param  TypeCheckInfo &$out_info
      *
      * @return bool
      */
@@ -505,16 +502,19 @@ class TypeChecker
         Type\Union $container_type,
         $ignore_null = false,
         $ignore_false = false,
-        &$has_scalar_match = null,
-        &$type_coerced = null,
-        &$type_coerced_from_mixed = null,
-        &$to_string_cast = null
+        &$out_info = null
     ) {
-        $has_scalar_match = true;
+        $info = new TypeCheckInfo();
+        $info->has_scalar_match = true;
+        $out_info = $info;  // aliases $info. Assigning to non-reference $info is faster than modifying this.
 
         if ($container_type->isMixed()) {
             return true;
         }
+
+        // $type_coerced and $type_coerced_from_mixed will be copied into $info before returning a value.
+        $type_coerced = false;
+        $type_coerced_from_mixed = false;
 
         $type_match_found = false;
 
@@ -545,7 +545,7 @@ class TypeChecker
 
                 if ($is_atomic_contained_by) {
                     $type_match_found = true;
-                } elseif (!$type_coerced &&
+                } elseif (!$info->type_coerced &&
                     $input_type_part instanceof TNamedObject &&
                     $intersection_types = $input_type_part->getIntersectionTypes()
                 ) {
@@ -555,8 +555,8 @@ class TypeChecker
                             $intersection_type,
                             $container_type_part,
                             $scalar_type_match_found,
-                            $type_coerced,
-                            $type_coerced_from_mixed,
+                            $info->type_coerced,
+                            $info->type_coerced_from_mixed,
                             $atomic_to_string_cast
                         );
 
@@ -567,26 +567,28 @@ class TypeChecker
                     }
                 }
 
-                if ($atomic_to_string_cast !== true) {
-                    $all_to_string_cast = false;
-                }
+                $all_to_string_cast = $all_to_string_cast && $atomic_to_string_cast;
             }
 
             // only set this flag if we're definite that the only
             // reason the type match has been found is because there
             // was a __toString cast
             if ($all_to_string_cast && $type_match_found) {
-                $to_string_cast = true;
+                $info->to_string_cast = true;
             }
 
             if (!$type_match_found) {
                 if (!$scalar_type_match_found) {
-                    $has_scalar_match = false;
+                    $info->has_scalar_match = false;
                 }
+                $info->type_coerced = $type_coerced;
+                $info->type_coerced_from_mixed = $type_coerced_from_mixed;
 
                 return false;
             }
         }
+        $info->type_coerced = $type_coerced;
+        $info->type_coerced_from_mixed = $type_coerced_from_mixed;
 
         return true;
     }
@@ -645,10 +647,14 @@ class TypeChecker
     /**
      * Does the input param atomic type match the given param atomic type
      *
+     * (The defaults are false instead of a boolean so the type checker
+     * knows they are booleans,
+     * but the defaults won't affect variables with values that are passed in)
+     *
      * @param  Type\Atomic  $input_type_part
      * @param  Type\Atomic  $container_type_part
      * @param  ProjectChecker  $project_checker
-     * @param  bool         &$has_scalar_match
+     * @param  bool         &$has_scalar_match ()
      * @param  bool         &$type_coerced    whether or not there was type coercion involved
      * @param  bool         &$type_coerced_from_mixed
      * @param  bool         &$to_string_cast
@@ -659,10 +665,10 @@ class TypeChecker
         ProjectChecker $project_checker,
         Type\Atomic $input_type_part,
         Type\Atomic $container_type_part,
-        &$has_scalar_match = null,
-        &$type_coerced = null,
-        &$type_coerced_from_mixed = null,
-        &$to_string_cast = null
+        &$has_scalar_match = false,
+        &$type_coerced = false,
+        &$type_coerced_from_mixed = false,
+        &$to_string_cast = false
     ) {
         if ($container_type_part instanceof TMixed) {
             return true;
@@ -732,11 +738,13 @@ class TypeChecker
                             $container_param,
                             false,
                             false,
-                            $has_scalar_match,
-                            $type_coerced,
-                            $type_coerced_from_mixed
+                            $info
                         )
                     ) {
+                        /** @var TypeCheckInfo $info (TODO: Allow indicating output reference is non-null) */
+                        $has_scalar_match = $has_scalar_match && $info->has_scalar_match;
+                        $type_coerced = $type_coerced || $info->type_coerced;
+                        $type_coerced_from_mixed = $type_coerced_from_mixed || $info->type_coerced_from_mixed;
                         $all_types_contain = false;
                     }
                 }
@@ -800,13 +808,18 @@ class TypeChecker
                         $container_property_type,
                         false,
                         false,
-                        $has_scalar_match,
-                        $type_coerced,
-                        $type_coerced_from_mixed
+                        $info
                     )
                 ) {
+                    assert($info !== null);  // TODO: Better way to indicate optional output reference is non-null.
+
+                    $has_scalar_match = $has_scalar_match && $info->has_scalar_match;
+                    $type_coerced_from_mixed = $type_coerced_from_mixed || $info->type_coerced_from_mixed;
+
                     if (self::isContainedBy($project_checker, $container_property_type, $input_property_type)) {
                         $type_coerced = true;
+                    } else {
+                        $type_coerced = $type_coerced || $info->type_coerced;
                     }
 
                     $all_types_contain = false;

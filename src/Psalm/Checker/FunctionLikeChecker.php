@@ -519,8 +519,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         $statements_checker->analyze($function_stmts, $context, null, $global_context);
 
         foreach ($storage->params as $offset => $function_param) {
-            $signature_type = $function_param->signature_type;
-
             // only complain if there's no type defined by a parent type
             if (!$function_param->type
                 && $function_param->location
@@ -997,10 +995,10 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 $declared_return_type,
                 $ignore_nullable_issues,
                 false,
-                $has_scalar_match,
-                $type_coerced,
-                $type_coerced_from_mixed
+                $type_match_info
             )) {
+                assert($type_match_info !== null); // TODO: Allow indicating output reference is non-null
+
                 if ($project_checker->update_docblocks) {
                     if (!in_array('InvalidReturnType', $this->suppressed_issues, true)) {
                         $this->addDocblockReturnType($project_checker, $inferred_return_type);
@@ -1010,7 +1008,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 }
 
                 // is the declared return type more specific than the inferred one?
-                if ($type_coerced) {
+                if ($type_match_info->type_coerced) {
                     if (IssueBuffer::accepts(
                         new MoreSpecificReturnType(
                             'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
