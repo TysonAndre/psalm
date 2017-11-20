@@ -837,9 +837,19 @@ class FetchChecker
                         if (!TypeChecker::isContainedBy(
                             $project_checker,
                             $offset_type,
-                            $type->type_params[0]
+                            $type->type_params[0],
+                            false,
+                            false,
+                            $unused_has_scalar_match,
+                            $unused_type_coerced,
+                            $unused_type_coerced_from_mixed,
+                            $unused_to_string_cast,
+                            $has_partial_match
                         )) {
                             $invalid_offset_types[] = (string)$type->type_params[0];
+                            if ($has_partial_match) {
+                                $has_valid_offset = true;
+                            }
                         } else {
                             $has_valid_offset = true;
                         }
