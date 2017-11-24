@@ -852,7 +852,7 @@ class FetchChecker
                             $project_checker,
                             $offset_type,
                             $type->type_params[0],
-                            false,
+                            $offset_type->ignore_nullable_issues,
                             false,
                             $unused_has_scalar_match,
                             $unused_type_coerced,
@@ -979,7 +979,8 @@ class FetchChecker
                     } elseif (TypeChecker::isContainedBy(
                         $project_checker,
                         $offset_type,
-                        Type::getString()
+                        Type::getString(),
+                        $offset_type->ignore_nullable_issues
                     )) {
                         if ($replacement_type) {
                             $generic_params = Type::combineUnionTypes(

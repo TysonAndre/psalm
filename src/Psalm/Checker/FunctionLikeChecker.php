@@ -356,12 +356,23 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             $storage = $file_storage->functions[$function_id];
 
+            if ($storage->return_type) {
+                $closure_return_type = ExpressionChecker::fleshOutType(
+                    $project_checker,
+                    $storage->return_type,
+                    $context->self,
+                    $this->getMethodId()
+                );
+            } else {
+                $closure_return_type = Type::getMixed();
+            }
+
             /** @var PhpParser\Node\Expr\Closure $this->function */
             $this->function->inferredType = new Type\Union([
                 new Type\Atomic\Fn(
                     'Closure',
                     $storage->params,
-                    $storage->return_type ?: Type::getMixed()
+                    $closure_return_type
                 ),
             ]);
         }
@@ -587,7 +598,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 ) {
                     $original_location = $statements_checker->getFirstAppearance($var_name);
 
-                    if (!isset($context->referenced_vars[$var_name]) && $original_location) {
+                    if (!isset($context->referenced_var_ids[$var_name]) && $original_location) {
                         if (!isset($storage->param_types[substr($var_name, 1)]) ||
                             !$storage instanceof MethodStorage ||
                             $storage->visibility === ClassLikeChecker::VISIBILITY_PRIVATE
@@ -911,7 +922,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     new InvalidToString(
                         '__toString methods must return a string, ' . $inferred_return_type . ' returned',
                         $secondary_return_type_location ?: $return_type_location
-                    )
+                    ),
+                    $this->suppressed_issues
                 )) {
                     return false;
                 }
@@ -923,7 +935,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         }
 
         if (!$return_type) {
-            if ($inferred_return_type && !$inferred_return_type->isMixed()) {
+            if (!$inferred_return_type->isMixed()) {
                 $this->addDocblockReturnType($project_checker, $inferred_return_type);
             }
 
@@ -972,7 +984,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             );
         }
 
-        if ($inferred_return_type && !$declared_return_type->isMixed()) {
+        if (!$declared_return_type->isMixed()) {
             if ($inferred_return_type->isVoid() && $declared_return_type->isVoid()) {
                 return null;
             }

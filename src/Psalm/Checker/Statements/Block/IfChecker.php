@@ -142,12 +142,10 @@ class IfChecker
             $context->vars_possibly_in_scope
         );
 
-        if ($context->collect_references) {
-            $context->referenced_vars = array_merge(
-                $if_context->referenced_vars,
-                $context->referenced_vars
-            );
-        }
+        $context->referenced_var_ids = array_merge(
+            $if_context->referenced_var_ids,
+            $context->referenced_var_ids
+        );
 
         $temp_else_context = clone $original_context;
 
@@ -240,7 +238,15 @@ class IfChecker
 
             if ($if_scope->redefined_loop_vars && $loop_context) {
                 foreach ($if_scope->redefined_loop_vars as $var => $type) {
-                    $loop_context->vars_in_scope[$var] = $type;
+                    if (!isset($loop_context->vars_in_scope[$var])) {
+                        $loop_context->vars_in_scope[$var] = $type;
+                    } else {
+                        $loop_context->vars_in_scope[$var] = Type::combineUnionTypes(
+                            $loop_context->vars_in_scope[$var],
+                            $type
+                        );
+                    }
+
                     $updated_loop_vars[$var] = true;
                 }
             }
@@ -337,9 +343,9 @@ class IfChecker
         }
 
         if ($outer_context->collect_references) {
-            $outer_context->referenced_vars = array_merge(
-                $outer_context->referenced_vars,
-                $if_context->referenced_vars
+            $outer_context->referenced_var_ids = array_merge(
+                $outer_context->referenced_var_ids,
+                $if_context->referenced_var_ids
             );
         }
 
@@ -769,9 +775,9 @@ class IfChecker
         }
 
         if ($outer_context->collect_references) {
-            $outer_context->referenced_vars = array_merge(
-                $outer_context->referenced_vars,
-                $elseif_context->referenced_vars
+            $outer_context->referenced_var_ids = array_merge(
+                $outer_context->referenced_var_ids,
+                $elseif_context->referenced_var_ids
             );
         }
 
@@ -863,9 +869,9 @@ class IfChecker
         }
 
         if ($outer_context->collect_references) {
-            $outer_context->referenced_vars = array_merge(
-                $outer_context->referenced_vars,
-                $else_context->referenced_vars
+            $outer_context->referenced_var_ids = array_merge(
+                $outer_context->referenced_var_ids,
+                $else_context->referenced_var_ids
             );
         }
 

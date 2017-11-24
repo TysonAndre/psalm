@@ -5,6 +5,7 @@ use PhpParser;
 use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\CommentChecker;
+use Psalm\Checker\InterfaceChecker;
 use Psalm\Checker\MethodChecker;
 use Psalm\Checker\Statements\Expression\AssignmentChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
@@ -178,7 +179,15 @@ class ForeachChecker
                         $project_checker,
                         $iterator_type->value,
                         'Iterator'
-                    )) {
+                    ) ||
+                        (InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
+                            && InterfaceChecker::interfaceExtends(
+                                $project_checker,
+                                $iterator_type->value,
+                                'Iterator'
+                            )
+                        )
+                    ) {
                         $iterator_method = $iterator_type->value . '::current';
                         $iterator_class_type = MethodChecker::getMethodReturnType($project_checker, $iterator_method);
 
@@ -202,11 +211,20 @@ class ForeachChecker
                         $project_checker,
                         $iterator_type->value,
                         'Traversable'
-                    )) {
+                    ) ||
+                        (InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
+                            && InterfaceChecker::interfaceExtends(
+                                $project_checker,
+                                $iterator_type->value,
+                                'Traversable'
+                            )
+                        )
+                    ) {
                         // @todo try and get value type
                     } elseif (!in_array(
                         strtolower($iterator_type->value),
-                        ['iterator', 'iterable', 'traversable'], true
+                        ['iterator', 'iterable', 'traversable'],
+                        true
                     )) {
                         if (IssueBuffer::accepts(
                             new RawObjectIteration(
@@ -311,12 +329,10 @@ class ForeachChecker
             $context->vars_possibly_in_scope
         );
 
-        if ($context->collect_references) {
-            $context->referenced_vars = array_merge(
-                $foreach_context->referenced_vars,
-                $context->referenced_vars
-            );
-        }
+        $context->referenced_var_ids = array_merge(
+            $foreach_context->referenced_var_ids,
+            $context->referenced_var_ids
+        );
 
         return null;
     }

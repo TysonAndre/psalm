@@ -229,6 +229,34 @@ class TypeChecker
                 return Type::getMixed();
             }
 
+            if ($new_var_type === '!scalar') {
+                $non_scalar_types = [];
+
+                foreach ($existing_var_type->types as $type) {
+                    if (!($type instanceof Scalar)) {
+                        $non_scalar_types[] = $type;
+                    }
+                }
+
+                if ($non_scalar_types) {
+                    return new Type\Union($non_scalar_types);
+                }
+            }
+
+            if ($new_var_type === '!numeric') {
+                $non_numeric_types = [];
+
+                foreach ($existing_var_type->types as $type) {
+                    if (!$type->isNumericType()) {
+                        $non_numeric_types[] = $type;
+                    }
+                }
+
+                if ($non_numeric_types) {
+                    return new Type\Union($non_numeric_types);
+                }
+            }
+
             if (in_array($new_var_type, ['!falsy', '!null'], true)) {
                 $existing_var_type->removeType('null');
 

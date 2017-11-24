@@ -443,7 +443,6 @@ class ProjectChecker
 
     /**
      * @return void
-     * @psalm-suppress ParadoxicalCondition
      */
     public function scanFiles()
     {
