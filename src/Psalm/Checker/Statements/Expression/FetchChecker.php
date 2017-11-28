@@ -1015,6 +1015,8 @@ class FetchChecker
                         $has_valid_offset = true;
                     } else {
                         $invalid_offset_types[] = 'string';
+
+                        $array_access_type = Type::getMixed();
                     }
                 }
                 continue;

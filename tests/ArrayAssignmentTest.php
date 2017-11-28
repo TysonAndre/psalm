@@ -669,7 +669,10 @@ class ArrayAssignmentTest extends TestCase
                         /** @param string|int $offset */
                         public function offsetUnset($offset) : void {}
 
-                        /** @return mixed */
+                        /**
+                         * @param  string $offset
+                         * @return mixed
+                         */
                         public function offsetGet($offset) {
                             return 1;
                         }
@@ -699,6 +702,23 @@ class ArrayAssignmentTest extends TestCase
                 'assertions' => [
                     '$str' => 'string',
                 ],
+            ],
+            'ignoreInvalidArrayOffset' => [
+                '<?php
+                    $a = [
+                        "b" => [],
+                    ];
+
+                    $a["b"]["c"] = 0;
+
+                    foreach ([1, 2, 3] as $i) {
+                        /**
+                         * @psalm-suppress InvalidArrayOffset
+                         * @psalm-suppress MixedOperand
+                         */
+                        $a["b"]["d"] += $a["b"][$i];
+                    }',
+                'assertions' => [],
             ],
         ];
     }

@@ -103,6 +103,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         $this->plugins = $this->config->getPlugins();
     }
 
+    /**
+     * @param  PhpParser\Node $node
+     *
+     * @return ?int
+     */
     public function enterNode(PhpParser\Node $node)
     {
         if ($node instanceof PhpParser\Node\Stmt\Namespace_) {
@@ -177,8 +182,6 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $this->classlike_storages[] = $storage;
 
             if ($doc_comment) {
-                $docblock_info = null;
-
                 try {
                     $docblock_info = CommentChecker::extractClassLikeDocblockInfo(
                         (string)$doc_comment,
@@ -191,7 +194,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                             new CodeLocation($this->file_checker, $node, null, true)
                         )
                     )) {
-                        // fall through
+                        $docblock_info = null;
                     }
                 }
 
@@ -423,6 +426,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         }
     }
 
+    /**
+     * @param  PhpParser\Node $node
+     *
+     * @return array<mixed, PhpParser\Node>|null|false|int|PhpParser\Node
+     */
     public function leaveNode(PhpParser\Node $node)
     {
         if ($node instanceof PhpParser\Node\Stmt\Namespace_) {
@@ -491,6 +499,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         } elseif ($node instanceof PhpParser\Node\FunctionLike) {
             array_pop($this->functionlike_storages);
         }
+
+        return null;
     }
 
     /**
@@ -687,7 +697,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $storage->assertions = $var_assertions;
         }
 
-        if ($parser_return_type = $stmt->getReturnType()) {
+        /**
+         * @psalm-suppress MixedAssignment
+         *
+         * @var null|string|PhpParser\Node\Name|PhpParser\Node\NullableType
+         */
+        $parser_return_type = $stmt->getReturnType();
+
+        if ($parser_return_type) {
             $suffix = '';
 
             if ($parser_return_type instanceof PhpParser\Node\NullableType) {
@@ -726,7 +743,6 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $storage->signature_return_type_location = $storage->return_type_location;
         }
 
-        $docblock_info = null;
         $doc_comment = $stmt->getDocComment();
 
         if (!$doc_comment) {
@@ -747,6 +763,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             )) {
                 // fall through
             }
+
+            $docblock_info = null;
         } catch (DocblockParseException $e) {
             if (IssueBuffer::accepts(
                 new InvalidDocblock(
@@ -756,6 +774,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             )) {
                 // fall through
             }
+
+            $docblock_info = null;
         }
 
         if (!$docblock_info) {

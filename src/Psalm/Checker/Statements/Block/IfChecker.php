@@ -7,6 +7,7 @@ use Psalm\Checker\ScopeChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TypeChecker;
+use Psalm\Clause;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\IfScope;
@@ -60,6 +61,11 @@ class IfChecker
 
         $context->inside_conditional = true;
 
+        $referenced_var_ids = $context->referenced_var_ids;
+        $context->referenced_var_ids = [];
+
+        $pre_assigned_var_ids = $context->assigned_var_ids;
+
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
         if ($first_if_cond_expr &&
@@ -67,6 +73,12 @@ class IfChecker
         ) {
             return false;
         }
+
+        $first_cond_referenced_var_ids = $context->referenced_var_ids;
+        $context->referenced_var_ids = array_merge(
+            $referenced_var_ids,
+            $first_cond_referenced_var_ids
+        );
 
         $context->inside_conditional = false;
 
@@ -84,11 +96,30 @@ class IfChecker
 
         $if_context->inside_conditional = true;
 
+        $referenced_var_ids = $context->referenced_var_ids;
+        $if_context->referenced_var_ids = [];
+
         if ($first_if_cond_expr !== $stmt->cond &&
             ExpressionChecker::analyze($statements_checker, $stmt->cond, $if_context) === false
         ) {
             return false;
         }
+
+        $more_cond_referenced_var_ids = $if_context->referenced_var_ids;
+        $if_context->referenced_var_ids = array_merge(
+            $more_cond_referenced_var_ids,
+            $referenced_var_ids
+        );
+
+        $cond_referenced_var_ids = array_merge(
+            $first_cond_referenced_var_ids,
+            $more_cond_referenced_var_ids
+        );
+
+        $new_assigned_var_ids = array_diff_key($context->assigned_var_ids, $pre_assigned_var_ids);
+
+        // get all the var ids that were referened in the conditional, but not assigned in it
+        $cond_referenced_var_ids = array_diff_key($cond_referenced_var_ids, $new_assigned_var_ids);
 
         $if_context->inside_conditional = false;
 
@@ -105,6 +136,9 @@ class IfChecker
 
         $if_context->clauses = AlgebraChecker::simplifyCNF(array_merge($context->clauses, $if_clauses));
 
+        // define this before we alter local claues after reconciliation
+        $if_scope->reasonable_clauses = $if_context->clauses;
+
         $if_scope->negated_clauses = AlgebraChecker::negateFormula($if_clauses);
 
         $if_scope->negated_types = AlgebraChecker::getTruthsFromFormula($if_scope->negated_clauses);
@@ -113,13 +147,14 @@ class IfChecker
 
         // if the if has an || in the conditional, we cannot easily reason about it
         if ($reconcilable_if_types) {
-            $changed_vars = [];
+            $changed_var_ids = [];
 
             $if_vars_in_scope_reconciled =
                 TypeChecker::reconcileKeyedTypes(
                     $reconcilable_if_types,
                     $if_context->vars_in_scope,
-                    $changed_vars,
+                    $changed_var_ids,
+                    $cond_referenced_var_ids,
                     $statements_checker,
                     new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
                     $statements_checker->getSuppressedIssues()
@@ -134,6 +169,10 @@ class IfChecker
                 $reconcilable_if_types,
                 $if_context->vars_possibly_in_scope
             );
+
+            if ($changed_var_ids) {
+                $if_context->removeReconciledClauses($changed_var_ids);
+            }
         }
 
         $old_if_context = clone $if_context;
@@ -149,13 +188,14 @@ class IfChecker
 
         $temp_else_context = clone $original_context;
 
-        if ($if_scope->negated_types) {
-            $changed_vars = [];
+        $changed_var_ids = [];
 
+        if ($if_scope->negated_types) {
             $else_vars_reconciled = TypeChecker::reconcileKeyedTypes(
                 $if_scope->negated_types,
                 $temp_else_context->vars_in_scope,
-                $changed_vars,
+                $changed_var_ids,
+                $cond_referenced_var_ids,
                 $statements_checker,
                 new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
                 $statements_checker->getSuppressedIssues()
@@ -214,12 +254,10 @@ class IfChecker
             $if_scope->new_vars_possibly_in_scope
         );
 
-        if ($project_checker->infer_types_from_usage) {
-            $context->assigned_vars = array_merge(
-                $context->assigned_vars,
-                $if_context->assigned_vars
-            );
-        }
+        $context->assigned_var_ids = array_merge(
+            $context->assigned_var_ids,
+            $if_context->assigned_var_ids
+        );
 
         $updated_loop_vars = [];
 
@@ -307,15 +345,25 @@ class IfChecker
         Context $outer_context,
         array $pre_assignment_else_redefined_vars
     ) {
-        $has_ending_statements = ScopeChecker::doesAlwaysReturnOrThrow($stmt->stmts);
+        $final_actions = ScopeChecker::getFinalControlActions($stmt->stmts);
 
-        $has_leaving_statements = $has_ending_statements || ScopeChecker::doesAlwaysBreakOrContinue($stmt->stmts);
+        $has_ending_statements = $final_actions === [ScopeChecker::ACTION_END];
+
+        $has_leaving_statements = $has_ending_statements
+            || (count($final_actions) && !in_array(ScopeChecker::ACTION_NONE, $final_actions, true));
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+
+        $assigned_var_ids = $if_context->assigned_var_ids;
+        $if_context->assigned_var_ids = [];
 
         if ($statements_checker->analyze($stmt->stmts, $if_context, $if_scope->loop_context) === false) {
             return false;
         }
+
+        /** @var array<string, bool> */
+        $new_assigned_var_ids = $if_context->assigned_var_ids;
+        $if_context->assigned_var_ids = $assigned_var_ids;
 
         if ($if_context->byref_constraints !== null) {
             foreach ($if_context->byref_constraints as $var_id => $byref_constraint) {
@@ -363,19 +411,37 @@ class IfChecker
 
             $if_scope->redefined_vars = $if_context->getRedefinedVars($outer_context);
             $if_scope->possibly_redefined_vars = $if_scope->redefined_vars;
-            $if_scope->reasonable_clauses = $if_context->clauses;
+
+            $changed_var_ids = array_keys($new_assigned_var_ids);
+
+            if ($if_scope->reasonable_clauses) {
+                // remove all reasonable clauses that would be negated by the if stmts
+                foreach ($changed_var_ids as $var_id) {
+                    $if_scope->reasonable_clauses = Context::filterClauses(
+                        $var_id,
+                        $if_scope->reasonable_clauses,
+                        isset($if_context->vars_in_scope[$var_id]) ? $if_context->vars_in_scope[$var_id] : null,
+                        $statements_checker
+                    );
+                }
+            }
 
             if ($project_checker->infer_types_from_usage) {
                 $if_scope->possible_param_types = $if_context->possible_param_types;
             }
-        } elseif (!$stmt->else && !$stmt->elseifs) {
+        } else {
+            $if_scope->reasonable_clauses = [];
+        }
+
+        if ($has_leaving_statements && !$stmt->else && !$stmt->elseifs) {
             if ($if_scope->negated_types) {
-                $changed_vars = [];
+                $changed_var_ids = [];
 
                 $outer_context_vars_reconciled = TypeChecker::reconcileKeyedTypes(
                     $if_scope->negated_types,
                     $outer_context->vars_in_scope,
-                    $changed_vars,
+                    $changed_var_ids,
+                    [],
                     $statements_checker,
                     new CodeLocation(
                         $statements_checker->getSource(),
@@ -386,8 +452,22 @@ class IfChecker
                     $statements_checker->getSuppressedIssues()
                 );
 
-                foreach ($changed_vars as $changed_var) {
-                    $outer_context->removeVarFromConflictingClauses($changed_var);
+                foreach ($changed_var_ids as $changed_var_id) {
+                    $outer_context->removeVarFromConflictingClauses($changed_var_id);
+                }
+
+                $changed_var_ids = array_unique(
+                    array_merge(
+                        $changed_var_ids,
+                        array_keys($new_assigned_var_ids)
+                    )
+                );
+
+                foreach ($changed_var_ids as $var_id) {
+                    $if_scope->negated_clauses = Context::filterClauses(
+                        $var_id,
+                        $if_scope->negated_clauses
+                    );
                 }
 
                 if ($outer_context_vars_reconciled === false) {
@@ -477,13 +557,16 @@ class IfChecker
 
         $original_context = clone $elseif_context;
 
+        $entry_clauses = array_merge($original_context->clauses, $if_scope->negated_clauses);
+
         if ($if_scope->negated_types) {
-            $changed_vars = [];
+            $changed_var_ids = [];
 
             $elseif_vars_reconciled = TypeChecker::reconcileKeyedTypes(
                 $if_scope->negated_types,
                 $elseif_context->vars_in_scope,
-                $changed_vars,
+                $changed_var_ids,
+                [],
                 $statements_checker,
                 new CodeLocation(
                     $statements_checker->getSource(),
@@ -499,16 +582,42 @@ class IfChecker
             }
 
             $elseif_context->vars_in_scope = $elseif_vars_reconciled;
+
+            if ($changed_var_ids) {
+                $entry_clauses = array_filter(
+                    $entry_clauses,
+                    /** @return bool */
+                    function (Clause $c) use ($changed_var_ids) {
+                        return count($c->possibilities) > 1
+                            || !in_array(array_keys($c->possibilities)[0], $changed_var_ids, true);
+                    }
+                );
+            }
         }
 
         $pre_conditional_context = clone $elseif_context;
 
         $elseif_context->inside_conditional = true;
 
+        $pre_assigned_var_ids = $elseif_context->assigned_var_ids;
+
+        $referenced_var_ids = $elseif_context->referenced_var_ids;
+        $elseif_context->referenced_var_ids = [];
+
         // check the elseif
         if (ExpressionChecker::analyze($statements_checker, $elseif->cond, $elseif_context) === false) {
             return false;
         }
+
+        $new_referenced_var_ids = $elseif_context->referenced_var_ids;
+        $elseif_context->referenced_var_ids = array_merge(
+            $referenced_var_ids,
+            $elseif_context->referenced_var_ids
+        );
+
+        $new_assigned_var_ids = array_diff_key($elseif_context->assigned_var_ids, $pre_assigned_var_ids);
+
+        $new_referenced_var_ids = array_diff_key($new_referenced_var_ids, $new_assigned_var_ids);
 
         $elseif_context->inside_conditional = false;
 
@@ -517,8 +626,6 @@ class IfChecker
             $statements_checker->getFQCLN(),
             $statements_checker
         );
-
-        $entry_clauses = array_merge($original_context->clauses, $if_scope->negated_clauses);
 
         // this will see whether any of the clauses in set A conflict with the clauses in set B
         AlgebraChecker::checkForParadox($entry_clauses, $elseif_clauses, $statements_checker, $elseif->cond);
@@ -553,12 +660,13 @@ class IfChecker
 
         // if the elseif has an || in the conditional, we cannot easily reason about it
         if ($reconcilable_elseif_types) {
-            $changed_vars = [];
+            $changed_var_ids = [];
 
             $elseif_vars_reconciled = TypeChecker::reconcileKeyedTypes(
                 $reconcilable_elseif_types,
                 $elseif_context->vars_in_scope,
-                $changed_vars,
+                $changed_var_ids,
+                $new_referenced_var_ids,
                 $statements_checker,
                 new CodeLocation($statements_checker->getSource(), $elseif->cond, $outer_context->include_location),
                 $statements_checker->getSuppressedIssues()
@@ -569,6 +677,10 @@ class IfChecker
             }
 
             $elseif_context->vars_in_scope = $elseif_vars_reconciled;
+
+            if ($changed_var_ids) {
+                $elseif_context->removeReconciledClauses($changed_var_ids);
+            }
         }
 
         $old_elseif_context = clone $elseif_context;
@@ -603,11 +715,11 @@ class IfChecker
         }
 
         if (count($elseif->stmts)) {
+            $final_actions = ScopeChecker::getFinalControlActions($elseif->stmts);
             // has a return/throw at end
-            $has_ending_statements = ScopeChecker::doesAlwaysReturnOrThrow($elseif->stmts);
-
-            $has_leaving_statements = $has_ending_statements ||
-                ScopeChecker::doesAlwaysBreakOrContinue($elseif->stmts);
+            $has_ending_statements = $final_actions === [ScopeChecker::ACTION_END];
+            $has_leaving_statements = $has_ending_statements
+                || (count($final_actions) && !in_array(ScopeChecker::ACTION_NONE, $final_actions, true));
 
             // update the parent context as necessary
             $elseif_redefined_vars = $elseif_context->getRedefinedVars($original_context);
@@ -694,12 +806,13 @@ class IfChecker
 
             if ($negated_elseif_types) {
                 if ($has_leaving_statements) {
-                    $changed_vars = [];
+                    $changed_var_ids = [];
 
                     $leaving_vars_reconciled = TypeChecker::reconcileKeyedTypes(
                         $negated_elseif_types,
                         $pre_conditional_context->vars_in_scope,
-                        $changed_vars,
+                        $changed_var_ids,
+                        [],
                         $statements_checker,
                         new CodeLocation($statements_checker->getSource(), $elseif, $outer_context->include_location),
                         $statements_checker->getSuppressedIssues()
@@ -817,12 +930,13 @@ class IfChecker
         $else_types = AlgebraChecker::getTruthsFromFormula($else_context->clauses);
 
         if ($else_types) {
-            $changed_vars = [];
+            $changed_var_ids = [];
 
             $else_vars_reconciled = TypeChecker::reconcileKeyedTypes(
                 $else_types,
                 $else_context->vars_in_scope,
-                $changed_vars,
+                $changed_var_ids,
+                [],
                 $statements_checker,
                 new CodeLocation($statements_checker->getSource(), $else, $outer_context->include_location),
                 $statements_checker->getSuppressedIssues()
@@ -833,6 +947,8 @@ class IfChecker
             }
 
             $else_context->vars_in_scope = $else_vars_reconciled;
+
+            $else_context->removeReconciledClauses($changed_var_ids);
         }
 
         $old_else_context = clone $else_context;
@@ -876,11 +992,11 @@ class IfChecker
         }
 
         if (count($else->stmts)) {
+            $final_actions = ScopeChecker::getFinalControlActions($else->stmts);
             // has a return/throw at end
-            $has_ending_statements = ScopeChecker::doesAlwaysReturnOrThrow($else->stmts);
-
-            $has_leaving_statements = $has_ending_statements ||
-                ScopeChecker::doesAlwaysBreakOrContinue($else->stmts);
+            $has_ending_statements = $final_actions === [ScopeChecker::ACTION_END];
+            $has_leaving_statements = $has_ending_statements
+                || (count($final_actions) && !in_array(ScopeChecker::ACTION_NONE, $final_actions, true));
 
             $else_redefined_vars = $else_context->getRedefinedVars($original_context);
 
