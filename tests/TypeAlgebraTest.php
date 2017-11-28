@@ -577,7 +577,7 @@ class TypeAlgebraTest extends TestCase
                         if ($a !== null) return $b;
                         return $a;
                     }',
-                'error_message' => 'PossiblyInvalidReturnType',
+                'error_message' => 'InvalidReturnType',
             ],
             'invertedTwoVarLogicNotNestedWithElseif' => [
                 '<?php

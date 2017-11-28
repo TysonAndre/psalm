@@ -1209,7 +1209,7 @@ class TypeTest extends TestCase
                     if ($var instanceof One) {
                         $var->fooFoo();
                     }',
-                'error_message' => 'FailedTypeResolution',
+                'error_message' => 'RedundantCondition',
             ],
             'unNegatableInstanceof' => [
                 '<?php
@@ -1226,7 +1226,7 @@ class TypeTest extends TestCase
                     else {
                         // do something
                     }',
-                'error_message' => 'FailedTypeResolution',
+                'error_message' => 'RedundantCondition',
             ],
             'wrongParam' => [
                 '<?php
