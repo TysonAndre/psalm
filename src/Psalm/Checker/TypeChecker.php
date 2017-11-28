@@ -38,7 +38,7 @@ class TypeChecker
      * @param  CodeLocation              $code_location
      * @param  array<string>             $suppressed_issues
      *
-     * @return array<string, Type\Union>|false
+     * @return array<string, Type\Union>
      */
     public static function reconcileKeyedTypes(
         array $new_types,
@@ -87,6 +87,7 @@ class TypeChecker
             $before_adjustment = (string)$result_type;
 
             $failed_reconciliation = false;
+            $from_docblock = $result_type && $result_type->from_docblock;
 
             foreach ($new_type_parts as $new_type_part) {
                 $new_type_part_parts = explode('|', $new_type_part);
@@ -110,10 +111,11 @@ class TypeChecker
                     }
 
                     if ($result_type_candidate === false) {
-                        return false;
+                        $failed_reconciliation = true;
+                        $result_type_candidate = Type::getMixed();
                     }
 
-                    $orred_type = $orred_type && $result_type_candidate
+                    $orred_type = $orred_type
                         ? Type::combineUnionTypes($result_type_candidate, $orred_type)
                         : $result_type_candidate;
                 }
@@ -125,7 +127,9 @@ class TypeChecker
                 continue;
             }
 
-            if ((string)$result_type !== $before_adjustment) {
+            if ((string)$result_type !== $before_adjustment
+                || $result_type->from_docblock !== $from_docblock
+            ) {
                 $changed_var_ids[] = $key;
             }
 
@@ -156,7 +160,7 @@ class TypeChecker
      * @param   array               $suppressed_issues
      * @param   bool                $failed_reconciliation if the types cannot be reconciled, we need to know
      *
-     * @return  Type\Union|null|false
+     * @return  Type\Union|false
      */
     public static function reconcileTypes(
         $new_var_type,
@@ -171,7 +175,7 @@ class TypeChecker
 
         if ($existing_var_type === null) {
             if ($new_var_type === '^isset') {
-                return null;
+                return Type::getMixed();
             }
 
             if ($new_var_type === 'isset') {
@@ -186,7 +190,7 @@ class TypeChecker
                 return Type::parseString($new_var_type);
             }
 
-            return $new_var_type === '!falsy' ? Type::getMixed() : null;
+            return $new_var_type === '!falsy' ? Type::getMixed() : false;
         }
 
         if ($new_var_type === 'mixed' && $existing_var_type->isMixed()) {

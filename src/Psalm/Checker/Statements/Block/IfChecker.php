@@ -160,10 +160,6 @@ class IfChecker
                     $statements_checker->getSuppressedIssues()
                 );
 
-            if ($if_vars_in_scope_reconciled === false) {
-                return false;
-            }
-
             $if_context->vars_in_scope = $if_vars_in_scope_reconciled;
             $if_context->vars_possibly_in_scope = array_merge(
                 $reconcilable_if_types,
@@ -200,10 +196,6 @@ class IfChecker
                 new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
                 $statements_checker->getSuppressedIssues()
             );
-
-            if ($else_vars_reconciled === false) {
-                return false;
-            }
 
             $temp_else_context->vars_in_scope = $else_vars_reconciled;
         }
@@ -404,7 +396,9 @@ class IfChecker
 
             // if we have a check like if (!isset($a)) { $a = true; } we want to make sure $a is always set
             foreach ($if_scope->new_vars as $var_id => $_) {
-                if (isset($if_scope->negated_types[$var_id]) && $if_scope->negated_types[$var_id] === 'isset') {
+                if (isset($if_scope->negated_types[$var_id])
+                    && ($if_scope->negated_types[$var_id] === 'isset' || $if_scope->negated_types[$var_id] === '^isset')
+                ) {
                     $if_scope->forced_new_vars[$var_id] = Type::getMixed();
                 }
             }
@@ -468,10 +462,6 @@ class IfChecker
                         $var_id,
                         $if_scope->negated_clauses
                     );
-                }
-
-                if ($outer_context_vars_reconciled === false) {
-                    return false;
                 }
 
                 $outer_context->vars_in_scope = $outer_context_vars_reconciled;
@@ -577,10 +567,6 @@ class IfChecker
                 $statements_checker->getSuppressedIssues()
             );
 
-            if ($elseif_vars_reconciled === false) {
-                return false;
-            }
-
             $elseif_context->vars_in_scope = $elseif_vars_reconciled;
 
             if ($changed_var_ids) {
@@ -671,10 +657,6 @@ class IfChecker
                 new CodeLocation($statements_checker->getSource(), $elseif->cond, $outer_context->include_location),
                 $statements_checker->getSuppressedIssues()
             );
-
-            if ($elseif_vars_reconciled === false) {
-                return false;
-            }
 
             $elseif_context->vars_in_scope = $elseif_vars_reconciled;
 
@@ -818,10 +800,6 @@ class IfChecker
                         $statements_checker->getSuppressedIssues()
                     );
 
-                    if ($leaving_vars_reconciled === false) {
-                        return false;
-                    }
-
                     $implied_outer_context = clone $elseif_context;
                     $implied_outer_context->vars_in_scope = $leaving_vars_reconciled;
 
@@ -941,10 +919,6 @@ class IfChecker
                 new CodeLocation($statements_checker->getSource(), $else, $outer_context->include_location),
                 $statements_checker->getSuppressedIssues()
             );
-
-            if ($else_vars_reconciled === false) {
-                return false;
-            }
 
             $else_context->vars_in_scope = $else_vars_reconciled;
 
