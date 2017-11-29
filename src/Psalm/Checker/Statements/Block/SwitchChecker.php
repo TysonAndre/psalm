@@ -94,7 +94,7 @@ class SwitchChecker
                 );
 
                 // this will see whether any of the clauses in set A conflict with the clauses in set B
-                AlgebraChecker::checkForParadox($context->clauses, $case_clauses, $statements_checker, $stmt->cond);
+                AlgebraChecker::checkForParadox($context->clauses, $case_clauses, $statements_checker, $stmt->cond, []);
 
                 $case_context->clauses = AlgebraChecker::simplifyCNF(array_merge($context->clauses, $case_clauses));
 
@@ -180,8 +180,6 @@ class SwitchChecker
                     if ($possibly_redefined_vars === null) {
                         $possibly_redefined_vars = $case_redefined_vars;
                     } else {
-                        $possibly_redefined_vars = [];
-
                         foreach ($case_redefined_vars as $var_id => $type) {
                             if (!isset($possibly_redefined_vars[$var_id])) {
                                 $possibly_redefined_vars[$var_id] = $type;
