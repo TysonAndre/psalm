@@ -1276,6 +1276,9 @@ class TypeChecker
                 throw new \InvalidArgumentException('Unexpected divider ' . $divider);
             }
         }
+        if (!isset($existing_keys[$base_key])) {
+            return null;
+        }
 
         return $existing_keys[$base_key];
     }
