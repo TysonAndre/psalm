@@ -187,8 +187,11 @@ class IssueBuffer
         } else {
             $code = 'W0001';
         }
+
         // https://docs.pylint.org/en/1.6.0/output.html doesn't mention what to do about 'column'.
         // Have to check if jenkins can parse other formats.
+        // It can't for pylint. https://github.com/jenkinsci/violations-plugin/blob/master/src/main/java/hudson/plugins/violations/types/pylint/PyLintParser.java
+        $message = sprintf('%s (column %d)', $message, $issue_data['column']);
         $issue_string = sprintf("%s:%d: [%s] %s",
             $issue_data['file_name'],
             $issue_data['line_number'],
