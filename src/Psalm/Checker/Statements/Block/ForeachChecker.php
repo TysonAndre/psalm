@@ -180,7 +180,8 @@ class ForeachChecker
                         $iterator_type->value,
                         'Iterator'
                     ) ||
-                        (InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
+                        (
+                            InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
                             && InterfaceChecker::interfaceExtends(
                                 $project_checker,
                                 $iterator_type->value,
@@ -212,7 +213,8 @@ class ForeachChecker
                         $iterator_type->value,
                         'Traversable'
                     ) ||
-                        (InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
+                        (
+                            InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
                             && InterfaceChecker::interfaceExtends(
                                 $project_checker,
                                 $iterator_type->value,
@@ -296,7 +298,7 @@ class ForeachChecker
             }
         }
 
-        $statements_checker->analyzeLoop($stmt->stmts, [], [], $foreach_context, $context);
+        LoopChecker::analyze($statements_checker, $stmt->stmts, [], [], $foreach_context, $context);
 
         $context->vars_possibly_in_scope = array_merge(
             $foreach_context->vars_possibly_in_scope,

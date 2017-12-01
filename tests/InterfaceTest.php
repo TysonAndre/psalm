@@ -303,6 +303,26 @@ class InterfaceTest extends TestCase
                 '<?php
                     class SomeIterator extends IteratorIterator {}',
             ],
+            'suppressMismatch' => [
+                '<?php
+                    interface I {
+                        /**
+                         * @return Boolean
+                         */
+                        public function check();
+                    }
+
+                    class C implements I
+                    {
+                        /**
+                         * @psalm-suppress ImplementedReturnTypeMismatch
+                         */
+                        public function check(): bool
+                        {
+                            return false;
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -416,7 +436,7 @@ class InterfaceTest extends TestCase
                         return "hello";
                       }
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'ImplementedReturnTypeMismatch',
             ],
             'abstractInterfaceImplementsButCallUndefinedMethod' => [
                 '<?php
