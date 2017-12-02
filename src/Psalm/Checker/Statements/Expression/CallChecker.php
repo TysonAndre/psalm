@@ -1172,7 +1172,7 @@ class CallChecker
             $class_checker = $source->getSource();
 
             if ($class_checker instanceof ClassLikeChecker &&
-                $method_storage->visibility === ClassLikeChecker::VISIBILITY_PRIVATE
+                ($method_storage->visibility === ClassLikeChecker::VISIBILITY_PRIVATE || $method_storage->final)
             ) {
                 $local_vars_in_scope = [];
                 $local_vars_possibly_in_scope = [];
@@ -1415,7 +1415,8 @@ class CallChecker
 
                 if ($stmt->class instanceof PhpParser\Node\Name
                     && ($stmt->class->parts[0] !== 'parent' || $statements_checker->isStatic())
-                    && (!$context->self
+                    && (
+                        !$context->self
                         || $statements_checker->isStatic()
                         || !ClassChecker::classExtends($project_checker, $context->self, $fq_class_name)
                     )
