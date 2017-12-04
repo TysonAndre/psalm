@@ -58,6 +58,92 @@ class RedundantConditionTest extends TestCase
                         return $x;
                     }',
             ],
+            'noRedundantConditionAfterAssignment' => [
+                '<?php
+                    /** @param int $i */
+                    function foo($i) : void {
+                        if ($i !== null) {
+                            $i = (int) $i;
+
+                            if ($i) {}
+                        }
+                    }',
+            ],
+            'noRedundantConditionAfterDocblockTypeNullCheck' => [
+                '<?php
+                    class A {
+                        /** @var ?int */
+                        public $foo;
+                    }
+                    class B {}
+
+                    /**
+                     * @param  A|B $i
+                     */
+                    function foo($i) : void {
+                        if (empty($i)) {
+                            return;
+                        }
+
+                        switch (get_class($i)) {
+                            case "A":
+                                if ($i->foo) {}
+                                break;
+
+                            default:
+                                break;
+                        }
+                    }',
+            ],
+            'noRedundantConditionTypeReplacementWithDocblock' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return A
+                     */
+                    function getA() {
+                        return new A();
+                    }
+
+                    $maybe_a = rand(0, 1) ? new A : null;
+
+                    if ($maybe_a === null) {
+                        $maybe_a = getA();
+                    }
+
+                    if ($maybe_a === null) {}',
+            ],
+            'noRedundantConditionAfterPossiblyNullCheck' => [
+                '<?php
+                    if (rand(0, 1)) {
+                        $a = "hello";
+                    }
+
+                    if ($a) {}',
+                'assertions' => [],
+                'error_levels' => ['PossiblyUndefinedVariable'],
+            ],
+            'noRedundantConditionAfterFromDocblockRemoval' => [
+                '<?php
+                    class A {
+                      public function foo() : void{}
+                      public function bar() : void{}
+                    }
+
+                    /** @return A */
+                    function makeA() {
+                      return new A;
+                    }
+
+                    $a = makeA();
+
+                    if ($a === null) {
+                      exit;
+                    }
+
+                    if ($a->foo() || $a->bar()) {}',
+            ],
         ];
     }
 

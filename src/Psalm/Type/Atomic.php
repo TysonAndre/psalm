@@ -45,7 +45,7 @@ abstract class Atomic
      *
      * @var bool
      */
-    protected $from_docblock = false;
+    public $from_docblock = false;
 
     /**
      * @param  string $value
@@ -289,6 +289,14 @@ abstract class Atomic
     }
 
     /**
+     * @return string
+     */
+    public function getId()
+    {
+        return $this->__toString();
+    }
+
+    /**
      * @param  array<string> $aliased_classes
      * @param  string|null   $this_class
      * @param  bool          $use_phpdoc_format
@@ -315,7 +323,20 @@ abstract class Atomic
      *
      * @return void
      */
-    public function replaceTemplateTypes(array $template_types, array &$generic_params, Type\Atomic $input_type = null)
+    public function replaceTemplateTypesWithStandins(
+        array $template_types,
+        array &$generic_params,
+        Type\Atomic $input_type = null
+    ) {
+        // do nothing
+    }
+
+    /**
+     * @param  array<string, string|Type\Union>     $template_types
+     *
+     * @return void
+     */
+    public function replaceTemplateTypesWithArgTypes(array $template_types)
     {
         // do nothing
     }

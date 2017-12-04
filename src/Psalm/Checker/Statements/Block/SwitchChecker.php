@@ -11,6 +11,7 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\ContinueOutsideLoop;
 use Psalm\IssueBuffer;
+use Psalm\Scope\LoopScope;
 use Psalm\Type;
 
 class SwitchChecker
@@ -19,7 +20,6 @@ class SwitchChecker
      * @param   StatementsChecker               $statements_checker
      * @param   PhpParser\Node\Stmt\Switch_     $stmt
      * @param   Context                         $context
-     * @param   Context|null                    $loop_context
      *
      * @return  false|null
      */
@@ -27,7 +27,7 @@ class SwitchChecker
         StatementsChecker $statements_checker,
         PhpParser\Node\Stmt\Switch_ $stmt,
         Context $context,
-        Context $loop_context = null
+        LoopScope $loop_scope = null
     ) {
         if (ExpressionChecker::analyze($statements_checker, $stmt->cond, $context) === false) {
             return false;
@@ -102,13 +102,13 @@ class SwitchChecker
 
                 // if the if has an || in the conditional, we cannot easily reason about it
                 if ($reconcilable_if_types) {
-                    $changed_vars = [];
+                    $changed_var_ids = [];
 
                     $case_vars_in_scope_reconciled =
                         TypeChecker::reconcileKeyedTypes(
                             $reconcilable_if_types,
                             $case_context->vars_in_scope,
-                            $changed_vars,
+                            $changed_var_ids,
                             [],
                             $statements_checker,
                             new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
@@ -120,10 +120,13 @@ class SwitchChecker
                     }
 
                     $case_context->vars_in_scope = $case_vars_in_scope_reconciled;
-                    $case_context->vars_possibly_in_scope = array_merge(
-                        $reconcilable_if_types,
-                        $case_context->vars_possibly_in_scope
-                    );
+                    foreach ($reconcilable_if_types as $var_id => $type) {
+                        $case_context->vars_possibly_in_scope[$var_id] = true;
+                    }
+
+                    if ($changed_var_ids) {
+                        $case_context->removeReconciledClauses($changed_var_ids);
+                    }
                 }
             }
 
@@ -142,7 +145,7 @@ class SwitchChecker
                 $leftover_statements = [];
             }
 
-            $statements_checker->analyze($case_stmts, $case_context, $loop_context);
+            $statements_checker->analyze($case_stmts, $case_context, $loop_scope);
 
             $context->referenced_var_ids = array_merge(
                 $context->referenced_var_ids,
@@ -157,10 +160,10 @@ class SwitchChecker
 
                 // if we're leaving this block, add vars to outer for loop scope
                 if ($case_exit_type === 'continue') {
-                    if ($loop_context) {
-                        $loop_context->vars_possibly_in_scope = array_merge(
+                    if ($loop_scope) {
+                        $loop_scope->vars_possibly_in_scope = array_merge(
                             $vars,
-                            $loop_context->vars_possibly_in_scope
+                            $loop_scope->vars_possibly_in_scope
                         );
                     } else {
                         if (IssueBuffer::accepts(
@@ -173,7 +176,7 @@ class SwitchChecker
                         }
                     }
                 } else {
-                    $case_redefined_vars = $case_context->getRedefinedVars($original_context);
+                    $case_redefined_vars = $case_context->getRedefinedVars($original_context->vars_in_scope);
 
                     Type::redefineGenericUnionTypes($case_redefined_vars, $context);
 
@@ -195,9 +198,14 @@ class SwitchChecker
                     if ($redefined_vars === null) {
                         $redefined_vars = $case_redefined_vars;
                     } else {
-                        foreach ($redefined_vars as $redefined_var => $type) {
-                            if (!isset($case_redefined_vars[$redefined_var])) {
-                                unset($redefined_vars[$redefined_var]);
+                        foreach ($redefined_vars as $var_id => $type) {
+                            if (!isset($case_redefined_vars[$var_id])) {
+                                unset($redefined_vars[$var_id]);
+                            } else {
+                                $redefined_vars[$var_id] = Type::combineUnionTypes(
+                                    $type,
+                                    $case_redefined_vars[$var_id]
+                                );
                             }
                         }
                     }

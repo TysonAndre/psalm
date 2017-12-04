@@ -77,7 +77,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
     protected $return_vars_in_scope = [];
 
     /**
-     * @var array<string, array<string, bool|string>>
+     * @var array<string, array<string, bool>>
      */
     protected $return_vars_possibly_in_scope = [];
 
@@ -128,6 +128,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
         $file_storage_provider = $project_checker->file_storage_provider;
 
+        $implemented_docblock_param_types = [];
+
         if ($this->function instanceof ClassMethod) {
             $real_method_id = (string)$this->getMethodId();
 
@@ -176,8 +178,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             if ($this->function->name === '__construct') {
                 $context->inside_constructor = true;
             }
-
-            $implemented_docblock_param_types = [];
 
             if ($overridden_method_ids && $this->function->name !== '__construct') {
                 $have_emitted = false;
@@ -347,7 +347,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             if ($template_types) {
                 $substituted_type = clone $param_type;
                 $generic_types = [];
-                $substituted_type->replaceTemplateTypes($template_types, $generic_types, null);
+                $substituted_type->replaceTemplateTypesWithStandins($template_types, $generic_types, null);
                 $substituted_type->check($this->source, $function_param->location, $this->suppressed_issues, [], false);
             } else {
                 $param_type->check($this->source, $function_param->location, $this->suppressed_issues, [], false);
@@ -612,8 +612,10 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 $or_null_implementer_return_type->types['null'] = new Type\Atomic\TNull;
             }
 
-            if ((string)$implementer_signature_return_type !== (string)$guide_signature_return_type
-                && (string)$or_null_implementer_return_type !== (string)$guide_signature_return_type
+            if ((!$implementer_signature_return_type
+                    || $implementer_signature_return_type->getId() !== $guide_signature_return_type->getId())
+                && (!$or_null_implementer_return_type
+                    || $or_null_implementer_return_type->getId() !== $guide_signature_return_type->getId())
             ) {
                 if (IssueBuffer::accepts(
                     new MethodSignatureMismatch(
@@ -721,10 +723,12 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 return null;
             }
 
+            $implemeneter_param_type = $implementer_method_storage->params[$i]->type;
+
             if (!$guide_classlike_storage->user_defined &&
                 $guide_param->type &&
                 !$guide_param->type->isMixed() &&
-                (string)$implementer_method_storage->params[$i]->type !== (string)$guide_param->type
+                (!$implemeneter_param_type || $implemeneter_param_type->getId() !== $guide_param->type->getId())
             ) {
                 if (IssueBuffer::accepts(
                     new MethodSignatureMismatch(

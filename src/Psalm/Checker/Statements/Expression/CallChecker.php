@@ -334,13 +334,12 @@ class CallChecker
 
                     try {
                         if ($function_storage && $function_storage->return_type) {
-                            if ($generic_params) {
-                                $return_type = FunctionChecker::replaceTemplateTypes(
-                                    $function_storage->return_type,
+                            $return_type = clone $function_storage->return_type;
+
+                            if ($generic_params && $function_storage->template_types) {
+                                $return_type->replaceTemplateTypesWithArgTypes(
                                     $generic_params
                                 );
-                            } else {
-                                $return_type = clone $function_storage->return_type;
                             }
 
                             $return_type_location = $function_storage->return_type_location;
@@ -985,13 +984,12 @@ class CallChecker
                     $return_type_candidate = MethodChecker::getMethodReturnType($project_checker, $method_id);
 
                     if ($return_type_candidate) {
+                        $return_type_candidate = clone $return_type_candidate;
+
                         if ($class_template_params) {
-                            $return_type_candidate = FunctionChecker::replaceTemplateTypes(
-                                $return_type_candidate,
+                            $return_type_candidate->replaceTemplateTypesWithArgTypes(
                                 $class_template_params
                             );
-                        } else {
-                            $return_type_candidate = clone $return_type_candidate;
                         }
 
                         $return_type_candidate = ExpressionChecker::fleshOutType(
@@ -1051,12 +1049,12 @@ class CallChecker
             }
 
             if ($invalid_method_call_types) {
-                $class_type = $invalid_method_call_types[0];
+                $invalid_class_type = $invalid_method_call_types[0];
 
                 if ($has_valid_method_call_type) {
                     if (IssueBuffer::accepts(
                         new PossiblyInvalidMethodCall(
-                            'Cannot call method on possible ' . $class_type . ' variable ' . $var_id,
+                            'Cannot call method on possible ' . $invalid_class_type . ' variable ' . $var_id,
                             $code_location
                         ),
                         $statements_checker->getSuppressedIssues()
@@ -1066,7 +1064,7 @@ class CallChecker
                 } else {
                     if (IssueBuffer::accepts(
                         new InvalidMethodCall(
-                            'Cannot call method on ' . $class_type . ' variable ' . $var_id,
+                            'Cannot call method on ' . $invalid_class_type . ' variable ' . $var_id,
                             $code_location
                         ),
                         $statements_checker->getSuppressedIssues()
@@ -1118,6 +1116,35 @@ class CallChecker
 
         if (!$config->remember_property_assignments_after_call && !$context->collect_initializations) {
             $context->removeAllObjectVars();
+        }
+
+        // if we called a method on this nullable variable, remove the nullable status here
+        // because any further calls must have worked
+        if ($var_id
+            && $class_type
+            && $has_valid_method_call_type
+            && !$invalid_method_call_types
+            && $existent_method_ids
+            && !$non_existent_method_ids
+            && ($class_type->from_docblock || $class_type->isNullable())
+        ) {
+            $keys_to_remove = [];
+
+            foreach ($class_type->types as $key => $type) {
+                if (!$type instanceof TNamedObject) {
+                    $keys_to_remove[] = $key;
+                } else {
+                    $type->from_docblock = false;
+                }
+            }
+
+            foreach ($keys_to_remove as $key) {
+                unset($class_type->types[$key]);
+            }
+
+            $class_type->from_docblock = false;
+
+            $context->removeVarFromConflictingClauses($var_id, null, $statements_checker);
         }
     }
 
@@ -1196,7 +1223,7 @@ class CallChecker
                 }
 
                 foreach ($local_vars_possibly_in_scope as $var => $type) {
-                    $context->vars_possibly_in_scope[$var] = $type;
+                    $context->vars_possibly_in_scope[$var] = true;
                 }
             }
         }
@@ -1459,13 +1486,12 @@ class CallChecker
                 $return_type_candidate = MethodChecker::getMethodReturnType($project_checker, $method_id);
 
                 if ($return_type_candidate) {
+                    $return_type_candidate = clone $return_type_candidate;
+
                     if ($found_generic_params) {
-                        $return_type_candidate = FunctionChecker::replaceTemplateTypes(
-                            $return_type_candidate,
+                        $return_type_candidate->replaceTemplateTypesWithArgTypes(
                             $found_generic_params
                         );
-                    } else {
-                        $return_type_candidate = clone $return_type_candidate;
                     }
 
                     $return_type_candidate = ExpressionChecker::fleshOutType(
@@ -1978,7 +2004,7 @@ class CallChecker
 
                             $by_ref_type = clone $by_ref_type;
 
-                            $by_ref_type->replaceTemplateTypes($template_types, $generic_params);
+                            $by_ref_type->replaceTemplateTypesWithStandins($template_types, $generic_params);
                         }
                     }
 
@@ -2039,6 +2065,8 @@ class CallChecker
                                         );
                                     }
                                 }
+
+                                $offset_value_type->setFromDocblock();
                             }
 
                             if ($generic_params === null) {
@@ -2051,7 +2079,7 @@ class CallChecker
                                 $generic_params = [];
                             }
 
-                            $param_type->replaceTemplateTypes(
+                            $param_type->replaceTemplateTypesWithStandins(
                                 $template_types,
                                 $generic_params,
                                 $arg->value->inferredType

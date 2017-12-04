@@ -79,6 +79,19 @@ class Union
     }
 
     /**
+     * @return string
+     */
+    public function getId()
+    {
+        $s = '';
+        foreach ($this->types as $type) {
+            $s .= $type->getId() . '|';
+        }
+
+        return substr($s, 0, -1);
+    }
+
+    /**
      * @param  array<string> $aliased_classes
      * @param  string|null   $this_class
      * @param  bool          $use_phpdoc_format
@@ -334,8 +347,11 @@ class Union
      *
      * @return void
      */
-    public function replaceTemplateTypes(array $template_types, array &$generic_params, Type\Union $input_type = null)
-    {
+    public function replaceTemplateTypesWithStandins(
+        array $template_types,
+        array &$generic_params,
+        Type\Union $input_type = null
+    ) {
         $keys_to_unset = [];
 
         foreach ($this->types as $key => $atomic_type) {
@@ -344,10 +360,11 @@ class Union
                 $this->types[$template_types[$key]] = Atomic::create($template_types[$key]);
 
                 if ($input_type) {
-                    $generic_params[$key] = $input_type;
+                    $generic_params[$key] = clone $input_type;
+                    $generic_params[$key]->setFromDocblock();
                 }
             } else {
-                $atomic_type->replaceTemplateTypes(
+                $atomic_type->replaceTemplateTypesWithStandins(
                     $template_types,
                     $generic_params,
                     isset($input_type->types[$key]) ? $input_type->types[$key] : null
@@ -358,6 +375,53 @@ class Union
         foreach ($keys_to_unset as $key) {
             unset($this->types[$key]);
         }
+    }
+
+    /**
+     * @param  array<string, string|Type\Union>     $template_types
+     *
+     * @return void
+     */
+    public function replaceTemplateTypesWithArgTypes(array $template_types)
+    {
+        $keys_to_unset = [];
+
+        $new_types = [];
+
+        $is_mixed = false;
+
+        foreach ($this->types as $key => $atomic_type) {
+            if (isset($template_types[$key])) {
+                $keys_to_unset[] = $key;
+                $template_type = $template_types[$key];
+
+                if (is_string($template_type)) {
+                    $new_types[$template_type] = Atomic::create($template_type);
+                } else {
+                    foreach ($template_type->types as $template_type_part) {
+                        if ($template_type_part instanceof Type\Atomic\TMixed) {
+                            $is_mixed = true;
+                        }
+
+                        $new_types[$template_type_part->getKey()] = $template_type_part;
+                    }
+                }
+            } else {
+                $atomic_type->replaceTemplateTypesWithArgTypes($template_types);
+            }
+        }
+
+        if ($is_mixed) {
+            $this->types = $new_types;
+
+            return;
+        }
+
+        foreach ($keys_to_unset as $key) {
+            unset($this->types[$key]);
+        }
+
+        $this->types = array_merge($this->types, $new_types);
     }
 
     /**
