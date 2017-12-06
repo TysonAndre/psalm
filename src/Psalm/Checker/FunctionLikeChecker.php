@@ -1025,7 +1025,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 if (IssueBuffer::accepts(
                     new InvalidToString(
                         '__toString methods must return a string, ' . $inferred_return_type . ' returned',
-                        $secondary_return_type_location ?: $return_type_location
+                        $return_type_location
                     ),
                     $this->suppressed_issues
                 )) {
@@ -1033,7 +1033,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 }
             }
 
-            if (!$return_type && !$project_checker->update_docblocks) {
+            if (!$project_checker->update_docblocks) {
                 return null;
             }
         }
@@ -1069,7 +1069,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 new InvalidReturnType(
                     'No return statements were found for method ' . $cased_method_id .
                         ' but return type \'' . $declared_return_type . '\' was expected',
-                    $secondary_return_type_location ?: $return_type_location
+                    $return_type_location
                 )
             )) {
                 return false;
@@ -1081,7 +1081,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         if (!$declared_return_type->isMixed()) {
             $declared_return_type->check(
                 $this,
-                $secondary_return_type_location ?: $return_type_location,
+                $return_type_location,
                 $this->getSuppressedIssues(),
                 [],
                 false
@@ -1098,7 +1098,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     new MixedInferredReturnType(
                         'Could not verify return type \'' . $declared_return_type . '\' for ' .
                             $cased_method_id,
-                        $secondary_return_type_location ?: $return_type_location
+                        $return_type_location
                     ),
                     $this->suppressed_issues
                 )) {
@@ -1134,7 +1134,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         new MoreSpecificReturnType(
                             'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
                                 ' is more specific than the inferred return type \'' . $inferred_return_type . '\'',
-                            $secondary_return_type_location ?: $return_type_location
+                            $return_type_location
                         ),
                         $this->suppressed_issues
                     )) {
@@ -1146,7 +1146,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                             new PossiblyInvalidReturnType(
                                 'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
                                     ' is incorrect but has some compatible types, got \'' . $inferred_return_type . '\'',
-                                $secondary_return_type_location ?: $return_type_location
+                                $return_type_location
                             ),
                             $this->suppressed_issues
                         )) {
@@ -1157,7 +1157,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                             new InvalidReturnType(
                                 'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
                                     ' is incorrect, got \'' . $inferred_return_type . '\'',
-                                $secondary_return_type_location ?: $return_type_location
+                                $return_type_location
                             ),
                             $this->suppressed_issues
                         )) {
@@ -1178,7 +1178,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     new LessSpecificReturnType(
                         'The inferred return type \'' . $inferred_return_type . '\' for ' . $cased_method_id .
                             ' is more specific than the declared return type \'' . $declared_return_type . '\'',
-                        $secondary_return_type_location ?: $return_type_location
+                        $return_type_location
                     ),
                     $this->suppressed_issues
                 )) {

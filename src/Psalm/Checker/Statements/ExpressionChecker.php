@@ -30,7 +30,9 @@ use Psalm\Issue\InvalidStaticVariable;
 use Psalm\Issue\MixedOperand;
 use Psalm\Issue\NullOperand;
 use Psalm\Issue\PossiblyNullOperand;
+use Psalm\Issue\PossiblyUndefinedGlobalVariable;
 use Psalm\Issue\PossiblyUndefinedVariable;
+use Psalm\Issue\UndefinedGlobalVariable;
 use Psalm\Issue\UndefinedVariable;
 use Psalm\Issue\UnrecognizedExpression;
 use Psalm\IssueBuffer;
@@ -111,7 +113,21 @@ class ExpressionChecker
         } elseif ($stmt instanceof PhpParser\Node\Scalar\EncapsedStringPart) {
             // do nothing
         } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst) {
-            // do nothing
+            switch (strtolower($stmt->getName())) {
+                case '__line__':
+                    $stmt->inferredType = Type::getInt();
+                    break;
+
+                case '__file__':
+                case '__dir__':
+                case '__function__':
+                case '__class__':
+                case '__trait__':
+                case '__method__':
+                case '__namespace__':
+                    $stmt->inferredType = Type::getString();
+                    break;
+            }
         } elseif ($stmt instanceof PhpParser\Node\Scalar\LNumber) {
             $stmt->inferredType = Type::getInt();
         } elseif ($stmt instanceof PhpParser\Node\Scalar\DNumber) {
@@ -604,12 +620,29 @@ class ExpressionChecker
                         );
                     }
                 } elseif ($context->check_variables) {
+                    if ($context->is_global) {
+                        if (IssueBuffer::accepts(
+                            new UndefinedGlobalVariable(
+                                'Cannot find referenced variable ' . $var_name . ' in global scope',
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
+
+                        $stmt->inferredType = Type::getMixed();
+
+                        return null;
+                    }
                     IssueBuffer::add(
-                        new UndefinedVariable(
-                            'Cannot find referenced variable ' . $var_name,
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        )
-                    );
+                            new UndefinedVariable(
+                                'Cannot find referenced variable ' . $var_name,
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            )
+                        );
+
+                    $stmt->inferredType = Type::getMixed();
 
                     return false;
                 }
@@ -618,15 +651,28 @@ class ExpressionChecker
             $first_appearance = $statements_checker->getFirstAppearance($var_name);
 
             if ($first_appearance) {
-                if (IssueBuffer::accepts(
-                    new PossiblyUndefinedVariable(
-                        'Possibly undefined variable ' . $var_name . ', first seen on line ' .
-                            $first_appearance->getLineNumber(),
-                        new CodeLocation($statements_checker->getSource(), $stmt)
-                    ),
-                    $statements_checker->getSuppressedIssues()
-                )) {
-                    return false;
+                if ($context->is_global) {
+                    if (IssueBuffer::accepts(
+                        new PossiblyUndefinedGlobalVariable(
+                            'Possibly undefined global variable ' . $var_name . ', first seen on line ' .
+                                $first_appearance->getLineNumber(),
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new PossiblyUndefinedVariable(
+                            'Possibly undefined variable ' . $var_name . ', first seen on line ' .
+                                $first_appearance->getLineNumber(),
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
                 }
             }
         } else {
@@ -1877,14 +1923,17 @@ class ExpressionChecker
 
                 if (!isset($context->vars_possibly_in_scope[$use_var_id])) {
                     if ($context->check_variables) {
-                        IssueBuffer::add(
+                        if (IssueBuffer::accepts(
                             new UndefinedVariable(
                                 'Cannot find referenced variable ' . $use_var_id,
                                 new CodeLocation($statements_checker->getSource(), $use)
-                            )
-                        );
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
 
-                        return false;
+                        return null;
                     }
                 }
 
@@ -1902,18 +1951,21 @@ class ExpressionChecker
                         return false;
                     }
 
-                    return null;
+                    continue;
                 }
 
                 if ($context->check_variables) {
-                    IssueBuffer::add(
+                    if (IssueBuffer::accepts(
                         new UndefinedVariable(
                             'Cannot find referenced variable ' . $use_var_id,
                             new CodeLocation($statements_checker->getSource(), $use)
-                        )
-                    );
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
 
-                    return false;
+                    continue;
                 }
             }
         }

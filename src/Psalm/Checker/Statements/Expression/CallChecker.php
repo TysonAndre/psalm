@@ -771,6 +771,7 @@ class CallChecker
 
         if ($class_type && is_string($stmt->name)) {
             $return_type = null;
+            $method_name_lc = strtolower($stmt->name);
 
             /** @var InvalidMethodCall[] $deferred_issues */
             $deferred_issues = [];
@@ -859,7 +860,7 @@ class CallChecker
                     return;
                 }
 
-                $method_id = $fq_class_name . '::' . strtolower($stmt->name);
+                $method_id = $fq_class_name . '::' . $method_name_lc;
 
                 if (MethodChecker::methodExists(
                     $project_checker,
@@ -882,15 +883,15 @@ class CallChecker
                 if ($var_id === '$this' &&
                     $context->self &&
                     $fq_class_name !== $context->self &&
-                    MethodChecker::methodExists($project_checker, $context->self . '::' . strtolower($stmt->name))
+                    MethodChecker::methodExists($project_checker, $context->self . '::' . $method_name_lc)
                 ) {
-                    $method_id = $context->self . '::' . strtolower($stmt->name);
+                    $method_id = $context->self . '::' . $method_name_lc;
                     $fq_class_name = $context->self;
                 }
 
                 if ($intersection_types && !MethodChecker::methodExists($project_checker, $method_id)) {
                     foreach ($intersection_types as $intersection_type) {
-                        $method_id = $intersection_type->value . '::' . strtolower($stmt->name);
+                        $method_id = $intersection_type->value . '::' . $method_name_lc;
                         $fq_class_name = $intersection_type->value;
 
                         if (MethodChecker::methodExists($project_checker, $method_id)) {
@@ -959,7 +960,15 @@ class CallChecker
                 $return_type_location = null;
                 $project_checker = $source->getFileChecker()->project_checker;
 
-                if (FunctionChecker::inCallMap($cased_method_id)) {
+                switch (strtolower($stmt->name)) {
+                    case '__tostring':
+                        $return_type = Type::getString();
+                        continue;
+                }
+
+                if ($method_name_lc === '__tostring') {
+                    $return_type_candidate = Type::getString();
+                } elseif (FunctionChecker::inCallMap($cased_method_id)) {
                     $return_type_candidate = FunctionChecker::getReturnTypeFromCallMap($method_id);
                 } else {
                     if (MethodChecker::checkMethodVisibility(
