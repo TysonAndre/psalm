@@ -1064,6 +1064,9 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 // used
                 return null;
             }
+            if ($declared_return_type->hasType('null') && $declared_return_type->from_docblock) {
+                return null;
+            }
 
             if (IssueBuffer::accepts(
                 new InvalidReturnType(
