@@ -2436,7 +2436,11 @@ class CallChecker
             $source_checker = $statements_checker->getSource();
 
             if ($source_checker instanceof FunctionLikeChecker) {
-                $context->inferType($input_expr, $source_checker->getFunctionLikeStorage(), $param_type);
+                $context->inferType(
+                    $input_expr,
+                    $source_checker->getFunctionLikeStorage($statements_checker),
+                    $param_type
+                );
             }
         }
 

@@ -697,6 +697,21 @@ class LoopScopeTest extends TestCase
                     '$a' => 'bool',
                 ],
             ],
+            'falseToBoolAfterContinueAndBreak' => [
+                '<?php
+                    $a = false;
+                    foreach ([1, 2, 3] as $i) {
+                      if ($i > 0) {
+                        $a = true;
+                        continue;
+                      }
+
+                      break;
+                    }',
+                'assignments' => [
+                    '$a' => 'bool',
+                ],
+            ],
             'variableDefinedInForeachAndIf' => [
                 '<?php
                     foreach ([1,2,3,4] as $i) {
@@ -747,6 +762,26 @@ class LoopScopeTest extends TestCase
                 'assignments' => [],
                 'error_levels' => [
                     'MixedAssignment', 'MixedArrayAccess',
+                ],
+            ],
+            'whileTrue' => [
+                '<?php
+                    while (true) {
+                        $a = "hello";
+                        break;
+                    }
+                    while (1) {
+                        $b = 5;
+                        break;
+                    }
+                    for(;;) {
+                        $c = true;
+                        break;
+                    }',
+                'assignments' => [
+                    '$a' => 'string',
+                    '$b' => 'int',
+                    '$c' => 'bool',
                 ],
             ],
         ];
@@ -828,7 +863,7 @@ class LoopScopeTest extends TestCase
                       }
                       return $x;
                     }',
-                'error_message' => 'PossiblyInvalidReturnType',
+                'error_message' => 'InvalidReturnStatement',
             ],
             'possiblyNullCheckInsideForeachWithNoLeaveStatement' => [
                 '<?php
@@ -882,6 +917,24 @@ class LoopScopeTest extends TestCase
                         }
                     }',
                 'error_message' => 'RedundantCondition',
+            ],
+            'whileTrueNoBreak' => [
+                '<?php
+                    while (true) {
+                        $a = "hello";
+                    }
+
+                    echo $a;',
+                'error_message' => 'UndefinedGlobalVariable',
+            ],
+            'forInfiniteNoBreak' => [
+                '<?php
+                    for (;;) {
+                        $a = "hello";
+                    }
+
+                    echo $a;',
+                'error_message' => 'UndefinedGlobalVariable',
             ],
         ];
     }
