@@ -863,7 +863,7 @@ class LoopScopeTest extends TestCase
                       }
                       return $x;
                     }',
-                'error_message' => 'InvalidReturnStatement',
+                'error_message' => 'PossiblyInvalidReturnStatement',
             ],
             'possiblyNullCheckInsideForeachWithNoLeaveStatement' => [
                 '<?php

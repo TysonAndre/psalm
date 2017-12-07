@@ -24,6 +24,7 @@ use Psalm\Issue\InvalidGlobal;
 use Psalm\Issue\InvalidReturnStatement;
 use Psalm\Issue\LessSpecificReturnStatement;
 use Psalm\Issue\MissingFile;
+use Psalm\Issue\PossiblyInvalidReturnStatement;
 use Psalm\Issue\UnevaluatedCode;
 use Psalm\Issue\UnrecognizedStatement;
 use Psalm\Issue\UnresolvableInclude;
@@ -937,7 +938,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                         false,
                         $has_scalar_match,
                         $type_coerced,
-                        $type_coerced_from_mixed
+                        $type_coerced_from_mixed,
+                        $ignored_to_string_cast,
+                        $has_partial_match
                     )) {
                         // is the declared return type more specific than the inferred one?
                         if ($type_coerced) {
@@ -948,6 +951,17 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                                     new CodeLocation($this->source, $stmt)
                                 ),
                                 $this->getSuppressedIssues()
+                            )) {
+                                return false;
+                            }
+                        } elseif ($has_partial_match) {
+                            if (IssueBuffer::accepts(
+                                new PossiblyInvalidReturnStatement(
+                                    'The type \'' . $stmt->inferredType . '\' does not match the declared return '
+                                        . 'type \'' . $this->local_return_type . '\' (but has some compatible types) for ' . $cased_method_id,
+                                    new CodeLocation($this->source, $stmt)
+                                ),
+                               $this->getSuppressedIssues()
                             )) {
                                 return false;
                             }

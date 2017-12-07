@@ -492,7 +492,7 @@ class ReturnTypeTest extends TestCase
                     function fooFoo() : string {
                         return rand(0, 5) ? "hello" : null;
                     }',
-                'error_message' => 'InvalidReturnStatement',
+                'error_message' => 'PossiblyInvalidReturnStatement',
             ],
             'wrongReturnTypeInNamespace1' => [
                 '<?php
@@ -510,7 +510,7 @@ class ReturnTypeTest extends TestCase
                     function fooFoo() : string {
                         return rand(0, 5) ? "hello" : null;
                     }',
-                'error_message' => 'InvalidReturnStatement',
+                'error_message' => 'PossiblyInvalidReturnStatement',
             ],
             'missingReturnType' => [
                 '<?php
