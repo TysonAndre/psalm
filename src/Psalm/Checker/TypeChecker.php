@@ -732,12 +732,13 @@ class TypeChecker
         &$to_string_cast = null,
         &$has_partial_match = null
     ) {
-        $has_scalar_match = true;
-        $has_partial_match = false;
-
         if ($container_type->isMixed()) {
             return true;
         }
+
+        $has_scalar_match = true;
+        $has_partial_match = false;
+        $has_overall_match = true;
 
         foreach ($input_type->types as $input_type_part) {
             if ($input_type_part instanceof TNull && $ignore_null) {
@@ -787,11 +788,11 @@ class TypeChecker
                     $has_scalar_match = false;
                 }
 
-                return false;
+                $has_overall_match = false;
             }
         }
 
-        return true;
+        return $has_overall_match;
     }
 
     /**
