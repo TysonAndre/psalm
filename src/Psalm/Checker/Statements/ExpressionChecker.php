@@ -1216,7 +1216,7 @@ class ExpressionChecker
                     $source_checker = $statements_checker->getSource();
 
                     if ($source_checker instanceof FunctionLikeChecker) {
-                        $function_storage = $source_checker->getFunctionLikeStorage();
+                        $function_storage = $source_checker->getFunctionLikeStorage($statements_checker);
 
                         $context->inferType($stmt->left, $function_storage, new Type\Union([new TInt, new TFloat]));
                         $context->inferType($stmt->right, $function_storage, new Type\Union([new TInt, new TFloat]));
@@ -1293,8 +1293,10 @@ class ExpressionChecker
             && ($left_type->hasNumericType() || $right_type->hasNumericType())
         ) {
             $source_checker = $statements_source->getSource();
-            if ($source_checker instanceof FunctionLikeChecker) {
-                $function_storage = $source_checker->getFunctionLikeStorage();
+            if ($source_checker instanceof FunctionLikeChecker
+                && $statements_source instanceof StatementsChecker
+            ) {
+                $function_storage = $source_checker->getFunctionLikeStorage($statements_source);
 
                 $context->inferType($left, $function_storage, new Type\Union([new TInt, new TFloat]));
                 $context->inferType($right, $function_storage, new Type\Union([new TInt, new TFloat]));
@@ -1555,7 +1557,7 @@ class ExpressionChecker
             $source_checker = $statements_checker->getSource();
 
             if ($source_checker instanceof FunctionLikeChecker) {
-                $function_storage = $source_checker->getFunctionLikeStorage();
+                $function_storage = $source_checker->getFunctionLikeStorage($statements_checker);
 
                 $context->inferType($left, $function_storage, Type::getString());
                 $context->inferType($right, $function_storage, Type::getString());
@@ -2263,7 +2265,7 @@ class ExpressionChecker
             $source_checker = $statements_checker->getSource();
 
             if ($source_checker instanceof FunctionLikeChecker) {
-                $function_storage = $source_checker->getFunctionLikeStorage();
+                $function_storage = $source_checker->getFunctionLikeStorage($statements_checker);
             }
         }
 

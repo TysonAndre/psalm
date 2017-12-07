@@ -25,6 +25,7 @@ use Psalm\Issue\InvalidFunctionCall;
 use Psalm\Issue\InvalidMethodCall;
 use Psalm\Issue\InvalidPassByReference;
 use Psalm\Issue\InvalidScalarArgument;
+use Psalm\Issue\InvalidScalarInComplexArgument;
 use Psalm\Issue\InvalidScope;
 use Psalm\Issue\MixedArgument;
 use Psalm\Issue\MixedMethodCall;
@@ -2436,7 +2437,11 @@ class CallChecker
             $source_checker = $statements_checker->getSource();
 
             if ($source_checker instanceof FunctionLikeChecker) {
-                $context->inferType($input_expr, $source_checker->getFunctionLikeStorage(), $param_type);
+                $context->inferType(
+                    $input_expr,
+                    $source_checker->getFunctionLikeStorage($statements_checker),
+                    $param_type
+                );
             }
         }
 
@@ -2563,15 +2568,29 @@ class CallChecker
 
             if ($scalar_type_match_found) {
                 if ($cased_method_id !== 'echo') {
-                    if (IssueBuffer::accepts(
-                        new InvalidScalarArgument(
-                            'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                $param_type . ', ' . $input_type . ' provided',
-                            $code_location
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
+                    // TODO: Better check for scalar being part of a compound type that matched.
+                    if (stripos($param_type, 'array') !== false) {
+                        if (IssueBuffer::accepts(
+                            new InvalidScalarInComplexArgument(
+                                'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
+                                    $param_type . ', ' . $input_type . ' provided',
+                                $code_location
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new InvalidScalarArgument(
+                                'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
+                                    $param_type . ', ' . $input_type . ' provided',
+                                $code_location
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
                     }
                 }
             } elseif ($types_can_be_identical) {
