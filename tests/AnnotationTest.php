@@ -510,6 +510,24 @@ class AnnotationTest extends TestCase
                     $a->foo = 5;',
                 'error_message' => 'InvalidPropertyAssignment',
             ],
+            'propertyReadInvalidFetch' => [
+                '<?php
+                    /**
+                     * @property-read string $foo
+                     */
+                    class A {
+                         /** @return mixed */
+                         public function __get(string $name) {
+                              if ($name === "foo") {
+                                   return "hello";
+                              }
+                         }
+                    }
+
+                    $a = new A();
+                    echo count($a->foo);',
+                'error_message' => 'InvalidArgument',
+            ],
             'propertySealedDocblockUndefinedPropertyFetch' => [
                 '<?php
                     /**

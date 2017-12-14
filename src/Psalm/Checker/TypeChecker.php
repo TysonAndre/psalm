@@ -13,6 +13,7 @@ use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TInt;
@@ -25,6 +26,7 @@ use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
+use Psalm\Type\Atomic\TTrue;
 
 class TypeChecker
 {
@@ -177,7 +179,7 @@ class TypeChecker
                 return Type::getMixed();
             }
 
-            if ($new_var_type[0] !== '!' && $new_var_type !== 'falsy') {
+            if ($new_var_type[0] !== '!' && $new_var_type !== 'falsy' && $new_var_type !== 'empty') {
                 if ($new_var_type[0] === '^') {
                     $new_var_type = substr($new_var_type, 1);
                 }
@@ -276,6 +278,41 @@ class TypeChecker
                 return Type::getMixed();
             }
 
+            if ($new_var_type === '!bool' && !$existing_var_type->isMixed()) {
+                $non_bool_types = [];
+                $did_remove_type = false;
+
+                foreach ($existing_var_type->types as $type) {
+                    if (!$type instanceof TBool) {
+                        $non_bool_types[] = $type;
+                    } else {
+                        $did_remove_type = true;
+                    }
+                }
+
+                if ((!$did_remove_type || !$non_bool_types) && !$existing_var_type->from_docblock) {
+                    if ($key && $code_location) {
+                        if (IssueBuffer::accepts(
+                            new RedundantCondition(
+                                'Found a redundant condition when evaluating ' . $key,
+                                $code_location
+                            ),
+                            $suppressed_issues
+                        )) {
+                            // fall through
+                        }
+                    }
+                }
+
+                if ($non_bool_types) {
+                    return new Type\Union($non_bool_types);
+                }
+
+                $failed_reconciliation = true;
+
+                return Type::getMixed();
+            }
+
             if ($new_var_type === '!numeric' && !$existing_var_type->isMixed()) {
                 $non_numeric_types = [];
                 $did_remove_type = $existing_var_type->hasString();
@@ -327,6 +364,12 @@ class TypeChecker
                 if ($existing_var_type->hasType('false')) {
                     $did_remove_type = true;
                     $existing_var_type->removeType('false');
+                }
+
+                if ($existing_var_type->hasType('bool')) {
+                    $did_remove_type = true;
+                    $existing_var_type->removeType('bool');
+                    $existing_var_type->types['true'] = new TTrue;
                 }
 
                 if ($existing_var_type->hasType('array')) {
@@ -393,7 +436,15 @@ class TypeChecker
 
             $negated_type = substr($new_var_type, 1);
 
-            $existing_var_type->removeType($negated_type);
+            if ($negated_type === 'false' && isset($existing_var_type->types['bool'])) {
+                $existing_var_type->removeType('bool');
+                $existing_var_type->types['true'] = new TTrue;
+            } elseif ($negated_type === 'true' && isset($existing_var_type->types['bool'])) {
+                $existing_var_type->removeType('bool');
+                $existing_var_type->types['false'] = new TFalse;
+            } else {
+                $existing_var_type->removeType($negated_type);
+            }
 
             if (empty($existing_var_type->types)) {
                 if (!$existing_var_type->from_docblock
@@ -450,23 +501,76 @@ class TypeChecker
             return Type::getMixed();
         }
 
+        $is_strict_equality = false;
+
         if ($new_var_type[0] === '^') {
             $new_var_type = substr($new_var_type, 1);
+            $is_strict_equality = true;
         }
 
         if ($new_var_type === 'falsy' || $new_var_type === 'empty') {
+            if ($existing_var_type->isMixed()) {
+                return $existing_var_type;
+            }
+
+            $did_remove_type = $did_remove_type = $existing_var_type->hasString()
+                || $existing_var_type->hasNumericType();
+
             if ($existing_var_type->hasType('bool')) {
+                $did_remove_type = true;
                 $existing_var_type->removeType('bool');
                 $existing_var_type->types['false'] = new TFalse;
             }
 
-            $existing_var_type->removeObjects();
-
-            if (empty($existing_var_type->types)) {
-                return Type::getNull();
+            if ($existing_var_type->hasType('true')) {
+                $did_remove_type = true;
+                $existing_var_type->removeType('true');
             }
 
-            return $existing_var_type;
+            if ($existing_var_type->hasType('array')
+                && $existing_var_type->types['array']->getId() !== 'array<empty, empty>'
+            ) {
+                $did_remove_type = true;
+                $existing_var_type->types['array'] = new TArray(
+                    [
+                        new Type\Union([new TEmpty]),
+                        new Type\Union([new TEmpty]),
+                    ]
+                );
+            }
+
+            foreach ($existing_var_type->types as $type_key => $type) {
+                if ($type instanceof TNamedObject
+                    || $type instanceof TResource
+                    || $type instanceof TCallable
+                ) {
+                    $did_remove_type = true;
+
+                    unset($existing_var_type->types[$type_key]);
+                }
+            }
+
+            if ((!$did_remove_type || empty($existing_var_type->types)) && !$existing_var_type->from_docblock) {
+                if ($key && $code_location) {
+                    if (IssueBuffer::accepts(
+                        new RedundantCondition(
+                            'Found a redundant condition when evaluating ' . $key,
+                            $code_location
+                        ),
+                        $suppressed_issues
+                    )) {
+                        // fall through
+                    }
+                }
+            }
+
+            if ($existing_var_type->types) {
+                return $existing_var_type;
+            }
+
+            $failed_reconciliation = true;
+
+            return Type::getMixed();
         }
 
         if ($new_var_type === 'object' && !$existing_var_type->isMixed()) {
@@ -481,7 +585,10 @@ class TypeChecker
                 }
             }
 
-            if ((!$object_types || !$did_remove_type) && !$existing_var_type->from_docblock) {
+            if ((!$object_types || !$did_remove_type)
+                && !$existing_var_type->from_docblock
+                && !$is_strict_equality
+            ) {
                 if ($key && $code_location) {
                     if (IssueBuffer::accepts(
                         new RedundantCondition(
@@ -527,7 +634,10 @@ class TypeChecker
                 }
             }
 
-            if ((!$did_remove_type || !$numeric_types) && !$existing_var_type->from_docblock) {
+            if ((!$did_remove_type || !$numeric_types)
+                && !$existing_var_type->from_docblock
+                && !$is_strict_equality
+            ) {
                 if ($key && $code_location) {
                     if (IssueBuffer::accepts(
                         new RedundantCondition(
@@ -562,7 +672,10 @@ class TypeChecker
                 }
             }
 
-            if ((!$did_remove_type || !$scalar_types) && !$existing_var_type->from_docblock) {
+            if ((!$did_remove_type || !$scalar_types)
+                && !$existing_var_type->from_docblock
+                && !$is_strict_equality
+            ) {
                 if ($key && $code_location) {
                     if (IssueBuffer::accepts(
                         new RedundantCondition(
@@ -578,6 +691,44 @@ class TypeChecker
 
             if ($scalar_types) {
                 return new Type\Union($scalar_types);
+            }
+
+            $failed_reconciliation = true;
+
+            return Type::getMixed();
+        }
+
+        if ($new_var_type === 'bool' && !$existing_var_type->isMixed()) {
+            $bool_types = [];
+            $did_remove_type = false;
+
+            foreach ($existing_var_type->types as $type) {
+                if ($type instanceof TBool) {
+                    $bool_types[] = $type;
+                } else {
+                    $did_remove_type = true;
+                }
+            }
+
+            if ((!$did_remove_type || !$bool_types)
+                && !$existing_var_type->from_docblock
+                && !$is_strict_equality
+            ) {
+                if ($key && $code_location) {
+                    if (IssueBuffer::accepts(
+                        new RedundantCondition(
+                            'Found a redundant condition when evaluating ' . $key,
+                            $code_location
+                        ),
+                        $suppressed_issues
+                    )) {
+                        // fall through
+                    }
+                }
+            }
+
+            if ($bool_types) {
+                return new Type\Union($bool_types);
             }
 
             $failed_reconciliation = true;
@@ -987,7 +1138,17 @@ class TypeChecker
             return false;
         }
 
-        if ($input_type_part instanceof TFalse && $container_type_part instanceof TBool) {
+        if ($input_type_part instanceof TFalse
+            && $container_type_part instanceof TBool
+            && !($container_type_part instanceof TTrue)
+        ) {
+            return true;
+        }
+
+        if ($input_type_part instanceof TTrue
+            && $container_type_part instanceof TBool
+            && !($container_type_part instanceof TFalse)
+        ) {
             return true;
         }
 

@@ -175,6 +175,16 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Const_) {
                 $this->analyzeConstAssignment($stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Unset_) {
+                $suppressed_issues = $this->getSuppressedIssues();
+
+                if (!in_array('PossiblyUndefinedGlobalVariable', $suppressed_issues, true)) {
+                    $this->addSuppressedIssues(['PossiblyUndefinedGlobalVariable']);
+                }
+
+                if (!in_array('PossiblyUndefinedVariable', $suppressed_issues, true)) {
+                    $this->addSuppressedIssues(['PossiblyUndefinedVariable']);
+                }
+
                 foreach ($stmt->vars as $var) {
                     ExpressionChecker::analyze($this, $var, $context);
 
@@ -187,6 +197,14 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     if ($var_id) {
                         $context->remove($var_id);
                     }
+                }
+
+                if (!in_array('PossiblyUndefinedGlobalVariable', $suppressed_issues, true)) {
+                    $this->removeSuppressedIssues(['PossiblyUndefinedGlobalVariable']);
+                }
+
+                if (!in_array('PossiblyUndefinedVariable', $suppressed_issues, true)) {
+                    $this->removeSuppressedIssues(['PossiblyUndefinedVariable']);
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Return_) {
                 $has_returned = true;
@@ -284,7 +302,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                             Type::getString(),
                             'echo',
                             (int)$i,
-                            new CodeLocation($this->getSource(), $expr)
+                            new CodeLocation($this->getSource(), $expr),
+                            $expr,
+                            $context
                         ) === false) {
                             return false;
                         }
@@ -893,6 +913,10 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $stmt->inferredType = Type::parseString($var_comment->type);
             } elseif (isset($stmt->expr->inferredType)) {
                 $stmt->inferredType = $stmt->expr->inferredType;
+
+                if ($stmt->inferredType->isVoid()) {
+                    $stmt->inferredType = Type::getNull();
+                }
             } else {
                 $stmt->inferredType = Type::getMixed();
             }

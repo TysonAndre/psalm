@@ -201,7 +201,7 @@ class TypeReconciliationTest extends TestCase
             'notEmptyWithMyObjectPipeNull' => ['null', 'null', 'MyObject|null'],
             'notEmptyWithMixed' => ['null', 'null', 'mixed'],
 
-            'emptyWithMyObject' => ['null', 'falsy', 'MyObject'],
+            'emptyWithMyObject' => ['mixed', 'falsy', 'MyObject'],
             'emptyWithMyObjectPipeFalse' => ['false', 'falsy', 'MyObject|false'],
             'emptyWithMyObjectPipeBool' => ['false', 'falsy', 'MyObject|bool'],
             'emptyWithMixed' => ['mixed', 'falsy', 'mixed'],
@@ -419,6 +419,17 @@ class TypeReconciliationTest extends TestCase
                     $a = rand(0, 5) > 4 ? "hello" : 5;
 
                     if (is_numeric($a)) {
+                      exit;
+                    }',
+                'assertions' => [
+                    '$a' => 'string',
+                ],
+            ],
+            'typeRefinementWithStringOrTrue' => [
+                '<?php
+                    $a = rand(0, 5) > 4 ? "hello" : true;
+
+                    if (is_bool($a)) {
                       exit;
                     }',
                 'assertions' => [
@@ -647,6 +658,18 @@ class TypeReconciliationTest extends TestCase
                     '$a' => 'int|null',
                 ],
             ],
+            'eraseNullAfterInequalityCheck' => [
+                '<?php
+                    $a = mt_rand(0, 1) ? mt_rand(-10, 10) : null;
+
+                    if ($a > 0) {
+                      echo $a + 3;
+                    }
+
+                    if (0 < $a) {
+                      echo $a + 3;
+                    }',
+            ],
         ];
     }
 
@@ -705,6 +728,24 @@ class TypeReconciliationTest extends TestCase
                         }
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'dontEraseNullAfterLessThanCheck' => [
+                '<?php
+                    $a = mt_rand(0, 1) ? mt_rand(-10, 10) : null;
+
+                    if ($a < 0) {
+                      echo $a + 3;
+                    }',
+                'error_message' => 'PossiblyNullOperand',
+            ],
+            'dontEraseNullAfterGreaterThanCheck' => [
+                '<?php
+                    $a = mt_rand(0, 1) ? mt_rand(-10, 10) : null;
+
+                    if (0 > $a) {
+                      echo $a + 3;
+                    }',
+                'error_message' => 'PossiblyNullOperand',
             ],
         ];
     }

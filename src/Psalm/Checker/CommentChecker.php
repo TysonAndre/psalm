@@ -335,14 +335,24 @@ class CommentChecker
             }
         }
 
-        // Use `+` instead of array_merge so that line numbers are preserved.
-        $magic_properties =
-            (isset($comments['specials']['property']) ? $comments['specials']['property'] : []) +
-            (isset($comments['specials']['property-write']) ? $comments['specials']['property-write'] : []) +
-            (isset($comments['specials']['property-read']) ? $comments['specials']['property-read'] : []);
+        self::addMagicPropertyToInfo($info, $comments['specials'], 'property');
+        self::addMagicPropertyToInfo($info, $comments['specials'], 'property-read');
+        self::addMagicPropertyToInfo($info, $comments['specials'], 'property-write');
 
-        /** @var string $property */
-        foreach ($magic_properties as $line_number => $property) {
+        return $info;
+    }
+
+    /**
+     * @param ClassLikeDocblockComment $info
+     * @param array<string,array<mixed,string>> $specials
+     * @param string $property_tag ('property', 'property-read', or 'property-write')
+     * @return void
+     * @throws DocblockParseException
+     */
+    protected static function addMagicPropertyToInfo(ClassLikeDocblockComment $info, array $specials, $property_tag)
+    {
+        $magic_property_comments = isset($specials[$property_tag]) ? $specials[$property_tag] : [];
+        foreach ($magic_property_comments as $line_number => $property) {
             try {
                 $line_parts = self::splitDocLine($property);
             } catch (DocblockParseException $e) {
@@ -374,14 +384,15 @@ class CommentChecker
                         'name' => $line_parts[1],
                         'type' => $line_parts[0],
                         'line_number' => $line_number,
+                        'tag' => $property_tag,
                     ];
+                } else {
+                    throw new DocblockParseException('Badly-formatted @property');
                 }
             } else {
-                throw new DocblockParseException('Badly-formatted @param');
+                throw new DocblockParseException('Badly-formatted @property');
             }
         }
-
-        return $info;
     }
 
     /**

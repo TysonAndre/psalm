@@ -17,6 +17,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TString;
+use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
 use Psalm\Type\ParseTree;
 use Psalm\Type\TypeCombination;
@@ -428,6 +429,16 @@ abstract class Type
     }
 
     /**
+     * @return Type\Union
+     */
+    public static function getTrue()
+    {
+        $type = new TTrue;
+
+        return new Union([$type]);
+    }
+
+    /**
      * @param  array<string, Union> $redefined_vars
      * @param  Context              $context
      *
@@ -528,7 +539,7 @@ abstract class Type
         }
 
         if (count($types) === 1) {
-            if ($types[0] instanceof TFalse) {
+            if ($types[0] instanceof TBool) {
                 $types[0] = new TBool;
             }
 
@@ -553,7 +564,7 @@ abstract class Type
             && !count($combination->objectlike_entries)
             && !count($combination->type_params)
         ) {
-            if (isset($combination->value_types['false'])) {
+            if (isset($combination->value_types['false']) || isset($combination->value_types['true'])) {
                 return Type::getBool();
             }
         } elseif (isset($combination->value_types['void'])) {
@@ -562,6 +573,12 @@ abstract class Type
             if (!isset($combination->value_types['null'])) {
                 $combination->value_types['null'] = new TNull();
             }
+        }
+
+        if (isset($combination->value_types['true']) && isset($combination->value_types['false'])) {
+            unset($combination->value_types['true'], $combination->value_types['false']);
+
+            $combination->value_types['bool'] = new TBool();
         }
 
         $new_types = [];
@@ -639,10 +656,16 @@ abstract class Type
         }
 
         // deal with false|bool => bool
-        if ($type instanceof TFalse && isset($combination->value_types['bool'])) {
+        if (($type instanceof TFalse || $type instanceof TTrue) && isset($combination->value_types['bool'])) {
             return null;
-        } elseif ($type instanceof TBool && isset($combination->value_types['false'])) {
+        }
+
+        if (get_class($type) === 'Psalm\\Type\\Atomic\\TBool' && isset($combination->value_types['false'])) {
             unset($combination->value_types['false']);
+        }
+
+        if (get_class($type) === 'Psalm\\Type\\Atomic\\TBool' && isset($combination->value_types['true'])) {
+            unset($combination->value_types['true']);
         }
 
         $type_key = $type->getKey();

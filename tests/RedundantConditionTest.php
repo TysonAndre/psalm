@@ -156,6 +156,61 @@ class RedundantConditionTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment', 'MixedArrayAccess'],
             ],
+            'noComplaintWithIsNumericThenIsEmpty' => [
+                '<?php
+                    function takesString(string $s) : void {
+                      if (!is_numeric($s) || empty($s)) {}
+                    }',
+            ],
+            'noRedundantConditionOnTryCatchVars' => [
+                '<?php
+                    function trycatch() : void {
+                        $value = null;
+                        try {
+                            if (rand() % 2 > 0) {
+                                throw new RuntimeException("Failed");
+                            }
+                            $value = new stdClass();
+                            if (rand() % 2 > 0) {
+                                throw new RuntimeException("Failed");
+                            }
+                        } catch (Exception $e) {
+                            if ($value) {
+                                var_export($value);
+                            }
+                        }
+
+                        if ($value) {}
+                    }',
+            ],
+            'noRedundantConditionInFalseCheck' => [
+                '<?php
+                    $ch = curl_init();
+                    if (!$ch) {}',
+            ],
+            'noRedundantConditionInForCheck' => [
+                '<?php
+                    class Node
+                    {
+                        /** @var Node|null */
+                        public $next;
+
+                        public function iterate(): void
+                        {
+                            for ($node = $this; $node !== null; $node = $node->next) {}
+                        }
+                    }',
+            ],
+            'noRedundantConditionComparingBool' => [
+                '<?php
+                    function getBool() : bool {
+                      return (bool)rand(0, 1);
+                    }
+
+                    function takesBool(bool $b) : void {
+                      if ($b === getBool()) {}
+                    }',
+            ],
         ];
     }
 
@@ -165,6 +220,24 @@ class RedundantConditionTest extends TestCase
     public function providerFileCheckerInvalidCodeParse()
     {
         return [
+            'ifFalse' => [
+                '<?php
+                    $y = false:
+                    if ($y) {}',
+                'error_message' => 'RedundantCondition',
+            ],
+            'ifNotTrue' => [
+                '<?php
+                    $y = true:
+                    if (!$y) {}',
+                'error_message' => 'RedundantCondition',
+            ],
+            'ifTrue' => [
+                '<?php
+                    $y = true:
+                    if ($y) {}',
+                'error_message' => 'RedundantCondition',
+            ],
             'unnecessaryInstanceof' => [
                 '<?php
                     class One {
@@ -280,6 +353,24 @@ class RedundantConditionTest extends TestCase
                         return $a;
                     }',
                 'error_message' => 'RedundantCondition',
+            ],
+            'refineTypeInMethodCall' => [
+                '<?php
+                    class A {}
+
+                    /** @return ?A */
+                    function getA() {
+                      return rand(0, 1) ? new A : null;
+                    }
+
+                    function takesA(A $a) : void {}
+
+                    $a = getA();
+                    if ($a instanceof A) {}
+                    /** @psalm-suppress PossiblyNullArgument */
+                    takesA($a);
+                    if ($a instanceof A) {}',
+                'error_message' => 'RedundantCondition - src/somefile.php:15',
             ],
         ];
     }

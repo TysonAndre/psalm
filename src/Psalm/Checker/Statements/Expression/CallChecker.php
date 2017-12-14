@@ -787,6 +787,7 @@ class CallChecker
 
                         case 'Psalm\\Type\\Atomic\\TInt':
                         case 'Psalm\\Type\\Atomic\\TBool':
+                        case 'Psalm\\Type\\Atomic\\TTrue':
                         case 'Psalm\\Type\\Atomic\\TArray':
                         case 'Psalm\\Type\\Atomic\\TString':
                         case 'Psalm\\Type\\Atomic\\TNumericString':
@@ -1135,7 +1136,6 @@ class CallChecker
             && $has_valid_method_call_type
             && !$invalid_method_call_types
             && $existent_method_ids
-            && !$non_existent_method_ids
             && ($class_type->from_docblock || $class_type->isNullable())
         ) {
             $keys_to_remove = [];
@@ -2338,7 +2338,7 @@ class CallChecker
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                // keep soldiering on
                             }
                         } else {
                             if (IssueBuffer::accepts(
@@ -2349,12 +2349,12 @@ class CallChecker
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                // keep soldiering on
                             }
                         }
                     }
 
-                    if (!$type_match_found) {
+                    if (!$coerced_type && !$type_match_found) {
                         $types_can_be_identical = TypeChecker::canBeIdenticalTo(
                             $project_checker,
                             $input_type,
@@ -2418,8 +2418,8 @@ class CallChecker
         $cased_method_id,
         $argument_offset,
         CodeLocation $code_location,
-        PhpParser\Node\Expr $input_expr = null,
-        Context $context = null
+        PhpParser\Node\Expr $input_expr,
+        Context $context
     ) {
         if ($param_type->isMixed()) {
             return null;
@@ -2429,11 +2429,7 @@ class CallChecker
 
         $method_identifier = $cased_method_id ? ' of ' . $cased_method_id : '';
 
-        if ($project_checker->infer_types_from_usage
-            && $context
-            && $input_expr
-            && $input_expr->inferredType
-        ) {
+        if ($project_checker->infer_types_from_usage && $input_expr->inferredType) {
             $source_checker = $statements_checker->getSource();
 
             if ($source_checker instanceof FunctionLikeChecker) {
@@ -2530,7 +2526,7 @@ class CallChecker
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
-                    return false;
+                    // keep soldiering on
                 }
             } else {
                 if (IssueBuffer::accepts(
@@ -2541,7 +2537,7 @@ class CallChecker
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
-                    return false;
+                    // keep soldiering on
                 }
             }
         }
@@ -2661,6 +2657,26 @@ class CallChecker
                         }
                     }
                 }
+            }
+        }
+
+        if ($type_match_found && !$param_type->isMixed() && !$param_type->from_docblock) {
+            $var_id = ExpressionChecker::getVarId(
+                $input_expr,
+                $statements_checker->getFQCLN(),
+                $statements_checker
+            );
+
+            if ($var_id) {
+                if ($input_type->isNullable() && !$param_type->isNullable()) {
+                    unset($input_type->types['null']);
+                }
+
+                if ($input_type->getId() === $param_type->getId()) {
+                    $input_type->from_docblock = false;
+                }
+
+                $context->removeVarFromConflictingClauses($var_id, null, $statements_checker);
             }
         }
 

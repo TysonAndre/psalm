@@ -40,7 +40,7 @@ class LoopChecker
         $assignment_mapper = new \Psalm\Visitor\AssignmentMapVisitor($loop_scope->loop_context->self);
         $traverser->addVisitor($assignment_mapper);
 
-        $traverser->traverse($stmts);
+        $traverser->traverse(array_merge($stmts, $post_conditions));
 
         $assignment_map = $assignment_mapper->getAssignmentMap();
 
@@ -339,18 +339,14 @@ class LoopChecker
                     $statements_checker->getSuppressedIssues()
                 );
 
-                if ($vars_in_scope_reconciled === false) {
-                    return false;
-                }
-
-                foreach ($loop_scope->loop_parent_context->vars_in_scope as $var_id => $type) {
-                    if (isset($vars_in_scope_reconciled[$var_id])) {
+                foreach ($changed_var_ids as $var_id) {
+                    if (isset($vars_in_scope_reconciled[$var_id])
+                        && isset($loop_scope->loop_parent_context->vars_in_scope[$var_id])
+                    ) {
                         $loop_scope->loop_parent_context->vars_in_scope[$var_id] = $vars_in_scope_reconciled[$var_id];
                     }
-                }
 
-                foreach ($changed_var_ids as $changed_var_id) {
-                    $loop_scope->loop_parent_context->removeVarFromConflictingClauses($changed_var_id);
+                    $loop_scope->loop_parent_context->removeVarFromConflictingClauses($var_id);
                 }
             }
         }

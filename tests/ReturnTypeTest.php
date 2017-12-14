@@ -424,6 +424,13 @@ class ReturnTypeTest extends TestCase
                         }
                     }',
             ],
+            'returnTrueFromBool' => [
+                '<?php
+                    /** @return bool */
+                    function foo() : bool {
+                        return true;
+                    }',
+            ],
         ];
     }
 
@@ -577,6 +584,15 @@ class ReturnTypeTest extends TestCase
                     function doSomething(resource $res) : void {
                     }',
                 'error_message' => 'ReservedWord',
+            ],
+            'disallowReturningExplicitVoid' => [
+                '<?php
+                    function returnsVoid() : void {}
+
+                    function alsoReturnsVoid() : void {
+                      return returnsVoid();
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

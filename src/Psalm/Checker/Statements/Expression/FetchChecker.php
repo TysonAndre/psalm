@@ -336,7 +336,11 @@ class FetchChecker
 
                 $class_property_type = Type::getMixed();
             } else {
-                $class_property_type = clone $class_property_type;
+                $class_property_type = ExpressionChecker::fleshOutType(
+                    $project_checker,
+                    clone $class_property_type,
+                    $declaring_property_class
+                );
 
                 if ($lhs_type_part instanceof TGenericObject) {
                     $class_storage = $project_checker->classlike_storage_provider->get($lhs_type_part->value);
@@ -432,7 +436,7 @@ class FetchChecker
                 break;
 
             case 'true':
-                $stmt->inferredType = Type::getBool();
+                $stmt->inferredType = Type::getTrue();
                 break;
 
             default:
