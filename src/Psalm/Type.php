@@ -539,10 +539,6 @@ abstract class Type
         }
 
         if (count($types) === 1) {
-            if ($types[0] instanceof TBool) {
-                $types[0] = new TBool;
-            }
-
             return new Union([$types[0]]);
         }
 
