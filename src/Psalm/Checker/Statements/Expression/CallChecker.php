@@ -2118,7 +2118,8 @@ class CallChecker
                             $argument_offset,
                             new CodeLocation($statements_checker->getSource(), $arg->value),
                             $arg->value,
-                            $context
+                            $context,
+                            $function_param->by_ref
                         ) === false) {
                             return false;
                         }
@@ -2408,6 +2409,7 @@ class CallChecker
      * @param   string|null         $cased_method_id
      * @param   int                 $argument_offset
      * @param   CodeLocation        $code_location
+     * @param   bool                $by_ref
      *
      * @return  null|false
      */
@@ -2419,7 +2421,8 @@ class CallChecker
         $argument_offset,
         CodeLocation $code_location,
         PhpParser\Node\Expr $input_expr,
-        Context $context
+        Context $context,
+        $by_ref = false
     ) {
         if ($param_type->isMixed()) {
             return null;
@@ -2660,7 +2663,11 @@ class CallChecker
             }
         }
 
-        if ($type_match_found && !$param_type->isMixed() && !$param_type->from_docblock) {
+        if ($type_match_found
+            && !$param_type->isMixed()
+            && !$param_type->from_docblock
+            && !$by_ref
+        ) {
             $var_id = ExpressionChecker::getVarId(
                 $input_expr,
                 $statements_checker->getFQCLN(),
