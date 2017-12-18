@@ -803,7 +803,7 @@ class CallChecker
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                // fall through
                             }
                             break;
                     }
@@ -1155,6 +1155,8 @@ class CallChecker
             $class_type->from_docblock = false;
 
             $context->removeVarFromConflictingClauses($var_id, null, $statements_checker);
+
+            $context->vars_in_scope[$var_id] = $class_type;
         }
     }
 
@@ -1259,6 +1261,8 @@ class CallChecker
         $file_checker = $statements_checker->getFileChecker();
         $project_checker = $file_checker->project_checker;
         $source = $statements_checker->getSource();
+
+        $stmt->inferredType = null;
 
         if ($stmt->class instanceof PhpParser\Node\Name) {
             $fq_class_name = null;
@@ -2684,6 +2688,8 @@ class CallChecker
                 }
 
                 $context->removeVarFromConflictingClauses($var_id, null, $statements_checker);
+
+                $context->vars_in_scope[$var_id] = $input_type;
             }
         }
 

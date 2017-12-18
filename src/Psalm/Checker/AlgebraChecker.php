@@ -218,19 +218,21 @@ class AlgebraChecker
 
         // remove impossible types
         foreach ($negated_formula2 as $clause_a) {
-            foreach ($clause_a->possibilities as $key => $values) {
-                if (count($values) > 1
-                    && count(array_unique($values)) < count($values)
-                    && !isset($new_assigned_var_ids[$key])
-                ) {
-                    if (IssueBuffer::accepts(
-                        new RedundantCondition(
-                            'Found a redundant condition when evaluating ' . $key,
-                            new CodeLocation($statements_checker, $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        // fall through
+            if (count($negated_formula2) === 1) {
+                foreach ($clause_a->possibilities as $key => $values) {
+                    if (count($values) > 1
+                        && count(array_unique($values)) < count($values)
+                        && !isset($new_assigned_var_ids[$key])
+                    ) {
+                        if (IssueBuffer::accepts(
+                            new RedundantCondition(
+                                'Found a redundant condition when evaluating ' . $key,
+                                new CodeLocation($statements_checker, $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
                     }
                 }
             }
@@ -453,7 +455,11 @@ class AlgebraChecker
                             $new_clause_possibilities[$var] = [$impossible_type];
                         }
 
-                        $new_clauses[] = new Clause($new_clause_possibilities);
+                        $new_clause = new Clause($new_clause_possibilities);
+
+                        //$new_clause->reconcilable = $clause->reconcilable;
+
+                        $new_clauses[] = $new_clause;
                     }
                 }
             }
@@ -464,7 +470,9 @@ class AlgebraChecker
 
             foreach ($clause->impossibilities as $var => $impossible_types) {
                 foreach ($impossible_types as $impossible_type) {
-                    $new_clauses[] = new Clause([$var => [$impossible_type]]);
+                    $new_clause = new Clause([$var => [$impossible_type]]);
+                    //$new_clause->reconcilable = $clause->reconcilable;
+                    $new_clauses[] = $new_clause;
                 }
             }
         }

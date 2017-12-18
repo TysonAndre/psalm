@@ -522,6 +522,55 @@ class TypeAlgebraTest extends TestCase
                         }
                     } catch (Exception $e) {}',
             ],
+            // because we only support expressions in CNF atm
+            'SKIPPED-instanceofInOr' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+
+                    function takesA(A $a) : void {}
+
+                    function foo(?A $a) : void {
+                        if ($a instanceof B
+                            || ($a instanceof C && rand(0, 1))
+                        ) {
+                            takesA($a);
+                        }
+                    }',
+            ],
+            'instanceofInCNFOr' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+
+                    function takesA(A $a) : void {}
+
+                    function foo(?A $a) : void {
+                        $c = rand(0, 1);
+                        if (($a instanceof B || $a instanceof C)
+                            && ($a instanceof B || $c)
+                        ) {
+                            takesA($a);
+                        }
+                    }',
+            ],
+            'reconcileNestedOrsInElse' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    function takesA(A $a) : void {}
+
+                    function foo(?A $a, ?B $b) : void {
+                        if ($a === null || $b === null || rand(0, 1)) {
+                            // do nothing
+                        } else {
+                            takesA($a);
+                        }
+                    }',
+            ],
         ];
     }
 
