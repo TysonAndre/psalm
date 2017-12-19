@@ -235,7 +235,7 @@ class AssignmentChecker
                 $statements_checker->registerVariable($var_id, new CodeLocation($statements_checker, $assign_var));
             }
         } elseif ($assign_var instanceof PhpParser\Node\Expr\List_
-                || $assign_var instanceof PhpParser\Node\Expr\Array_
+            || $assign_var instanceof PhpParser\Node\Expr\Array_
         ) {
             /** @var int $offset */
             foreach ($assign_var->items as $offset => $assign_var_item) {
@@ -278,6 +278,19 @@ class AssignmentChecker
                     continue;
                 }
 
+                if ($var instanceof PhpParser\Node\Expr\List_
+                    || $var instanceof PhpParser\Node\Expr\Array_
+                ) {
+                    self::analyze(
+                        $statements_checker,
+                        $var,
+                        null,
+                        Type::getMixed(),
+                        $context,
+                        $doc_comment
+                    );
+                }
+
                 $list_var_id = ExpressionChecker::getVarId(
                     $var,
                     $statements_checker->getFQCLN(),
@@ -301,7 +314,8 @@ class AssignmentChecker
                             $new_assign_type = clone $assign_value_type->types['array']->type_params[1];
                         } elseif ($assign_value_type->types['array'] instanceof Type\Atomic\ObjectLike) {
                             if ($assign_var_item->key
-                                && $assign_var_item->key instanceof PhpParser\Node\Scalar\String_
+                                && ($assign_var_item->key instanceof PhpParser\Node\Scalar\String_
+                                    || $assign_var_item->key instanceof PhpParser\Node\Scalar\LNumber)
                                 && isset($assign_value_type->types['array']->properties[$assign_var_item->key->value])
                             ) {
                                 $new_assign_type =
@@ -333,15 +347,25 @@ class AssignmentChecker
             ) {
                 return false;
             }
-        } elseif ($assign_var instanceof PhpParser\Node\Expr\PropertyFetch && is_string($assign_var->name)) {
-            self::analyzePropertyAssignment(
-                $statements_checker,
-                $assign_var,
-                $assign_var->name,
-                $assign_value,
-                $assign_value_type,
-                $context
-            );
+        } elseif ($assign_var instanceof PhpParser\Node\Expr\PropertyFetch) {
+            if (is_string($assign_var->name)) {
+                self::analyzePropertyAssignment(
+                    $statements_checker,
+                    $assign_var,
+                    $assign_var->name,
+                    $assign_value,
+                    $assign_value_type,
+                    $context
+                );
+            } else {
+                if (ExpressionChecker::analyze($statements_checker, $assign_var->name, $context) === false) {
+                    return false;
+                }
+
+                if (ExpressionChecker::analyze($statements_checker, $assign_var->var, $context) === false) {
+                    return false;
+                }
+            }
 
             if ($var_id) {
                 $context->vars_possibly_in_scope[$var_id] = true;
@@ -1283,24 +1307,26 @@ class AssignmentChecker
                 throw new \InvalidArgumentException('Should never get here');
             }
 
-            if ($current_dim instanceof PhpParser\Node\Scalar\String_) {
-                $string_key_value = $current_dim->value;
+            if ($current_dim instanceof PhpParser\Node\Scalar\String_
+                || $current_dim instanceof PhpParser\Node\Scalar\LNumber
+            ) {
+                $key_value = $current_dim->value;
 
                 $has_matching_objectlike_property = false;
 
                 foreach ($child_stmt->inferredType->types as $type) {
                     if ($type instanceof ObjectLike) {
-                        if (isset($type->properties[$string_key_value])) {
+                        if (isset($type->properties[$key_value])) {
                             $has_matching_objectlike_property = true;
 
-                            $type->properties[$string_key_value] = clone $current_type;
+                            $type->properties[$key_value] = clone $current_type;
                         }
                     }
                 }
 
                 if (!$has_matching_objectlike_property) {
                     $array_assignment_type = new Type\Union([
-                        new ObjectLike([$string_key_value => $current_type]),
+                        new ObjectLike([$key_value => $current_type]),
                     ]);
 
                     $new_child_type = Type::combineUnionTypes(
@@ -1341,24 +1367,30 @@ class AssignmentChecker
             }
         }
 
-        if ($current_dim instanceof PhpParser\Node\Scalar\String_) {
-            $string_key_value = $current_dim->value;
+        $root_is_string = array_keys($root_type->types) === ['string'];
+
+        if (($current_dim instanceof PhpParser\Node\Scalar\String_
+                || $current_dim instanceof PhpParser\Node\Scalar\LNumber)
+            && ($current_dim instanceof PhpParser\Node\Scalar\String_
+                || !$root_is_string)
+        ) {
+            $key_value = $current_dim->value;
 
             $has_matching_objectlike_property = false;
 
             foreach ($root_type->types as $type) {
                 if ($type instanceof ObjectLike) {
-                    if (isset($type->properties[$string_key_value])) {
+                    if (isset($type->properties[$key_value])) {
                         $has_matching_objectlike_property = true;
 
-                        $type->properties[$string_key_value] = clone $current_type;
+                        $type->properties[$key_value] = clone $current_type;
                     }
                 }
             }
 
             if (!$has_matching_objectlike_property) {
                 $array_assignment_type = new Type\Union([
-                    new ObjectLike([$string_key_value => $current_type]),
+                    new ObjectLike([$key_value => $current_type]),
                 ]);
 
                 $new_child_type = Type::combineUnionTypes(
@@ -1368,7 +1400,7 @@ class AssignmentChecker
             } else {
                 $new_child_type = $root_type; // noop
             }
-        } elseif (array_keys($root_type->types) !== ['string']) {
+        } elseif (!$root_is_string) {
             $array_assignment_type = new Type\Union([
                 new TArray([
                     isset($current_dim->inferredType) ? $current_dim->inferredType : Type::getInt(),
@@ -1392,16 +1424,26 @@ class AssignmentChecker
 
         $root_array_expr->inferredType = $root_type;
 
-        if ($root_array_expr instanceof PhpParser\Node\Expr\PropertyFetch && is_string($root_array_expr->name)) {
-            self::analyzePropertyAssignment(
-                $statements_checker,
-                $root_array_expr,
-                $root_array_expr->name,
-                null,
-                $root_type,
-                $context,
-                false
-            );
+        if ($root_array_expr instanceof PhpParser\Node\Expr\PropertyFetch) {
+            if (is_string($root_array_expr->name)) {
+                self::analyzePropertyAssignment(
+                    $statements_checker,
+                    $root_array_expr,
+                    $root_array_expr->name,
+                    null,
+                    $root_type,
+                    $context,
+                    false
+                );
+            } else {
+                if (ExpressionChecker::analyze($statements_checker, $root_array_expr->name, $context) === false) {
+                    return false;
+                }
+
+                if (ExpressionChecker::analyze($statements_checker, $root_array_expr->var, $context) === false) {
+                    return false;
+                }
+            }
         } elseif ($root_var_id) {
             if ($context->hasVariable($root_var_id)) {
                 $context->vars_in_scope[$root_var_id] = $root_type;

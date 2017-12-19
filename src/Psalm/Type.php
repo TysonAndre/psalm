@@ -200,7 +200,7 @@ abstract class Type
             $type = array_shift($parse_tree->children);
 
             foreach ($parse_tree->children as $i => $property_branch) {
-                if (!count($property_branch->children)) {
+                if ($property_branch->value !== ParseTree::OBJECT_PROPERTY) {
                     $property_type = self::getTypeFromTree($property_branch);
                     $property_key = (string)$i;
                 } elseif (count($property_branch->children) === 2) {
@@ -560,8 +560,12 @@ abstract class Type
             && !count($combination->objectlike_entries)
             && !count($combination->type_params)
         ) {
-            if (isset($combination->value_types['false']) || isset($combination->value_types['true'])) {
-                return Type::getBool();
+            if (isset($combination->value_types['false'])) {
+                return Type::getFalse();
+            }
+
+            if (isset($combination->value_types['true'])) {
+                return Type::getTrue();
             }
         } elseif (isset($combination->value_types['void'])) {
             unset($combination->value_types['void']);
@@ -594,7 +598,9 @@ abstract class Type
                 if ($combination->objectlike_entries) {
                     $object_like_generic_type = null;
 
-                    foreach ($combination->objectlike_entries as $property_type) {
+                    $objectlike_keys = [];
+
+                    foreach ($combination->objectlike_entries as $property_name => $property_type) {
                         if ($object_like_generic_type) {
                             $object_like_generic_type = Type::combineUnionTypes(
                                 $property_type,
@@ -603,15 +609,27 @@ abstract class Type
                         } else {
                             $object_like_generic_type = $property_type;
                         }
+
+                        if (is_int($property_name)) {
+                            if (!isset($objectlike_keys['int'])) {
+                                $objectlike_keys['int'] = new TInt;
+                            }
+                        } else {
+                            if (!isset($objectlike_keys['string'])) {
+                                $objectlike_keys['string'] = new TString;
+                            }
+                        }
                     }
 
                     if (!$object_like_generic_type) {
                         throw new \InvalidArgumentException('Cannot be null');
                     }
 
+                    $objectlike_key_type = new Type\Union(array_values($objectlike_keys));
+
                     $generic_type_params[0] = Type::combineUnionTypes(
                         $generic_type_params[0],
-                        Type::getString()
+                        $objectlike_key_type
                     );
                     $generic_type_params[1] = Type::combineUnionTypes(
                         $generic_type_params[1],

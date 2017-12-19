@@ -33,8 +33,8 @@ class ListTest extends TestCase
                     $bar = ["a", 2];
                     list($a, $b) = $bar;',
                 'assertions' => [
-                    '$a' => 'int|string',
-                    '$b' => 'int|string',
+                    '$a' => 'string',
+                    '$b' => 'int',
                 ],
             ],
             'thisVar' => [
@@ -53,6 +53,19 @@ class ListTest extends TestCase
                             return $this->a;
                         }
                     }',
+            ],
+            'mixedNestedAssignment' => [
+                '<?php
+                    /** @psalm-suppress MissingReturnType */
+                    function getMixed() {}
+
+                    /** @psalm-suppress MixedAssignment */
+                    list($a, list($b, $c)) = getMixed();',
+                'assertions' => [
+                    '$a' => 'mixed',
+                    '$b' => 'mixed',
+                    '$c' => 'mixed',
+                ],
             ],
         ];
     }
