@@ -2596,7 +2596,7 @@ class CallChecker
             if ($scalar_type_match_found) {
                 if ($cased_method_id !== 'echo') {
                     // TODO: Better check for scalar being part of a compound type that matched.
-                    if (stripos($param_type, 'array') !== false) {
+                    if (stripos((string)$param_type, 'array') !== false) {
                         if (IssueBuffer::accepts(
                             new InvalidScalarInComplexArgument(
                                 'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
