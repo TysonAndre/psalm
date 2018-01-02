@@ -37,6 +37,7 @@ use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\PossiblyFalseArgument;
 use Psalm\Issue\PossiblyFalseReference;
 use Psalm\Issue\PossiblyInvalidArgument;
+use Psalm\Issue\PossiblyInvalidFunctionCall;
 use Psalm\Issue\PossiblyInvalidMethodCall;
 use Psalm\Issue\PossiblyNullArgument;
 use Psalm\Issue\PossiblyNullFunctionCall;
@@ -58,6 +59,7 @@ use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
+use Psalm\Type\Reconciler;
 
 class CallChecker
 {
@@ -168,6 +170,9 @@ class CallChecker
                     }
                 }
 
+                $invalid_function_call_types = [];
+                $has_valid_function_call_type = false;
+
                 foreach ($stmt->name->inferredType->types as $var_type_part) {
                     if ($var_type_part instanceof Type\Atomic\Fn) {
                         $function_params = $var_type_part->params;
@@ -182,11 +187,14 @@ class CallChecker
                         }
 
                         $function_exists = true;
+                        $has_valid_function_call_type = true;
                     } elseif ($var_type_part instanceof TMixed) {
+                        $has_valid_function_call_type = true;
                         // @todo maybe emit issue here
                     } elseif (($var_type_part instanceof TNamedObject && $var_type_part->value === 'Closure') ||
                         $var_type_part instanceof TCallable
                     ) {
+                        $has_valid_function_call_type = true;
                         // this is fine
                     } elseif ($var_type_part instanceof TNull) {
                         // handled above
@@ -200,15 +208,27 @@ class CallChecker
                             $var_type_part->value . '::__invoke'
                         )
                     ) {
-                        $var_id = ExpressionChecker::getVarId(
-                            $stmt->name,
-                            $statements_checker->getFQCLN(),
-                            $statements_checker
-                        );
+                        $invalid_function_call_types[] = (string)$var_type_part;
+                    }
+                }
 
+                if ($invalid_function_call_types) {
+                    $var_type_part = reset($invalid_function_call_types);
+
+                    if ($has_valid_function_call_type) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyInvalidFunctionCall(
+                                'Cannot treat type ' . $var_type_part . ' as callable',
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
+                    } else {
                         if (IssueBuffer::accepts(
                             new InvalidFunctionCall(
-                                'Cannot treat ' . $var_id . ' of type ' . $var_type_part . ' as function',
+                                'Cannot treat type ' . $var_type_part . ' as callable',
                                 new CodeLocation($statements_checker->getSource(), $stmt)
                             ),
                             $statements_checker->getSuppressedIssues()
@@ -399,7 +419,7 @@ class CallChecker
 
                 // while in an and, we allow scope to boil over to support
                 // statements of the form if ($x && $x->foo())
-                $op_vars_in_scope = TypeChecker::reconcileKeyedTypes(
+                $op_vars_in_scope = Reconciler::reconcileKeyedTypes(
                     $assert_type_assertions,
                     $context->vars_in_scope,
                     $changed_vars,
@@ -476,10 +496,11 @@ class CallChecker
                     }
 
                     if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                        $project_checker,
+                        $statements_checker,
                         $fq_class_name,
                         new CodeLocation($statements_checker->getSource(), $stmt->class),
-                        $statements_checker->getSuppressedIssues()
+                        $statements_checker->getSuppressedIssues(),
+                        false
                     ) === false) {
                         return false;
                     }
@@ -837,7 +858,7 @@ class CallChecker
                     $does_class_exist = true;
                 } else {
                     $does_class_exist = ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                        $project_checker,
+                        $statements_checker,
                         $fq_class_name,
                         $code_location,
                         $statements_checker->getSuppressedIssues()
@@ -1189,7 +1210,9 @@ class CallChecker
         ) {
             $method_id = $fq_class_name . '::' . strtolower($method_name);
 
-            $project_checker->getMethodMutations($method_id, $context);
+            if ($method_id !== $source->getMethodId()) {
+                $project_checker->getMethodMutations($method_id, $context);
+            }
         } elseif ($context->collect_initializations &&
             $context->self &&
             (
@@ -1363,7 +1386,7 @@ class CallChecker
 
                 if (!$does_class_exist) {
                     $does_class_exist = ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                        $project_checker,
+                        $statements_checker,
                         $fq_class_name,
                         new CodeLocation($source, $stmt->class),
                         $statements_checker->getSuppressedIssues(),
@@ -1974,6 +1997,7 @@ class CallChecker
                 && $function_param->by_ref
             ) {
                 if ($arg->value instanceof PhpParser\Node\Scalar
+                    || $arg->value instanceof PhpParser\Node\Expr\Array_
                     || $arg->value instanceof PhpParser\Node\Expr\ClassConstFetch
                     || $arg->value instanceof PhpParser\Node\Expr\ConstFetch
                     || $arg->value instanceof PhpParser\Node\Expr\FuncCall
@@ -2072,7 +2096,7 @@ class CallChecker
                                     // register class if the class exists
                                     if ($offset_value_type_part instanceof TNamedObject) {
                                         ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                                            $project_checker,
+                                            $statements_checker,
                                             $offset_value_type_part->value,
                                             new CodeLocation($statements_checker->getSource(), $arg->value),
                                             $statements_checker->getSuppressedIssues()
@@ -2633,7 +2657,7 @@ class CallChecker
 
                             if (!in_array(strtolower($callable_fq_class_name), ['self', 'static', 'parent'], true)) {
                                 if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                                        $project_checker,
+                                        $statements_checker,
                                         $callable_fq_class_name,
                                         $code_location,
                                         $statements_checker->getSuppressedIssues()

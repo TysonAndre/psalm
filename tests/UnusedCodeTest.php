@@ -162,6 +162,56 @@ class UnusedCodeTest extends TestCase
                     $m->foo("value");
                     $m->modifyFoo("value2");',
             ],
+            'usedTraitMethod' => [
+                '<?php
+                    class A {
+                        public function foo() : void {
+                            echo "parent method";
+                        }
+                    }
+
+                    trait T {
+                        public function foo() : void {
+                            echo "trait method";
+                        }
+                    }
+
+                    class B extends A {
+                        use T;
+                    }
+
+                    (new A)->foo();
+                    (new B)->foo();',
+            ],
+            'usedInterfaceMethod' => [
+                '<?php
+                    interface I {
+                        public function foo() : void;
+                    }
+
+                    class A implements I {
+                        public function foo() : void {}
+                    }
+
+                    (new A)->foo();',
+            ],
+            'dummyByRefVar' => [
+                '<?php
+                    function foo(string &$a = null, string $b = null) : void {
+                        if ($a) {
+                            echo $a;
+                        }
+                        if ($b) {
+                            echo $b;
+                        }
+                    }
+
+                    function bar() : void {
+                        foo($dummy_byref_var, "hello");
+                    }
+
+                    bar();',
+            ],
         ];
     }
 
@@ -219,6 +269,14 @@ class UnusedCodeTest extends TestCase
 
                     new A();',
                 'error_message' => 'UnusedMethod',
+            ],
+            'unevaluatedCode' => [
+                '<?php
+                    function foo() : void {
+                        return;
+                        $a = "foo";
+                    }',
+                'error_message' => 'UnevaluatedCode',
             ],
         ];
     }

@@ -26,7 +26,6 @@ class AssertionFinder
      * @param  StatementsSource         $source
      *
      * @return array<string, string>
-     * @psalm-suppress MoreSpecificReturnType
      */
     public static function getAssertions(
         PhpParser\Node\Expr $conditional,
@@ -335,10 +334,11 @@ class AssertionFinder
                 $file_checker = $source->getFileChecker();
 
                 if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                    $file_checker->project_checker,
+                    $source,
                     $var_type,
                     new CodeLocation($file_checker, $whichclass_expr),
-                    $source->getSuppressedIssues()
+                    $source->getSuppressedIssues(),
+                    false
                 ) === false
                 ) {
                     // fall through
@@ -606,10 +606,11 @@ class AssertionFinder
                 $file_checker = $source->getFileChecker();
 
                 if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                    $file_checker->project_checker,
+                    $source,
                     $var_type,
                     new CodeLocation($file_checker, $whichclass_expr),
-                    $source->getSuppressedIssues()
+                    $source->getSuppressedIssues(),
+                    false
                 ) === false
                 ) {
                     // fall through

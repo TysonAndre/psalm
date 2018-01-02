@@ -388,27 +388,7 @@ class Config
 
                 $path = $config->base_dir . $plugin_file_name;
 
-                if (!file_exists($path)) {
-                    throw new \InvalidArgumentException('Cannot find file ' . $path);
-                }
-
-                /** @psalm-suppress UnresolvableInclude */
-                $loaded_plugin = require($path);
-
-                if (!$loaded_plugin) {
-                    throw new \InvalidArgumentException(
-                        'Plugins must return an instance of that plugin at the end of the file - ' .
-                            $plugin_file_name . ' does not'
-                    );
-                }
-
-                if (!($loaded_plugin instanceof Plugin)) {
-                    throw new \InvalidArgumentException(
-                        'Plugins must extend \Psalm\Plugin - ' . $plugin_file_name . ' does not'
-                    );
-                }
-
-                $config->plugins[] = $loaded_plugin;
+                $config->addPluginPath($path);
             }
         }
 
@@ -456,7 +436,7 @@ class Config
     }
 
     /**
-     * @param  array<\SimpleXMLElement> $extensions
+     * @param  array<SimpleXMLElement> $extensions
      *
      * @throws ConfigException if a Config file could not be found
      *
@@ -713,5 +693,151 @@ class Config
                 $this->predefined_functions[$function_name] = true;
             }
         }
+    }
+
+    /**
+     * @return void
+     *
+     * @psalm-suppress MixedAssignment
+     * @psalm-suppress MixedArrayAccess
+     */
+    public function visitComposerAutoloadFiles(ProjectChecker $project_checker)
+    {
+        $project_checker->register_global_functions = true;
+
+        $composer_json_path = $this->base_dir . 'composer.json'; // this should ideally not be hardcoded
+
+        if (!file_exists($composer_json_path)) {
+            $project_checker->register_global_functions = false;
+
+            return;
+        }
+
+        /** @psalm-suppress PossiblyFalseArgument */
+        if (!$composer_json = json_decode(file_get_contents($composer_json_path), true)) {
+            throw new \UnexpectedValueException('Invalid composer.json at ' . $composer_json_path);
+        }
+
+        if (isset($composer_json['autoload']['files'])) {
+            /** @var string[] */
+            $files = $composer_json['autoload']['files'];
+
+            foreach ($files as $file) {
+                $file_path = realpath($this->base_dir . $file);
+
+                if (!$file_path) {
+                    continue;
+                }
+
+                $file_checker = new FileChecker($file_path, $project_checker);
+                $project_checker->file_storage_provider->create($file_path);
+                $file_checker->scan();
+            }
+        }
+
+        $project_checker->register_global_functions = false;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getComposerClassMap()
+    {
+        $vendor_dir = $this->base_dir . 'vendor'; // this should ideally not be hardcoded
+
+        $autoload_files_classmap =
+            $vendor_dir . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'autoload_classmap.php';
+
+        if (!file_exists($autoload_files_classmap)) {
+            return [];
+        }
+
+        /**
+         * @psalm-suppress MixedAssignment
+         * @psalm-suppress UnresolvableInclude
+         */
+        $class_map = include_once $autoload_files_classmap;
+
+        if (is_array($class_map)) {
+            $composer_classmap = array_change_key_case($class_map);
+
+            $composer_classmap = array_filter(
+                $composer_classmap,
+                /**
+                 * @param string $file_path
+                 *
+                 * @return bool
+                 */
+                function ($file_path) use ($vendor_dir) {
+                    return strpos($file_path, $vendor_dir) === 0;
+                }
+            );
+        } else {
+            $composer_classmap = [];
+        }
+
+        return $composer_classmap;
+    }
+
+    /**
+     * @param string $dir
+     *
+     * @return void
+     */
+    public static function removeCacheDirectory($dir)
+    {
+        if (is_dir($dir)) {
+            $objects = scandir($dir);
+
+            if ($objects === false) {
+                throw new \UnexpectedValueException('Not expecting false here');
+            }
+
+            foreach ($objects as $object) {
+                if ($object != '.' && $object != '..') {
+                    if (filetype($dir . '/' . $object) == 'dir') {
+                        self::removeCacheDirectory($dir . '/' . $object);
+                    } else {
+                        unlink($dir . '/' . $object);
+                    }
+                }
+            }
+
+            reset($objects);
+            rmdir($dir);
+        }
+    }
+
+    /**
+     * @param string $path
+     *
+     * @return void
+     */
+    public function addPluginPath($path)
+    {
+        if (!file_exists($path)) {
+            throw new \InvalidArgumentException('Cannot find file ' . $path);
+        }
+
+        /**
+         * @var Plugin
+         * @psalm-suppress UnresolvableInclude
+         */
+        $loaded_plugin = require_once($path);
+
+        if (!$loaded_plugin) {
+            throw new \InvalidArgumentException(
+                'Plugins must return an instance of that plugin at the end of the file - ' .
+                    $plugin_file_name . ' does not'
+            );
+        }
+
+        if (!($loaded_plugin instanceof Plugin)) {
+            throw new \InvalidArgumentException(
+                'Plugins must extend \Psalm\Plugin - ' . $path . ' does not'
+            );
+        }
+
+        $this->plugins[] = $loaded_plugin;
     }
 }

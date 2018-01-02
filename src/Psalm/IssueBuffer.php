@@ -35,7 +35,7 @@ class IssueBuffer
     protected static $recorded_issues = [];
 
     /**
-     * @var int
+     * @var float
      */
     protected static $start_time = 0;
 
@@ -344,7 +344,7 @@ class IssueBuffer
     }
 
     /**
-     * @param int $time
+     * @param float $time
      *
      * @return void
      */

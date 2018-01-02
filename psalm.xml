@@ -25,17 +25,19 @@
         <MissingConstructor errorLevel="suppress" />
         <DeprecatedProperty errorLevel="suppress" />
 
-        <PossiblyUnusedVariable>
+        <UnusedParam>
             <errorLevel type="suppress">
                 <file name="src/Psalm/Plugin.php" />
+                <directory name="examples" />
             </errorLevel>
-        </PossiblyUnusedVariable>
+        </UnusedParam>
 
-        <UnusedMethod>
+        <PossiblyUnusedParam>
             <errorLevel type="suppress">
-                <directory name="tests" />
+                <file name="src/Psalm/Plugin.php" />
+                <directory name="examples" />
             </errorLevel>
-        </UnusedMethod>
+        </PossiblyUnusedParam>
 
         <UnusedClass>
             <errorLevel type="suppress">
@@ -46,6 +48,7 @@
         <PossiblyUnusedMethod>
             <errorLevel type="suppress">
                 <directory name="tests" />
+                <file name="src/Psalm/Type/Atomic/GenericTrait.php" />
             </errorLevel>
         </PossiblyUnusedMethod>
 

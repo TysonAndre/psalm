@@ -18,6 +18,15 @@ function foo() : void {}
 $a = foo();
 ```
 
+### CircularReference
+
+Emitted when a class references itself as one of its parents
+
+```php
+class A extends B {}
+class B extends A {}
+```
+
 ### ContinueOutsideLoop
 
 Emitted when encountering a `continue` statement outside a loop context.
@@ -112,7 +121,7 @@ class A {
 class B extends A {
     /** @return string */
     public function foo()  {
-        return true;
+        return "hello";
     }
 }
 ```
@@ -214,6 +223,18 @@ $a = new A();
 $b = (string)$a;
 ```
 
+### InvalidCatch
+
+Emitted when trying to catch a class/interface that doesn't extend `Exception` or implement `Throwable`
+
+```php
+class A {}
+try {
+    $worked = true;
+}
+catch (A $e) {}
+```
+
 ### InvalidClass
 
 Emitted when referencing a class with the wrong casing
@@ -252,10 +273,10 @@ $b = $a();
 
 ### InvalidGlobal
 
-Emitted when
+Emitted when there's a reference to the global keyword where it's not expected
 
 ```php
-
+global $e;
 ```
 
 ### InvalidIterator
@@ -278,298 +299,399 @@ $a->foo();
 
 ### InvalidOperand
 
-Emitted when
+Emitted when using something as an operand that is unexected
 
 ```php
-
+class A {}
+echo (new A) . ' ';
 ```
 
 ### InvalidParamDefault
 
-Emitted when
+Emitted when a function parameter default clashes with the type Psalm expects the param to be
 
 ```php
-
+function foo(int $i = false) : void {}
 ```
 
 ### InvalidPassByReference
 
-Emitted when
+Emitted when passing a non-variable to a function that expects a by-ref variable
 
 ```php
-
+function foo(array &$arr) : void {}
+foo([0, 1, 2]);
 ```
 
 ### InvalidPropertyAssignment
 
-Emitted when
+Emitted when attempting to assign a property to a non-object
 
 ```php
-
+$a = "foo";
+$a->bar = "bar";
 ```
 
 ### InvalidPropertyFetch
 
-Emitted when
+Emitted when attempting to get a property from a non-object
 
 ```php
-
+$a = "foo";
+echo $a->bar;
 ```
 
 ### InvalidReturnStatement
 
-Emitted when
+Emitted when a function return statement is incorrect
 
 ```php
-
+function foo() : string {
+    return 5; // emitted here
+}
 ```
 
 ### InvalidReturnType
 
-Emitted when
+    Emitted when a function’s return type is incorrect (often emitted with `InvalidReturnStatement`)
 
 ```php
-
+function foo() : string {
+    if (rand(0, 1)) {
+        return "foo";
+    }
+}
 ```
 
 ### InvalidScalarArgument
 
-Emitted when
+Emitted when a scalar value is passed to a method that expected another scalar type
 
 ```php
-
+function foo(int $i) : void {}
+function bar(string $s) : void {
+    if (is_numeric($s)) {
+        foo($s);
+    }
+}
 ```
 
 ### InvalidScope
 
-Emitted when
+Emitted when referring to `$this` outside a class
 
 ```php
-
+echo $this;
 ```
 
 ### InvalidStaticInvocation
 
-Emitted when
+Emitted when trying to call an instance function statically
 
 ```php
+class A {
+    /** @var ?string */
+    public $foo;
 
+    public function bar() : void {
+        echo $this->foo;
+    }
+}
+
+A::bar();
 ```
 
-### InvalidStaticVariable
+### InvalidThrow
 
-Emitted when
+Emitted when trying to throw a class that doesn't extend `Exception` or implement `Throwable`
 
 ```php
-
+class A {}
+throw new A();
 ```
 
 ### InvalidToString
 
-Emitted when
+Emitted when a `__toString` method does not always return a `string`
 
 ```php
-
+class A {
+    public function __toString() {
+        return true;
+    }
+}
 ```
 
 ### LessSpecificReturnStatement
 
-Emitted when
+Emitted when a return statement is more general than the return type given for the function
 
 ```php
+class A {}
+class B extends A {}
 
+function foo() : B {
+    return new A(); // emitted here
+}
 ```
 
 ### LessSpecificReturnType
 
-Emitted when
+Emitted when a return type covers more possibilities than the function itself
 
 ```php
+function foo() : ?int {
+    return 5;
+}
+```
 
+### LoopInvalidation
+
+Emitted when logic inside a loop invalidates one of the conditionals of the loop
+
+```php
+for ($i = 0; $i < 10; $i++) {
+    $i = 5;
+}
 ```
 
 ### MethodSignatureMismatch
 
-Emitted when
+Emitted when a method parameter differs from a parent method parameter, or if there are fewer parameters than the parent method
 
 ```php
-
+class A {
+    public function foo(int $i) : void {}
+}
+class B extends A {
+    public function foo(string $s) : void {}
+}
 ```
 
 ### MisplacedRequiredParam
 
-Emitted when
+Emitted when a required param is before a param that is not required. Included in Psalm because it is an E_WARNING in PHP
 
 ```php
-
+function foo(int $i = 5, string $j) : void {}
 ```
 
 ### MissingClosureReturnType
 
-Emitted when
+Emitted when a closure lacks a return type
 
 ```php
-
+$a = function() {
+    return "foo";
+};
 ```
 
 ### MissingConstructor
 
-Emitted when
+Emitted when non-null properties without default values are defined in a class without a `__construct` method
 
 ```php
-
+class A {
+    /** @var string */
+    public $foo;
+}
 ```
 
 ### MissingDocblockType
 
-Emitted when
+Emitted when a docblock is present, but the type is missing or badly formatted
 
 ```php
-
+/** @var $a */
+$a = [];
 ```
 
 ### MissingFile
 
-Emitted when
+Emitted when using `include` or `require` on a file that does not exist
 
 ```php
-
+require("nonexistent.php");
 ```
 
 ### MissingPropertyType
 
-Emitted when
+Emitted when a property is defined on a class without a type
 
 ```php
-
+class A {
+    public $foo;
+}
 ```
 
 ### MissingReturnType
 
-Emitted when
+Emitted when a function doesn't have a return type defined
 
 ```php
-
+function foo() {
+    return "foo";
+}
 ```
 
 ### MixedArgument
 
-Emitted when
+Emitted when Psalm cannot determine the type of an argument
 
 ```php
-
+function takesInt(int $i) : void {}
+takesInt($_GET['foo']);
 ```
 
 ### MixedArrayAccess
 
-Emitted when
+Emitted when trying to access an array offset on a value whose type Psalm cannot determine
 
 ```php
-
+echo $_GET['foo'][0];
 ```
 
 ### MixedArrayAssignment
 
-Emitted when
+Emitted when trying to assign a value to an array offset on a value whose type Psalm cannot determine
 
 ```php
-
+$_GET['foo'][0] = "5";
 ```
 
 ### MixedArrayOffset
 
-Emitted when
+Emitted when attempting to access an array offset where Psalm cannot determine the offset type
 
 ```php
-
+echo [1, 2, 3][$_GET['foo']];
 ```
 
 ### MixedAssignment
 
-Emitted when
+Emitted when assigning a variable to a value for which Psalm cannot infer a type
 
 ```php
-
+$a = $_GET['foo'];
 ```
 
 ### MixedInferredReturnType
 
-Emitted when
+Emitted when Psalm cannot determine a function's return type
 
 ```php
-
+function foo() : int {
+    return $_GET['foo'];
+}
 ```
 
 ### MixedMethodCall
 
-Emitted when
+Emitted when calling a method on a value that Psalm cannot infer a type for
 
 ```php
-
+/** @param mixed $a */
+function foo($a) : void {
+    $a->foo();
+}
 ```
 
 ### MixedOperand
 
-Emitted when
+Emitted when Psalm cannot infer a type for an operand in any calculated expression
 
 ```php
-
+echo $_GET['foo'] + "hello";
 ```
 
 ### MixedPropertyAssignment
 
-Emitted when
+Emitted when assigning a property to a value for which Psalm cannot infer a type
 
 ```php
-
+/** @param mixed $a */
+function foo($a) : void {
+    $a->foo = "bar";
+}
 ```
 
 ### MixedPropertyFetch
 
-Emitted when
+Emitted when retrieving a property on a value for which Psalm cannot infer a type
 
 ```php
-
+/** @param mixed $a */
+function foo($a) : void {
+    echo $a->foo;
+}
 ```
 
 ### MixedStringOffsetAssignment
 
-Emitted when
+Emitted when assigning a value on a string using a value for which Psalm cannot infer a type
 
 ```php
-
+"hello"[$_GET['foo']] = "h";
 ```
 
 ### MixedTypeCoercion
 
-Emitted when
+Emitted when Psalm cannot be sure that part of an array/iterabble argument's type constraints can be fulfilled
 
 ```php
+function foo(array $a) : void {
+    takesStringArray($a);
+}
 
+/** @param string[] $a */
+function takesStringArray(array $a) : void {}
 ```
 
 ### MoreSpecificImplementedReturnType
 
-Emitted when
+Emitted when a class implements an interface method but its return type is less specific than the interface method return type
 
 ```php
-
+class A {}
+class B extends A {}
+interface I {
+    /** @return B[] */
+    public function foo();
+}
+class D implements I {
+    /** @return A[] */
+    public function foo() {
+        return [new A, new A];
+    }
+}
 ```
 
 ### MoreSpecificReturnType
 
-Emitted when
+Emitted when the declared return type for a method is more specific than the inferred one (emitted in the same methods that `LessSpecificReturnStatement` is)
 
 ```php
-
+class A {}
+class B extends A {}
+function foo() : B {
+    /** @psalm-suppress LessSpecificReturnStatement */
+    return new A();
+}
 ```
 
 ### NoInterfaceProperties
 
-Emitted when
+Emitted when trying to fetch a property on an interface as interfaces, by definition, do not have definitions for properties.
 
 ```php
-
+interface I {}
+class A implements I {
+    /** @var ?string */
+    public $foo;
+}
+function bar(I $i) : void {
+    if ($i->foo) {}
+}
 ```
 
 ### NonStaticSelfCall
@@ -582,114 +704,145 @@ Emitted when
 
 ### NullArgument
 
-Emitted when
+Emitted when calling a function with a null value argument when the function does not expect it
 
 ```php
-
+function foo(string $s) : void {}
+foo(null);
 ```
 
 ### NullArrayAccess
 
-Emitted when
+Emitted when trying to access an array value on `null`
 
 ```php
-
+$arr = null;
+echo $arr[0];
 ```
 
 ### NullArrayOffset
 
-Emitted when
+Emitted when trying to access an array offset with `null`
 
 ```php
-
+$arr = ['' => 5, 'foo' => 1];
+echo $arr[null];
 ```
 
 ### NullFunctionCall
 
-Emitted when
+Emitted when trying to use `null` as a `callable`
 
 ```php
-
+$arr = null;
+echo $arr();
 ```
 
 ### NullIterator
 
-Emitted when
+Emitted when iterating over `null`
 
 ```php
-
+foreach (null as $a) {}
 ```
 
 ### NullOperand
 
-Emitted when
+Emitted when using `null` as part of an operation (e.g. `+`, `.`, `^` etc.`)
 
 ```php
-
+echo null . 'hello';
 ```
 
 ### NullPropertyAssignment
 
-Emitted when
+Emitted when trying to set a property on `null`
 
 ```php
-
+$a = null;
+$a->foo = "bar";
 ```
 
 ### NullPropertyFetch
 
-Emitted when
+Emitted when trying to fetch a property on a `null` value
 
 ```php
-
+$a = null;
+echo $a->foo;
 ```
 
 ### NullReference
 
-Emitted when
+Emitted when attempting to call a method on `null`
 
 ```php
-
+$a = null;
+$a->foo();
 ```
 
 ### OverriddenMethodAccess
 
-Emitted when
+Emitted when a method is less accessible than its parent
 
 ```php
-
+class A {
+    public function foo() : void {}
+}
+class B extends A {
+    protected function foo() : void {}
+}
 ```
 
 ### ParadoxicalCondition
 
-Emitted when
+Emitted when a paradox is encountered in your programs logic that could not be caught by `RedundantCondition`
 
 ```php
-
+function foo(?string $a) : ?string {
+    if ($a) return $a;
+    if ($a) echo "cannot happen";
+}
 ```
 
 ### ParentNotFound
 
-Emitted when
+Emitted when using `parent::` in a class without a parent class.
 
 ```php
-
+class A {
+  public function foo() : void {
+    parent::foo();
+  }
+}
 ```
 
 ### PossiblyFalseArgument
 
-Emitted when
+Emitted when a function argument is possibly `false`, but the function doesn’t expect `false`. This is distinct from a function argument is possibly `bool`, which results in `PossiblyInvalidArgument`.
 
 ```php
-
+function foo(string $s) : void {
+    $a_pos = strpos($s, "a");
+    echo substr($s, $a_pos);
+}
 ```
 
 ### PossiblyFalseReference
 
-Emitted when
+Emitted when making a method call on a value than might be `false`
 
 ```php
+class A {
+    public function bar() : void {}
+}
 
+/** @return A|false */
+function foo() {
+    return rand(0, 1) ? new A : false;
+}
+
+foo()->bar();
 ```
 
 ### PossiblyInvalidArgument
@@ -697,422 +850,596 @@ Emitted when
 Emitted when
 
 ```php
-
+/** @return string|int */
+function foo() {
+    return rand(0, 1) ? 5 : "i";
+}
+function bar(int $i) : void {}
+bar(foo());
 ```
 
 ### PossiblyInvalidArrayAccess
 
-Emitted when
+Emitted when attempting to access an array offset on a value that may not be an array
 
 ```php
-
+$arr = rand(0, 1) ? 5 : [4, 3, 2, 1];
+echo $arr[0];
 ```
 
 ### PossiblyInvalidArrayAssignment
 
-Emitted when
+Emitted when attempting to assign an array offset on a value that may not be an array
 
 ```php
-
+$arr = rand(0, 1) ? 5 : [4, 3, 2, 1];
+$arr[0] = "hello";
 ```
 
 ### PossiblyInvalidArrayOffset
 
-Emitted when
+Emitted when it’s possible that the array offset is not applicable to the value you’re trying to access.
 
 ```php
+$arr = rand(0, 1) ? ["a" => 5] : "hello";
+echo $arr[0];
+```
 
+### PossiblyInvalidFunctionCall
+
+Emitted when trying to call a function on a value that may not be callable
+
+```php
+$a = rand(0, 1) ? 5 : function() : int { return 5; };
+$b = $a();
 ```
 
 ### PossiblyInvalidMethodCall
 
-Emitted when
+Emitted when trying to call a method on a value that may not be an object
 
 ```php
+class A {
+    public function bar() : void {}
+}
 
+/** @return A|int */
+function foo() {
+    return rand(0, 1) ? new A : 5;
+}
+
+foo()->bar();
 ```
 
 ### PossiblyInvalidPropertyAssignment
 
-Emitted when
+Emitted when trying to assign a property on a value that may not be an object or may be an object that doesn’t have the desired property.
 
 ```php
+class A {
+    /** @var ?string */
+    public $bar;
+}
 
+/** @return A|int */
+function foo() {
+    return rand(0, 1) ? new A : 5;
+}
+
+$a = foo();
+$a->bar = "5";
 ```
 
 ### PossiblyInvalidPropertyFetch
 
-Emitted when
+Emitted when trying to fetch a property on a value that may not be an object or may be an object that doesn’t have the desired property.
 
 ```php
+class A {
+    /** @var ?string */
+    public $bar;
+}
 
+/** @return A|int */
+function foo() {
+    return rand(0, 1) ? new A : 5;
+}
+
+$a = foo();
+echo $a->bar;
 ```
 
 ### PossiblyNullArgument
 
-Emitted when
+Emitted when calling a function with a value that’s possibly null when the function does not expect it
 
 ```php
-
+function foo(string $s) : void {}
+foo(rand(0, 1) ? "hello" : null);
 ```
 
 ### PossiblyNullArrayAccess
 
-Emitted when
+Emitted when trying to access an array offset on a possibly null value
 
 ```php
-
+function foo(?array $a) : void {
+    echo $a[0];
+}
 ```
 
 ### PossiblyNullArrayAssignment
 
-Emitted when
+Emitted when trying to set a value on a possibly null array
 
 ```php
-
+function foo(?array $a) : void {
+    $a[0] = "5";
+}
 ```
 
 ### PossiblyNullArrayOffset
 
-Emitted when
+Emitted when trying to access a value on an array using a possibly null offset
 
 ```php
-
+function foo(?int $a) : void {
+    echo [1, 2, 3, 4][$a];
+}
 ```
 
 ### PossiblyNullFunctionCall
 
-Emitted when
+Emitted when trying to call a function on a value that may be null
 
 ```php
-
+function foo(?callable $a) : void {
+    $a();
+}
 ```
 
 ### PossiblyNullIterator
 
-Emitted when
+Emitted when trying to iterate over a value that may be null
 
 ```php
-
+function foo(?array $arr) : void {
+    foreach ($arr as $a) {}
+}
 ```
 
 ### PossiblyNullOperand
 
-Emitted when
+Emitted when using a possibly `null` value as part of an operation (e.g. `+`, `.`, `^` etc.`)
 
 ```php
-
+function foo(?int $a) : void {
+    echo $a + 5;
+}
 ```
 
 ### PossiblyNullPropertyAssignment
 
-Emitted when
+Emitted when trying to assign a property to a possibly null object
 
 ```php
-
+class A {
+    /** @var ?string */
+    public $foo;
+}
+function foo(?A $a) : void {
+    $a->foo = "bar";
+}
 ```
 
 ### PossiblyNullPropertyFetch
 
-Emitted when
+Emitted when trying to fetch a property on a possibly null object
 
 ```php
-
+class A {
+    /** @var ?string */
+    public $foo;
+}
+function foo(?A $a) : void {
+    echo $a->foo;
+}
 ```
 
 ### PossiblyNullReference
 
-Emitted when
+Emitted when trying to call a method on a possibly null value
 
 ```php
-
+class A {
+    public function bar() : void {}
+}
+function foo(?A $a) : void {
+    $a->bar();
+}
 ```
 
 ### PossiblyUndefinedGlobalVariable
 
-Emitted when
+Emitted when trying to access a variable in the global scope that may not be defined
 
 ```php
-
+if (rand(0, 1)) {
+  $a = 5;
+}
+echo $a;
 ```
 
 ### PossiblyUndefinedMethod
 
-Emitted when
+Emitted when trying to access a method that may not be defined on the object
 
 ```php
+class A {
+    public function bar() : void {}
+}
+class B {}
 
+$a = rand(0, 1) ? new A : new B;
+$a->bar();
 ```
 
 ### PossiblyUndefinedVariable
 
-Emitted when
+Emitted when trying to access a variable in function scope that may not be defined
 
 ```php
-
+function foo() : void {
+    if (rand(0, 1)) {
+        $a = 5;
+    }
+    echo $a;
+}
 ```
 
 ### PossiblyUnusedMethod
 
-Emitted when
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any calls to a given class method
 
 ```php
-
+class A {
+    public function foo() : void {}
+    public function bar() : void {}
+}
+(new A)->foo();
 ```
 
-### PossiblyUnusedVariable
+### PossiblyUnusedParam
 
-Emitted when
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any uses of a particular parameter in a public/protected method
 
 ```php
-
+class A {
+    public function foo(int $a, int $b) : int {
+        return $a + 4;
+    }
+}
 ```
 
 ### PropertyNotSetInConstructor
 
-Emitted when
+Emitted when a non-null property without a default value is declared but not set in the class’s constructor
 
 ```php
+class A {
+    /** @var string */
+    public $foo;
 
+    public function __construct() {}
+}
 ```
 
 ### RawObjectIteration
 
-Emitted when
+Emitted when iterating over an object’s properties. This issue exists because it may be undesired behaviour (e.g. you may have meant to iterate over an array)
 
 ```php
+class A {
+    /** @var string */
+    public $foo;
 
+    /** @var string */
+    public $bar;
+}
+
+function takesA(A $a) {
+    foreach ($a as $property) {}
+}
 ```
 
 ### RedundantCondition
 
-Emitted when
+Emitted when conditional is redundant given previous assertions
 
 ```php
-
+class A {}
+function foo(?A $a) : ?A {
+    if ($a) return $a;
+    if ($a) echo "cannot happen";
+}
 ```
 
 ### ReferenceConstraintViolation
 
-Emitted when
+Emitted when changing the type of a pass-by-reference variable
 
 ```php
-
+function foo(string &$a) {
+    $a = 5;
+}
 ```
 
 ### ReservedWord
 
-Emitted when
+Emitted when using a reserved word as a class name
 
 ```php
-
+function foo(resource $res) : void {}
 ```
 
 ### TooFewArguments
 
-Emitted when
+Emitted when calling a function with fewer arguments than the function has parameters
 
 ```php
-
+function foo(string $a) : void {}
+foo();
 ```
 
 ### TooManyArguments
 
-Emitted when
+Emitted when calling a function with more arguments than the function has parameters
 
 ```php
-
+function foo(string $a) : void {}
+foo("hello", 4);
 ```
 
 ### TypeCoercion
 
-Emitted when
+Emitted when calling a function with an argument which has a less specific type than the function expects
 
 ```php
+class A {}
+class B extends A {}
 
+function takesA(A $a) : void {
+    takesB($a);
+}
+function takesB(B $b) : void {}
 ```
 
 ### TypeDoesNotContainNull
 
-Emitted when
+Emitted when checking a non-nullable type for `null`
 
 ```php
-
+$a = "hello";
+if ($a === null) {}
 ```
 
 ### TypeDoesNotContainType
 
-Emitted when
+Emitted checking whether one value has a type or value that is impossible given its currently-known type
 
 ```php
-
+$a = "hello";
+if ($a === 5) {}
 ```
 
 ### UndefinedClass
 
-Emitted when
+Emitted when referencing a class that doesn’t exist
 
 ```php
-
+$a = new A();
 ```
 
 ### UndefinedConstant
 
-Emitted when
+Emitted when referencing a constant that doesn’t exist
 
 ```php
-
+echo FOO_BAR;
 ```
 
 ### UndefinedFunction
 
-Emitted when
+Emitted when referencing a function that doesn't exist
 
 ```php
-
+foo();
 ```
 
 ### UndefinedGlobalVariable
 
-Emitted when
+Emitted when referencing a variable that doesn't exist
 
 ```php
-
+echo $a;
 ```
 
 ### UndefinedMethod
 
-Emitted when
+Emitted when calling a method that doesn’t exist
 
 ```php
-
+class A {}
+A::foo();
 ```
 
 ### UndefinedPropertyAssignment
 
-Emitted when
+Emitted when assigning a property on an object that doesn’t have that property defined
 
 ```php
-
+class A {}
+$a = new A();
+$a->foo = "bar";
 ```
 
 ### UndefinedPropertyFetch
 
-Emitted when
+Emitted when getting a property on an object that doesn’t have that property defined
 
 ```php
-
+class A {}
+$a = new A();
+echo $a->foo;
 ```
 
 ### UndefinedThisPropertyAssignment
 
-Emitted when
+Emitted when assigning a property on an object in one of that object’s methods when no such property exists
 
 ```php
-
+class A {
+    function foo() {
+        $this->foo = "bar";
+    }
+}
 ```
 
 ### UndefinedThisPropertyFetch
 
-Emitted when
+Emitted when getting a property for an object in one of that object’s methods when no such property exists
 
 ```php
-
+class A {
+    function foo() {
+        echo $this->foo;
+    }
+}
 ```
 
 ### UndefinedTrait
 
-Emitted when
+Emitted when referencing a trait that doesn’t exist
 
 ```php
-
+class A {
+    use T;
+}
 ```
 
 ### UndefinedVariable
 
-Emitted when
+Emitted when referencing a variable that doesn't exist in a given function’s scope
 
 ```php
-
+function foo() {
+    echo $a;
+}
 ```
 
 ### UnevaluatedCode
 
-Emitted when
+Emitted when `--find-dead-code` is turned on and Psalm encounters code that will not be evaluated
 
 ```php
-
+function foo() : void {
+    return;
+    $a = "foo";
+}
 ```
 
 ### UnimplementedAbstractMethod
 
-Emitted when
+Emitted when a class extends another, but does not implement all of its abstract methods
 
 ```php
-
+abstract class A {
+    abstract public function foo();
+}
+class B extends A {}
 ```
 
 ### UnimplementedInterfaceMethod
 
-Emitted when
+Emitted when a class `implements` an interface but does not implement all of its methods
 
 ```php
-
+interface I {
+    public function foo();
+}
+class A implements I {}
 ```
 
 ### UnrecognizedExpression
 
-Emitted when
-
-```php
-
-```
+Emitted when Psalm encounters an expression that it doesn't know how to handle. This should never happen.
 
 ### UnrecognizedStatement
 
-Emitted when
-
-```php
-
-```
+Emitted when Psalm encounters a code construct that it doesn't know how to handle. This should never happen.
 
 ### UnresolvableInclude
 
-Emitted when
+Emitted when Psalm cannot figure out what specific file is being included/required by PHP.
 
 ```php
-
+function requireFile(string $s) : void {
+    require_once($s);
+}
 ```
 
 ### UntypedParam
 
-Emitted when
+Emitted when a function paramter has no type information associated with it
 
 ```php
-
+function foo($a) : void {}
 ```
 
 ### UnusedClass
 
-Emitted when
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any uses of a given class
 
 ```php
-
+class A {}
+class B {}
+$a = new A();
 ```
 
 ### UnusedMethod
 
-Emitted when
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any uses of a given private method or function
 
 ```php
+class A {
+    public function __construct() {
+        $this->foo();
+    }
+    private function foo() : void {}
+    private function bar() : void {}
+}
+new A();
+```
 
+### UnusedParam
+
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any uses of a particular parameter in a private method or function
+
+```php
+function foo(int $a, int $b) : int {
+    return $a + 4;
+}
 ```
 
 ### UnusedVariable
 
-Emitted when
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any references to a variable, once instantiated
 
 ```php
-
+function foo() : void {
+    $a = 5;
+    $b = 4;
+    echo $b;
+}
 ```
 

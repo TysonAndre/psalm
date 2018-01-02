@@ -2,14 +2,19 @@
 namespace Psalm\Checker\Statements\Block;
 
 use PhpParser;
+use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
+use Psalm\Checker\InterfaceChecker;
 use Psalm\Checker\ScopeChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Issue\InvalidCatch;
+use Psalm\IssueBuffer;
 use Psalm\Scope\LoopScope;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Union;
 
 class TryChecker
 {
@@ -85,6 +90,8 @@ class TryChecker
         // the try was applied
         $original_context = clone $try_context;
 
+        $project_checker = $statements_checker->getFileChecker()->project_checker;
+
         /** @var int $i */
         foreach ($stmt->catches as $i => $catch) {
             $catch_context = clone $original_context;
@@ -99,11 +106,31 @@ class TryChecker
 
                 if ($original_context->check_classes) {
                     if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                        $statements_checker->getFileChecker()->project_checker,
+                        $statements_checker,
                         $fq_catch_class,
                         new CodeLocation($statements_checker->getSource(), $catch_type, $context->include_location),
-                        $statements_checker->getSuppressedIssues()
+                        $statements_checker->getSuppressedIssues(),
+                        false
                     ) === false) {
+                        return false;
+                    }
+                }
+
+                if ((ClassChecker::classExists($project_checker, $fq_catch_class)
+                        && strtolower($fq_catch_class) !== 'exception'
+                        && !(ClassChecker::classExtends($project_checker, $fq_catch_class, 'Exception')
+                            || ClassChecker::classImplements($project_checker, $fq_catch_class, 'Throwable')))
+                    || (InterfaceChecker::interfaceExists($project_checker, $fq_catch_class)
+                        && strtolower($fq_catch_class) !== 'throwable'
+                        && !InterfaceChecker::interfaceExtends($project_checker, $fq_catch_class, 'Throwable'))
+                ) {
+                    if (IssueBuffer::accepts(
+                        new InvalidCatch(
+                            'Class/interface ' . $fq_catch_class . ' cannot be caught',
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
                         return false;
                     }
                 }
@@ -120,8 +147,17 @@ class TryChecker
                      *
                      * @return Type\Atomic
                      */
-                    function ($fq_catch_class) {
-                        return new TNamedObject($fq_catch_class);
+                    function ($fq_catch_class) use ($project_checker) {
+                        $catch_class_type = new TNamedObject($fq_catch_class);
+
+                        if (version_compare(PHP_VERSION, '7.0.0dev', '>=')
+                            && InterfaceChecker::interfaceExists($project_checker, $fq_catch_class)
+                            && !InterfaceChecker::interfaceExtends($project_checker, $fq_catch_class, 'Throwable')
+                        ) {
+                            $catch_class_type->addIntersectionType(new TNamedObject('Throwable'));
+                        }
+
+                        return $catch_class_type;
                     },
                     $fq_catch_classes
                 )

@@ -1,7 +1,5 @@
-#!/usr/bin/env php
 <?php
 
-use Psalm\Checker\FileChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Config;
 
@@ -18,7 +16,7 @@ $options = getopt(
         'help', 'debug', 'config:', 'monochrome', 'show-info:', 'diff',
         'file:', 'self-check', 'update-docblocks', 'output-format:',
         'find-dead-code', 'init', 'find-references-to:', 'root:', 'threads:',
-        'report:', 'clear-cache', 'no-cache', 'version'
+        'report:', 'clear-cache', 'no-cache', 'version', 'plugin:', 'replace-code',
     ]
 );
 
@@ -109,6 +107,12 @@ Options:
     --no-cache
         Runs Psalm without using cache
 
+    --plugin=PATH
+        Executes a plugin, an alternative to using the Psalm config
+
+    --replace-code
+        Processes any plugin code replacements and updates the code accordingly
+
 HELP;
 
     exit;
@@ -124,7 +128,7 @@ if (isset($options['root'])) {
 
 $current_dir = (string)getcwd() . DIRECTORY_SEPARATOR;
 
-if (isset($options['r'])) {
+if (isset($options['r']) && is_string($options['r'])) {
     $root_path = realpath($options['r']);
 
     if (!$root_path) {
@@ -165,7 +169,8 @@ foreach ($autoload_roots as $autoload_root) {
         $error_message = 'Could not find any composer autoloaders in ' . $autoload_root;
 
         if (!isset($options['r'])) {
-            $error_message .= PHP_EOL . 'Add a --root=[your/project/directory] flag to specify a particular project to run Psalm on.';
+            $error_message .=
+                PHP_EOL . 'Add a --root=[your/project/directory] flag to specify a particular project to run Psalm on.';
         }
 
         die($error_message . PHP_EOL);
@@ -173,11 +178,13 @@ foreach ($autoload_roots as $autoload_root) {
 }
 
 foreach ($autoload_files as $file) {
+    /** @psalm-suppress UnresolvableInclude */
     require_once $file;
 }
 
 if (array_key_exists('v', $options)) {
-    $version = \PackageVersions\Versions::getVersion('vimeo/psalm');
+    /** @var string */
+    $version = \Muglug\PackageVersions\Versions::getVersion('vimeo/psalm');
     echo 'Psalm ' . $version . PHP_EOL;
     exit;
 }
@@ -192,6 +199,11 @@ if (isset($options['i'])) {
 
     $args = array_values(array_filter(
         array_slice($argv, 2),
+        /**
+         * @param string $arg
+         *
+         * @return bool
+         */
         function ($arg) {
             return $arg !== '--ansi' && $arg !== '--no-ansi';
         }
@@ -256,23 +268,26 @@ if (isset($options['f'])) {
     $input_paths = $argv ? $argv : null;
 }
 
-$output_format = isset($options['output-format']) ? $options['output-format'] : ProjectChecker::TYPE_CONSOLE;
+$output_format = isset($options['output-format']) && is_string($options['output-format'])
+    ? $options['output-format']
+    : ProjectChecker::TYPE_CONSOLE;
 
 $paths_to_check = null;
 
 if ($input_paths) {
     $filtered_input_paths = [];
 
-    for ($i = 0; $i < count($input_paths); $i++) {
+    for ($i = 0; $i < count($input_paths); ++$i) {
+        /** @var string */
         $input_path = $input_paths[$i];
 
-        if (realpath($input_path) === __FILE__) {
+        if (realpath($input_path) === realpath(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'psalm')) {
             continue;
         }
 
         if ($input_path[0] === '-' && strlen($input_path) === 2) {
             if ($input_path[1] === 'c' || $input_path[1] === 'f') {
-                $i++;
+                ++$i;
             }
             continue;
         }
@@ -288,13 +303,11 @@ if ($input_paths) {
         $filtered_input_paths[] = $input_path;
     }
 
-    stream_set_blocking(STDIN, 0);
+    stream_set_blocking(STDIN, false);
 
     if ($filtered_input_paths === ['-'] && $stdin = fgets(STDIN)) {
         $filtered_input_paths = preg_split('/\s+/', trim($stdin));
     }
-
-    $paths_to_check = [];
 
     foreach ($filtered_input_paths as $i => $path_to_check) {
         if ($path_to_check[0] === '-') {
@@ -305,7 +318,13 @@ if ($input_paths) {
             die('Cannot locate ' . $path_to_check . PHP_EOL);
         }
 
-        $paths_to_check[] = realpath($path_to_check);
+        $path_to_check = realpath($path_to_check);
+
+        if (!$path_to_check) {
+            die('Error getting realpath for file' . PHP_EOL);
+        }
+
+        $paths_to_check[] = $path_to_check;
     }
 
     if (!$paths_to_check) {
@@ -313,10 +332,21 @@ if ($input_paths) {
     }
 }
 
-$path_to_config = isset($options['c']) ? realpath($options['c']) : null;
+$plugins = [];
+
+if (isset($options['plugin'])) {
+    $plugins = $options['plugin'];
+
+    if (!is_array($plugins)) {
+        $plugins = [$plugins];
+    }
+}
+
+$path_to_config = isset($options['c']) && is_string($options['c']) ? realpath($options['c']) : null;
 
 if ($path_to_config === false) {
-    die('Could not resolve path to config ' . $options['c'] . PHP_EOL);
+    /** @psalm-suppress InvalidCast */
+    die('Could not resolve path to config ' . (string)$options['c'] . PHP_EOL);
 }
 
 $use_color = !array_key_exists('m', $options);
@@ -329,7 +359,9 @@ $is_diff = isset($options['diff']);
 
 $find_dead_code = isset($options['find-dead-code']);
 
-$find_references_to = isset($options['find-references-to']) ? $options['find-references-to'] : null;
+$find_references_to = isset($options['find-references-to']) && is_string($options['find-references-to'])
+    ? $options['find-references-to']
+    : null;
 
 $update_docblocks = isset($options['update-docblocks']);
 
@@ -350,7 +382,7 @@ $project_checker = new ProjectChecker(
     $update_docblocks,
     $find_dead_code || $find_references_to !== null,
     $find_references_to,
-    isset($options['report'])?$options['report']:null
+    isset($options['report']) && is_string($options['report']) ? $options['report'] : null
 );
 
 // initialise custom config, if passed
@@ -358,54 +390,47 @@ if ($path_to_config) {
     $project_checker->setConfigXML($path_to_config, $current_dir);
 }
 
-/**
- * @param string $dir
- * @return void
- */
-function rrmdir($dir)
-{
-    if (is_dir($dir)) {
-        $objects = scandir($dir);
-        foreach ($objects as $object) {
-            if ($object != "." && $object != "..") {
-                if (filetype($dir."/".$object) == "dir") {
-                    rrmdir($dir."/".$object);
-                } else {
-                    unlink($dir."/".$object);
-                }
-            }
-        }
-
-        reset($objects);
-        rmdir($dir);
-    }
-}
-
 if (isset($options['clear-cache'])) {
     // initialise config if it hasn't already been
     if (!$path_to_config) {
-         $project_checker->getConfigForPath($current_dir, $current_dir);
+        $project_checker->getConfigForPath($current_dir, $current_dir);
     }
 
     $cache_directory = Config::getInstance()->getCacheDirectory();
 
-    rrmdir($cache_directory);
+    Config::removeCacheDirectory($cache_directory);
     echo 'Cache directory deleted' . PHP_EOL;
     exit;
 }
 
+$config = $project_checker->getConfig();
+
+if (!$config) {
+    $project_checker->getConfigForPath($current_dir, $current_dir);
+}
+
+/** @var string $plugin_path */
+foreach ($plugins as $plugin_path) {
+    Config::getInstance()->addPluginPath($current_dir . DIRECTORY_SEPARATOR . $plugin_path);
+}
+
+if (isset($options['replace-code'])) {
+    $project_checker->replaceCodeAfterCompletion();
+}
+
+/** @psalm-suppress MixedArgument */
 \Psalm\IssueBuffer::setStartTime(microtime(true));
 
 if (array_key_exists('self-check', $options)) {
-    $project_checker->checkDir(dirname(__DIR__) . '/src', dirname(__DIR__));
+    $project_checker->checkDir(__DIR__);
 } elseif ($paths_to_check === null) {
     $project_checker->check($current_dir, $is_diff);
 } elseif ($paths_to_check) {
     foreach ($paths_to_check as $path_to_check) {
         if (is_dir($path_to_check)) {
-            $project_checker->checkDir($path_to_check, $current_dir);
+            $project_checker->checkDir($path_to_check);
         } else {
-            $project_checker->checkFile($path_to_check, $current_dir);
+            $project_checker->checkFile($path_to_check);
         }
     }
 }

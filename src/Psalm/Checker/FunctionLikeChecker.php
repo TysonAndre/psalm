@@ -27,8 +27,8 @@ use Psalm\Issue\MixedInferredReturnType;
 use Psalm\Issue\MoreSpecificImplementedReturnType;
 use Psalm\Issue\MoreSpecificReturnType;
 use Psalm\Issue\OverriddenMethodAccess;
-use Psalm\Issue\PossiblyUnusedVariable;
 use Psalm\Issue\UntypedParam;
+use Psalm\Issue\UnusedParam;
 use Psalm\Issue\UnusedVariable;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
@@ -40,9 +40,6 @@ use Psalm\Type\Atomic\TNamedObject;
 
 abstract class FunctionLikeChecker extends SourceChecker implements StatementsSource
 {
-    const RETURN_TYPE_REGEX = '/\\:\s+(\\??[A-Za-z0-9_\\\\\[\]]+)/';
-    const PARAM_TYPE_REGEX = '/^(\\??[A-Za-z0-9_\\\\\[\]]+)\s/';
-
     /**
      * @var Closure|Function_|ClassMethod
      */
@@ -130,6 +127,10 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
         $implemented_docblock_param_types = [];
 
+        $project_checker = $this->file_checker->project_checker;
+
+        $classlike_storage_provider = $project_checker->classlike_storage_provider;
+
         if ($this->function instanceof ClassMethod) {
             $real_method_id = (string)$this->getMethodId();
 
@@ -163,10 +164,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             $fq_class_name = (string)$context->self;
 
-            $project_checker = $this->file_checker->project_checker;
-
-            $classlike_storage_provider = $project_checker->classlike_storage_provider;
-
             $class_storage = $classlike_storage_provider->get($fq_class_name);
 
             $storage = MethodChecker::getStorage($project_checker, $declaring_method_id);
@@ -180,8 +177,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             }
 
             if ($overridden_method_ids && $this->function->name !== '__construct') {
-                $have_emitted = false;
-
                 foreach ($overridden_method_ids as $overridden_method_id) {
                     $parent_method_storage = MethodChecker::getStorage($project_checker, $overridden_method_id);
 
@@ -289,7 +284,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $context->vars_in_scope['$' . $function_param->name] = $param_type;
             $context->vars_possibly_in_scope['$' . $function_param->name] = true;
 
-            if (!$function_param->location) {
+            if (!$function_param->type_location || !$function_param->location) {
                 continue;
             }
 
@@ -311,7 +306,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         new InvalidDocblock(
                             'Parameter $' . $function_param->name . ' has wrong type \'' . $param_type .
                                 '\', should be \'' . $signature_type . '\'',
-                            $function_param->location
+                            $function_param->type_location
                         ),
                         $storage->suppressed_issues
                     )) {
@@ -336,7 +331,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         new InvalidParamDefault(
                             'Default value for argument ' . ($offset + 1) . ' of method ' . $cased_method_id .
                                 ' does not match the given type ' . $param_type,
-                            $function_param->location
+                            $function_param->type_location
                         )
                     )) {
                         // fall through
@@ -348,19 +343,25 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 $substituted_type = clone $param_type;
                 $generic_types = [];
                 $substituted_type->replaceTemplateTypesWithStandins($template_types, $generic_types, null);
-                $substituted_type->check($this->source, $function_param->location, $this->suppressed_issues, [], false);
+                $substituted_type->check(
+                    $this->source,
+                    $function_param->type_location,
+                    $this->suppressed_issues,
+                    [],
+                    false
+                );
             } else {
-                $param_type->check($this->source, $function_param->location, $this->suppressed_issues, [], false);
+                $param_type->check($this->source, $function_param->type_location, $this->suppressed_issues, [], false);
             }
 
             if ($this->getFileChecker()->project_checker->collect_references) {
-                if ($function_param->location !== $function_param->signature_location &&
-                    $function_param->signature_location &&
+                if ($function_param->type_location !== $function_param->signature_type_location &&
+                    $function_param->signature_type_location &&
                     $function_param->signature_type
                 ) {
                     $function_param->signature_type->check(
                         $this->source,
-                        $function_param->signature_location,
+                        $function_param->signature_type_location,
                         $this->suppressed_issues,
                         [],
                         false
@@ -476,10 +477,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     $original_location = $statements_checker->getFirstAppearance($var_name);
 
                     if (!isset($context->referenced_var_ids[$var_name]) && $original_location) {
-                        if (!isset($storage->param_types[substr($var_name, 1)]) ||
-                            !$storage instanceof MethodStorage ||
-                            $storage->visibility === ClassLikeChecker::VISIBILITY_PRIVATE
-                        ) {
+                        if (!array_key_exists(substr($var_name, 1), $storage->param_types)) {
                             if (IssueBuffer::accepts(
                                 new UnusedVariable(
                                     'Variable ' . $var_name . ' is never referenced',
@@ -489,16 +487,66 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                             )) {
                                 // fall through
                             }
-                        } else {
+                        } elseif (!$storage instanceof MethodStorage
+                            || $storage->visibility === ClassLikeChecker::VISIBILITY_PRIVATE
+                        ) {
                             if (IssueBuffer::accepts(
-                                new PossiblyUnusedVariable(
-                                    'Variable ' . $var_name . ' is never referenced in this method',
+                                new UnusedParam(
+                                    'Param ' . $var_name . ' is never referenced in this method',
                                     $original_location
                                 ),
                                 $this->getSuppressedIssues()
                             )) {
                                 // fall through
                             }
+                        } else {
+                            if (!$class_storage || $storage->abstract) {
+                                continue;
+                            }
+
+                            /** @var ClassMethod $this->function */
+                            $method_name_lc = strtolower((string)$this->function->name);
+                            $parent_method_id = end($class_storage->overridden_method_ids[$method_name_lc]);
+
+                            $position = array_search(substr($var_name, 1), array_keys($storage->param_types), true);
+
+                            if ($position === false) {
+                                throw new \UnexpectedValueException('$position should not be false here');
+                            }
+
+                            if ($parent_method_id) {
+                                $parent_method_storage = MethodChecker::getStorage($project_checker, $parent_method_id);
+
+                                // if the parent method has a param at that position and isn't abstract
+                                if (!$parent_method_storage->abstract
+                                    && isset($parent_method_storage->params[$position])
+                                ) {
+                                    continue;
+                                }
+                            }
+
+                            $storage->unused_params[$position] = $original_location;
+                        }
+                    }
+                }
+            }
+
+            if ($storage instanceof MethodStorage && $class_storage) {
+                foreach ($storage->params as $i => $_) {
+                    if (!isset($storage->unused_params[$i])) {
+                        $storage->used_params[$i] = true;
+
+                        /** @var ClassMethod $this->function */
+                        $method_name_lc = strtolower((string)$this->function->name);
+
+                        if (!isset($class_storage->overridden_method_ids[$method_name_lc])) {
+                            continue;
+                        }
+
+                        foreach ($class_storage->overridden_method_ids[$method_name_lc] as $parent_method_id) {
+                            $parent_method_storage = MethodChecker::getStorage($project_checker, $parent_method_id);
+
+                            $parent_method_storage->used_params[$i] = true;
                         }
                     }
                 }
@@ -565,7 +613,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
     ) {
         $implementer_method_id = $implementer_classlike_storage->name . '::'
             . strtolower($guide_method_storage->cased_name);
-        $guide_method_id = $guide_classlike_storage->name . '::' . strtolower($guide_method_storage->cased_name);
         $implementer_declaring_method_id = MethodChecker::getDeclaringMethodId(
             $project_checker,
             $implementer_method_id
@@ -1274,6 +1321,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $param_name,
             (bool)$param->isPassedByReference(),
             $param_type,
+            null,
             null,
             $is_optional,
             $is_nullable,

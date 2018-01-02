@@ -4,9 +4,11 @@ namespace Psalm\Checker;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Exception;
-use Psalm\Exception\CircularReferenceException;
+use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\FileManipulation\FunctionDocblockManipulator;
+use Psalm\Issue\CircularReference;
 use Psalm\Issue\PossiblyUnusedMethod;
+use Psalm\Issue\PossiblyUnusedParam;
 use Psalm\Issue\UnusedClass;
 use Psalm\Issue\UnusedMethod;
 use Psalm\IssueBuffer;
@@ -242,6 +244,16 @@ class ProjectChecker
      */
     public $register_global_functions = false;
 
+    /**
+     * @var ?array<string, string>
+     */
+    private $composer_classmap;
+
+    /**
+     * @var bool
+     */
+    private $replace_code = false;
+
     const TYPE_CONSOLE = 'console';
     const TYPE_PYLINT = 'pylint';
     const TYPE_JSON = 'json';
@@ -342,7 +354,7 @@ class ProjectChecker
         }
 
         if (!$this->config) {
-            $this->config = $this->getConfigForPath($base_dir, $base_dir);
+            throw new \InvalidArgumentException('Config should not be null here');
         }
 
         $diff_files = null;
@@ -551,12 +563,32 @@ class ProjectChecker
         }
 
         if (isset($dependent_classlikes[strtolower($storage->name)])) {
-            throw new CircularReferenceException(
-                'Circular reference discovered when loading ' . $storage->name
-            );
+            if ($storage->location && IssueBuffer::accepts(
+                new CircularReference(
+                    'Circular reference discovered when loading ' . $storage->name,
+                    $storage->location
+                )
+            )) {
+                // fall through
+            }
+
+            return;
         }
 
         $storage_provider = $this->classlike_storage_provider;
+
+        foreach ($storage->used_traits as $used_trait_lc => $used_trait) {
+            try {
+                $trait_storage = $storage_provider->get($used_trait_lc);
+            } catch (\InvalidArgumentException $e) {
+                continue;
+            }
+
+            $this->populateClassLikeStorage($trait_storage, $dependent_classlikes);
+
+            $this->inheritMethodsFromParent($storage, $trait_storage);
+            $this->inheritPropertiesFromParent($storage, $trait_storage);
+        }
 
         $dependent_classlikes[strtolower($storage->name)] = true;
 
@@ -647,19 +679,6 @@ class ProjectChecker
                     }
                 }
             }
-        }
-
-        foreach ($storage->used_traits as $used_trait_lc => $used_trait) {
-            try {
-                $trait_storage = $storage_provider->get($used_trait_lc);
-            } catch (\InvalidArgumentException $e) {
-                continue;
-            }
-
-            $this->populateClassLikeStorage($trait_storage, $dependent_classlikes);
-
-            $this->inheritMethodsFromParent($storage, $trait_storage);
-            $this->inheritPropertiesFromParent($storage, $trait_storage);
         }
 
         if ($storage->location) {
@@ -868,6 +887,11 @@ class ProjectChecker
 
         $fq_classlike_name_lc = strtolower($fq_classlike_name);
 
+        // avoid checking classes that we know will just end in failure
+        if ($fq_classlike_name_lc === 'null' || substr($fq_classlike_name_lc, -5) === '\null') {
+            return;
+        }
+
         if (!isset($this->classlike_files[$fq_classlike_name_lc])) {
             if (!isset($this->classes_to_scan[$fq_classlike_name_lc]) || $store_failure) {
                 $this->classes_to_scan[$fq_classlike_name_lc] = $fq_classlike_name;
@@ -912,6 +936,8 @@ class ProjectChecker
              * @param string $file_path
              *
              * @return void
+             *
+             * @psalm-suppress UnusedParam
              */
             function ($i, $file_path) use ($filetype_handlers) {
                 $file_checker = $this->getFile($file_path, $filetype_handlers, true);
@@ -976,7 +1002,7 @@ class ProjectChecker
             }
         }
 
-        if ($this->update_docblocks) {
+        if ($this->update_docblocks || $this->replace_code) {
             foreach ($this->files_to_report as $file_path) {
                 $this->updateFile($file_path, true);
             }
@@ -991,13 +1017,19 @@ class ProjectChecker
      */
     public function updateFile($file_path, $output_changes = false)
     {
-        $file_manipulations = FunctionDocblockManipulator::getManipulationsForFile($file_path);
+        $new_return_type_manipulations = FunctionDocblockManipulator::getManipulationsForFile($file_path);
+
+        $other_manipulations = FileManipulationBuffer::getForFile($file_path);
+
+        $file_manipulations = $new_return_type_manipulations + $other_manipulations;
+
+        krsort($file_manipulations);
 
         $docblock_update_count = count($file_manipulations);
 
         $existing_contents = $this->getFileContents($file_path);
 
-        foreach (array_reverse($file_manipulations) as $manipulation) {
+        foreach ($file_manipulations as $manipulation) {
             $existing_contents
                 = substr($existing_contents, 0, $manipulation->start)
                     . $manipulation->insertion_text
@@ -1102,36 +1134,61 @@ class ProjectChecker
                         // fall through
                     }
                 } else {
-                    self::checkMethodReferences($classlike_storage);
+                    $this->checkMethodReferences($classlike_storage);
                 }
             }
         }
     }
 
     /**
-     * @param  \Psalm\Storage\ClassLikeStorage  $classlike_storage
-     *
      * @return void
      */
-    protected static function checkMethodReferences($classlike_storage)
+    protected function checkMethodReferences(ClassLikeStorage $classlike_storage)
     {
         foreach ($classlike_storage->methods as $method_name => $method_storage) {
             if (($method_storage->referencing_locations === null
                     || count($method_storage->referencing_locations) === 0)
-                && !$classlike_storage->overridden_method_ids[$method_name]
                 && (substr($method_name, 0, 2) !== '__' || $method_name === '__construct')
                 && $method_storage->location
             ) {
                 $method_id = $classlike_storage->name . '::' . $method_storage->cased_name;
 
                 if ($method_storage->visibility === ClassLikeChecker::VISIBILITY_PUBLIC) {
-                    if (IssueBuffer::accepts(
-                        new PossiblyUnusedMethod(
-                            'Cannot find public calls to method ' . $method_id,
-                            $method_storage->location
-                        )
-                    )) {
-                        // fall through
+                    $method_name_lc = strtolower($method_name);
+
+                    $has_parent_references = false;
+
+                    foreach ($classlike_storage->overridden_method_ids[$method_name_lc] as $parent_method_id) {
+                        $parent_method_storage = MethodChecker::getStorage($this, $parent_method_id);
+
+                        if (!$parent_method_storage->abstract || $parent_method_storage->referencing_locations) {
+                            $has_parent_references = true;
+                            break;
+                        }
+                    }
+
+                    foreach ($classlike_storage->class_implements as $fq_interface_name) {
+                        $interface_storage = $this->classlike_storage_provider->get($fq_interface_name);
+                        if (isset($interface_storage->methods[$method_name])) {
+                            $interface_method_storage = $interface_storage->methods[$method_name];
+
+                            if ($interface_method_storage->referencing_locations) {
+                                $has_parent_references = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!$has_parent_references) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyUnusedMethod(
+                                'Cannot find public calls to method ' . $method_id,
+                                $method_storage->location
+                            ),
+                            $method_storage->suppressed_issues
+                        )) {
+                            // fall through
+                        }
                     }
                 } elseif (!isset($classlike_storage->declaring_method_ids['__call'])) {
                     if (IssueBuffer::accepts(
@@ -1143,21 +1200,48 @@ class ProjectChecker
                         // fall through
                     }
                 }
+            } else {
+                foreach ($method_storage->unused_params as $offset => $code_location) {
+                    $has_parent_references = false;
+
+                    $method_name_lc = strtolower($method_name);
+
+                    foreach ($classlike_storage->overridden_method_ids[$method_name_lc] as $parent_method_id) {
+                        $parent_method_storage = MethodChecker::getStorage($this, $parent_method_id);
+
+                        if (!$parent_method_storage->abstract
+                            && isset($parent_method_storage->used_params[$offset])
+                        ) {
+                            $has_parent_references = true;
+                            break;
+                        }
+                    }
+
+                    if (!$has_parent_references && !isset($method_storage->used_params[$offset])) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyUnusedParam(
+                                'Param #' . $offset . ' is never referenced in this method',
+                                $code_location
+                            ),
+                            $method_storage->suppressed_issues
+                        )) {
+                            // fall through
+                        }
+                    }
+                }
             }
         }
     }
 
     /**
      * @param  string  $dir_name
-     * @param  string  $base_dir
      *
      * @return void
      */
-    public function checkDir($dir_name, $base_dir)
+    public function checkDir($dir_name)
     {
         if (!$this->config) {
-            $this->config = $this->getConfigForPath($dir_name, $base_dir);
-            $this->config->hide_external_errors = $this->config->isInProjectDirs($dir_name . DIRECTORY_SEPARATOR);
+            throw new \UnexpectedValueException('Config should be set here');
         }
 
         FileReferenceProvider::loadReferenceCache();
@@ -1301,18 +1385,17 @@ class ProjectChecker
 
     /**
      * @param  string  $file_path
-     * @param  string  $base_dir
      *
      * @return void
      */
-    public function checkFile($file_path, $base_dir)
+    public function checkFile($file_path)
     {
         if ($this->debug_output) {
             echo 'Checking ' . $file_path . PHP_EOL;
         }
 
         if (!$this->config) {
-            $this->config = $this->getConfigForPath($file_path, $base_dir);
+            throw new \UnexpectedValueException('Config should be set here');
         }
 
         $start_checks = (int)microtime(true);
@@ -1405,7 +1488,6 @@ class ProjectChecker
      * @param  string $fq_class_name
      *
      * @return bool
-     * @psalm-suppress MixedMethodCall due to Reflection class weirdness
      */
     public function fileExistsForClassLike($fq_class_name)
     {
@@ -1417,6 +1499,24 @@ class ProjectChecker
 
         if (isset($this->existing_classlikes_lc[$fq_class_name_lc])) {
             throw new \InvalidArgumentException('Why are you asking about a builtin class?');
+        }
+
+        if (!$this->config) {
+            throw new \UnexpectedValueException('Config should be set here');
+        }
+
+        if ($this->composer_classmap === null) {
+            $this->composer_classmap = $this->config->getComposerClassMap();
+        }
+
+        if (isset($this->composer_classmap[$fq_class_name_lc])) {
+            if (file_exists($this->composer_classmap[$fq_class_name_lc])) {
+                $this->existing_classlikes_lc[$fq_class_name_lc] = true;
+                $this->existing_classlikes[$fq_class_name] = true;
+                $this->classlike_files[$fq_class_name_lc] = $this->composer_classmap[$fq_class_name_lc];
+
+                return true;
+            }
         }
 
         $old_level = error_reporting();
@@ -1441,6 +1541,7 @@ class ProjectChecker
 
         error_reporting($old_level);
 
+        /** @psalm-suppress MixedMethodCall due to Reflection class weirdness */
         $file_path = (string)$reflected_class->getFileName();
 
         // if the file was autoloaded but exists in evaled code only, return false
@@ -1617,9 +1718,18 @@ class ProjectChecker
         $this->cache_provider->use_igbinary = $config->use_igbinary;
 
         $config->visitStubFiles($this);
+        $config->visitComposerAutoloadFiles($this);
         $config->initializePlugins($this);
 
         return $config;
+    }
+
+    /**
+     * @return ?Config
+     */
+    public function getConfig()
+    {
+        return $this->config;
     }
 
     /**
@@ -1634,6 +1744,7 @@ class ProjectChecker
         $this->cache_provider->use_igbinary = $config->use_igbinary;
 
         $config->visitStubFiles($this);
+        $config->visitComposerAutoloadFiles($this);
         $config->initializePlugins($this);
     }
 
@@ -1654,6 +1765,7 @@ class ProjectChecker
         $this->config = Config::loadFromXMLFile($path_to_config, $base_dir);
 
         $this->config->visitStubFiles($this);
+        $this->config->visitComposerAutoloadFiles($this);
         $this->config->initializePlugins($this);
     }
 
@@ -1957,5 +2069,13 @@ class ProjectChecker
                 $this->existing_interfaces_lc[$predefined_interface_lc] = true;
             }
         }
+    }
+
+    /**
+     * @return void
+     */
+    public function replaceCodeAfterCompletion()
+    {
+        $this->replace_code = true;
     }
 }

@@ -16,6 +16,7 @@ use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
+use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
@@ -230,14 +231,18 @@ abstract class Type
 
     /**
      * @param  string $return_type
+     * @param  bool   $ignore_space
      *
      * @return array<int,string>
      */
-    public static function tokenize($return_type)
+    public static function tokenize($return_type, $ignore_space = true)
     {
         $return_type_tokens = [''];
         $was_char = false;
-        $return_type = str_replace(' ', '', $return_type);
+
+        if ($ignore_space) {
+            $return_type = str_replace(' ', '', $return_type);
+        }
 
         foreach (str_split($return_type) as $char) {
             if ($was_char) {
@@ -251,6 +256,9 @@ abstract class Type
                 $char === ',' ||
                 $char === '{' ||
                 $char === '}' ||
+                $char === '[' ||
+                $char === ']' ||
+                $char === ' ' ||
                 $char === ':'
             ) {
                 if ($return_type_tokens[count($return_type_tokens) - 1] === '') {
@@ -436,6 +444,14 @@ abstract class Type
         $type = new TTrue;
 
         return new Union([$type]);
+    }
+
+    /**
+     * @return Type\Union
+     */
+    public static function getResource()
+    {
+        return new Union([new TResource]);
     }
 
     /**

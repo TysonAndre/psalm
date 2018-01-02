@@ -18,7 +18,7 @@ class ReportOutputTest extends TestCase
         FileChecker::clearCache();
         $this->file_provider = new Provider\FakeFileProvider();
 
-        $this->project_checker = new \Psalm\Checker\ProjectChecker(
+        $this->project_checker = new ProjectChecker(
             $this->file_provider,
             new Provider\FakeParserCacheProvider(),
             false
@@ -38,12 +38,12 @@ class ReportOutputTest extends TestCase
     {
         // No exception
         foreach (['.xml', '.txt', '.json', '.emacs'] as $extension) {
-            new \Psalm\Checker\ProjectChecker(
+            new ProjectChecker(
                 $this->file_provider,
                 new Provider\FakeParserCacheProvider(),
                 false,
                 true,
-                \Psalm\Checker\ProjectChecker::TYPE_CONSOLE,
+                ProjectChecker::TYPE_CONSOLE,
                 1,
                 false,
                 false,
@@ -61,12 +61,12 @@ class ReportOutputTest extends TestCase
      */
     public function testReportFormatException()
     {
-        new \Psalm\Checker\ProjectChecker(
+        new ProjectChecker(
             $this->file_provider,
             new Provider\FakeParserCacheProvider(),
             false,
             true,
-            \Psalm\Checker\ProjectChecker::TYPE_CONSOLE,
+            ProjectChecker::TYPE_CONSOLE,
             1,
             false,
             false,
@@ -113,6 +113,7 @@ echo $a;';
                 'file_name' => 'somefile.php',
                 'file_path' => 'somefile.php',
                 'snippet' => 'echo CHANGE_ME;',
+                'selected_text' => 'CHANGE_ME',
                 'from' => 126,
                 'to' => 135,
                 'snippet_from' => 121,
@@ -127,6 +128,7 @@ echo $a;';
                 'file_name' => 'somefile.php',
                 'file_path' => 'somefile.php',
                 'snippet' => 'echo $a',
+                'selected_text' => '$a',
                 'from' => 202,
                 'to' => 204,
                 'snippet_from' => 197,
@@ -141,6 +143,7 @@ echo $a;';
                 'file_name' => 'somefile.php',
                 'file_path' => 'somefile.php',
                 'snippet' => '  return $as_you . "type";',
+                'selected_text' => '$as_you',
                 'from' => 67,
                 'to' => 74,
                 'snippet_from' => 58,
@@ -157,6 +160,7 @@ echo $a;';
                 'snippet' => 'function psalmCanVerify(int $your_code) : ?string {
   return $as_you . "type";
 }',
+                'selected_text' => '?string',
                 'from' => 48,
                 'to' => 55,
                 'snippet_from' => 6,

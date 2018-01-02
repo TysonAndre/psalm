@@ -17,7 +17,7 @@ class JsonOutputTest extends TestCase
         FileChecker::clearCache();
         $this->file_provider = new Provider\FakeFileProvider();
 
-        $this->project_checker = new \Psalm\Checker\ProjectChecker(
+        $this->project_checker = new ProjectChecker(
             $this->file_provider,
             new Provider\FakeParserCacheProvider(),
             false,
@@ -29,6 +29,7 @@ class JsonOutputTest extends TestCase
         $config->throw_exception = false;
         $config->stop_on_first_error = false;
         $this->project_checker->setConfig($config);
+        $this->project_checker->collect_references = true;
     }
 
     /**
@@ -87,6 +88,7 @@ echo $a;';
 
         $file_checker = new FileChecker('somefile.php', $this->project_checker);
         $file_checker->visitAndAnalyzeMethods();
+        $this->project_checker->checkClassReferences();
         $issue_data = IssueBuffer::getIssuesData();
         $this->assertSame(
             [
@@ -98,6 +100,7 @@ echo $a;';
                     'file_name' => 'somefile.php',
                     'file_path' => 'somefile.php',
                     'snippet' => 'echo CHANGE_ME;',
+                    'selected_text' => 'CHANGE_ME',
                     'from' => 126,
                     'to' => 135,
                     'snippet_from' => 121,
@@ -112,6 +115,7 @@ echo $a;';
                     'file_name' => 'somefile.php',
                     'file_path' => 'somefile.php',
                     'snippet' => 'echo $a',
+                    'selected_text' => '$a',
                     'from' => 202,
                     'to' => 204,
                     'snippet_from' => 197,
@@ -126,11 +130,27 @@ echo $a;';
                     'file_name' => 'somefile.php',
                     'file_path' => 'somefile.php',
                     'snippet' => '  return $as_you . "type";',
+                    'selected_text' => '$as_you',
                     'from' => 67,
                     'to' => 74,
                     'snippet_from' => 58,
                     'snippet_to' => 84,
                     'column' => 10,
+                ],
+                [
+                    'severity' => 'error',
+                    'line_number' => 2,
+                    'type' => 'UnusedParam',
+                    'message' => 'Param $your_code is never referenced in this method',
+                    'file_name' => 'somefile.php',
+                    'file_path' => 'somefile.php',
+                    'snippet' => 'function psalmCanVerify(int $your_code) : ?string {',
+                    'selected_text' => '$your_code',
+                    'from' => 34,
+                    'to' => 44,
+                    'snippet_from' => 6,
+                    'snippet_to' => 57,
+                    'column' => 29,
                 ],
                 [
                     'severity' => 'error',
@@ -142,6 +162,7 @@ echo $a;';
                     'snippet' => 'function psalmCanVerify(int $your_code) : ?string {
   return $as_you . "type";
 }',
+                    'selected_text' => '?string',
                     'from' => 48,
                     'to' => 55,
                     'snippet_from' => 6,

@@ -219,7 +219,13 @@ class FunctionChecker extends FunctionLikeChecker
 
                 if ($docblock_info->return_type) {
                     if (!$storage->return_type) {
-                        $storage->return_type = Type::parseString($docblock_info->return_type);
+                        $namespace = $reflection_function->getNamespaceName();
+                        $aliases = new \Psalm\Aliases($namespace);
+                        $fq_return_type = FunctionLikeChecker::fixUpLocalType(
+                            $docblock_info->return_type,
+                            $aliases
+                        );
+                        $storage->return_type = Type::parseString($fq_return_type);
                         $storage->return_type->setFromDocblock();
 
                         if ($docblock_info->ignore_nullable_return) {
@@ -300,6 +306,7 @@ class FunctionChecker extends FunctionLikeChecker
                     $arg_name,
                     $by_reference,
                     $param_type,
+                    null,
                     null,
                     $optional,
                     false,
@@ -472,32 +479,57 @@ class FunctionChecker extends FunctionLikeChecker
                 }
 
                 foreach ($call_arg->value->inferredType->types as $type_part) {
-                    if (!$type_part instanceof Type\Atomic\TArray) {
-                        if ($type_part instanceof Type\Atomic\ObjectLike) {
-                            if ($generic_properties !== null) {
-                                $generic_properties = array_merge($generic_properties, $type_part->properties);
+                    if ($call_arg->unpack) {
+                        if (!$type_part instanceof Type\Atomic\TArray) {
+                            if ($type_part instanceof Type\Atomic\ObjectLike) {
+                                $type_part_value_type = $type_part->getGenericValueType();
+                            } else {
+                                return Type::getArray();
                             }
-
-                            $type_part = $type_part->getGenericArrayType();
                         } else {
-                            return Type::getArray();
+                            $type_part_value_type = $type_part->type_params[0];
                         }
-                    } elseif (!$type_part->type_params[0]->isEmpty()) {
-                        $generic_properties = null;
+
+                        $unpacked_type_parts = [];
+
+                        foreach ($type_part_value_type->types as $value_type_part) {
+                            $unpacked_type_parts[] = $value_type_part;
+                        }
+                    } else {
+                        $unpacked_type_parts = [$type_part];
                     }
 
-                    if ($type_part->type_params[1]->isEmpty()) {
-                        continue;
-                    }
+                    foreach ($unpacked_type_parts as $unpacked_type_part) {
+                        if (!$unpacked_type_part instanceof Type\Atomic\TArray) {
+                            if ($unpacked_type_part instanceof Type\Atomic\ObjectLike) {
+                                if ($generic_properties !== null) {
+                                    $generic_properties = array_merge(
+                                        $generic_properties,
+                                        $unpacked_type_part->properties
+                                    );
+                                }
 
-                    $inner_key_types = array_merge(
-                        $inner_key_types,
-                        array_values($type_part->type_params[0]->types)
-                    );
-                    $inner_value_types = array_merge(
-                        $inner_value_types,
-                        array_values($type_part->type_params[1]->types)
-                    );
+                                $unpacked_type_part = $unpacked_type_part->getGenericArrayType();
+                            } else {
+                                return Type::getArray();
+                            }
+                        } elseif (!$unpacked_type_part->type_params[0]->isEmpty()) {
+                            $generic_properties = null;
+                        }
+
+                        if ($unpacked_type_part->type_params[1]->isEmpty()) {
+                            continue;
+                        }
+
+                        $inner_key_types = array_merge(
+                            $inner_key_types,
+                            array_values($unpacked_type_part->type_params[0]->types)
+                        );
+                        $inner_value_types = array_merge(
+                            $inner_value_types,
+                            array_values($unpacked_type_part->type_params[1]->types)
+                        );
+                    }
                 }
             }
 
@@ -766,7 +798,6 @@ class FunctionChecker extends FunctionLikeChecker
      * @return array<string, array<int|string, string>>
      * @psalm-suppress MixedInferredReturnType as the use of require buggers things up
      * @psalm-suppress MixedAssignment
-     * @psalm-suppress MoreSpecificReturnType
      */
     protected static function getCallMap()
     {

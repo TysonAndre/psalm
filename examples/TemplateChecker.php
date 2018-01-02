@@ -27,8 +27,6 @@ class TemplateChecker extends Psalm\Checker\FileChecker
 
         $first_stmt = $stmts[0];
 
-        $this_params = null;
-
         if (($first_stmt instanceof PhpParser\Node\Stmt\Nop) && ($doc_comment = $first_stmt->getDocComment())) {
 
             $comment_block = CommentChecker::parseDocComment(trim($doc_comment->getText()));
@@ -122,7 +120,7 @@ class TemplateChecker extends Psalm\Checker\FileChecker
         $class = explode('::', $method_id)[0];
 
         if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-            $this->project_checker,
+            $this,
             $class,
             new CodeLocation($this, $stmt),
             [],

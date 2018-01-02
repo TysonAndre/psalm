@@ -22,6 +22,7 @@ use Psalm\Issue\ContinueOutsideLoop;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidGlobal;
 use Psalm\Issue\InvalidReturnStatement;
+use Psalm\Issue\InvalidThrow;
 use Psalm\Issue\LessSpecificReturnStatement;
 use Psalm\Issue\MissingFile;
 use Psalm\Issue\PossiblyInvalidReturnStatement;
@@ -32,6 +33,8 @@ use Psalm\IssueBuffer;
 use Psalm\Scope\LoopScope;
 use Psalm\StatementsSource;
 use Psalm\Type;
+use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Union;
 
 class StatementsChecker extends SourceChecker implements StatementsSource
 {
@@ -211,7 +214,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $this->analyzeReturn($project_checker, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Throw_) {
                 $has_returned = true;
-                $this->analyzeThrow($stmt, $context);
+                $this->analyzeThrow($project_checker, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Switch_) {
                 SwitchChecker::analyze($this, $stmt, $context, $loop_scope);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Break_) {
@@ -424,7 +427,8 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     $class_checker = (new ClassChecker($stmt, $this->source, $stmt->name));
                     $class_checker->analyze(null, $global_context);
                 } catch (\InvalidArgumentException $e) {
-                    // Fatal error: Uncaught InvalidArgumentException: Could not get class storage for OutException in /usr/local/workspace2/web/vendor/vimeo/psalm/src/Psalm/Provider/ClassLikeStorageProvider.php:21
+                    // disregard this exception, we'll likely see it elsewhere in the form
+                    // of an issue
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Nop) {
                 if ((string)$stmt->getDocComment()) {
@@ -448,7 +452,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     if ($var_comment && $var_comment->var_id) {
                         $comment_type = ExpressionChecker::fleshOutType(
                             $project_checker,
-                            Type::parseString($var_comment->type),
+                            $var_comment->type,
                             $context->self
                         );
 
@@ -978,7 +982,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             if ($var_comment && $var_comment->var_id) {
                 $comment_type = ExpressionChecker::fleshOutType(
                     $project_checker,
-                    Type::parseString($var_comment->type),
+                    $var_comment->type,
                     $context->self
                 );
 
@@ -992,7 +996,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             if ($var_comment && !$var_comment->var_id) {
-                $stmt->inferredType = Type::parseString($var_comment->type);
+                $stmt->inferredType = $var_comment->type;
             } elseif (isset($stmt->expr->inferredType)) {
                 $stmt->inferredType = $stmt->expr->inferredType;
 
@@ -1011,7 +1015,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         ) {
             $this->source->addReturnTypes($stmt->expr ? (string) $stmt->inferredType : '', $context);
 
-            if ($stmt->expr && !$stmt->inferredType->isMixed()) {
+            if ($stmt->expr) {
                 $storage = $this->source->getFunctionLikeStorage($this);
                 $cased_method_id = $this->source->getCorrectlyCasedMethodId();
 
@@ -1033,6 +1037,22 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                             $this->source->getFQCLN(),
                             ''
                         );
+                    }
+
+                    if ($stmt->inferredType->isMixed()) {
+                        if ($this->local_return_type->isVoid()) {
+                            if (IssueBuffer::accepts(
+                                new InvalidReturnStatement(
+                                    'No return values are expected for ' . $cased_method_id,
+                                    new CodeLocation($this->source, $stmt)
+                                ),
+                                $this->getSuppressedIssues()
+                            )) {
+                                return false;
+                            }
+                        }
+
+                        return null;
                     }
 
                     if (!$this->local_return_type->isGenerator()
@@ -1078,7 +1098,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                                         . 'type \'' . $this->local_return_type . '\' for ' . $cased_method_id,
                                     new CodeLocation($this->source, $stmt)
                                 ),
-                               $this->getSuppressedIssues()
+                                $this->getSuppressedIssues()
                             )) {
                                 return false;
                             }
@@ -1097,9 +1117,29 @@ class StatementsChecker extends SourceChecker implements StatementsSource
      *
      * @return  false|null
      */
-    private function analyzeThrow(PhpParser\Node\Stmt\Throw_ $stmt, Context $context)
+    private function analyzeThrow(ProjectChecker $project_checker, PhpParser\Node\Stmt\Throw_ $stmt, Context $context)
     {
-        return ExpressionChecker::analyze($this, $stmt->expr, $context);
+        if (ExpressionChecker::analyze($this, $stmt->expr, $context) === false) {
+            return false;
+        }
+
+        if ($context->check_classes && isset($stmt->expr->inferredType) && !$stmt->expr->inferredType->isMixed()) {
+            $throw_type = $stmt->expr->inferredType;
+
+            $exception_type = new Union([new TNamedObject('Exception'), new TNamedObject('Throwable')]);
+
+            if (!TypeChecker::isContainedBy($project_checker, $throw_type, $exception_type)) {
+                if (IssueBuffer::accepts(
+                    new InvalidThrow(
+                        'Cannot throw ' . $throw_type . ' as it does not extend Exception or implement Throwable',
+                        new CodeLocation($this->source, $stmt)
+                    ),
+                    $this->getSuppressedIssues()
+                )) {
+                    return false;
+                }
+            }
+        }
     }
 
     /**

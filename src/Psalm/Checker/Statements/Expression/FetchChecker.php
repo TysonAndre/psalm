@@ -439,6 +439,10 @@ class FetchChecker
                 $stmt->inferredType = Type::getTrue();
                 break;
 
+            case 'stdin':
+                $stmt->inferredType = Type::getResource();
+                break;
+
             default:
                 $const_type = $statements_checker->getConstType(
                     $statements_checker,
@@ -510,20 +514,12 @@ class FetchChecker
                     $statements_checker->getAliases()
                 );
 
-                // edge case when evaluating single files
-                if ($stmt->name === 'class' &&
-                    $statements_checker->getFileChecker()->containsUnEvaluatedClassLike($fq_class_name)
-                ) {
-                    $stmt->inferredType = Type::getString();
-
-                    return null;
-                }
-
                 if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                    $statements_checker->getFileChecker()->project_checker,
+                    $statements_checker,
                     $fq_class_name,
                     new CodeLocation($statements_checker->getSource(), $stmt->class),
-                    $statements_checker->getSuppressedIssues()
+                    $statements_checker->getSuppressedIssues(),
+                    false
                 ) === false) {
                     return false;
                 }
@@ -674,10 +670,11 @@ class FetchChecker
 
                 if ($context->check_classes) {
                     if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                        $project_checker,
+                        $statements_checker,
                         $fq_class_name,
                         new CodeLocation($statements_checker->getSource(), $stmt->class),
-                        $statements_checker->getSuppressedIssues()
+                        $statements_checker->getSuppressedIssues(),
+                        false
                     ) !== true) {
                         return false;
                     }

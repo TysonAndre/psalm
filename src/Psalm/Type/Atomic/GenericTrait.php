@@ -122,13 +122,13 @@ trait GenericTrait
     }
 
     /**
-     * @param  array<string, string|Type\Union>     $template_types
+     * @param  array<string, string|Union>     $template_types
      *
      * @return void
      */
     public function replaceTemplateTypesWithArgTypes(array $template_types)
     {
-        foreach ($this->type_params as $offset => $type_param) {
+        foreach ($this->type_params as $type_param) {
             $type_param->replaceTemplateTypesWithArgTypes($template_types);
         }
     }

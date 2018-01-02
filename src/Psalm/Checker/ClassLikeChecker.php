@@ -7,6 +7,7 @@ use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\DuplicateClass;
 use Psalm\Issue\InaccessibleMethod;
 use Psalm\Issue\InaccessibleProperty;
@@ -170,7 +171,7 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
                     new DuplicateClass(
                         'Class ' . $fq_class_name . ' has already been defined at ' .
                             $storage_file_path . ':' . $this->storage->location->getLineNumber(),
-                        new \Psalm\CodeLocation($this, $class, null, true)
+                        new CodeLocation($this, $class, null, true)
                     )
                 )) {
                     // fall through
@@ -206,10 +207,11 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
                 $parent_reference_location = new CodeLocation($this, $this->class->extends);
 
                 if (self::checkFullyQualifiedClassLikeName(
-                    $this->getFileChecker()->project_checker,
+                    $this,
                     $this->parent_fq_class_name,
                     $parent_reference_location,
-                    $this->getSuppressedIssues()
+                    $this->getSuppressedIssues(),
+                    false
                 ) === false) {
                     return false;
                 }
@@ -224,10 +226,11 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
                 $interface_location = new CodeLocation($this, $interface_name);
 
                 if (self::checkFullyQualifiedClassLikeName(
-                    $this->getFileChecker()->project_checker,
+                    $this,
                     $fq_interface_name,
                     $interface_location,
-                    $this->getSuppressedIssues()
+                    $this->getSuppressedIssues(),
+                    false
                 ) === false) {
                     return false;
                 }
@@ -514,7 +517,9 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
 
                 $property = $property_class_storage->properties[$property_name];
 
-                if ($property->has_default || $property->is_static || !$property->type) {
+                $property_is_initialized = isset($property_class_storage->initialized_properties[$property_name]);
+
+                if ($property->has_default || $property->is_static || !$property->type || $property_is_initialized) {
                     continue;
                 }
 
@@ -952,15 +957,13 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
 
     /**
      * @param  string           $fq_class_name
-     * @param  ProjectChecker   $project_checker
-     * @param  CodeLocation     $code_location
      * @param  array<string>    $suppressed_issues
      * @param  bool             $inferred - whether or not the type was inferred
      *
      * @return bool|null
      */
     public static function checkFullyQualifiedClassLikeName(
-        ProjectChecker $project_checker,
+        StatementsSource $statements_source,
         $fq_class_name,
         CodeLocation $code_location,
         array $suppressed_issues,
@@ -969,6 +972,8 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         if (empty($fq_class_name)) {
             throw new \InvalidArgumentException('$class cannot be empty');
         }
+
+        $project_checker = $statements_source->getFileChecker()->project_checker;
 
         $fq_class_name = preg_replace('/^\\\/', '', $fq_class_name);
 
@@ -1021,6 +1026,27 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
             $code_location->file_path,
             strtolower($fq_class_name)
         );
+
+        if (!$inferred) {
+            $plugins = Config::getInstance()->getPlugins();
+
+            if ($plugins) {
+                $file_manipulations = [];
+
+                foreach ($plugins as $plugin) {
+                    $plugin->afterClassLikeExistsCheck(
+                        $statements_source,
+                        $fq_class_name,
+                        $code_location,
+                        $file_manipulations
+                    );
+                }
+
+                if ($file_manipulations) {
+                    FileManipulationBuffer::add($code_location->file_path, $file_manipulations);
+                }
+            }
+        }
 
         return true;
     }
@@ -1381,33 +1407,6 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
 
             $storage->inheritable_property_ids[$property_name] = $inheritable_property_id;
         }
-    }
-
-    /**
-     * @param  string $class_name
-     * @param  mixed  $visibility
-     *
-     * @return array<string, PropertyStorage>
-     */
-    public static function getPropertiesForClass(ProjectChecker $project_checker, $class_name, $visibility)
-    {
-        $storage = $project_checker->classlike_storage_provider->get($class_name);
-
-        $properties = [];
-
-        foreach ($storage->properties as $property_name => $property) {
-            if (!$property->is_static) {
-                if ($visibility === ReflectionProperty::IS_PRIVATE ||
-                    $property->visibility === ClassLikeChecker::VISIBILITY_PUBLIC ||
-                    ($property->visibility === ClassLikeChecker::VISIBILITY_PROTECTED &&
-                        $visibility === ReflectionProperty::IS_PROTECTED)
-                ) {
-                    $properties[$property_name] = $property;
-                }
-            }
-        }
-
-        return $properties;
     }
 
     /**
