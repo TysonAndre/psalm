@@ -332,6 +332,7 @@ class ExpressionChecker
                     true,
                     false,
                     $has_scalar_match
+                    // TODO account for has_partial_match
                 )
                 && !$has_scalar_match
             ) {
@@ -1663,7 +1664,11 @@ class ExpressionChecker
                 Type::getString(),
                 true,
                 false,
-                $left_has_scalar_match
+                $left_has_scalar_match,
+                $ignored_left_type_coerced,
+                $ignored_left_type_coerced_from_mixed,
+                $ignored_left_to_string_cast,
+                $left_has_partial_match
             );
 
             $right_type_match = TypeChecker::isContainedBy(
@@ -1672,10 +1677,14 @@ class ExpressionChecker
                 Type::getString(),
                 true,
                 false,
-                $right_has_scalar_match
+                $right_has_scalar_match,
+                $ignored_right_type_coerced,
+                $ignored_right_type_coerced_from_mixed,
+                $ignored_right_to_string_cast,
+                $right_has_partial_match
             );
 
-            if (!$left_type_match && (!$left_has_scalar_match || $config->strict_binary_operands)) {
+            if (!$left_type_match && ((!$left_has_scalar_match && !$left_has_partial_match) || $config->strict_binary_operands)) {
                 if (IssueBuffer::accepts(
                     new InvalidOperand(
                         'Cannot concatenate with a ' . $left_type,
@@ -1687,7 +1696,7 @@ class ExpressionChecker
                 }
             }
 
-            if (!$right_type_match && (!$right_has_scalar_match || $config->strict_binary_operands)) {
+            if (!$right_type_match && ((!$right_has_scalar_match && !$right_has_partial_match) || $config->strict_binary_operands)) {
                 if (IssueBuffer::accepts(
                     new InvalidOperand(
                         'Cannot concatenate with a ' . $right_type,

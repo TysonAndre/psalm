@@ -482,7 +482,17 @@ class TypeChecker
 
         if ($input_type_part instanceof Scalar) {
             if ($container_type_part instanceof Scalar) {
-                $has_scalar_match = true;
+                // Experimental patch: Only allow a limited subset of scalar casts.
+                // null -> *
+                if ($input_type_part instanceof TNull) {
+                    if ($container_type_part instanceof TString || $container_type_part instanceof TInt || $container_type_part instanceof TNull) {
+                        $has_scalar_match = true;
+                    }
+                } elseif ($input_type_part instanceof TString || $input_type_part instanceof TInt) {
+                    if ($container_type_part instanceof TString || $container_type_part instanceof TInt || $container_type_part instanceof TNull) {
+                        $has_scalar_match = true;
+                    }
+                }
             }
         } elseif ($container_type_part instanceof TObject &&
             !$input_type_part instanceof TArray &&
