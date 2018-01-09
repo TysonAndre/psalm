@@ -146,7 +146,7 @@ class ExpressionChecker
             } else {
                 $acceptable_types = [];
 
-                foreach ($stmt->expr->inferredType->types as $type_part) {
+                foreach ($stmt->expr->inferredType->getTypes() as $type_part) {
                     if ($type_part instanceof TInt || $type_part instanceof TFloat) {
                         $acceptable_types[] = $type_part;
                     } elseif ($type_part instanceof TString) {
@@ -364,7 +364,7 @@ class ExpressionChecker
             if (isset($stmt->expr->inferredType)) {
                 $all_permissible = true;
 
-                foreach ($stmt->expr->inferredType->types as $type) {
+                foreach ($stmt->expr->inferredType->getTypes() as $type) {
                     if ($type instanceof Scalar) {
                         $permissible_atomic_types[] = new TArray([Type::getInt(), new Type\Union([$type])]);
                     } elseif ($type instanceof TArray) {
@@ -728,7 +728,7 @@ class ExpressionChecker
                     $statements_checker
                 );
 
-                if ((string)$existing_type !== 'array<empty, empty>') {
+                if ($existing_type->getId() !== 'array<empty, empty>') {
                     $context->vars_in_scope[$var_id] = $by_ref_type;
                     $stmt->inferredType = $context->vars_in_scope[$var_id];
 
@@ -1355,8 +1355,8 @@ class ExpressionChecker
                 return;
             }
 
-            foreach ($left_type->types as $left_type_part) {
-                foreach ($right_type->types as $right_type_part) {
+            foreach ($left_type->getTypes() as $left_type_part) {
+                foreach ($right_type->getTypes() as $right_type_part) {
                     if ($left_type_part instanceof TNull) {
                         // null case is handled above
                         continue;
@@ -1843,7 +1843,7 @@ class ExpressionChecker
 
         $new_return_type_parts = [];
 
-        foreach ($return_type->types as $return_type_part) {
+        foreach ($return_type->getTypes() as $return_type_part) {
             $new_return_type_parts[] = self::fleshOutAtomicType(
                 $project_checker,
                 $return_type_part,
@@ -2369,7 +2369,7 @@ class ExpressionChecker
         }
 
         if (isset($stmt->expr->inferredType)) {
-            foreach ($stmt->expr->inferredType->types as $clone_type_part) {
+            foreach ($stmt->expr->inferredType->getTypes() as $clone_type_part) {
                 if (!$clone_type_part instanceof TNamedObject &&
                     !$clone_type_part instanceof TObject &&
                     !$clone_type_part instanceof TMixed

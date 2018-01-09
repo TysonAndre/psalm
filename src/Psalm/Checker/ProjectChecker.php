@@ -467,8 +467,6 @@ class ProjectChecker
                 $this->checkClassReferences();
             }
         }
-
-        IssueBuffer::finish($this, true, (int)$start_checks, $this->scanned_files);
     }
 
     /**
@@ -569,6 +567,14 @@ class ProjectChecker
         if ($this->debug_output) {
             echo 'FileStorage is populated' . PHP_EOL;
         }
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function getScannedFiles()
+    {
+        return $this->scanned_files;
     }
 
     /**
@@ -1287,14 +1293,10 @@ class ProjectChecker
 
         FileReferenceProvider::loadReferenceCache();
 
-        $start_checks = (int)microtime(true);
-
         $this->checkDirWithConfig($dir_name, $this->config, true);
 
         $this->scanFiles();
         $this->analyzeFiles();
-
-        IssueBuffer::finish($this, false, $start_checks, $this->scanned_files);
     }
 
     /**
@@ -1439,8 +1441,6 @@ class ProjectChecker
             throw new \UnexpectedValueException('Config should be set here');
         }
 
-        $start_checks = (int)microtime(true);
-
         $this->config->hide_external_errors = $this->config->isInProjectDirs($file_path);
 
         $this->files_to_deep_scan[$file_path] = $file_path;
@@ -1450,10 +1450,7 @@ class ProjectChecker
         FileReferenceProvider::loadReferenceCache();
 
         $this->scanFiles();
-
         $this->analyzeFiles();
-
-        IssueBuffer::finish($this, false, $start_checks, $this->scanned_files);
     }
 
     /**

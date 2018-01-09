@@ -173,7 +173,7 @@ class CallChecker
                 $invalid_function_call_types = [];
                 $has_valid_function_call_type = false;
 
-                foreach ($stmt->name->inferredType->types as $var_type_part) {
+                foreach ($stmt->name->inferredType->getTypes() as $var_type_part) {
                     if ($var_type_part instanceof Type\Atomic\Fn) {
                         $function_params = $var_type_part->params;
 
@@ -611,7 +611,7 @@ class CallChecker
                             $key_type = null;
                             $value_type = null;
 
-                            foreach ($first_arg_type->types as $type) {
+                            foreach ($first_arg_type->getTypes() as $type) {
                                 if ($type instanceof Type\Atomic\TArray) {
                                     $first_type_param = count($type->type_params) ? $type->type_params[0] : null;
                                     $last_type_param = $type->type_params[count($type->type_params) - 1];
@@ -798,7 +798,7 @@ class CallChecker
             /** @var InvalidMethodCall[] $deferred_issues */
             $deferred_issues = [];
             $has_any_valid_classes = false;
-            foreach ($class_type->types as $class_type_part) {
+            foreach ($class_type->getTypes() as $class_type_part) {
                 if (!$class_type_part instanceof TNamedObject) {
                     switch (get_class($class_type_part)) {
                         case 'Psalm\\Type\\Atomic\\TNull':
@@ -1168,7 +1168,7 @@ class CallChecker
         ) {
             $keys_to_remove = [];
 
-            foreach ($class_type->types as $key => $type) {
+            foreach ($class_type->getTypes() as $key => $type) {
                 if (!$type instanceof TNamedObject) {
                     $keys_to_remove[] = $key;
                 } else {
@@ -1177,7 +1177,7 @@ class CallChecker
             }
 
             foreach ($keys_to_remove as $key) {
-                unset($class_type->types[$key]);
+                $class_type->removeType($key);
             }
 
             $class_type->from_docblock = false;
@@ -1301,9 +1301,13 @@ class CallChecker
                 && in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)
             ) {
                 if ($stmt->class->parts[0] === 'parent') {
-                    $fq_class_name = $statements_checker->getParentFQCLN();
+                    $child_fq_class_name = $context->self;
 
-                    if ($fq_class_name === null) {
+                    $class_storage = $child_fq_class_name
+                        ? $project_checker->classlike_storage_provider->get($child_fq_class_name)
+                        : null;
+
+                    if (!$class_storage || !$class_storage->parent_classes) {
                         if (IssueBuffer::accepts(
                             new ParentNotFound(
                                 'Cannot call method on parent as this class does not extend another',
@@ -1317,7 +1321,11 @@ class CallChecker
                         return;
                     }
 
+                    $fq_class_name = $class_storage->parent_classes[0];
+
                     $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
+
+                    $fq_class_name = $class_storage->name;
 
                     if (is_string($stmt->name) && $class_storage->user_defined) {
                         $method_id = $fq_class_name . '::' . strtolower($stmt->name);
@@ -1428,7 +1436,7 @@ class CallChecker
 
         $config = Config::getInstance();
 
-        foreach ($lhs_type->types as $lhs_type_part) {
+        foreach ($lhs_type->getTypes() as $lhs_type_part) {
             if (!$lhs_type_part instanceof TNamedObject) {
                 // @todo deal with it
                 continue;
@@ -1714,7 +1722,7 @@ class CallChecker
 
             if (isset($array_arg->inferredType) && $array_arg->inferredType->hasArray()) {
                 /** @var TArray|ObjectLike */
-                $array_type = $array_arg->inferredType->types['array'];
+                $array_type = $array_arg->inferredType->getTypes()['array'];
 
                 if ($array_type instanceof ObjectLike) {
                     $array_type = $array_type->getGenericArrayType();
@@ -1827,7 +1835,7 @@ class CallChecker
                             && $arg->value->inferredType->hasArray()
                         ) {
                             /** @var TArray|ObjectLike */
-                            $array_type = $arg->value->inferredType->types['array'];
+                            $array_type = $arg->value->inferredType->getTypes()['array'];
 
                             if ($array_type instanceof ObjectLike) {
                                 $array_type = $array_type->getGenericArrayType();
@@ -2070,11 +2078,17 @@ class CallChecker
                     $param_type = clone $function_param->type;
 
                     if ($function_param->is_variadic) {
-                        if (!$param_type->hasArray() || !$param_type->types['array'] instanceof TArray) {
+                        if (!$param_type->hasArray()) {
                             continue;
                         }
 
-                        $param_type = clone $param_type->types['array']->type_params[1];
+                        $array_atomic_type = $param_type->getTypes()['array'];
+
+                        if (!$array_atomic_type instanceof TArray) {
+                            continue;
+                        }
+
+                        $param_type = clone $array_atomic_type->type_params[1];
                     }
 
                     if ($function_storage) {
@@ -2099,7 +2113,7 @@ class CallChecker
                             }
 
                             if ($offset_value_type) {
-                                foreach ($offset_value_type->types as $offset_value_type_part) {
+                                foreach ($offset_value_type->getTypes() as $offset_value_type_part) {
                                     // register class if the class exists
                                     if ($offset_value_type_part instanceof TNamedObject) {
                                         ClassLikeChecker::checkFullyQualifiedClassLikeName(
@@ -2264,8 +2278,8 @@ class CallChecker
             /** @var ObjectLike|TArray|null */
             $array_arg_type = $array_arg
                     && isset($array_arg->inferredType)
-                    && isset($array_arg->inferredType->types['array'])
-                ? $array_arg->inferredType->types['array']
+                    && isset($array_arg->inferredType->getTypes()['array'])
+                ? $array_arg->inferredType->getTypes()['array']
                 : null;
 
             if ($array_arg_type instanceof ObjectLike) {
@@ -2294,7 +2308,7 @@ class CallChecker
                 $max_closure_param_count = count($args) > 2 ? 2 : 1;
             }
 
-            foreach ($closure_arg_type->types as $closure_type) {
+            foreach ($closure_arg_type->getTypes() as $closure_type) {
                 if (!$closure_type instanceof Type\Atomic\Fn) {
                     continue;
                 }
@@ -2651,7 +2665,7 @@ class CallChecker
         } elseif ($input_expr instanceof PhpParser\Node\Scalar\String_
             || $input_expr instanceof PhpParser\Node\Expr\Array_
         ) {
-            foreach ($param_type->types as $param_type_part) {
+            foreach ($param_type->getTypes() as $param_type_part) {
                 if ($param_type_part instanceof TCallable) {
                     $function_ids = self::getFunctionIdsFromCallableArg(
                         $statements_checker,
@@ -2711,7 +2725,7 @@ class CallChecker
 
             if ($var_id) {
                 if ($input_type->isNullable() && !$param_type->isNullable()) {
-                    unset($input_type->types['null']);
+                    $input_type->removeType('null');
                 }
 
                 if ($input_type->getId() === $param_type->getId()) {
@@ -2774,7 +2788,7 @@ class CallChecker
 
         $method_ids = [];
 
-        foreach ($class_arg->inferredType->types as $type_part) {
+        foreach ($class_arg->inferredType->getTypes() as $type_part) {
             if ($type_part instanceof TNamedObject) {
                 $method_ids[] = $type_part . '::' . $method_name_arg->value;
             }

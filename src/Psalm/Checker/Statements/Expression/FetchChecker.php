@@ -178,7 +178,7 @@ class FetchChecker
         $invalid_fetch_types = [];
         $has_valid_fetch_type = false;
 
-        foreach ($stmt_var_type->types as $lhs_type_part) {
+        foreach ($stmt_var_type->getTypes() as $lhs_type_part) {
             if ($lhs_type_part instanceof TNull) {
                 continue;
             }
@@ -813,7 +813,7 @@ class FetchChecker
             }
         }
 
-        foreach ($array_type->types as &$type) {
+        foreach ($array_type->getTypes() as &$type) {
             if ($type instanceof TNull) {
                 if ($in_assignment) {
                     if ($replacement_type) {

@@ -493,7 +493,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
                 if ($closure_return_types && $this->function->inferredType) {
                     /** @var Type\Atomic\Fn */
-                    $closure_atomic = $this->function->inferredType->types['Closure'];
+                    $closure_atomic = $this->function->inferredType->getTypes()['Closure'];
                     $closure_atomic->return_type = new Type\Union($closure_return_types);
                 }
             }
@@ -692,7 +692,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 : null;
 
             if ($or_null_implementer_return_type) {
-                $or_null_implementer_return_type->types['null'] = new Type\Atomic\TNull;
+                $or_null_implementer_return_type->addType(new Type\Atomic\TNull);
             }
 
             if ((!$implementer_signature_return_type
@@ -782,7 +782,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 : null;
 
             if ($or_null_guide_type) {
-                $or_null_guide_type->types['null'] = new Type\Atomic\TNull;
+                $or_null_guide_type->addType(new Type\Atomic\TNull);
             }
 
             if ($guide_classlike_storage->user_defined

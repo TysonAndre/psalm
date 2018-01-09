@@ -35,11 +35,6 @@ class IssueBuffer
     protected static $recorded_issues = [];
 
     /**
-     * @var float
-     */
-    protected static $start_time = 0;
-
-    /**
      * @param   CodeIssue $e
      * @param   array     $suppressed_issues
      *
@@ -229,14 +224,15 @@ class IssueBuffer
 
     /**
      * @param  bool                 $is_full
-     * @param  int|null             $start_time
-     * @param  array<string, bool>  $visited_files
+     * @param  float                $start_time
+     * @param  array<string, bool>  $scanned_files
      *
      * @return void
      */
-    public static function finish(ProjectChecker $project_checker, $is_full, $start_time, array $visited_files)
+    public static function finish(ProjectChecker $project_checker, $is_full, $start_time)
     {
-        Provider\FileReferenceProvider::updateReferenceCache($project_checker, $visited_files);
+        $scanned_files = $project_checker->getScannedFiles();
+        Provider\FileReferenceProvider::updateReferenceCache($project_checker, $scanned_files);
 
         $has_error = false;
 
@@ -279,7 +275,7 @@ class IssueBuffer
         }
 
         if ($start_time) {
-            echo 'Checks took ' . ((float)microtime(true) - self::$start_time);
+            echo 'Checks took ' . ((float)microtime(true) - $start_time);
             echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB' . PHP_EOL;
         }
 
@@ -346,16 +342,6 @@ class IssueBuffer
         self::$emitted[$sham] = true;
 
         return false;
-    }
-
-    /**
-     * @param float $time
-     *
-     * @return void
-     */
-    public static function setStartTime($time)
-    {
-        self::$start_time = $time;
     }
 
     /**

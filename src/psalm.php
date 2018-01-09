@@ -3,6 +3,7 @@ require_once('command_functions.php');
 
 use Psalm\Checker\ProjectChecker;
 use Psalm\Config;
+use Psalm\IssueBuffer;
 
 // show all errors
 error_reporting(-1);
@@ -295,8 +296,7 @@ foreach ($plugins as $plugin_path) {
     Config::getInstance()->addPluginPath($current_dir . DIRECTORY_SEPARATOR . $plugin_path);
 }
 
-/** @psalm-suppress MixedArgument */
-\Psalm\IssueBuffer::setStartTime(microtime(true));
+$start_time = (float) microtime(true);
 
 if (array_key_exists('self-check', $options)) {
     $project_checker->checkDir(__DIR__);
@@ -311,3 +311,5 @@ if (array_key_exists('self-check', $options)) {
         }
     }
 }
+
+IssueBuffer::finish($project_checker, !$is_diff, $start_time);

@@ -3,6 +3,7 @@ require_once('command_functions.php');
 
 use Psalm\Checker\ProjectChecker;
 use Psalm\Config;
+use Psalm\IssueBuffer;
 
 // show all errors
 error_reporting(-1);
@@ -179,8 +180,7 @@ $project_checker->alterCodeAfterCompletion(
 );
 $project_checker->setIssuesToFix($keyed_issues);
 
-/** @psalm-suppress MixedArgument */
-\Psalm\IssueBuffer::setStartTime(microtime(true));
+$start_time = (float) microtime(true);
 
 if ($paths_to_check === null) {
     $project_checker->check($current_dir);
@@ -193,3 +193,5 @@ if ($paths_to_check === null) {
         }
     }
 }
+
+IssueBuffer::finish($project_checker, false, $start_time);
