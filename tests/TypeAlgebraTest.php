@@ -638,6 +638,24 @@ class TypeAlgebraTest extends TestCase
                     }',
                 'error_message' => 'NullableReturnStatement',
             ],
+            'invertedTwoVarLogicNotNestedWithVarChangeTrue' => [
+                '<?php
+                    /**
+                     * @param string|true $a
+                     * @param string|true $b
+                     */
+                    function foo($a, $b) : string {
+                        if ($a !== true || $b !== true) {
+                            $b = true;
+                        } else {
+                            return "bad";
+                        }
+
+                        if ($a !== true) return $b;
+                        return $a;  // guaranteed to be === true, so this emits InvalidReturnStatement
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
             'invertedTwoVarLogicNotNestedWithElseif' => [
                 '<?php
                     function foo(?string $a, ?string $b) : string {
