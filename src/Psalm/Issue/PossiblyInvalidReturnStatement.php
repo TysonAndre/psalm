@@ -1,6 +1,6 @@
 <?php
 namespace Psalm\Issue;
 
-class PossiblyInvalidReturnStatement extends CodeError
+class PossiblyInvalidReturnStatement extends CodeIssue
 {
 }

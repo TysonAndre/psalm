@@ -486,7 +486,7 @@ class ReturnTypeTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'PossiblyInvalidReturnType',
+                'error_message' => 'InvalidNullableReturnType',
             ],
             // TODO: return existence check?
             'switchReturnTypeWithFallthroughAndConditionalBreak' => [
@@ -504,7 +504,7 @@ class ReturnTypeTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'PossiblyInvalidReturnType',
+                'error_message' => 'InvalidNullableReturnType',
             ],
             'switchReturnTypeWithNoDefault' => [
                 '<?php
@@ -518,7 +518,7 @@ class ReturnTypeTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'PossiblyInvalidReturnType',
+                'error_message' => 'InvalidNullableReturnType',
             ],
             'wrongReturnType1' => [
                 '<?php

@@ -1,6 +1,6 @@
 <?php
 namespace Psalm\Issue;
 
-class InvalidScalarInComplexArgument extends CodeError
+class InvalidScalarInComplexArgument extends CodeIssue
 {
 }
