@@ -87,7 +87,7 @@ class ProjectChecker
     /**
      * @var bool
      */
-    public $update_docblocks = false;
+    public $alter_code = false;
 
     /**
      * @var bool
@@ -250,9 +250,29 @@ class ProjectChecker
     private $composer_classmap;
 
     /**
+     * @var array<string, bool>
+     */
+    private $issues_to_fix = [];
+
+    /**
+     * @var int
+     */
+    public $php_major_version = PHP_MAJOR_VERSION;
+
+    /**
+     * @var int
+     */
+    public $php_minor_version = PHP_MINOR_VERSION;
+
+    /**
      * @var bool
      */
-    private $replace_code = false;
+    public $dry_run = false;
+
+    /**
+     * @var bool
+     */
+    public $only_replace_php_types_with_non_docblock_types = false;
 
     const TYPE_CONSOLE = 'console';
     const TYPE_PYLINT = 'pylint';
@@ -268,7 +288,6 @@ class ProjectChecker
      * @param string        $output_format
      * @param int           $threads
      * @param bool          $debug_output
-     * @param bool          $update_docblocks
      * @param bool          $collect_references
      * @param string        $find_references_to
      * @param string        $reports
@@ -281,7 +300,6 @@ class ProjectChecker
         $output_format = self::TYPE_CONSOLE,
         $threads = 1,
         $debug_output = false,
-        $update_docblocks = false,
         $collect_references = false,
         $find_references_to = null,
         $reports = null
@@ -292,7 +310,6 @@ class ProjectChecker
         $this->show_info = $show_info;
         $this->debug_output = $debug_output;
         $this->threads = $threads;
-        $this->update_docblocks = $update_docblocks;
         $this->collect_references = $collect_references;
         $this->find_references_to = $find_references_to;
 
@@ -332,7 +349,7 @@ class ProjectChecker
     }
 
     /**
-     * @return self
+     * @return ProjectChecker
      */
     public static function getInstance()
     {
@@ -496,6 +513,10 @@ class ProjectChecker
                     if (isset($this->existing_classlikes_lc[$fq_classlike_name_lc])
                         && $this->existing_classlikes_lc[$fq_classlike_name_lc]
                     ) {
+                        if ($this->debug_output) {
+                            echo 'Using reflection to get metadata for ' . $fq_classlike_name . PHP_EOL;
+                        }
+
                         $reflected_class = new \ReflectionClass($fq_classlike_name);
                         ClassLikeChecker::registerReflectedClass($reflected_class->name, $reflected_class, $this);
                         $this->reflected_classeslikes_lc[$fq_classlike_name_lc] = true;
@@ -946,7 +967,7 @@ class ProjectChecker
                     echo 'Analyzing ' . $file_checker->getFilePath() . PHP_EOL;
                 }
 
-                $file_checker->analyze(null, $this->update_docblocks);
+                $file_checker->analyze(null);
             };
 
         $pool_size = $this->threads;
@@ -1002,22 +1023,27 @@ class ProjectChecker
             }
         }
 
-        if ($this->update_docblocks || $this->replace_code) {
+        if ($this->alter_code) {
             foreach ($this->files_to_report as $file_path) {
-                $this->updateFile($file_path, true);
+                $this->updateFile($file_path, $this->dry_run, true);
             }
         }
     }
 
     /**
      * @param  string $file_path
+     * @param  bool $dry_run
      * @param  bool   $output_changes to console
      *
      * @return void
      */
-    public function updateFile($file_path, $output_changes = false)
+    public function updateFile($file_path, $dry_run, $output_changes = false)
     {
-        $new_return_type_manipulations = FunctionDocblockManipulator::getManipulationsForFile($file_path);
+        if ($this->alter_code) {
+            $new_return_type_manipulations = FunctionDocblockManipulator::getManipulationsForFile($file_path);
+        } else {
+            $new_return_type_manipulations = [];
+        }
 
         $other_manipulations = FileManipulationBuffer::getForFile($file_path);
 
@@ -1037,8 +1063,23 @@ class ProjectChecker
         }
 
         if ($docblock_update_count) {
+            if ($dry_run) {
+                echo $file_path . ':' . PHP_EOL;
+
+                $differ = new \PhpCsFixer\Diff\v2_0\Differ(
+                    new \PhpCsFixer\Diff\GeckoPackages\DiffOutputBuilder\UnifiedDiffOutputBuilder([
+                        'fromFile' => 'Original',
+                        'toFile' => 'New',
+                    ])
+                );
+
+                echo (string) $differ->diff($this->getFileContents($file_path), $existing_contents);
+
+                return;
+            }
+
             if ($output_changes) {
-                echo 'Adding/updating ' . $docblock_update_count . ' docblocks in ' . $file_path . PHP_EOL;
+                echo 'Altering ' . $file_path . PHP_EOL;
             }
 
             $this->file_provider->setContents($file_path, $existing_contents);
@@ -1511,6 +1552,10 @@ class ProjectChecker
 
         if (isset($this->composer_classmap[$fq_class_name_lc])) {
             if (file_exists($this->composer_classmap[$fq_class_name_lc])) {
+                if ($this->debug_output) {
+                    echo 'Using generated composer classmap to locate file for ' . $fq_class_name . PHP_EOL;
+                }
+
                 $this->existing_classlikes_lc[$fq_class_name_lc] = true;
                 $this->existing_classlikes[$fq_class_name] = true;
                 $this->classlike_files[$fq_class_name_lc] = $this->composer_classmap[$fq_class_name_lc];
@@ -1526,6 +1571,10 @@ class ProjectChecker
         }
 
         try {
+            if ($this->debug_output) {
+                echo 'Using reflection to locate file for ' . $fq_class_name . PHP_EOL;
+            }
+
             $reflected_class = new \ReflectionClass($fq_class_name);
         } catch (\ReflectionException $e) {
             error_reporting($old_level);
@@ -2072,10 +2121,43 @@ class ProjectChecker
     }
 
     /**
+     * @param int $php_major_version
+     * @param int $php_minor_version
+     * @param bool $dry_run
+     * @param bool $safe_types
+     *
      * @return void
      */
-    public function replaceCodeAfterCompletion()
+    public function alterCodeAfterCompletion(
+        $php_major_version,
+        $php_minor_version,
+        $dry_run = false,
+        $safe_types = false
+    ) {
+        $this->alter_code = true;
+        $this->php_major_version = $php_major_version;
+        $this->php_minor_version = $php_minor_version;
+        $this->dry_run = $dry_run;
+        $this->only_replace_php_types_with_non_docblock_types = $safe_types;
+    }
+
+    /**
+     * @param array<string, bool> $issues
+     *
+     * @return void
+     */
+    public function setIssuesToFix(array $issues)
     {
-        $this->replace_code = true;
+        $this->issues_to_fix = $issues;
+    }
+
+    /**
+     * @return array<string, bool>
+     *
+     * @psalm-suppress PossiblyUnusedMethod - need to fix #422
+     */
+    public function getIssuesToFix()
+    {
+        return $this->issues_to_fix;
     }
 }

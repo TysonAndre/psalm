@@ -69,6 +69,19 @@ class MethodCallTest extends TestCase
                     }
                     X33::main();',
             ],
+            'dateTimeImmutableStatic' => [
+                '<?php
+                    final class MyDate extends DateTimeImmutable {}
+
+                    $today = new MyDate();
+                    $yesterday = $today->sub(new DateInterval("P1D"));
+
+                    $b = (new DateTimeImmutable())->modify("+3 hours");',
+                'assertions' => [
+                    '$yesterday' => 'MyDate',
+                    '$b' => 'DateTimeImmutable',
+                ],
+            ],
         ];
     }
 
@@ -174,14 +187,14 @@ class MethodCallTest extends TestCase
                         }
 
                         /**
-                         * @return NullableClass
+                         * @return ?NullableClass
                          */
                         public function returns_nullable_class() {
                             return self::mock("NullableClass");
                         }
                     }',
                 'error_message' => 'LessSpecificReturnStatement',
-                'error_levels' => ['MixedInferredReturnType'],
+                'error_levels' => ['MixedInferredReturnType', 'MixedReturnStatement'],
             ],
             'undefinedVariableStaticCall' => [
                 '<?php

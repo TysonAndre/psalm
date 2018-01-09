@@ -532,7 +532,7 @@ class ReturnTypeTest extends TestCase
                     function fooFoo() : string {
                         return rand(0, 5) ? "hello" : null;
                     }',
-                'error_message' => 'PossiblyInvalidReturnStatement',
+                'error_message' => 'NullableReturnStatement',
             ],
             'wrongReturnTypeInNamespace1' => [
                 '<?php
@@ -550,7 +550,7 @@ class ReturnTypeTest extends TestCase
                     function fooFoo() : string {
                         return rand(0, 5) ? "hello" : null;
                     }',
-                'error_message' => 'PossiblyInvalidReturnStatement',
+                'error_message' => 'NullableReturnStatement',
             ],
             'missingReturnType' => [
                 '<?php
@@ -562,9 +562,17 @@ class ReturnTypeTest extends TestCase
             'mixedInferredReturnType' => [
                 '<?php
                     function fooFoo(array $arr) : string {
+                        /** @psalm-suppress MixedReturnStatement */
                         return array_pop($arr);
                     }',
                 'error_message' => 'MixedInferredReturnType',
+            ],
+            'mixedInferredReturnStatement' => [
+                '<?php
+                    function fooFoo(array $arr) : string {
+                        return array_pop($arr);
+                    }',
+                'error_message' => 'MixedReturnStatement',
             ],
             'invalidReturnTypeClass' => [
                 '<?php
@@ -670,6 +678,13 @@ class ReturnTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'MoreSpecificImplementedReturnType',
+            ],
+            'returnTypehintRequiresExplicitReturn' => [
+                '<?php
+                    function foo() : ?string {
+                      if (rand(0, 1)) return "hello";
+                    }',
+                'error_message' => 'InvalidReturnType',
             ],
         ];
     }

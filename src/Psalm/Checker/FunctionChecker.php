@@ -28,15 +28,10 @@ class FunctionChecker extends FunctionLikeChecker
     public static $stubbed_functions = [];
 
     /**
-     * @param mixed                         $function
      * @param StatementsSource              $source
      */
-    public function __construct($function, StatementsSource $source)
+    public function __construct(PhpParser\Node\Stmt\Function_ $function, StatementsSource $source)
     {
-        if (!$function instanceof PhpParser\Node\Stmt\Function_) {
-            throw new \InvalidArgumentException('Bad');
-        }
-
         parent::__construct($function, $source);
     }
 
@@ -298,7 +293,7 @@ class FunctionChecker extends FunctionLikeChecker
                     ? Type::parseString($arg_type)
                     : Type::getMixed();
 
-                if ($param_type->hasScalarType()) {
+                if ($param_type->hasScalarType() || $param_type->hasObject()) {
                     $param_type->from_docblock = true;
                 }
 
@@ -363,6 +358,14 @@ class FunctionChecker extends FunctionLikeChecker
 
         if (!isset($call_map[$call_map_key])) {
             throw new \InvalidArgumentException('Function ' . $function_id . ' was not found in callmap');
+        }
+
+        if ($call_map_key === 'getenv') {
+            if (count($call_args)) {
+                return new Type\Union([new Type\Atomic\TString, new Type\Atomic\TFalse]);
+            }
+
+            return new Type\Union([new Type\Atomic\TArray([Type::getMixed(), Type::getString()])]);
         }
 
         if ($call_args) {

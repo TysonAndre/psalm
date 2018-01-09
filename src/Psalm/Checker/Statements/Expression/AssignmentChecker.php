@@ -18,6 +18,7 @@ use Psalm\Exception\DocblockParseException;
 use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Issue\AssignmentToVoid;
 use Psalm\Issue\DeprecatedProperty;
+use Psalm\Issue\ImplicitToStringCast;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidPropertyAssignment;
 use Psalm\Issue\InvalidScope;
@@ -906,10 +907,10 @@ class AssignmentChecker
                 $class_property_type,
                 $assignment_value_type->ignore_nullable_issues,
                 false,
-                $unused_has_scalar_match,
-                $unused_type_coerced,
-                $unused_type_coerced_mixed,
-                $unused_to_string_cast,
+                $has_scalar_match,
+                $type_coerced,
+                $type_coerced_from_mixed,
+                $to_string_cast,
                 $has_partial_match
             )) {
                 $invalid_assignment_value_types[] = [
@@ -920,6 +921,23 @@ class AssignmentChecker
                     $has_valid_assignment_value_type = true;
                 }
             } else {
+                if ($to_string_cast) {
+                    if (IssueBuffer::accepts(
+                        new ImplicitToStringCast(
+                            $var_id . ' expects \'' . $class_property_type . '\', '
+                            . $assignment_value_type . ' provided with a __toString method',
+                            new CodeLocation(
+                                $statements_checker->getSource(),
+                                $assignment_value ?: $stmt,
+                                $context->include_location
+                            )
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
                 $has_valid_assignment_value_type = true;
             }
         }

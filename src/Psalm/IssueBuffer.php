@@ -79,10 +79,15 @@ class IssueBuffer
     public static function add(CodeIssue $e)
     {
         $config = Config::getInstance();
-        $project_checker = ProjectChecker::getInstance();
 
         $fqcn_parts = explode('\\', get_class($e));
         $issue_type = array_pop($fqcn_parts);
+
+        $project_checker = ProjectChecker::getInstance();
+
+        if ($project_checker->alter_code) {
+            return false;
+        }
 
         $error_message = $issue_type . ' - ' . $e->getShortLocation() . ' - ' . $e->getMessage();
 

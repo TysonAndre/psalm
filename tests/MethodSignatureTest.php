@@ -140,6 +140,34 @@ class MethodSignatureTest extends TestCase
 
                     echo (new B)->foo();',
             ],
+            'allowSubclassesForNonInheritedMethodParams' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                      public function bar() : void {}
+                    }
+                    class C extends A {
+                      public function bar() : void {}
+                    }
+
+                    /** @param B|C $a */
+                    function foo(A $a) : void {
+                      $a->bar();
+                    }',
+            ],
+            'allowNoReturnInSubclassWithNullableReturnType' => [
+                '<?php
+                    class A {
+                        /** @return ?int */
+                        public function foo() {
+                            if (rand(0, 1)) return 5;
+                        }
+                    }
+
+                    class B extends A {
+                        public function foo() {}
+                    }',
+            ],
         ];
     }
 
@@ -243,6 +271,42 @@ class MethodSignatureTest extends TestCase
                 '<?php
                     function foo($bar = null, $bat) : void {}',
                 'error_message' => 'MisplacedRequiredParam',
+            ],
+            'clasginByRef' => [
+                '<?php
+                    class A {
+                      public function foo(string $a) : void {
+                        echo $a;
+                      }
+                    }
+                    class B extends A {
+                      public function foo(string &$a) : void {
+                        echo $a;
+                      }
+                    }',
+                'error_message' => 'MethodSignatureMismatch',
+            ],
+            'disallowSubclassesForNonInheritedMethodParams' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                      public function bar() : void {}
+                    }
+                    class C extends A {
+                      public function bar() : void {}
+                    }
+
+                    class D {
+                      public function foo(A $a) : void {}
+                    }
+
+                    class E extends D {
+                      /** @param B|C $a */
+                      public function foo(A $a) : void {
+                        $a->bar();
+                      }
+                    }',
+                'error_message' => 'MoreSpecificImplementedParamType',
             ],
         ];
     }

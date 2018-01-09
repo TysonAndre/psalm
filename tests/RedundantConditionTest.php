@@ -232,6 +232,29 @@ class RedundantConditionTest extends TestCase
                         }
                     }',
             ],
+            'mixedArrayAssignment' => [
+                '<?php
+                    /** @param mixed $arr */
+                    function foo($arr) : void {
+                     if ($arr["a"] === false) {
+                        $arr["a"] = (bool) rand(0, 1);
+                        if ($arr["a"] === false) {}
+                      }
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment', 'MixedArrayAccess'],
+            ],
+            'hardPhpTypeAssertionsOnDocblockType' => [
+                '<?php
+                    /** @param string|null $bar */
+                    function foo($bar) : void {
+                        if (!is_null($bar) && !is_string($bar)) {
+                            throw new \Exception("bad");
+                        }
+
+                        if ($bar !== null) {}
+                    }',
+            ],
         ];
     }
 

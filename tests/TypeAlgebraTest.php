@@ -636,7 +636,7 @@ class TypeAlgebraTest extends TestCase
                         if ($a !== null) return $b;
                         return $a;
                     }',
-                'error_message' => 'InvalidReturnStatement',
+                'error_message' => 'NullableReturnStatement',
             ],
             'invertedTwoVarLogicNotNestedWithElseif' => [
                 '<?php
@@ -652,7 +652,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'PossiblyInvalidReturnStatement',
+                'error_message' => 'NullableReturnStatement',
             ],
             'threeVarLogicWithElseifAndAnd' => [
                 '<?php
@@ -685,7 +685,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'PossiblyInvalidReturnStatement',
+                'error_message' => 'NullableReturnStatement',
             ],
             'twoVarLogicNotNestedWithElseifIncorrectlyReinforcedInIf' => [
                 '<?php
@@ -701,7 +701,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'PossiblyInvalidReturnStatement',
+                'error_message' => 'NullableReturnStatement',
             ],
             'repeatedIfStatements' => [
                 '<?php

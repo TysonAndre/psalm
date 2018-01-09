@@ -140,11 +140,43 @@ class IfChecker
 
         $if_context->inside_conditional = false;
 
+        $mixed_var_ids = [];
+
+        foreach ($if_context->vars_in_scope as $var_id => $type) {
+            if ($type->isMixed()) {
+                $mixed_var_ids[] = $var_id;
+            }
+        }
+
         $if_clauses = AlgebraChecker::getFormula(
             $stmt->cond,
             $context->self,
             $statements_checker
         );
+
+        $if_clauses = array_values(
+            array_filter(
+                $if_clauses,
+                /** @return bool */
+                function (Clause $c) use ($mixed_var_ids) {
+                    $keys = array_keys($c->possibilities);
+
+                    foreach ($keys as $key) {
+                        foreach ($mixed_var_ids as $mixed_var_id) {
+                            if (preg_match('/^' . preg_quote($mixed_var_id) . '(\[|-)/', $key)) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                }
+            )
+        );
+
+        if (!$if_clauses) {
+            $if_clauses = [new Clause([], true)];
+        }
 
         // this will see whether any of the clauses in set A conflict with the clauses in set B
         AlgebraChecker::checkForParadox(
@@ -429,7 +461,8 @@ class IfChecker
             // if we have a check like if (!isset($a)) { $a = true; } we want to make sure $a is always set
             foreach ($if_scope->new_vars as $var_id => $_) {
                 if (isset($if_scope->negated_types[$var_id])
-                    && ($if_scope->negated_types[$var_id] === 'isset'
+                    && (
+                        $if_scope->negated_types[$var_id] === 'isset'
                         || $if_scope->negated_types[$var_id] === '^isset'
                         || $if_scope->negated_types[$var_id] === '!empty'
                     )
@@ -653,11 +686,43 @@ class IfChecker
 
         $elseif_context->inside_conditional = false;
 
+        $mixed_var_ids = [];
+
+        foreach ($elseif_context->vars_in_scope as $var_id => $type) {
+            if ($type->isMixed()) {
+                $mixed_var_ids[] = $var_id;
+            }
+        }
+
         $elseif_clauses = AlgebraChecker::getFormula(
             $elseif->cond,
             $statements_checker->getFQCLN(),
             $statements_checker
         );
+
+        $elseif_clauses = array_values(
+            array_filter(
+                $elseif_clauses,
+                /** @return bool */
+                function (Clause $c) use ($mixed_var_ids) {
+                    $keys = array_keys($c->possibilities);
+
+                    foreach ($keys as $key) {
+                        foreach ($mixed_var_ids as $mixed_var_id) {
+                            if (preg_match('/^' . preg_quote($mixed_var_id) . '(\[|-)/', $key)) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                }
+            )
+        );
+
+        if (!$elseif_clauses) {
+            $elseif_clauses = [new Clause([], true)];
+        }
 
         // this will see whether any of the clauses in set A conflict with the clauses in set B
         AlgebraChecker::checkForParadox(
@@ -720,10 +785,10 @@ class IfChecker
         $old_elseif_context = clone $elseif_context;
 
         if ($statements_checker->analyze(
-                $elseif->stmts,
-                $elseif_context,
-                $loop_scope
-            ) === false
+            $elseif->stmts,
+            $elseif_context,
+            $loop_scope
+        ) === false
         ) {
             return false;
         }
@@ -968,10 +1033,10 @@ class IfChecker
         $old_else_context = clone $else_context;
 
         if ($statements_checker->analyze(
-                $else->stmts,
-                $else_context,
-                $loop_scope
-            ) === false
+            $else->stmts,
+            $else_context,
+            $loop_scope
+        ) === false
         ) {
             return false;
         }

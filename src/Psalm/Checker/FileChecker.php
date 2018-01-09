@@ -4,6 +4,7 @@ namespace Psalm\Checker;
 use PhpParser;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Type;
@@ -426,6 +427,7 @@ class FileChecker extends SourceChecker implements StatementsSource
         FunctionChecker::clearCache();
         StatementsChecker::clearCache();
         IssueBuffer::clearCache();
+        FileManipulationBuffer::clearCache();
         FunctionLikeChecker::clearCache();
     }
 
@@ -443,21 +445,6 @@ class FileChecker extends SourceChecker implements StatementsSource
     public function getFilePath()
     {
         return $this->file_path;
-    }
-
-    /**
-     * @param string $file_name
-     * @param string $file_path
-     *
-     * @return void
-     */
-    public function setFileName($file_name, $file_path)
-    {
-        $this->actual_file_name = $this->file_name;
-        $this->actual_file_path = $this->file_path;
-
-        $this->file_name = $file_name;
-        $this->file_path = $file_path;
     }
 
     /**

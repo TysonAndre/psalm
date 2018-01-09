@@ -89,13 +89,14 @@ class Union
     }
 
     /**
+     * @param  string|null   $namespace
      * @param  array<string> $aliased_classes
      * @param  string|null   $this_class
      * @param  bool          $use_phpdoc_format
      *
      * @return string
      */
-    public function toNamespacedString(array $aliased_classes, $this_class, $use_phpdoc_format)
+    public function toNamespacedString($namespace, array $aliased_classes, $this_class, $use_phpdoc_format)
     {
         return \implode(
             '|',
@@ -103,12 +104,99 @@ class Union
                 /**
                  * @return string
                  */
-                function (Atomic $type) use ($aliased_classes, $this_class, $use_phpdoc_format) {
-                    return $type->toNamespacedString($aliased_classes, $this_class, $use_phpdoc_format);
+                function (Atomic $type) use ($namespace, $aliased_classes, $this_class, $use_phpdoc_format) {
+                    return $type->toNamespacedString($namespace, $aliased_classes, $this_class, $use_phpdoc_format);
                 },
                 $this->types
             )
         );
+    }
+
+    /**
+     * @param  string|null   $namespace
+     * @param  array<string> $aliased_classes
+     * @param  string|null   $this_class
+     * @param  int           $php_major_version
+     * @param  int           $php_minor_version
+     *
+     * @return ?string
+     */
+    public function toPhpString(
+        $namespace,
+        array $aliased_classes,
+        $this_class,
+        $php_major_version,
+        $php_minor_version
+    ) {
+        $nullable = false;
+
+        if (count($this->types) > 2
+            || (
+                count($this->types) === 2
+                && (!isset($this->types['null'])
+                    || $php_major_version < 7
+                    || $php_minor_version < 1)
+            )
+        ) {
+            return null;
+        }
+
+        $types = $this->types;
+
+        if (isset($types['null'])) {
+            unset($types['null']);
+
+            $nullable = true;
+        }
+
+        if (!$types) {
+            return null;
+        }
+
+        $atomic_type = array_values($types)[0];
+
+        $atomic_type_string = $atomic_type->toPhpString(
+            $namespace,
+            $aliased_classes,
+            $this_class,
+            $php_major_version,
+            $php_minor_version
+        );
+
+        if ($atomic_type_string) {
+            return ($nullable ? '?' : '') . $atomic_type_string;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return bool
+     */
+    public function canBeFullyExpressedInPhp()
+    {
+        if (count($this->types) > 2
+            || (
+                count($this->types) === 2
+                && !isset($this->types['null'])
+            )
+        ) {
+            return false;
+        }
+
+        $types = $this->types;
+
+        if (isset($types['null'])) {
+            unset($types['null']);
+        }
+
+        if (!$types) {
+            return null;
+        }
+
+        $atomic_type = array_values($types)[0];
+
+        return $atomic_type->canBeFullyExpressedInPhp();
     }
 
     /**
@@ -172,6 +260,20 @@ class Union
     {
         foreach ($this->types as $type) {
             if ($type->isObjectType()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasObject()
+    {
+        foreach ($this->types as $type) {
+            if ($type instanceof Type\Atomic\TObject) {
                 return true;
             }
         }

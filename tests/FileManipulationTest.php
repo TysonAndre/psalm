@@ -30,8 +30,6 @@ class FileManipulationTest extends TestCase
         }
 
         $this->project_checker->setConfig(self::$config);
-
-        $this->project_checker->update_docblocks = true;
     }
 
     /**
@@ -39,10 +37,13 @@ class FileManipulationTest extends TestCase
      *
      * @param string $input_code
      * @param string $output_code
+     * @param string $php_version
+     * @param string[] $issues_to_fix
+     * @param bool $safe_types
      *
      * @return void
      */
-    public function testValidCode($input_code, $output_code)
+    public function testValidCode($input_code, $output_code, $php_version, array $issues_to_fix, $safe_types)
     {
         $test_name = $this->getName();
         if (strpos($test_name, 'PHP7-') !== false) {
@@ -64,9 +65,26 @@ class FileManipulationTest extends TestCase
             $input_code
         );
 
+        list($php_major_version, $php_minor_version) = explode('.', $php_version);
+
+        $keyed_issues_to_fix = [];
+
+        foreach ($issues_to_fix as $issue) {
+            $keyed_issues_to_fix[$issue] = true;
+        }
+
         $file_checker = new FileChecker($file_path, $this->project_checker);
+
+        $this->project_checker->setIssuesToFix($keyed_issues_to_fix);
+        $this->project_checker->alterCodeAfterCompletion(
+            (int) $php_major_version,
+            (int) $php_minor_version,
+            false,
+            $safe_types
+        );
+
         $file_checker->visitAndAnalyzeMethods($context);
-        $this->project_checker->updateFile($file_path);
+        $this->project_checker->updateFile($file_path, false);
         $this->assertSame($output_code, $this->project_checker->getFileContents($file_path));
     }
 
@@ -76,7 +94,7 @@ class FileManipulationTest extends TestCase
     public function providerFileCheckerValidCodeParse()
     {
         return [
-            'doesNothing' => [
+            'addMissingVoidReturnType56' => [
                 '<?php
                     function foo() { }',
                 '<?php
@@ -84,8 +102,32 @@ class FileManipulationTest extends TestCase
                      * @return void
                      */
                     function foo() { }',
+                '5.6',
+                ['MissingReturnType'],
+                true,
             ],
-            'returnsString' => [
+            'addMissingVoidReturnType70' => [
+                '<?php
+                    function foo() { }',
+                '<?php
+                    /**
+                     * @return void
+                     */
+                    function foo() { }',
+                '7.0',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingVoidReturnType71' => [
+                '<?php
+                    function foo() { }',
+                '<?php
+                    function foo() : void { }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringReturnType56' => [
                 '<?php
                     function foo() {
                         return "hello";
@@ -97,8 +139,266 @@ class FileManipulationTest extends TestCase
                     function foo() {
                         return "hello";
                     }',
+                '5.6',
+                ['MissingReturnType'],
+                true,
             ],
-            'returnsStringNotInt' => [
+            'addMissingStringReturnType70' => [
+                '<?php
+                    function foo() {
+                        return "hello";
+                    }',
+                '<?php
+                    function foo() : string {
+                        return "hello";
+                    }',
+                '7.0',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingClosureStringReturnType56' => [
+                '<?php
+                    $a = function() {
+                        return "hello";
+                    }',
+                '<?php
+                    $a = /**
+                     * @return string
+                     */
+                    function() {
+                        return "hello";
+                    }',
+                '5.6',
+                ['MissingClosureReturnType'],
+                true,
+            ],
+            'addMissingNullableStringReturnType56' => [
+                '<?php
+                    function foo() {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '<?php
+                    /**
+                     * @return string|null
+                     */
+                    function foo() {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '5.6',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringReturnType70' => [
+                '<?php
+                    function foo() {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '<?php
+                    /**
+                     * @return string|null
+                     */
+                    function foo() {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '7.0',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringReturnType71' => [
+                '<?php
+                    function foo() {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '<?php
+                    function foo() : ?string {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringReturnTypeWithComment71' => [
+                '<?php
+                    function foo() /** : ?string */ {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '<?php
+                    function foo() : ?string /** : ?string */ {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringReturnTypeWithSingleLineComment71' => [
+                '<?php
+                    function foo()// cool
+                    {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '<?php
+                    function foo() : ?string// cool
+                    {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringArrayReturnType56' => [
+                '<?php
+                    function foo() {
+                        return ["hello"];
+                    }',
+                '<?php
+                    /**
+                     * @return string[]
+                     *
+                     * @psalm-return array{0:string}
+                     */
+                    function foo() {
+                        return ["hello"];
+                    }',
+                '5.6',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringArrayReturnType70' => [
+                '<?php
+                    function foo() {
+                        return ["hello"];
+                    }',
+                '<?php
+                    /**
+                     * @return string[]
+                     *
+                     * @psalm-return array{0:string}
+                     */
+                    function foo() : array {
+                        return ["hello"];
+                    }',
+                '7.0',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingStringArrayReturnTypeFromCall71' => [
+                '<?php
+                    /** @return string[] */
+                    function foo() : array {
+                        return ["hello"];
+                    }
+
+                    function bar() {
+                        return foo();
+                    }',
+                '<?php
+                    /** @return string[] */
+                    function foo() : array {
+                        return ["hello"];
+                    }
+
+                    /**
+                     * @return string[]
+                     *
+                     * @psalm-return array<mixed, string>
+                     */
+                    function bar() : array {
+                        return foo();
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingDocblockStringArrayReturnTypeFromCall71' => [
+                '<?php
+                    /** @return string[] */
+                    function foo() {
+                        return ["hello"];
+                    }
+
+                    function bar() {
+                        return foo();
+                    }',
+                '<?php
+                    /** @return string[] */
+                    function foo() {
+                        return ["hello"];
+                    }
+
+                    /**
+                     * @return string[]
+                     *
+                     * @psalm-return array<mixed, string>
+                     */
+                    function bar() {
+                        return foo();
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingNullableStringReturnType71' => [
+                '<?php
+                    /** @return string[] */
+                    function foo() : array {
+                        return ["hello"];
+                    }
+
+                    function bar() {
+                        foreach (foo() as $f) {
+                            return $f;
+                        }
+                        return null;
+                    }',
+                '<?php
+                    /** @return string[] */
+                    function foo() : array {
+                        return ["hello"];
+                    }
+
+                    /**
+                     * @return null|string
+                     */
+                    function bar() {
+                        foreach (foo() as $f) {
+                            return $f;
+                        }
+                        return null;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
+            'addMissingUnsafeNullableStringReturnType71' => [
+                '<?php
+                    /** @return string[] */
+                    function foo() : array {
+                        return ["hello"];
+                    }
+
+                    function bar() {
+                        foreach (foo() as $f) {
+                            return $f;
+                        }
+                        return null;
+                    }',
+                '<?php
+                    /** @return string[] */
+                    function foo() : array {
+                        return ["hello"];
+                    }
+
+                    function bar() : ?string {
+                        foreach (foo() as $f) {
+                            return $f;
+                        }
+                        return null;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                false,
+            ],
+            'fixInvalidIntReturnType56' => [
                 '<?php
                     /**
                      * @return int
@@ -113,20 +413,172 @@ class FileManipulationTest extends TestCase
                     function foo() {
                         return "hello";
                     }',
+                '5.6',
+                ['InvalidReturnType'],
+                true,
             ],
-            'returnStringArray' => [
+            'fixInvalidIntReturnType70' => [
                 '<?php
-                    function foo() {
-                        return ["hello"];
+                    /**
+                     * @return int
+                     */
+                    function foo() : int {
+                        return "hello";
                     }',
                 '<?php
                     /**
-                     * @return       string[]
-                     * @psalm-return array{0:string}
+                     * @return string
                      */
-                    function foo() {
-                        return ["hello"];
+                    function foo() : string {
+                        return "hello";
                     }',
+                '7.0',
+                ['InvalidReturnType'],
+                true,
+            ],
+            'fixInvalidIntReturnTypeJustInTypehint70' => [
+                '<?php
+                    function foo() : int {
+                        return "hello";
+                    }',
+                '<?php
+                    function foo() : string {
+                        return "hello";
+                    }',
+                '7.0',
+                ['InvalidReturnType'],
+                true,
+            ],
+            'fixInvalidStringReturnTypeThatIsNotPhpCompatible70' => [
+                '<?php
+                    function foo() : string {
+                        return rand(0, 1) ? "hello" : false;
+                    }',
+                '<?php
+                    /**
+                     * @return string|false
+                     */
+                    function foo()  {
+                        return rand(0, 1) ? "hello" : false;
+                    }',
+                '7.0',
+                ['InvalidFalsableReturnType'],
+                true,
+            ],
+            'fixInvalidIntReturnTypeThatIsNotPhpCompatible70' => [
+                '<?php
+                    function foo() : string {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '<?php
+                    /**
+                     * @return string|null
+                     */
+                    function foo()  {
+                        return rand(0, 1) ? "hello" : null;
+                    }',
+                '7.0',
+                ['InvalidNullableReturnType'],
+                true,
+            ],
+            'fixInvalidIntReturnTypeJustInTypehintWithComment70' => [
+                '<?php
+                    function foo() /** cool : beans */ : int /** cool : beans */ {
+                        return "hello";
+                    }',
+                '<?php
+                    function foo() /** cool : beans */ : string /** cool : beans */ {
+                        return "hello";
+                    }',
+                '7.0',
+                ['InvalidReturnType'],
+                true,
+            ],
+            'fixInvalidIntReturnTypeJustInTypehintWithSingleLineComment70' => [
+                '<?php
+                    function foo() // hello
+                    : int {
+                        return "hello";
+                    }',
+                '<?php
+                    function foo() // hello
+                    : string {
+                        return "hello";
+                    }',
+                '7.0',
+                ['InvalidReturnType'],
+                true,
+            ],
+            'fixMismatchingDocblockReturnType70' => [
+                '<?php
+                    /**
+                     * @return int
+                     */
+                    function foo() : string {
+                        return "hello";
+                    }',
+                '<?php
+                    /**
+                     * @return string
+                     */
+                    function foo() : string {
+                        return "hello";
+                    }',
+                '7.0',
+                ['MismatchingDocblockReturnType'],
+                true,
+            ],
+            'fixMismatchingDocblockParamType70' => [
+                '<?php
+                    /**
+                     * @param int $s
+                     */
+                    function foo(string $s) : string {
+                        return "hello";
+                    }',
+                '<?php
+                    /**
+                     * @param string $s
+                     */
+                    function foo(string $s) : string {
+                        return "hello";
+                    }',
+                '7.0',
+                ['MismatchingDocblockParamType'],
+                true,
+            ],
+            'fixNamespacedMismatchingDocblockParamsType70' => [
+                '<?php
+                    namespace Foo\Bar {
+                        class A {
+                            /**
+                             * @param \B $b
+                             * @param \C $c
+                             */
+                            function foo(B $b, C $c) : string {
+                                return "hello";
+                            }
+                        }
+                        class B {}
+                        class C {}
+                    }',
+                '<?php
+                    namespace Foo\Bar {
+                        class A {
+                            /**
+                             * @param B $b
+                             * @param C $c
+                             */
+                            function foo(B $b, C $c) : string {
+                                return "hello";
+                            }
+                        }
+                        class B {}
+                        class C {}
+                    }',
+                '7.0',
+                ['MismatchingDocblockParamType'],
+                true,
             ],
             'useUnqualifierPlugin' => [
                 '<?php
@@ -147,6 +599,9 @@ class FileManipulationTest extends TestCase
 
                         new D();
                     }',
+                PHP_VERSION,
+                [],
+                true,
             ],
         ];
     }

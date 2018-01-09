@@ -56,7 +56,7 @@ class ScopeChecker
     public static function getFinalControlActions(array $stmts)
     {
         if (empty($stmts)) {
-            return [SELF::ACTION_NONE];
+            return [self::ACTION_NONE];
         }
 
         $control_actions = [];
@@ -177,7 +177,7 @@ class ScopeChecker
                         }
                     }
 
-                    if ($all_same) {
+                    if ($all_same && $try_statement_actions !== [self::ACTION_NONE]) {
                         return $try_statement_actions;
                     }
                 }
@@ -186,7 +186,7 @@ class ScopeChecker
             }
         }
 
-        $control_actions[] = SELF::ACTION_NONE;
+        $control_actions[] = self::ACTION_NONE;
 
         return array_unique($control_actions);
     }

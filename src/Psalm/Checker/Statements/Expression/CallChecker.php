@@ -993,6 +993,13 @@ class CallChecker
                     $return_type_candidate = Type::getString();
                 } elseif (FunctionChecker::inCallMap($cased_method_id)) {
                     $return_type_candidate = FunctionChecker::getReturnTypeFromCallMap($method_id);
+
+                    $return_type_candidate = ExpressionChecker::fleshOutType(
+                        $project_checker,
+                        $return_type_candidate,
+                        $fq_class_name,
+                        $method_id
+                    );
                 } else {
                     if (MethodChecker::checkMethodVisibility(
                         $method_id,
@@ -2657,31 +2664,31 @@ class CallChecker
 
                             if (!in_array(strtolower($callable_fq_class_name), ['self', 'static', 'parent'], true)) {
                                 if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                                        $statements_checker,
-                                        $callable_fq_class_name,
-                                        $code_location,
-                                        $statements_checker->getSuppressedIssues()
-                                    ) === false
+                                    $statements_checker,
+                                    $callable_fq_class_name,
+                                    $code_location,
+                                    $statements_checker->getSuppressedIssues()
+                                ) === false
                                 ) {
                                     return false;
                                 }
 
                                 if (MethodChecker::checkMethodExists(
-                                        $project_checker,
-                                        $function_id,
-                                        $code_location,
-                                        $statements_checker->getSuppressedIssues()
-                                    ) === false
+                                    $project_checker,
+                                    $function_id,
+                                    $code_location,
+                                    $statements_checker->getSuppressedIssues()
+                                ) === false
                                 ) {
                                     return false;
                                 }
                             }
                         } else {
                             if (self::checkFunctionExists(
-                                    $statements_checker,
-                                    $function_id,
-                                    $code_location
-                                ) === false
+                                $statements_checker,
+                                $function_id,
+                                $code_location
+                            ) === false
                             ) {
                                 return false;
                             }
