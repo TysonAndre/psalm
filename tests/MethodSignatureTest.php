@@ -220,7 +220,8 @@ class MethodSignatureTest extends TestCase
 
                         }
                     }',
-                'error_message' => 'Argument 1 of B::fooFoo has wrong type \'bool\', expecting \'int\' as defined by A::fooFoo',
+                'error_message' => 'Argument 1 of B::fooFoo has wrong type \'bool\', expecting \'int\' as defined ' .
+                    'by A::fooFoo',
             ],
             'nonNullableSubclassParam' => [
                 '<?php
