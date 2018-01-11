@@ -348,7 +348,7 @@ class CommentChecker
 
     /**
      * @param ClassLikeDocblockComment $info
-     * @param array<string,array<mixed,string>> $specials
+     * @param array<string, array<int, string>> $specials
      * @param string $property_tag ('property', 'property-read', or 'property-write')
      *
      * @throws DocblockParseException
@@ -458,11 +458,12 @@ class CommentChecker
      *
      * @param  string  $docblock
      * @param  int     $line_number
+     * @param  bool    $preserve_format
      *
      * @return array Array of the main comment and specials
-     * @psalm-return array{description:string, specials:array<string, array<mixed, string>>}
+     * @psalm-return array{description:string, specials:array<string, array<int, string>>}
      */
-    public static function parseDocComment($docblock, $line_number = null)
+    public static function parseDocComment($docblock, $line_number = null, $preserve_format = false)
     {
         // Strip off comments.
         $docblock = trim($docblock);
@@ -484,7 +485,7 @@ class CommentChecker
                 $last = false;
             } elseif ($last !== false) {
                 $old_last_line = $lines[$last];
-                $lines[$last] = rtrim($old_last_line) . ' ' . trim($line);
+                $lines[$last] = rtrim($old_last_line) . ($preserve_format ? "\n" . $line : ' ' . trim($line));
 
                 if ($line_number) {
                     $old_line_number = $line_map[$old_last_line];
@@ -500,26 +501,43 @@ class CommentChecker
             }
         }
 
-        $docblock = implode("\n", $lines);
-
         $special = [];
 
-        // Parse @specials.
-        $matches = [];
-        $have_specials = preg_match_all('/^\s?@([\w\-:]+)[\t ]*([^\n]*)/m', $docblock, $matches, PREG_SET_ORDER);
-        if ($have_specials) {
-            $docblock = preg_replace('/^\s?@([\w\-:]+)\s*([^\n]*)/m', '', $docblock);
-            /** @var string[] $match */
-            foreach ($matches as $m => $match) {
-                list($_, $type, $data) = $match;
+        if ($preserve_format) {
+            foreach ($lines as $m => $line) {
+                if (preg_match('/^\s?@([\w\-:]+)[\t ]*(.*)$/sm', $line, $matches)) {
+                    /** @var string[] $matches */
+                    list($full_match, $type, $data) = $matches;
 
-                if (empty($special[$type])) {
-                    $special[$type] = [];
+                    $docblock = str_replace($full_match, '', $docblock);
+
+                    if (empty($special[$type])) {
+                        $special[$type] = [];
+                    }
+
+                    $line_number = $line_map && isset($line_map[$full_match]) ? $line_map[$full_match] : (int)$m;
+
+                    $special[$type][$line_number] = rtrim($data);
                 }
+            }
+        } else {
+            $docblock = implode("\n", $lines);
 
-                $line_number = $line_map && isset($line_map[$_]) ? $line_map[$_] : (int)$m;
+            // Parse @specials.
+            if (preg_match_all('/^\s?@([\w\-:]+)[\t ]*([^\n]*)/m', $docblock, $matches, PREG_SET_ORDER)) {
+                $docblock = preg_replace('/^\s?@([\w\-:]+)\s*([^\n]*)/m', '', $docblock);
+                /** @var string[] $match */
+                foreach ($matches as $m => $match) {
+                    list($_, $type, $data) = $match;
 
-                $special[$type][$line_number] = $data;
+                    if (empty($special[$type])) {
+                        $special[$type] = [];
+                    }
+
+                    $line_number = $line_map && isset($line_map[$_]) ? $line_map[$_] : (int)$m;
+
+                    $special[$type][$line_number] = $data;
+                }
             }
         }
 
@@ -588,7 +606,8 @@ class CommentChecker
                 }
 
                 foreach ($lines as $line) {
-                    $doc_comment_text .= $left_padding . ' * @' . $type . ' ' . $line . PHP_EOL;
+                    $doc_comment_text .= $left_padding . ' * @' . $type . ' '
+                        . str_replace("\n", "\n" . $left_padding . ' *', $line) . PHP_EOL;
                 }
 
                 $last_type = $type;

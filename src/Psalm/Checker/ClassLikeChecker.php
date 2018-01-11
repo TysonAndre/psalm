@@ -16,6 +16,7 @@ use Psalm\Issue\InvalidReturnType;
 use Psalm\Issue\MissingConstructor;
 use Psalm\Issue\MissingPropertyType;
 use Psalm\Issue\PropertyNotSetInConstructor;
+use Psalm\Issue\ReservedWord;
 use Psalm\Issue\UndefinedClass;
 use Psalm\Issue\UndefinedTrait;
 use Psalm\Issue\UnimplementedAbstractMethod;
@@ -88,26 +89,11 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
     protected $fq_class_name;
 
     /**
-     * @var bool
-     */
-    protected $has_custom_get = false;
-
-    /**
      * The parent class
      *
      * @var string|null
      */
     protected $parent_fq_class_name;
-
-    /**
-     * @var array<string, MethodChecker>
-     */
-    protected $method_checkers = [];
-
-    /**
-     * @var array<string, MethodChecker>
-     */
-    protected $property_types = [];
 
     /**
      * @var array<string, array<string, string>>|null
@@ -191,6 +177,32 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         Context $global_context = null
     ) {
         $fq_class_name = $class_context && $class_context->self ? $class_context->self : $this->fq_class_name;
+
+        if (preg_match(
+            '/(^|\\\)(int|float|bool|string|void|null|false|true|resource|object|numeric|mixed)$/i',
+            $fq_class_name
+        )
+        ) {
+            $class_name_parts = explode('\\', $fq_class_name);
+            $class_name = array_pop($class_name_parts);
+
+            if (IssueBuffer::accepts(
+                new ReservedWord(
+                    $class_name . ' is a reserved word',
+                    new CodeLocation(
+                        $this,
+                        $this->class,
+                        null,
+                        true
+                    )
+                ),
+                $this->source->getSuppressedIssues()
+            )) {
+                // fall through
+            }
+
+            return null;
+        }
 
         $storage = $this->storage;
 
@@ -981,6 +993,27 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
             return true;
         }
 
+        if (preg_match(
+            '/(^|\\\)(int|float|bool|string|void|null|false|true|resource|object|numeric|mixed)$/i',
+            $fq_class_name
+        )
+        ) {
+            $class_name_parts = explode('\\', $fq_class_name);
+            $class_name = array_pop($class_name_parts);
+
+            if (IssueBuffer::accepts(
+                new ReservedWord(
+                    $class_name . ' is a reserved word',
+                    $code_location
+                ),
+                $suppressed_issues
+            )) {
+                // fall through
+            }
+
+            return null;
+        }
+
         $class_exists = ClassChecker::classExists($project_checker, $fq_class_name);
         $interface_exists = InterfaceChecker::interfaceExists($project_checker, $fq_class_name);
 
@@ -1511,8 +1544,11 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
      *
      * @return bool
      */
-    public static function propertyExists(ProjectChecker $project_checker, $property_id)
-    {
+    public static function propertyExists(
+        ProjectChecker $project_checker,
+        $property_id,
+        CodeLocation $code_location = null
+    ) {
         // remove trailing backslash if it exists
         $property_id = preg_replace('/^\\\\/', '', $property_id);
 
@@ -1521,6 +1557,20 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
 
         if (isset($class_storage->declaring_property_ids[$property_name])) {
+            if ($project_checker->collect_references && $code_location) {
+                $declaring_property_id = $class_storage->declaring_property_ids[$property_name];
+                list($declaring_property_class, $declaring_property_name) = explode('::$', $declaring_property_id);
+
+                $declaring_class_storage = $project_checker->classlike_storage_provider->get($declaring_property_class);
+                $declaring_property_storage = $declaring_class_storage->properties[$declaring_property_name];
+
+                if ($declaring_property_storage->referencing_locations === null) {
+                    $declaring_property_storage->referencing_locations = [];
+                }
+
+                $declaring_property_storage->referencing_locations[$code_location->file_path][] = $code_location;
+            }
+
             return true;
         }
 

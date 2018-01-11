@@ -46,7 +46,7 @@ class ListTest extends TestCase
                         /** @var string */
                         public $b = "";
 
-                        public function fooFoo() : string
+                        public function fooFoo(): string
                         {
                             list($this->a, $this->b) = ["a", "b"];
 
@@ -85,14 +85,14 @@ class ListTest extends TestCase
                         /** @var string */
                         public $b = "";
 
-                        public function fooFoo() : string
+                        public function fooFoo(): string
                         {
                             list($this->a, $this->b) = ["a", "b"];
 
                             return $this->a;
                         }
                     }',
-                'error_message' => 'InvalidPropertyAssignment - src/somefile.php:11',
+                'error_message' => 'InvalidPropertyAssignmentValue - src/somefile.php:11',
             ],
         ];
     }

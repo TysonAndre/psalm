@@ -149,29 +149,34 @@ class UnusedCodeTest extends TestCase
                             }
                         }
 
-                        private function modify(string $name, string $value) : void {
+                        private function modify(string $name, string $value): void {
                             call_user_func(array($this, "modify_" . $name), $value);
                         }
 
-                        public function modifyFoo(string $value) : void {
+                        public function modifyFoo(string $value): void {
                             $this->value = $value;
+                        }
+
+                        public function getFoo() : string {
+                            return $this->value;
                         }
                     }
 
                     $m = new A();
                     $m->foo("value");
-                    $m->modifyFoo("value2");',
+                    $m->modifyFoo("value2");
+                    echo $m->getFoo();',
             ],
             'usedTraitMethod' => [
                 '<?php
                     class A {
-                        public function foo() : void {
+                        public function foo(): void {
                             echo "parent method";
                         }
                     }
 
                     trait T {
-                        public function foo() : void {
+                        public function foo(): void {
                             echo "trait method";
                         }
                     }
@@ -186,18 +191,18 @@ class UnusedCodeTest extends TestCase
             'usedInterfaceMethod' => [
                 '<?php
                     interface I {
-                        public function foo() : void;
+                        public function foo(): void;
                     }
 
                     class A implements I {
-                        public function foo() : void {}
+                        public function foo(): void {}
                     }
 
                     (new A)->foo();',
             ],
             'dummyByRefVar' => [
                 '<?php
-                    function foo(string &$a = null, string $b = null) : void {
+                    function foo(string &$a = null, string $b = null): void {
                         if ($a) {
                             echo $a;
                         }
@@ -206,7 +211,7 @@ class UnusedCodeTest extends TestCase
                         }
                     }
 
-                    function bar() : void {
+                    function bar(): void {
                         foo($dummy_byref_var, "hello");
                     }
 
@@ -272,7 +277,7 @@ class UnusedCodeTest extends TestCase
             ],
             'unevaluatedCode' => [
                 '<?php
-                    function foo() : void {
+                    function foo(): void {
                         return;
                         $a = "foo";
                     }',

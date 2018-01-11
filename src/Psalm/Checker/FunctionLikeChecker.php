@@ -31,6 +31,7 @@ use Psalm\Issue\MoreSpecificImplementedParamType;
 use Psalm\Issue\MoreSpecificImplementedReturnType;
 use Psalm\Issue\MoreSpecificReturnType;
 use Psalm\Issue\OverriddenMethodAccess;
+use Psalm\Issue\ReservedWord;
 use Psalm\Issue\UntypedParam;
 use Psalm\Issue\UnusedParam;
 use Psalm\Issue\UnusedVariable;
@@ -58,11 +59,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
      * @var bool
      */
     protected $is_static = false;
-
-    /**
-     * @var StatementsChecker|null
-     */
-    protected $statements_checker;
 
     /**
      * @var StatementsSource
@@ -259,11 +255,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
         $statements_checker = new StatementsChecker($this);
 
-        // this increases memory, so only do it if running under this flag
-        if ($project_checker->infer_types_from_usage) {
-            $this->statements_checker = $statements_checker;
-        }
-
         $template_types = $storage->template_types;
 
         if ($class_storage && $class_storage->template_types) {
@@ -325,6 +316,14 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         return false;
                     }
 
+                    $signature_type->check(
+                        $this,
+                        $function_param->type_location,
+                        $storage->suppressed_issues,
+                        [],
+                        false
+                    );
+
                     continue;
                 }
             }
@@ -363,7 +362,25 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     false
                 );
             } else {
-                $param_type->check($this->source, $function_param->type_location, $this->suppressed_issues, [], false);
+                if ($param_type->isVoid()) {
+                    if (IssueBuffer::accepts(
+                        new ReservedWord(
+                            'Parameter cannot be void',
+                            $function_param->type_location
+                        ),
+                        $this->suppressed_issues
+                    )) {
+                        // fall through
+                    }
+                }
+
+                $param_type->check(
+                    $this->source,
+                    $function_param->type_location,
+                    $this->suppressed_issues,
+                    [],
+                    false
+                );
             }
 
             if ($this->getFileChecker()->project_checker->collect_references) {
@@ -398,46 +415,77 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             );
         }
 
-        if ($storage->return_type
-            && $storage->signature_return_type
-            && $storage->return_type_location
-            && !$this->function instanceof Closure
-        ) {
-            $fleshed_out_return_type = ExpressionChecker::fleshOutType(
-                $project_checker,
-                $storage->return_type,
-                $class_storage ? $class_storage->name : null
-            );
+        if ($storage->return_type && $storage->return_type_location && !$storage->has_template_return_type) {
+            if (!$storage->signature_return_type || $storage->signature_return_type === $storage->return_type) {
+                $fleshed_out_return_type = ExpressionChecker::fleshOutType(
+                    $project_checker,
+                    $storage->return_type,
+                    $context->self
+                );
 
-            $fleshed_out_signature_type = ExpressionChecker::fleshOutType(
-                $project_checker,
-                $storage->signature_return_type,
-                $class_storage ? $class_storage->name : null
-            );
+                $fleshed_out_return_type->check(
+                    $this,
+                    $storage->return_type_location,
+                    $storage->suppressed_issues,
+                    [],
+                    false
+                );
+            } else {
+                $fleshed_out_signature_type = ExpressionChecker::fleshOutType(
+                    $project_checker,
+                    $storage->signature_return_type,
+                    $context->self,
+                    $cased_method_id
+                );
 
-            if (!TypeChecker::isContainedBy(
-                $project_checker,
-                $fleshed_out_return_type,
-                $fleshed_out_signature_type
-            )
-            ) {
-                if ($project_checker->alter_code
-                    && isset($project_checker->getIssuesToFix()['MismatchingDocblockReturnType'])
-                ) {
-                    $this->addOrUpdateReturnType($project_checker, $storage->signature_return_type);
+                $fleshed_out_signature_type->check(
+                    $this,
+                    $storage->signature_return_type_location ?: $storage->return_type_location,
+                    $storage->suppressed_issues,
+                    [],
+                    false
+                );
 
-                    return null;
-                }
+                if (!$this->function instanceof Closure) {
+                    $fleshed_out_return_type = ExpressionChecker::fleshOutType(
+                        $project_checker,
+                        $storage->return_type,
+                        $context->self,
+                        $cased_method_id
+                    );
 
-                if (IssueBuffer::accepts(
-                    new MismatchingDocblockReturnType(
-                        'Docblock has incorrect return type \'' . $storage->return_type .
-                            '\', should be \'' . $storage->signature_return_type . '\'',
-                        $storage->return_type_location
-                    ),
-                    $storage->suppressed_issues
-                )) {
-                    return false;
+                    $fleshed_out_signature_type = ExpressionChecker::fleshOutType(
+                        $project_checker,
+                        $storage->signature_return_type,
+                        $context->self,
+                        $cased_method_id
+                    );
+
+                    if (!TypeChecker::isContainedBy(
+                        $project_checker,
+                        $fleshed_out_return_type,
+                        $fleshed_out_signature_type
+                    )
+                    ) {
+                        if ($project_checker->alter_code
+                            && isset($project_checker->getIssuesToFix()['MismatchingDocblockReturnType'])
+                        ) {
+                            $this->addOrUpdateReturnType($project_checker, $storage->signature_return_type);
+
+                            return null;
+                        }
+
+                        if (IssueBuffer::accepts(
+                            new MismatchingDocblockReturnType(
+                                'Docblock has incorrect return type \'' . $storage->return_type .
+                                    '\', should be \'' . $storage->signature_return_type . '\'',
+                                $storage->return_type_location
+                            ),
+                            $storage->suppressed_issues
+                        )) {
+                            return false;
+                        }
+                    }
                 }
             }
         }
@@ -1120,8 +1168,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             true
         );
 
-        if ($return_type
-            && $return_type->from_docblock
+        if ((!$return_type || $return_type->from_docblock)
             && ScopeChecker::getFinalControlActions($function_stmts) !== [ScopeChecker::ACTION_END]
             && !$inferred_yield_types
             && count($inferred_return_type_parts)
@@ -1129,7 +1176,9 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             // only add null if we have a return statement elsewhere and it wasn't void
             foreach ($inferred_return_type_parts as $inferred_return_type_part) {
                 if (!$inferred_return_type_part instanceof Type\Atomic\TVoid) {
-                    $inferred_return_type_parts[] = new Type\Atomic\TNull();
+                    $atomic_null = new Type\Atomic\TNull();
+                    $atomic_null->from_docblock = true;
+                    $inferred_return_type_parts[] = $atomic_null;
                     break;
                 }
             }
@@ -1299,16 +1348,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             }
 
             return null;
-        }
-
-        if (!$declared_return_type->isMixed()) {
-            $declared_return_type->check(
-                $this,
-                $return_type_location,
-                $this->getSuppressedIssues(),
-                [],
-                false
-            );
         }
 
         if (!$declared_return_type->isMixed()) {

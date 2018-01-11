@@ -122,7 +122,7 @@ class FileManipulationTest extends TestCase
                 '<?php
                     function foo() { }',
                 '<?php
-                    function foo() : void { }',
+                    function foo(): void { }',
                 '7.1',
                 ['MissingReturnType'],
                 true,
@@ -149,7 +149,7 @@ class FileManipulationTest extends TestCase
                         return "hello";
                     }',
                 '<?php
-                    function foo() : string {
+                    function foo(): string {
                         return "hello";
                     }',
                 '7.0',
@@ -210,7 +210,7 @@ class FileManipulationTest extends TestCase
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '<?php
-                    function foo() : ?string {
+                    function foo(): ?string {
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '7.1',
@@ -223,7 +223,7 @@ class FileManipulationTest extends TestCase
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '<?php
-                    function foo() : ?string /** : ?string */ {
+                    function foo(): ?string /** : ?string */ {
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '7.1',
@@ -237,7 +237,7 @@ class FileManipulationTest extends TestCase
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '<?php
-                    function foo() : ?string// cool
+                    function foo(): ?string// cool
                     {
                         return rand(0, 1) ? "hello" : null;
                     }',
@@ -274,7 +274,7 @@ class FileManipulationTest extends TestCase
                      *
                      * @psalm-return array{0:string}
                      */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }',
                 '7.0',
@@ -284,7 +284,7 @@ class FileManipulationTest extends TestCase
             'addMissingStringArrayReturnTypeFromCall71' => [
                 '<?php
                     /** @return string[] */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }
 
@@ -293,7 +293,7 @@ class FileManipulationTest extends TestCase
                     }',
                 '<?php
                     /** @return string[] */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }
 
@@ -302,7 +302,7 @@ class FileManipulationTest extends TestCase
                      *
                      * @psalm-return array<mixed, string>
                      */
-                    function bar() : array {
+                    function bar(): array {
                         return foo();
                     }',
                 '7.1',
@@ -340,7 +340,7 @@ class FileManipulationTest extends TestCase
             'addMissingNullableStringReturnType71' => [
                 '<?php
                     /** @return string[] */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }
 
@@ -352,7 +352,7 @@ class FileManipulationTest extends TestCase
                     }',
                 '<?php
                     /** @return string[] */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }
 
@@ -369,10 +369,26 @@ class FileManipulationTest extends TestCase
                 ['MissingReturnType'],
                 true,
             ],
+            'addMissingNullableStringReturnTypeWithMaybeReturn71' => [
+                '<?php
+                    function foo() {
+                      if (rand(0, 1)) return new stdClass;
+                    }',
+                '<?php
+                    /**
+                     * @return stdClass|null
+                     */
+                    function foo() {
+                      if (rand(0, 1)) return new stdClass;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                true,
+            ],
             'addMissingUnsafeNullableStringReturnType71' => [
                 '<?php
                     /** @return string[] */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }
 
@@ -384,11 +400,11 @@ class FileManipulationTest extends TestCase
                     }',
                 '<?php
                     /** @return string[] */
-                    function foo() : array {
+                    function foo(): array {
                         return ["hello"];
                     }
 
-                    function bar() : ?string {
+                    function bar(): ?string {
                         foreach (foo() as $f) {
                             return $f;
                         }
@@ -422,14 +438,14 @@ class FileManipulationTest extends TestCase
                     /**
                      * @return int
                      */
-                    function foo() : int {
+                    function foo(): int {
                         return "hello";
                     }',
                 '<?php
                     /**
                      * @return string
                      */
-                    function foo() : string {
+                    function foo(): string {
                         return "hello";
                     }',
                 '7.0',
@@ -438,11 +454,11 @@ class FileManipulationTest extends TestCase
             ],
             'fixInvalidIntReturnTypeJustInTypehint70' => [
                 '<?php
-                    function foo() : int {
+                    function foo(): int {
                         return "hello";
                     }',
                 '<?php
-                    function foo() : string {
+                    function foo(): string {
                         return "hello";
                     }',
                 '7.0',
@@ -451,14 +467,14 @@ class FileManipulationTest extends TestCase
             ],
             'fixInvalidStringReturnTypeThatIsNotPhpCompatible70' => [
                 '<?php
-                    function foo() : string {
+                    function foo(): string {
                         return rand(0, 1) ? "hello" : false;
                     }',
                 '<?php
                     /**
                      * @return string|false
                      */
-                    function foo()  {
+                    function foo() {
                         return rand(0, 1) ? "hello" : false;
                     }',
                 '7.0',
@@ -467,14 +483,14 @@ class FileManipulationTest extends TestCase
             ],
             'fixInvalidIntReturnTypeThatIsNotPhpCompatible70' => [
                 '<?php
-                    function foo() : string {
+                    function foo(): string {
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '<?php
                     /**
                      * @return string|null
                      */
-                    function foo()  {
+                    function foo() {
                         return rand(0, 1) ? "hello" : null;
                     }',
                 '7.0',
@@ -514,14 +530,14 @@ class FileManipulationTest extends TestCase
                     /**
                      * @return int
                      */
-                    function foo() : string {
+                    function foo(): string {
                         return "hello";
                     }',
                 '<?php
                     /**
                      * @return string
                      */
-                    function foo() : string {
+                    function foo(): string {
                         return "hello";
                     }',
                 '7.0',
@@ -533,14 +549,14 @@ class FileManipulationTest extends TestCase
                     /**
                      * @param int $s
                      */
-                    function foo(string $s) : string {
+                    function foo(string $s): string {
                         return "hello";
                     }',
                 '<?php
                     /**
                      * @param string $s
                      */
-                    function foo(string $s) : string {
+                    function foo(string $s): string {
                         return "hello";
                     }',
                 '7.0',
@@ -555,7 +571,7 @@ class FileManipulationTest extends TestCase
                              * @param \B $b
                              * @param \C $c
                              */
-                            function foo(B $b, C $c) : string {
+                            function foo(B $b, C $c): string {
                                 return "hello";
                             }
                         }
@@ -569,7 +585,7 @@ class FileManipulationTest extends TestCase
                              * @param B $b
                              * @param C $c
                              */
-                            function foo(B $b, C $c) : string {
+                            function foo(B $b, C $c): string {
                                 return "hello";
                             }
                         }
@@ -578,6 +594,34 @@ class FileManipulationTest extends TestCase
                     }',
                 '7.0',
                 ['MismatchingDocblockParamType'],
+                true,
+            ],
+            'preserveFormat' => [
+                '<?php
+                    /**
+                     * @other is
+                     *    a friend of mine
+                     *       + Members
+                     *          - `google`
+                     * @return int
+                     */
+                    function foo(): int {
+                      return "hello";
+                    }',
+                '<?php
+                    /**
+                     * @other is
+                     *    a friend of mine
+                     *       + Members
+                     *          - `google`
+                     *
+                     * @return string
+                     */
+                    function foo(): string {
+                      return "hello";
+                    }',
+                '7.0',
+                ['InvalidReturnType'],
                 true,
             ],
             'useUnqualifierPlugin' => [

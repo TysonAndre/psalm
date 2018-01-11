@@ -80,6 +80,8 @@ class FetchChecker
             return false;
         }
 
+        $project_checker = $statements_checker->getFileChecker()->project_checker;
+
         $stmt_var_id = ExpressionChecker::getVarId(
             $stmt->var,
             $statements_checker->getFQCLN(),
@@ -97,6 +99,25 @@ class FetchChecker
         if ($var_id && $context->hasVariable($var_id)) {
             // we don't need to check anything
             $stmt->inferredType = $context->vars_in_scope[$var_id];
+
+            if ($context->collect_references
+                && isset($stmt->var->inferredType)
+                && $stmt->var->inferredType->hasObjectType()
+                && is_string($stmt->name)
+            ) {
+                // log the appearance
+                foreach ($stmt->var->inferredType->getTypes() as $lhs_type_part) {
+                    if ($lhs_type_part instanceof TNamedObject) {
+                        $property_id = $lhs_type_part->value . '::$' . $stmt->name;
+
+                        ClassLikeChecker::propertyExists(
+                            $project_checker,
+                            $property_id,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        );
+                    }
+                }
+            }
 
             return null;
         }
@@ -156,7 +177,7 @@ class FetchChecker
             return null;
         }
 
-        if ($stmt_var_type->isNullable() && !$stmt_var_type->ignore_nullable_issues) {
+        if ($stmt_var_type->isNullable() && !$stmt_var_type->ignore_nullable_issues && !$context->inside_isset) {
             if (IssueBuffer::accepts(
                 new PossiblyNullPropertyFetch(
                     'Cannot get property on possibly null variable ' . $stmt_var_id . ' of type ' . $stmt_var_type,
@@ -209,8 +230,6 @@ class FetchChecker
                 continue;
             }
 
-            $project_checker = $statements_checker->getFileChecker()->project_checker;
-
             if (!ClassChecker::classExists($project_checker, $lhs_type_part->value)) {
                 if (InterfaceChecker::interfaceExists($project_checker, $lhs_type_part->value)) {
                     if (IssueBuffer::accepts(
@@ -261,7 +280,16 @@ class FetchChecker
                 }
             }
 
-            if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+            if (!ClassLikeChecker::propertyExists(
+                $project_checker,
+                $property_id,
+                $context->collect_references ? new CodeLocation($statements_checker->getSource(), $stmt) : null
+            )
+            ) {
+                if ($context->inside_isset) {
+                    return;
+                }
+
                 if ($stmt_var_id === '$this') {
                     if ($context->collect_mutations) {
                         return;
@@ -696,16 +724,30 @@ class FetchChecker
                 $statements_checker
             );
 
+            $property_id = $fq_class_name . '::$' . $stmt->name;
+
             if ($var_id && $context->hasVariable($var_id)) {
                 // we don't need to check anything
                 $stmt->inferredType = $context->vars_in_scope[$var_id];
 
+                if ($context->collect_references) {
+                    // log the appearance
+                    ClassLikeChecker::propertyExists(
+                        $project_checker,
+                        $property_id,
+                        new CodeLocation($statements_checker->getSource(), $stmt)
+                    );
+                }
+
                 return null;
             }
 
-            $property_id = $fq_class_name . '::$' . $stmt->name;
-
-            if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+            if (!ClassLikeChecker::propertyExists(
+                $project_checker,
+                $property_id,
+                $context->collect_references ? new CodeLocation($statements_checker->getSource(), $stmt) : null
+            )
+            ) {
                 if (IssueBuffer::accepts(
                     new UndefinedPropertyFetch(
                         'Static property ' . $property_id . ' is not defined',
@@ -756,6 +798,7 @@ class FetchChecker
      * @param  Type\Union $offset_type
      * @param  ?string    $array_var_id
      * @param  bool       $in_assignment
+     * @param  bool       $inside_isset
      *
      * @return Type\Union
      */
@@ -766,7 +809,8 @@ class FetchChecker
         Type\Union $offset_type,
         $in_assignment,
         $array_var_id,
-        Type\Union $replacement_type = null
+        Type\Union $replacement_type = null,
+        $inside_isset = false
     ) {
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
@@ -800,7 +844,7 @@ class FetchChecker
             return Type::getMixed();
         }
 
-        if ($offset_type->isNullable() && !$offset_type->ignore_nullable_issues) {
+        if ($offset_type->isNullable() && !$offset_type->ignore_nullable_issues && !$inside_isset) {
             if (IssueBuffer::accepts(
                 new PossiblyNullArrayOffset(
                     'Cannot access value on variable ' . $array_var_id
@@ -837,15 +881,17 @@ class FetchChecker
                         $array_access_type = new Type\Union([new TEmpty]);
                     }
                 } else {
-                    if (IssueBuffer::accepts(
-                        new PossiblyNullArrayAccess(
-                            'Cannot access array value on possibly null variable ' . $array_var_id .
-                                ' of type ' . $array_type,
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        // fall through
+                    if (!$inside_isset) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyNullArrayAccess(
+                                'Cannot access array value on possibly null variable ' . $array_var_id .
+                                    ' of type ' . $array_type,
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
                     }
 
                     if ($array_access_type) {
@@ -1275,14 +1321,16 @@ class FetchChecker
             $var_type = $stmt->var->inferredType;
 
             if ($var_type->isNull()) {
-                if (IssueBuffer::accepts(
-                    new NullArrayAccess(
-                        'Cannot access array value on null variable ' . $array_var_id,
-                        new CodeLocation($statements_checker->getSource(), $stmt)
-                    ),
-                    $statements_checker->getSuppressedIssues()
-                )) {
-                    // fall through
+                if (!$context->inside_isset) {
+                    if (IssueBuffer::accepts(
+                        new NullArrayAccess(
+                            'Cannot access array value on null variable ' . $array_var_id,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
                 }
 
                 if (isset($stmt->inferredType)) {
@@ -1300,7 +1348,9 @@ class FetchChecker
                 $stmt->var->inferredType,
                 $used_key_type,
                 false,
-                $array_var_id
+                $array_var_id,
+                null,
+                $context->inside_isset
             );
         }
 
