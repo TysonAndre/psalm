@@ -63,7 +63,7 @@ class MethodChecker extends FunctionLikeChecker
     }
 
     /**
-     * @param  string                       $method_id
+     * @param  string $method_id
      *
      * @return Type\Union|null
      */
@@ -104,6 +104,32 @@ class MethodChecker extends FunctionLikeChecker
         }
 
         return null;
+    }
+
+    /**
+     * @param  string $method_id
+     *
+     * @return bool
+     */
+    public static function getMethodReturnsByRef(ProjectChecker $project_checker, $method_id)
+    {
+        $method_id = self::getDeclaringMethodId($project_checker, $method_id);
+
+        if (!$method_id) {
+            return false;
+        }
+
+        list($fq_class_name, $method_name) = explode('::', $method_id);
+
+        if (!ClassLikeChecker::isUserDefined($project_checker, $fq_class_name)
+            && FunctionChecker::inCallMap($method_id)
+        ) {
+            return false;
+        }
+
+        $storage = self::getStorage($project_checker, $method_id);
+
+        return $storage->returns_by_ref;
     }
 
     /**

@@ -89,6 +89,8 @@ class CallChecker
                 } else {
                     $context->check_classes = false;
                 }
+            } elseif ($method->parts === ['extension_loaded']) {
+                $context->check_classes = false;
             } elseif ($method->parts === ['function_exists']) {
                 $context->check_functions = false;
             } elseif ($method->parts === ['is_callable']) {
@@ -259,7 +261,7 @@ class CallChecker
                 $method_id = FunctionChecker::getFQFunctionNameFromString($method_id, $statements_checker);
             }
 
-            if (!$in_call_map && !$is_stubbed) {
+            if (!$in_call_map) {
                 if ($context->check_functions) {
                     if (self::checkFunctionExists(
                         $statements_checker,
@@ -271,7 +273,7 @@ class CallChecker
                     }
                 }
 
-                $function_exists = FunctionChecker::functionExists(
+                $function_exists = $is_stubbed || FunctionChecker::functionExists(
                     $statements_checker,
                     strtolower($method_id)
                 );
@@ -366,6 +368,7 @@ class CallChecker
                             $return_type_location = $function_storage->return_type_location;
 
                             $stmt->inferredType = $return_type;
+                            $return_type->by_ref = $function_storage->returns_by_ref;
 
                             // only check the type locally if it's defined externally
                             if ($return_type_location &&
@@ -791,6 +794,8 @@ class CallChecker
 
         $code_location = new CodeLocation($source, $stmt);
 
+        $returns_by_ref = false;
+
         if ($class_type && is_string($stmt->name)) {
             $return_type = null;
             $method_name_lc = strtolower($stmt->name);
@@ -1057,6 +1062,10 @@ class CallChecker
                                 $context->getPhantomClasses()
                             );
                         }
+                    } else {
+                        $returns_by_ref =
+                            $returns_by_ref
+                                || MethodChecker::getMethodReturnsByRef($project_checker, $method_id);
                     }
                 }
 
@@ -1140,6 +1149,14 @@ class CallChecker
             }
 
             $stmt->inferredType = $return_type;
+
+            if ($returns_by_ref) {
+                if (!$stmt->inferredType) {
+                    $stmt->inferredType = Type::getMixed();
+                }
+
+                $stmt->inferredType->by_ref = $returns_by_ref;
+            }
         }
 
         if ($method_id === null) {
@@ -1790,7 +1807,14 @@ class CallChecker
                     $by_ref_type = $by_ref_type ? clone $by_ref_type : Type::getMixed();
                 }
 
-                if ($by_ref && $by_ref_type) {
+                if ($by_ref
+                    && $by_ref_type
+                    && !(
+                        $arg->value instanceof PhpParser\Node\Expr\ConstFetch
+                        || $arg->value instanceof PhpParser\Node\Expr\FuncCall
+                        || $arg->value instanceof PhpParser\Node\Expr\MethodCall
+                    )
+                ) {
                     // special handling for array sort
                     if ($argument_offset === 0
                         && $method_id
@@ -1870,27 +1894,8 @@ class CallChecker
                         }
                     }
                 } else {
-                    if ($arg->value instanceof PhpParser\Node\Expr\Variable) {
-                        if (ExpressionChecker::analyzeVariable(
-                            $statements_checker,
-                            $arg->value,
-                            $context
-                        ) === false) {
-                            return false;
-                        }
-                    } elseif ($arg->value instanceof PhpParser\Node\Expr\PropertyFetch) {
-                        if (FetchChecker::analyzePropertyFetch(
-                            $statements_checker,
-                            $arg->value,
-                            $context
-                        ) === false
-                        ) {
-                            return false;
-                        }
-                    } else {
-                        if (ExpressionChecker::analyze($statements_checker, $arg->value, $context) === false) {
-                            return false;
-                        }
+                    if (ExpressionChecker::analyze($statements_checker, $arg->value, $context) === false) {
+                        return false;
                     }
                 }
             } else {
@@ -2014,9 +2019,16 @@ class CallChecker
                 if ($arg->value instanceof PhpParser\Node\Scalar
                     || $arg->value instanceof PhpParser\Node\Expr\Array_
                     || $arg->value instanceof PhpParser\Node\Expr\ClassConstFetch
-                    || $arg->value instanceof PhpParser\Node\Expr\ConstFetch
-                    || $arg->value instanceof PhpParser\Node\Expr\FuncCall
-                    || $arg->value instanceof PhpParser\Node\Expr\MethodCall
+                    || (
+                        (
+                        $arg->value instanceof PhpParser\Node\Expr\ConstFetch
+                            || $arg->value instanceof PhpParser\Node\Expr\FuncCall
+                            || $arg->value instanceof PhpParser\Node\Expr\MethodCall
+                        ) && (
+                            !isset($arg->value->inferredType)
+                            || !$arg->value->inferredType->by_ref
+                        )
+                    )
                 ) {
                     if (IssueBuffer::accepts(
                         new InvalidPassByReference(
@@ -2756,6 +2768,10 @@ class CallChecker
 
         if (count($callable_arg->items) !== 2) {
             return [];
+        }
+
+        if (!isset($callable_arg->items[0]) || !isset($callable_arg->items[1])) {
+            throw new \UnexpectedValueException('These should never be unset');
         }
 
         $class_arg = $callable_arg->items[0]->value;

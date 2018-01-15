@@ -131,6 +131,7 @@ class CommentChecker
      * @return string
      * @psalm-suppress MixedArrayAccess
      * @psalm-suppress MixedInferredReturnType
+     * @psalm-suppress MixedReturnStatement
      */
     public static function getRenamedType($comment_type)
     {

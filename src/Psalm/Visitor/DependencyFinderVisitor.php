@@ -11,6 +11,7 @@ use Psalm\Checker\FunctionChecker;
 use Psalm\Checker\FunctionLikeChecker;
 use Psalm\Checker\MethodChecker;
 use Psalm\Checker\ProjectChecker;
+use Psalm\Checker\Statements\Expression\IncludeChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TraitChecker;
 use Psalm\CodeLocation;
@@ -741,8 +742,16 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 CodeLocation::FUNCTION_RETURN_TYPE
             );
 
+            if ($stmt->returnsByRef()) {
+                $storage->return_type->by_ref = true;
+            }
+
             $storage->signature_return_type = $storage->return_type;
             $storage->signature_return_type_location = $storage->return_type_location;
+        }
+
+        if ($stmt->returnsByRef()) {
+            $storage->returns_by_ref = true;
         }
 
         $doc_comment = $stmt->getDocComment();
@@ -899,6 +908,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
                 if ($storage->return_type && $docblock_info->ignore_nullable_return) {
                     $storage->return_type->ignore_nullable_issues = true;
+                }
+
+                if ($stmt->returnsByRef() && $storage->return_type) {
+                    $storage->return_type->by_ref = true;
                 }
 
                 if ($docblock_info->return_type_line_number) {
@@ -1137,7 +1150,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
         $property_is_initialized = false;
 
-        if ($comment && $comment->getText() && $config->use_docblock_types) {
+        if ($comment && $comment->getText() && ($config->use_docblock_types || $config->use_docblock_property_types)) {
             if (preg_match('/[ \t\*]+@psalm-suppress[ \t]+PropertyNotSetInConstructor/', (string)$comment)) {
                 $property_is_initialized = true;
             }
@@ -1186,15 +1199,9 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             if (!$property_group_type) {
                 if ($property->default) {
                     $default_type = StatementsChecker::getSimpleType($property->default);
-
-                    if (!$config->use_property_default_for_type) {
-                        $property_type = false;
-                    } else {
-                        $property_type = $default_type ?: Type::getMixed();
-                    }
-                } else {
-                    $property_type = false;
                 }
+
+                $property_type = false;
             } else {
                 if ($var_comment && $var_comment->line_number) {
                     $property_type_location = new CodeLocation(
@@ -1302,14 +1309,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $path_to_file = $stmt->expr->value;
 
             // attempts to resolve using get_include_path dirs
-            $include_path = StatementsChecker::resolveIncludePath($path_to_file, dirname($this->file_path));
+            $include_path = IncludeChecker::resolveIncludePath($path_to_file, dirname($this->file_path));
             $path_to_file = $include_path ? $include_path : $path_to_file;
 
             if ($path_to_file[0] !== DIRECTORY_SEPARATOR) {
                 $path_to_file = getcwd() . DIRECTORY_SEPARATOR . $path_to_file;
             }
         } else {
-            $path_to_file = StatementsChecker::getPathTo($stmt->expr, $this->file_path);
+            $path_to_file = IncludeChecker::getPathTo($stmt->expr, $this->file_path);
         }
 
         if ($path_to_file) {

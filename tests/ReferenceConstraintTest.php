@@ -31,6 +31,35 @@ class ReferenceConstraintTest extends TestCase
                         }
                     }',
             ],
+            'trackFunctionReturnRefs' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo = "bar";
+
+                        public function &getString() : string {
+                            return $this->foo;
+                        }
+                    }
+
+                    function useString(string &$s) : void {}
+                    $a = new A();
+
+                    useString($a->getString());',
+            ],
+            'makeByRefUseMixed' => [
+                '<?php
+                    function s(?string $p): void {}
+
+                    $var = 1;
+                    $callback = function() use(&$var): void {
+                        s($var);
+                    };
+                    $var = null;
+                    $callback();',
+                'assertions' => [],
+                'error_levels' => ['MixedArgument'],
+            ],
         ];
     }
 
