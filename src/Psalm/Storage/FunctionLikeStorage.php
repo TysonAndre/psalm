@@ -18,7 +18,7 @@ class FunctionLikeStorage
     public $params = [];
 
     /**
-     * @var array<string, Type\Union|null>
+     * @var array<string, Type\Union|null> (maps param names to param types, in the order the params occur in the method)
      */
     public $param_types = [];
 

@@ -685,10 +685,10 @@ class Config
     /**
      * Returns only the methods which have non-empty implementations (i.e. defined by subclasses of Plugin)
      *
-     * @param string $method
+     * @param string $method_name
      * @return array<Plugin>
      */
-    private function getPluginsDefiningMethod($method)
+    private function getPluginsDefiningMethod($method_name)
     {
         $result = [];
         if (count($this->plugins) === 0) {
@@ -697,7 +697,7 @@ class Config
 
         foreach ($this->plugins as $plugin) {
             // TODO: What about traits?
-            $method = new ReflectionMethod($plugin, $method);
+            $method = new ReflectionMethod($plugin, $method_name);
             if (is_subclass_of($method->getDeclaringClass()->name, Plugin::class)) {
                 $result[] = $plugin;
             }

@@ -10,6 +10,7 @@
          verbose="true">
     <testsuite name="default">
         <directory>tests</directory>
+        <exclude>tests/integration</exclude>
     </testsuite>
 
     <filter>

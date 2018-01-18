@@ -726,6 +726,7 @@ class ProjectChecker
         }
 
         $storage->populated = true;
+        // TODO: Add a hook for the **populated** storage
     }
 
     /**
@@ -950,6 +951,13 @@ class ProjectChecker
     {
         if (!$this->config) {
             throw new \UnexpectedValueException('$this->config cannot be null');
+        }
+
+        // Run any plugins that must be run after scanning,
+        // but before analysis of methods, functions, etc (and forking)
+        foreach ($this->config->getPlugins() as $plugin) {
+            // Pass in ProjectChecker
+            $plugin->beforeAnalyzeFiles($this);
         }
 
         $filetype_handlers = $this->config->getFiletypeHandlers();

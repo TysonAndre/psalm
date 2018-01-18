@@ -3,6 +3,7 @@ namespace Psalm;
 
 use PhpParser;
 use Psalm\Checker\FileChecker;
+use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\FileManipulation\FileManipulation;
 use Psalm\Storage\ClassLikeStorage;
@@ -63,8 +64,9 @@ abstract class Plugin
     }
 
     /**
-     * This is called after successfully loading a definition of a ClassLike (class, trait, or interface).
+     * This is called immediately after successfully loading a definition of a ClassLike (class, trait, or interface).
      * visitClassLike is also called on classes that the analyzed directories depend on.
+     * Properties, methods, constants, etc. won't be inherited yet.
      *
      * @param  FileManipulation[] $file_replacements
      *
@@ -76,6 +78,20 @@ abstract class Plugin
         FileChecker $file_checker,
         Aliases $aliases,
         array &$file_replacements = []
+    ) {
+    }
+
+    /**
+     * This is called immediately after successfully loading a definition of a ClassLike (class, trait, or interface).
+     * visitClassLike is also called on classes that the analyzed directories depend on.
+     * Properties, methods, constants, etc. won't be inherited yet.
+     *
+     * @param  ProjectChecker $checker
+     *
+     * @return void
+     */
+    public function beforeAnalyzeFiles(
+        ProjectChecker $checker
     ) {
     }
 

@@ -18,7 +18,7 @@ $options = getopt(
         'help', 'debug', 'config:', 'monochrome', 'show-info:', 'diff',
         'self-check', 'output-format:', 'report:', 'find-dead-code', 'init',
         'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache',
-        'version', 'plugin:',
+        'version', 'plugin:', 'no-vendor-autoloader',
     ]
 );
 
@@ -109,6 +109,9 @@ Options:
     --plugin=PATH
         Executes a plugin, an alternative to using the Psalm config
 
+    --no-vendor-autoloader
+        Set this option to allow Psalm to run when vendor/autoload.php doesn't exist (e.g. for analyzing standalone scripts).
+
 HELP;
 
     exit;
@@ -134,7 +137,7 @@ if (isset($options['r']) && is_string($options['r'])) {
     $current_dir = $root_path . DIRECTORY_SEPARATOR;
 }
 
-requireAutoloaders($current_dir, isset($options['r']));
+requireAutoloaders($current_dir, isset($options['r']), isset($options['no-vendor-autoloader']));
 
 if (array_key_exists('v', $options)) {
     /** @var string */

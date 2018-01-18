@@ -3,12 +3,13 @@
 /**
  * @param  string $current_dir
  * @param  bool   $has_explicit_root
+ * @param  bool   $skipAutoloaderCheck
  *
  * @return void
  */
-function requireAutoloaders($current_dir, $has_explicit_root)
+function requireAutoloaders($current_dir, $has_explicit_root, $skipAutoloaderCheck = false)
 {
-    $autoload_roots = [$current_dir];
+    $autoload_roots = $skipAutoloaderCheck ? [] : [$current_dir];
 
     $psalm_dir = dirname(__DIR__);
 

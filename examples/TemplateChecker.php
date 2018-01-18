@@ -13,6 +13,15 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Type;
 
+/**
+ * Things that TemplateChecker does
+ * - it allows you to scan files with a pre-filled Context.
+ *   e.g. that $this exists and is of a certain type for the entire folder
+ *
+ * TODO: Document usage, not clear how to use this.
+ *
+ * TODO: No unit tests or integration tests exist for TemplateChecker
+ */
 class TemplateChecker extends Psalm\Checker\FileChecker
 {
     const VIEW_CLASS = 'Your\\View\\Class';

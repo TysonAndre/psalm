@@ -7,3 +7,5 @@ composer.lock
 .*.swp
 tags
 /build/logs/
+all_output.actual
+all_output.expected
