@@ -7,6 +7,11 @@ use Psalm\Checker\StatementsChecker;
 use Psalm\FileManipulation\FileManipulation;
 use Psalm\Storage\ClassLikeStorage;
 
+/**
+ * Example plugins can be found in the examples folder.
+ *
+ * See https://github.com/vimeo/psalm/wiki/Plugins
+ */
 abstract class Plugin
 {
     /**
