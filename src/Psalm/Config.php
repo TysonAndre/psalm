@@ -7,7 +7,9 @@ use Psalm\Checker\ProjectChecker;
 use Psalm\Config\IssueHandler;
 use Psalm\Config\ProjectFileFilter;
 use Psalm\Exception\ConfigException;
+use ReflectionMethod;
 use SimpleXMLElement;
+use function is_array;
 
 class Config
 {
@@ -180,6 +182,13 @@ class Config
      * @var array<Plugin>
      */
     private $plugins = [];
+
+    // Cache the plugins which are fetched the most frequently, for performance.
+    /** @var array<Plugin>|null lazily loaded */
+    private $plugins_for_after_expression_check = null;
+
+    /** @var array<Plugin>|null lazily loaded */
+    private $plugins_for_after_statements_check = null;
 
     /** @var array<string, mixed> */
     private $predefined_constants;
@@ -637,6 +646,66 @@ class Config
     {
         return $this->plugins;
     }
+
+    /**
+     * @return array<Plugin>
+     */
+    public function getPluginsForAfterExpressionCheck()
+    {
+        // Cache because this is called much more frequently than other methods
+        $result = $this->plugins_for_after_expression_check;
+        if (!is_array($result)) {
+            $result = $this->getPluginsDefiningMethod('afterExpressionCheck');
+            $this->plugins_for_after_expression_check = $result;
+        }
+        return $result;
+    }
+
+    /**
+     * @return array<Plugin>
+     */
+    public function getPluginsForAfterStatementCheck()
+    {
+        // Cache because this is called much more frequently than other methods
+        $result = $this->plugins_for_after_statements_check;
+        if (!is_array($result)) {
+            $result = $this->getPluginsDefiningMethod('afterStatementCheck');
+            $this->plugins_for_after_statements_check = $result;
+        }
+        return $result;
+    }
+
+    /**
+     * @return array<Plugin>
+     */
+    public function getPluginsForVisitClassLike()
+    {
+        return $this->getPluginsDefiningMethod('visitClassLike');
+    }
+
+    /**
+     * Returns only the methods which have non-empty implementations (i.e. defined by subclasses of Plugin)
+     *
+     * @param string $method
+     * @return array<Plugin>
+     */
+    private function getPluginsDefiningMethod($method)
+    {
+        $result = [];
+        if (count($this->plugins) === 0) {
+            return $result;
+        }
+
+        foreach ($this->plugins as $plugin) {
+            // TODO: What about traits?
+            $method = new ReflectionMethod($plugin, $method);
+            if (is_subclass_of($method->getDeclaringClass()->name, Plugin::class)) {
+                $result[] = $plugin;
+            }
+        }
+        return $result;
+    }
+
 
     /**
      * @return array<string, mixed>

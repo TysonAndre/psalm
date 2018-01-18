@@ -15,7 +15,8 @@ use Psalm\Storage\ClassLikeStorage;
 abstract class Plugin
 {
     /**
-     * Called after an expression has been checked
+     * Called after an expression has been checked,
+     * but only if no errors were encountered in earlier checks by Psalm or other plugins.
      *
      * @param  StatementsChecker    $statements_checker
      * @param  PhpParser\Node\Expr  $stmt
@@ -38,7 +39,8 @@ abstract class Plugin
     }
 
     /**
-     * Called after a statement has been checked
+     * Called after a statement has been checked,
+     * but only if no errors were encountered in earlier checks by Psalm or other plugins.
      *
      * @param  StatementsChecker                        $statements_checker
      * @param  PhpParser\Node\Stmt|PhpParser\Node\Expr  $stmt
@@ -61,6 +63,9 @@ abstract class Plugin
     }
 
     /**
+     * This is called after successfully loading a definition of a ClassLike (class, trait, or interface).
+     * visitClassLike is also called on classes that the analyzed directories depend on.
+     *
      * @param  FileManipulation[] $file_replacements
      *
      * @return void

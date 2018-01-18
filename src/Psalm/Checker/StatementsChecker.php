@@ -99,7 +99,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             $original_context = clone $context;
         }
 
-        $plugins = Config::getInstance()->getPlugins();
+        $plugins = Config::getInstance()->getPluginsForAfterStatementCheck();
 
         foreach ($stmts as $stmt) {
             if ($has_returned && !($stmt instanceof PhpParser\Node\Stmt\Nop) &&

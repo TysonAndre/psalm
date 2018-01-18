@@ -475,7 +475,7 @@ class ExpressionChecker
             }
         }
 
-        $plugins = Config::getInstance()->getPlugins();
+        $plugins = Config::getInstance()->getPluginsForAfterExpressionCheck();
 
         if ($plugins) {
             $file_manipulations = [];

@@ -80,7 +80,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /** @var ClassLikeStorage[] */
     protected $classlike_storages = [];
 
-    /** @var \Psalm\Plugin[] */
+    /** @var \Psalm\Plugin[] defining visitClassLike */
     protected $plugins;
 
     /**
@@ -96,7 +96,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         $this->config = Config::getInstance();
         $this->aliases = $this->file_aliases = new Aliases();
         $this->file_storage = $project_checker->file_storage_provider->get($this->file_path);
-        $this->plugins = $this->config->getPlugins();
+        $this->plugins = $this->config->getPluginsForVisitClassLike();
     }
 
     /**
@@ -489,6 +489,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 }
 
                 if ($file_manipulations) {
+                    // TODO: Implement this.
                 }
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\Function_
