@@ -111,6 +111,7 @@ class IfChecker
             return false;
         }
 
+        /** @var array<string, bool> */
         $more_cond_referenced_var_ids = $if_context->referenced_var_ids;
         $if_context->referenced_var_ids = array_merge(
             $more_cond_referenced_var_ids,
@@ -162,7 +163,7 @@ class IfChecker
 
                     foreach ($keys as $key) {
                         foreach ($mixed_var_ids as $mixed_var_id) {
-                            if (preg_match('/^' . preg_quote($mixed_var_id) . '(\[|-)/', $key)) {
+                            if (preg_match('/^' . preg_quote($mixed_var_id, '/') . '(\[|-)/', $key)) {
                                 return false;
                             }
                         }
