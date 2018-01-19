@@ -705,6 +705,20 @@ abstract class Type
             }
         }
 
+        if ($combination->has_objectlike_entries && count($combination->objectlike_entries) === 0) {
+            // workaround for https://github.com/vimeo/psalm/issues/453 - Failure to merge array{}
+            $has_other_array_type = false;
+            foreach ($new_types as $added_type) {
+                if ($added_type instanceof TArray) {
+                    $has_other_array_type = true;
+                }
+            }
+            if (!$has_other_array_type) {
+                $new_types[] = new ObjectLike($combination->objectlike_entries);
+            }
+        }
+        // TODO: Emit a warning or throw an Exception if $new_types is still empty - hopefully unreachable? Or add mixed?
+
         $new_types = array_values($new_types);
 
         $union_type = new Union($new_types);
@@ -757,6 +771,7 @@ abstract class Type
                 }
             }
         } elseif ($type instanceof ObjectLike) {
+            $combination->has_objectlike_entries = true;
             foreach ($type->properties as $candidate_property_name => $candidate_property_type) {
                 $value_type = isset($combination->objectlike_entries[$candidate_property_name])
                     ? $combination->objectlike_entries[$candidate_property_name]

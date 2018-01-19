@@ -11,4 +11,7 @@ class TypeCombination
 
     /** @var array<string|int, Union> */
     public $objectlike_entries = [];
+
+    /** @var bool */
+    public $has_objectlike_entries = false;
 }
