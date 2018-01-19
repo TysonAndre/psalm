@@ -21,6 +21,7 @@ install:
 
 script:
   - vendor/bin/phpunit
+  - tests/integration/run_all_tests.sh
   - ./psalm --find-dead-code
   - vendor/bin/phpcs
 
