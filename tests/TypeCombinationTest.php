@@ -227,6 +227,27 @@ class TypeCombinationTest extends TestCase
                     'array{a:array<int, string>}',
                 ],
             ],
+            'combineEmptyObjectLike' => [
+                'array{}',
+                [
+                    'array{}',
+                    'array{}',
+                ],
+            ],
+            'combineEmptyObjectLikeWithStdClass' => [
+                'stdClass|array{}',
+                [
+                    'array{}',
+                    'stdClass',
+                ],
+            ],
+            'combineEmptyObjectLikeWithMixedArray' => [
+                'array<mixed, mixed>',
+                [
+                    'array<mixed, mixed>',
+                    'array{}',
+                ],
+            ],
             'combineIntKeyedObjectTypeWithNestedIntKeyedArray' => [
                 'array<int, array<int|string, string|int>>',
                 [
