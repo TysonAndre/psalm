@@ -773,14 +773,6 @@ class AnnotationTest extends TestCase
                     }',
                 'error_message' => 'UndefinedClass',
             ],
-            'preventBadObjectLikeFormat' => [
-                '<?php
-                    /**
-                     * @param array{} $arr
-                     */
-                    function bar(array $arr): void {}',
-                'error_message' => 'InvalidDocblock',
-            ]
         ];
     }
 }
