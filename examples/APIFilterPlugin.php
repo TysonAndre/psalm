@@ -20,7 +20,7 @@ use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Union;
 
 /**
- * This is an example plugin to make union types of API methods in an API class depend on a constant within the same class
+ * This is an example plugin to make union types of API methods in an API class depend on a constant within the same class.
  */
 class APIFilterPlugin extends \Psalm\Plugin
 {
