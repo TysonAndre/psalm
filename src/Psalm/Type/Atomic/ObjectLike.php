@@ -177,7 +177,9 @@ class ObjectLike extends \Psalm\Type\Atomic
         }
 
         if (!$value_type) {
-            throw new \UnexpectedValueException('$value_type should not be null here');
+            // This was array{}
+            return new TArray([new Type\Union([new TEmpty]), new Type\Union([new TEmpty])]);
+            // throw new \UnexpectedValueException('$value_type should not be null here');
         }
 
         return new TArray([Type::combineTypes($key_types), $value_type]);
