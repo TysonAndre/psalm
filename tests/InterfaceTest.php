@@ -323,6 +323,21 @@ class InterfaceTest extends TestCase
                         }
                     }',
             ],
+            'implementStaticReturn' => [
+                '<?php
+                    class A {}
+                    interface I {
+                      /** @return A */
+                      public function foo();
+                    }
+
+                    class B extends A implements I {
+                      /** @return static */
+                      public function foo() {
+                        return $this;
+                      }
+                    }',
+            ],
         ];
     }
 
@@ -508,6 +523,14 @@ class InterfaceTest extends TestCase
 
                     foo(new C);',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'deprecatedInterface' => [
+                '<?php
+                    /** @deprecated */
+                    interface Container {}
+
+                    class A implements Container {}',
+                'error_message' => 'DeprecatedInterface',
             ],
         ];
     }
