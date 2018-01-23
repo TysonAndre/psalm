@@ -102,6 +102,10 @@ requireAutoloaders($current_dir, isset($options['r']));
 
 $paths_to_check = getPathsToCheck(isset($options['f']) ? $options['f'] : null);
 
+if ($paths_to_check && count($paths_to_check) > 1) {
+    die('Psalter can currently only be run on one path at a time' . PHP_EOL);
+}
+
 $path_to_config = isset($options['c']) && is_string($options['c']) ? realpath($options['c']) : null;
 
 if ($path_to_config === false) {
@@ -109,7 +113,15 @@ if ($path_to_config === false) {
     die('Could not resolve path to config ' . (string)$options['c'] . PHP_EOL);
 }
 
+// initialise custom config, if passed
+if ($path_to_config) {
+    $config = Config::loadFromXMLFile($path_to_config, $current_dir);
+} else {
+    $config = Config::getConfigForPath($current_dir, $current_dir, ProjectChecker::TYPE_CONSOLE);
+}
+
 $project_checker = new ProjectChecker(
+    $config,
     new Psalm\Provider\FileProvider(),
     new Psalm\Provider\ParserCacheProvider(),
     !array_key_exists('m', $options),
@@ -118,17 +130,6 @@ $project_checker = new ProjectChecker(
     1,
     array_key_exists('debug', $options)
 );
-
-// initialise custom config, if passed
-if ($path_to_config) {
-    $project_checker->setConfigXML($path_to_config, $current_dir);
-}
-
-$config = $project_checker->getConfig();
-
-if (!$config) {
-    $project_checker->getConfigForPath($current_dir, $current_dir);
-}
 
 if (array_key_exists('issues', $options)) {
     if (!is_string($options['issues']) || !$options['issues']) {

@@ -7,6 +7,7 @@ class FileStorageProvider
 {
     /**
      * A list of data useful to analyse files
+     * Storing this statically is much faster (at least in PHP 7.2.1)
      *
      * @var array<string, FileStorage>
      */
@@ -55,7 +56,7 @@ class FileStorageProvider
     /**
      * @return void
      */
-    public function deleteAll()
+    public static function deleteAll()
     {
         self::$storage = [];
     }

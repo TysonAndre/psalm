@@ -8,7 +8,6 @@ use PhpParser\Node\Stmt\Function_;
 use Psalm\Aliases;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\CodeLocation;
-use Psalm\Config;
 use Psalm\Context;
 use Psalm\EffectsAnalyser;
 use Psalm\FileManipulation\FunctionDocblockManipulator;
@@ -135,6 +134,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         $implemented_docblock_param_types = [];
 
         $project_checker = $this->file_checker->project_checker;
+        $codebase = $project_checker->codebase;
 
         $classlike_storage_provider = $project_checker->classlike_storage_provider;
 
@@ -173,7 +173,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             $class_storage = $classlike_storage_provider->get($fq_class_name);
 
-            $storage = MethodChecker::getStorage($project_checker, $declaring_method_id);
+            $storage = $codebase->getMethodStorage($declaring_method_id);
 
             $cased_method_id = $fq_class_name . '::' . $storage->cased_name;
 
@@ -185,7 +185,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             if ($overridden_method_ids && $this->function->name !== '__construct') {
                 foreach ($overridden_method_ids as $overridden_method_id) {
-                    $parent_method_storage = MethodChecker::getStorage($project_checker, $overridden_method_id);
+                    $parent_method_storage = $codebase->getMethodStorage($overridden_method_id);
 
                     list($overridden_fq_class_name) = explode('::', $overridden_method_id);
 
@@ -390,7 +390,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 );
             }
 
-            if ($this->getFileChecker()->project_checker->collect_references) {
+            if ($codebase->collect_references) {
                 if ($function_param->type_location !== $function_param->signature_type_location &&
                     $function_param->signature_type_location &&
                     $function_param->signature_type
@@ -418,7 +418,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             $statements_checker->registerVariable(
                 '$' . $function_param->name,
-                $function_param->location
+                $function_param->location,
+                null
             );
         }
 
@@ -497,7 +498,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             }
         }
 
-        $statements_checker->analyze($function_stmts, $context, null, $global_context);
+        $statements_checker->analyze($function_stmts, $context, null, $global_context, true);
 
         foreach ($storage->params as $offset => $function_param) {
             $signature_type = $function_param->signature_type;
@@ -606,7 +607,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                             }
 
                             if ($parent_method_id) {
-                                $parent_method_storage = MethodChecker::getStorage($project_checker, $parent_method_id);
+                                $parent_method_storage = $codebase->getMethodStorage($parent_method_id);
 
                                 // if the parent method has a param at that position and isn't abstract
                                 if (!$parent_method_storage->abstract
@@ -635,7 +636,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         }
 
                         foreach ($class_storage->overridden_method_ids[$method_name_lc] as $parent_method_id) {
-                            $parent_method_storage = MethodChecker::getStorage($project_checker, $parent_method_id);
+                            $parent_method_storage = $codebase->getMethodStorage($parent_method_id);
 
                             $parent_method_storage->used_params[$i] = true;
                         }
@@ -1054,6 +1055,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         $function_id = $this->getMethodId();
 
         $project_checker = $this->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         if (strpos($function_id, '::')) {
             $declaring_method_id = MethodChecker::getDeclaringMethodId($project_checker, $function_id);
@@ -1062,10 +1064,10 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 throw new \UnexpectedValueException('The declaring method of ' . $function_id . ' should not be null');
             }
 
-            return MethodChecker::getStorage($project_checker, $declaring_method_id);
+            return $codebase->getMethodStorage($declaring_method_id);
         }
 
-        return FunctionChecker::getStorage($statements_checker, $function_id);
+        return $codebase->getFunctionStorage($statements_checker, $function_id);
     }
 
     /**
@@ -1219,11 +1221,12 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $inferred_return_type = $inferred_yield_type;
         }
 
-        if (!$return_type && !Config::getInstance()->add_void_docblocks && $inferred_return_type->isVoid()) {
+        $project_checker = $this->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
+
+        if (!$return_type && !$codebase->config->add_void_docblocks && $inferred_return_type->isVoid()) {
             return null;
         }
-
-        $project_checker = $this->getFileChecker()->project_checker;
 
         $inferred_return_type = TypeChecker::simplifyUnionType(
             $project_checker,
@@ -1256,7 +1259,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 if ($project_checker->alter_code
                     && isset($project_checker->getIssuesToFix()['MissingClosureReturnType'])
                 ) {
-                    if ($inferred_return_type->isMixed()) {
+                    if ($inferred_return_type->isMixed() || $inferred_return_type->isNull()) {
                         return null;
                     }
 
@@ -1286,7 +1289,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             if ($project_checker->alter_code
                 && isset($project_checker->getIssuesToFix()['MissingReturnType'])
             ) {
-                if ($inferred_return_type->isMixed()) {
+                if ($inferred_return_type->isMixed() || $inferred_return_type->isNull()) {
                     return null;
                 }
 
@@ -1384,6 +1387,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             ) {
                 if ($project_checker->alter_code
                     && isset($project_checker->getIssuesToFix()['InvalidNullableReturnType'])
+                    && !$inferred_return_type->isNull()
                 ) {
                     $this->addOrUpdateReturnType(
                         $project_checker,
@@ -1610,59 +1614,6 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 true
             ),
             $inferred_return_type->canBeFullyExpressedInPhp()
-        );
-    }
-
-    /**
-     * @param  \ReflectionParameter $param
-     *
-     * @return FunctionLikeParameter
-     */
-    protected static function getReflectionParamData(\ReflectionParameter $param)
-    {
-        $param_type_string = null;
-
-        if ($param->isArray()) {
-            $param_type_string = 'array';
-        } else {
-            try {
-                /** @var \ReflectionClass */
-                $param_class = $param->getClass();
-            } catch (\ReflectionException $e) {
-                $param_class = null;
-            }
-
-            if ($param_class) {
-                $param_type_string = (string)$param_class->getName();
-            }
-        }
-
-        $is_nullable = false;
-
-        $is_optional = (bool)$param->isOptional();
-
-        try {
-            $is_nullable = $param->getDefaultValue() === null;
-
-            if ($param_type_string && $is_nullable) {
-                $param_type_string .= '|null';
-            }
-        } catch (\ReflectionException $e) {
-            // do nothing
-        }
-
-        $param_name = (string)$param->getName();
-        $param_type = $param_type_string ? Type::parseString($param_type_string) : Type::getMixed();
-
-        return new FunctionLikeParameter(
-            $param_name,
-            (bool)$param->isPassedByReference(),
-            $param_type,
-            null,
-            null,
-            $is_optional,
-            $is_nullable,
-            $param->isVariadic()
         );
     }
 

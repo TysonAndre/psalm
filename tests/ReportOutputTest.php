@@ -4,6 +4,7 @@ namespace Psalm\Tests;
 use LSS\XML2Array;
 use Psalm\Checker\FileChecker;
 use Psalm\Checker\ProjectChecker;
+use Psalm\Context;
 use Psalm\IssueBuffer;
 
 class ReportOutputTest extends TestCase
@@ -18,17 +19,17 @@ class ReportOutputTest extends TestCase
         FileChecker::clearCache();
         $this->file_provider = new Provider\FakeFileProvider();
 
+        $config = new TestConfig();
+        $config->throw_exception = false;
+        $config->stop_on_first_error = false;
+
         $this->project_checker = new ProjectChecker(
+            $config,
             $this->file_provider,
             new Provider\FakeParserCacheProvider(),
             false
         );
         $this->project_checker->reports['json'] = __DIR__ . '/test-report.json';
-
-        $config = new TestConfig();
-        $config->throw_exception = false;
-        $config->stop_on_first_error = false;
-        $this->project_checker->setConfig($config);
     }
 
     /**
@@ -36,9 +37,14 @@ class ReportOutputTest extends TestCase
      */
     public function testReportFormatValid()
     {
+        $config = new TestConfig();
+        $config->throw_exception = false;
+        $config->stop_on_first_error = false;
+
         // No exception
         foreach (['.xml', '.txt', '.json', '.emacs'] as $extension) {
             new ProjectChecker(
+                $config,
                 $this->file_provider,
                 new Provider\FakeParserCacheProvider(),
                 false,
@@ -47,7 +53,6 @@ class ReportOutputTest extends TestCase
                 1,
                 false,
                 false,
-                null,
                 '/tmp/report' . $extension
             );
         }
@@ -60,7 +65,12 @@ class ReportOutputTest extends TestCase
      */
     public function testReportFormatException()
     {
+        $config = new TestConfig();
+        $config->throw_exception = false;
+        $config->stop_on_first_error = false;
+
         new ProjectChecker(
+            $config,
             $this->file_provider,
             new Provider\FakeParserCacheProvider(),
             false,
@@ -69,7 +79,6 @@ class ReportOutputTest extends TestCase
             1,
             false,
             false,
-            null,
             '/tmp/report.log'
         );
     }
@@ -100,8 +109,8 @@ echo $a;';
             $file_contents
         );
 
-        $file_checker = new FileChecker('somefile.php', $this->project_checker);
-        $file_checker->visitAndAnalyzeMethods();
+        $this->analyzeFile('somefile.php', new Context());
+
         $issue_data = [
             [
                     'severity' => 'error',
@@ -196,8 +205,7 @@ somefile.php:2:42:error - Could not verify return type \'string|null\' for psalm
             '<?php ?>'
         );
 
-        $file_checker = new FileChecker('somefile.php', $this->project_checker);
-        $file_checker->visitAndAnalyzeMethods();
+        $this->analyzeFile('somefile.php', new Context());
         $this->assertSame(
             '[]
 ',

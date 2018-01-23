@@ -9,6 +9,9 @@ class FileManipulationTest extends TestCase
     /** @var \Psalm\Checker\ProjectChecker */
     protected $project_checker;
 
+    /** @var TestConfig|null */
+    private static $config;
+
     /**
      * @return void
      */
@@ -19,17 +22,16 @@ class FileManipulationTest extends TestCase
 
         $this->file_provider = new Provider\FakeFileProvider();
 
-        $this->project_checker = new \Psalm\Checker\ProjectChecker(
-            $this->file_provider,
-            new Provider\FakeParserCacheProvider()
-        );
-
         if (!self::$config) {
             self::$config = new TestConfig();
             self::$config->addPluginPath('examples/ClassUnqualifier.php');
         }
 
-        $this->project_checker->setConfig(self::$config);
+        $this->project_checker = new \Psalm\Checker\ProjectChecker(
+            self::$config,
+            $this->file_provider,
+            new Provider\FakeParserCacheProvider()
+        );
     }
 
     /**
@@ -73,8 +75,6 @@ class FileManipulationTest extends TestCase
             $keyed_issues_to_fix[$issue] = true;
         }
 
-        $file_checker = new FileChecker($file_path, $this->project_checker);
-
         $this->project_checker->setIssuesToFix($keyed_issues_to_fix);
         $this->project_checker->alterCodeAfterCompletion(
             (int) $php_major_version,
@@ -83,9 +83,10 @@ class FileManipulationTest extends TestCase
             $safe_types
         );
 
-        $file_checker->visitAndAnalyzeMethods($context);
-        $this->project_checker->updateFile($file_path, false);
-        $this->assertSame($output_code, $this->project_checker->getFileContents($file_path));
+        $this->analyzeFile($file_path, $context);
+
+        $this->project_checker->getCodebase()->updateFile($file_path, false);
+        $this->assertSame($output_code, $this->project_checker->getCodebase()->getFileContents($file_path));
     }
 
     /**
@@ -414,6 +415,42 @@ class FileManipulationTest extends TestCase
                 ['MissingReturnType'],
                 false,
             ],
+            'addSelfReturnType' => [
+                '<?php
+                    class A {
+                        public function foo() {
+                            return $this;
+                        }
+                    }',
+                '<?php
+                    class A {
+                        public function foo(): self {
+                            return $this;
+                        }
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                false,
+            ],
+            'dontAddMissingVoidReturnType56' => [
+                '<?php
+                    /** @return void */
+                    function foo() { }
+
+                    function bar() {
+                        return foo();
+                    }',
+                '<?php
+                    /** @return void */
+                    function foo() { }
+
+                    function bar() {
+                        return foo();
+                    }',
+                '5.6',
+                ['MissingReturnType'],
+                true,
+            ],
             'fixInvalidIntReturnType56' => [
                 '<?php
                     /**
@@ -622,6 +659,97 @@ class FileManipulationTest extends TestCase
                     }',
                 '7.0',
                 ['InvalidReturnType'],
+                true,
+            ],
+            'possiblyUndefinedVariable' => [
+                '<?php
+                    $flag = rand(0, 1);
+                    $otherflag = rand(0, 1);
+                    $yetanotherflag = rand(0, 1);
+
+                    if ($flag) {
+                        if ($otherflag) {
+                            $a = 5;
+                        }
+
+                        echo $a;
+                    }
+
+                    if ($flag) {
+                        if ($yetanotherflag) {
+                            $a = 5;
+                        }
+
+                        echo $a;
+                    }',
+                '<?php
+                    $flag = rand(0, 1);
+                    $otherflag = rand(0, 1);
+                    $yetanotherflag = rand(0, 1);
+
+                    $a = null;
+                    if ($flag) {
+                        if ($otherflag) {
+                            $a = 5;
+                        }
+
+                        echo $a;
+                    }
+
+                    if ($flag) {
+                        if ($yetanotherflag) {
+                            $a = 5;
+                        }
+
+                        echo $a;
+                    }',
+                '5.6',
+                ['PossiblyUndefinedGlobalVariable'],
+                true,
+            ],
+            'twoPossiblyUndefinedVariables' => [
+                '<?php
+                    if (rand(0, 1)) {
+                      $a = 1;
+                      $b = 2;
+                    }
+
+                    echo $a;
+                    echo $b;',
+                '<?php
+                    $a = null;
+                    $b = null;
+                    if (rand(0, 1)) {
+                      $a = 1;
+                      $b = 2;
+                    }
+
+                    echo $a;
+                    echo $b;',
+                '5.6',
+                ['PossiblyUndefinedGlobalVariable'],
+                true,
+            ],
+            'possiblyUndefinedVariableInElse' => [
+                '<?php
+                    if (rand(0, 1)) {
+                      // do nothing
+                    } else {
+                        $a = 5;
+                    }
+
+                    echo $a;',
+                '<?php
+                    $a = null;
+                    if (rand(0, 1)) {
+                      // do nothing
+                    } else {
+                        $a = 5;
+                    }
+
+                    echo $a;',
+                '5.6',
+                ['PossiblyUndefinedGlobalVariable'],
                 true,
             ],
             'useUnqualifierPlugin' => [

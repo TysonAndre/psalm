@@ -10,9 +10,9 @@ use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassConst;
 use Psalm\Aliases;
 use Psalm\Checker;
-use Psalm\Checker\FileChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\FileManipulation\FileManipulation;
+use Psalm\Scanner\FileScanner;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
@@ -35,7 +35,7 @@ class APIFilterPlugin extends \Psalm\Plugin
     public function visitClassLike(
         ClassLike $class_node,
         ClassLikeStorage $storage,
-        FileChecker $file_checker,
+        FileScanner $file_scanner,
         Aliases $aliases,
         array &$file_replacements = []
     ) {

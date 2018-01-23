@@ -2,10 +2,10 @@
 namespace Psalm;
 
 use PhpParser;
-use Psalm\Checker\FileChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\FileManipulation\FileManipulation;
+use Psalm\Scanner\FileScanner;
 use Psalm\Storage\ClassLikeStorage;
 
 /**
@@ -75,7 +75,7 @@ abstract class Plugin
     public function visitClassLike(
         PhpParser\Node\Stmt\ClassLike $stmt,
         ClassLikeStorage $storage,
-        FileChecker $file_checker,
+        FileScanner $file,
         Aliases $aliases,
         array &$file_replacements = []
     ) {

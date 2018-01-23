@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Tests\Traits;
 
-use Psalm\Checker\FileChecker;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Type\Union;
@@ -54,13 +53,10 @@ trait FileCheckerValidCodeParseTestTrait
             $context->vars_in_scope[$var] = $value;
         }
 
-        $this->addFile(
-            self::$src_dir_path . 'somefile.php',
-            $code
-        );
+        $file_path = self::$src_dir_path . 'somefile.php';
 
-        $file_checker = new FileChecker(self::$src_dir_path . 'somefile.php', $this->project_checker);
-        $file_checker->visitAndAnalyzeMethods($context);
+        $this->addFile($file_path, $code);
+        $this->analyzeFile($file_path, $context);
 
         $actual_vars = [];
         foreach ($assertions as $var => $_) {

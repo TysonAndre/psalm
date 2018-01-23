@@ -7,9 +7,6 @@ use Psalm\Checker\ProjectChecker;
 
 class TestCase extends BaseTestCase
 {
-    /** @var TestConfig */
-    protected static $config;
-
     /** @var string */
     protected static $src_dir_path;
 
@@ -40,21 +37,16 @@ class TestCase extends BaseTestCase
 
         $this->file_provider = new Provider\FakeFileProvider();
 
-        $this->project_checker = new ProjectChecker(
-            $this->file_provider,
-            new Provider\FakeParserCacheProvider()
-        );
-        $this->project_checker->setConfig(new TestConfig());
-        $this->project_checker->infer_types_from_usage = true;
-    }
+        $config = new TestConfig();
+        $parser_cache_provider = new Provider\FakeParserCacheProvider();
 
-    /**
-     * @return void
-     */
-    public function tearDown()
-    {
-        $this->project_checker->classlike_storage_provider->deleteAll();
-        $this->project_checker->file_storage_provider->deleteAll();
+        $this->project_checker = new ProjectChecker(
+            $config,
+            $this->file_provider,
+            $parser_cache_provider
+        );
+
+        $this->project_checker->infer_types_from_usage = true;
     }
 
     /**
@@ -66,6 +58,26 @@ class TestCase extends BaseTestCase
     public function addFile($file_path, $contents)
     {
         $this->file_provider->registerFile($file_path, $contents);
-        $this->project_checker->queueFileForScanning($file_path);
+        $this->project_checker->getCodeBase()->queueFileForScanning($file_path);
+    }
+
+    /**
+     * @param  string         $file_path
+     * @param  \Psalm\Context $context
+     *
+     * @return void
+     */
+    public function analyzeFile($file_path, \Psalm\Context $context)
+    {
+        $codebase = $this->project_checker->getCodebase();
+        $codebase->addFilesToScan([$file_path => $file_path]);
+        $codebase->scanFiles();
+
+        $file_checker = new FileChecker(
+            $this->project_checker,
+            $file_path,
+            $codebase->config->shortenFileName($file_path)
+        );
+        $file_checker->analyze($context);
     }
 }

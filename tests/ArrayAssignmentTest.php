@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Checker\FileChecker;
 use Psalm\Context;
 
 class ArrayAssignmentTest extends TestCase
@@ -22,12 +21,12 @@ class ArrayAssignmentTest extends TestCase
                 }'
         );
 
-        $file_checker = new FileChecker('somefile.php', $this->project_checker);
-
         $context = new Context();
         $context->vars_in_scope['$b'] = \Psalm\Type::getBool();
         $context->vars_in_scope['$foo'] = \Psalm\Type::getArray();
-        $file_checker->visitAndAnalyzeMethods($context);
+
+        $this->analyzeFile('somefile.php', $context);
+
         $this->assertFalse(isset($context->vars_in_scope['$foo[\'a\']']));
     }
 
@@ -764,6 +763,53 @@ class ArrayAssignmentTest extends TestCase
                     $f[0] = "hello";',
                 'assertions' => [
                     '$f' => 'array{0:string}',
+                ],
+            ],
+            'assignArrayOrSetNull' => [
+                '<?php
+                    $a = [];
+
+                    if (rand(0, 1)) {
+                        $a[] = 4;
+                    }
+
+                    if (!$a) {
+                        $a = null;
+                    }',
+                'assertions' => [
+                    '$a' => 'array<int, int>|null',
+                ],
+            ],
+            'assignArrayOrSetNullInElseIf' => [
+                '<?php
+                    $a = [];
+
+                    if (rand(0, 1)) {
+                        $a[] = 4;
+                    }
+
+                    if ($a) {
+                    } elseif (rand(0, 1)) {
+                        $a = null;
+                    }',
+                'assertions' => [
+                    '$a' => 'array<int, int>|null',
+                ],
+            ],
+            'assignArrayOrSetNullInElse' => [
+                '<?php
+                    $a = [];
+
+                    if (rand(0, 1)) {
+                        $a[] = 4;
+                    }
+
+                    if ($a) {
+                    } else {
+                        $a = null;
+                    }',
+                'assertions' => [
+                    '$a' => 'array<int, int>|null',
                 ],
             ],
         ];

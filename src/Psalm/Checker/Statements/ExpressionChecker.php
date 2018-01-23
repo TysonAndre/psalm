@@ -51,11 +51,6 @@ use function is_string;
 class ExpressionChecker
 {
     /**
-     * @var array<string,array<int,string>>
-     */
-    protected static $reflection_functions = [];
-
-    /**
      * @param   StatementsChecker   $statements_checker
      * @param   PhpParser\Node\Expr $stmt
      * @param   Context             $context
@@ -245,9 +240,10 @@ class ExpressionChecker
                 return false;
             }
 
+            $codebase = $statements_checker->getFileChecker()->project_checker->codebase;
+
             $use_context = new Context($context->self);
-            $use_context->collect_references =
-                $statements_checker->getFileChecker()->project_checker->collect_references;
+            $use_context->collect_references = $codebase->collect_references;
 
             if (!$statements_checker->isStatic()) {
                 if ($context->collect_mutations &&
@@ -475,7 +471,9 @@ class ExpressionChecker
             }
         }
 
-        $plugins = Config::getInstance()->getPluginsForAfterExpressionCheck();
+        $project_checker = $statements_checker->getFileChecker()->project_checker;
+
+        $plugins = $project_checker->config->getPluginsForAfterExpressionCheck();
 
         if ($plugins) {
             $file_manipulations = [];
@@ -533,7 +531,7 @@ class ExpressionChecker
                 $context->vars_possibly_in_scope[$var_id] = true;
 
                 if (!$statements_checker->hasVariable($var_id)) {
-                    $statements_checker->registerVariable($var_id, new CodeLocation($statements_checker, $stmt));
+                    $statements_checker->registerVariable($var_id, new CodeLocation($statements_checker, $stmt), null);
                     $context->hasVariable($var_id);
                 }
             } else {
@@ -735,14 +733,16 @@ class ExpressionChecker
         $method_id
     ) {
         if ($return_type instanceof TNamedObject) {
-            if (in_array(strtolower($return_type->value), ['$this', 'static', 'self'], true)) {
+            $return_type_lc = strtolower($return_type->value);
+
+            if (in_array($return_type_lc, ['$this', 'static', 'self'], true)) {
                 if (!$calling_class) {
                     throw new \InvalidArgumentException(
                         'Cannot handle ' . $return_type->value . ' when $calling_class is empty'
                     );
                 }
 
-                if (strtolower($return_type->value) === 'static' || !$method_id) {
+                if ($return_type_lc === 'static' || !$method_id) {
                     $return_type->value = $calling_class;
                 } elseif (strpos($method_id, ':-:closure') !== false) {
                     $return_type->value = $calling_class;
@@ -788,7 +788,11 @@ class ExpressionChecker
                     $context->vars_possibly_in_scope[$use_var_id] = true;
 
                     if (!$statements_checker->hasVariable($use_var_id)) {
-                        $statements_checker->registerVariable($use_var_id, new CodeLocation($statements_checker, $use));
+                        $statements_checker->registerVariable(
+                            $use_var_id,
+                            new CodeLocation($statements_checker, $use),
+                            null
+                        );
                     }
 
                     return;
@@ -1113,13 +1117,5 @@ class ExpressionChecker
     public static function isMock($fq_class_name)
     {
         return in_array($fq_class_name, Config::getInstance()->getMockClasses(), true);
-    }
-
-    /**
-     * @return void
-     */
-    public static function clearCache()
-    {
-        self::$reflection_functions = [];
     }
 }
