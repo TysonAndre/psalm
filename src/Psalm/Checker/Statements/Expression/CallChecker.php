@@ -996,6 +996,7 @@ class CallChecker
                 if ($method_name_lc === '__tostring') {
                     $return_type_candidate = Type::getString();
                 } elseif (FunctionChecker::inCallMap($cased_method_id)) {
+                    // TODO: Allow plugins to hook into this for global methods.
                     $return_type_candidate = FunctionChecker::getReturnTypeFromCallMap($method_id);
 
                     $return_type_candidate = ExpressionChecker::fleshOutType(
@@ -1034,6 +1035,16 @@ class CallChecker
                                 $class_template_params
                             );
                         }
+                        /*
+                        // TODO: Allow plugins to add custom logic for $method_id (lowercase)
+                        if ($method_id === 'tag_array::get') {
+                            // TODO: Allow plugins to be customizable
+                            $args = $stmt->args;
+                            if (count($args) >= 2) {
+                                $return_type_candidate = ArrayUtilChecker::getTypeOfGet($project_checker, $statements_checker, $stmt, $args, $context);
+                            }
+                        }
+                         */
 
                         $return_type_candidate = ExpressionChecker::fleshOutType(
                             $project_checker,
