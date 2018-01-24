@@ -44,16 +44,12 @@ class PropertyFetchChecker
         Context $context
     ) {
         if (!is_string($stmt->name)) {
-            if (ExpressionChecker::analyze($statements_checker, $stmt->name, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->name, $context);
         }
 
         $var_id = null;
 
-        if (ExpressionChecker::analyze($statements_checker, $stmt->var, $context) === false) {
-            return false;
-        }
+        ExpressionChecker::analyze($statements_checker, $stmt->var, $context);
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
@@ -213,7 +209,7 @@ class PropertyFetchChecker
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
-                        return false;
+                        // return false;
                     }
 
                     continue;
@@ -226,7 +222,7 @@ class PropertyFetchChecker
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
-                    return false;
+                    // return false;
                 }
 
                 continue;
@@ -300,6 +296,7 @@ class PropertyFetchChecker
                 new CodeLocation($statements_checker->getSource(), $stmt),
                 $statements_checker->getSuppressedIssues()
             ) === false) {
+                // We already warned about it not being visible?
                 return false;
             }
 

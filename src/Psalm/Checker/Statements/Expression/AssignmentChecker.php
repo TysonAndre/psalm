@@ -347,13 +347,9 @@ class AssignmentChecker
                     $context
                 );
             } else {
-                if (ExpressionChecker::analyze($statements_checker, $assign_var->name, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $assign_var->name, $context);
 
-                if (ExpressionChecker::analyze($statements_checker, $assign_var->var, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $assign_var->var, $context);
             }
 
             if ($var_id) {
@@ -363,9 +359,7 @@ class AssignmentChecker
             $assign_var->class instanceof PhpParser\Node\Name &&
             is_string($assign_var->name)
         ) {
-            if (ExpressionChecker::analyze($statements_checker, $assign_var, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $assign_var, $context);
 
             if ($context->check_classes) {
                 PropertyAssignmentChecker::analyzeStatic(

@@ -205,6 +205,7 @@ class SwitchChecker
 
                 // if we're leaving this block, add vars to outer for loop scope
                 if ($case_exit_type === 'continue') {
+                    // FIXME continue is equivalent to break inside switch
                     if ($loop_scope) {
                         $loop_scope->vars_possibly_in_scope = array_merge(
                             $vars,

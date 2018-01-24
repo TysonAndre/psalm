@@ -26,9 +26,7 @@ class ForChecker
         $context->assigned_var_ids = [];
 
         foreach ($stmt->init as $init) {
-            if (ExpressionChecker::analyze($statements_checker, $init, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $init, $context);
         }
 
         $assigned_var_ids = $context->assigned_var_ids;

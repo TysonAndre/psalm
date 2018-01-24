@@ -244,15 +244,13 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Continue_) {
                 if ($loop_scope === null) {
-                    if (IssueBuffer::accepts(
+                    IssueBuffer::accepts(
                         new ContinueOutsideLoop(
                             'Continue call outside loop context',
                             new CodeLocation($this->source, $stmt)
                         ),
                         $this->source->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                    );
                 } elseif ($original_context) {
                     $loop_scope->final_actions[] = ScopeChecker::ACTION_CONTINUE;
 
@@ -299,7 +297,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     ExpressionChecker::analyze($this, $expr, $context);
 
                     if (isset($expr->inferredType)) {
-                        if (CallChecker::checkFunctionArgumentType(
+                        CallChecker::checkFunctionArgumentType(
                             $this,
                             $expr->inferredType,
                             Type::getString(),
@@ -308,9 +306,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                             new CodeLocation($this->getSource(), $expr),
                             $expr,
                             $context
-                        ) === false) {
-                            return false;
-                        }
+                        );
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
@@ -343,9 +339,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Expr) {
-                if (ExpressionChecker::analyze($this, $stmt, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($this, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\InlineHTML) {
                 // do nothing
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Global_) {
@@ -489,16 +483,14 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $code_location = new CodeLocation($this->source, $stmt);
 
                 foreach ($plugins as $plugin) {
-                    if ($plugin->afterStatementCheck(
+                    $plugin->afterStatementCheck(
                         $this,
                         $stmt,
                         $context,
                         $code_location,
                         $this->getSuppressedIssues(),
                         $file_manipulations
-                    ) === false) {
-                        return false;
-                    }
+                    );
                 }
 
                 if ($file_manipulations) {
@@ -537,9 +529,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
     {
         foreach ($stmt->vars as $var) {
             if ($var->default) {
-                if (ExpressionChecker::analyze($this, $var->default, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($this, $var->default, $context);
             }
 
             if ($context->check_variables) {

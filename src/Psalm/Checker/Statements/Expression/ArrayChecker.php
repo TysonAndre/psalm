@@ -49,9 +49,7 @@ class ArrayChecker
             }
 
             if ($item->key) {
-                if (ExpressionChecker::analyze($statements_checker, $item->key, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $item->key, $context);
 
                 if (isset($item->key->inferredType)) {
                     if ($item_key_type) {
@@ -65,9 +63,7 @@ class ArrayChecker
                 $item_key_type = Type::getInt();
             }
 
-            if (ExpressionChecker::analyze($statements_checker, $item->value, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $item->value, $context);
 
             if ($item->key instanceof PhpParser\Node\Scalar\String_
                 || $item->key instanceof PhpParser\Node\Scalar\LNumber

@@ -65,17 +65,14 @@ class ExpressionChecker
         $array_assignment = false
     ) {
         if ($stmt instanceof PhpParser\Node\Expr\Variable) {
-            if (VariableFetchChecker::analyze(
+            VariableFetchChecker::analyze(
                 $statements_checker,
                 $stmt,
                 $context,
                 false,
                 null,
                 $array_assignment
-            ) === false
-            ) {
-                return false;
-            }
+            );
         } elseif ($stmt instanceof PhpParser\Node\Expr\Assign) {
             $assignment_type = AssignmentChecker::analyze(
                 $statements_checker,
@@ -87,27 +84,18 @@ class ExpressionChecker
                 $stmt->getLine()
             );
 
-            if ($assignment_type === false) {
-                return false;
+            if ($assignment_type !== false) {
+                $stmt->inferredType = $assignment_type;
             }
-
-            $stmt->inferredType = $assignment_type;
+            // TODO set it to Mixed?
         } elseif ($stmt instanceof PhpParser\Node\Expr\AssignOp) {
-            if (AssignmentChecker::analyzeAssignmentOperation($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            AssignmentChecker::analyzeAssignmentOperation($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\MethodCall) {
-            if (CallChecker::analyzeMethodCall($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            CallChecker::analyzeMethodCall($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\StaticCall) {
-            if (CallChecker::analyzeStaticCall($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            CallChecker::analyzeStaticCall($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\ConstFetch) {
-            if (ConstFetchChecker::analyze($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            ConstFetchChecker::analyze($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\String_) {
             $stmt->inferredType = Type::getString();
         } elseif ($stmt instanceof PhpParser\Node\Scalar\EncapsedStringPart) {
@@ -135,9 +123,7 @@ class ExpressionChecker
         } elseif ($stmt instanceof PhpParser\Node\Expr\UnaryMinus ||
             $stmt instanceof PhpParser\Node\Expr\UnaryPlus
         ) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             if (!isset($stmt->expr->inferredType)) {
                 $stmt->inferredType = new Type\Union([new TInt, new TFloat]);
@@ -163,37 +149,26 @@ class ExpressionChecker
             self::analyzeIsset($statements_checker, $stmt, $context);
             $stmt->inferredType = Type::getBool();
         } elseif ($stmt instanceof PhpParser\Node\Expr\ClassConstFetch) {
-            if (ConstFetchChecker::analyzeClassConst($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            ConstFetchChecker::analyzeClassConst($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\PropertyFetch) {
-            if (PropertyFetchChecker::analyzeInstance($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            PropertyFetchChecker::analyzeInstance($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\StaticPropertyFetch) {
-            if (PropertyFetchChecker::analyzeStatic($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            PropertyFetchChecker::analyzeStatic($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\BitwiseNot) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp) {
-            if (BinaryOpChecker::analyze(
+            BinaryOpChecker::analyze(
                 $statements_checker,
                 $stmt,
                 $context
-            ) === false) {
-                return false;
-            }
+            );
         } elseif ($stmt instanceof PhpParser\Node\Expr\PostInc ||
             $stmt instanceof PhpParser\Node\Expr\PostDec ||
             $stmt instanceof PhpParser\Node\Expr\PreInc ||
             $stmt instanceof PhpParser\Node\Expr\PreDec
         ) {
-            if (self::analyze($statements_checker, $stmt->var, $context) === false) {
-                return false;
-            }
+            // TODO: Narrow the types of post-inc/dec to a subset of int|string ($x = 'x'; ++$x; gives 'y')
+            self::analyze($statements_checker, $stmt->var, $context);
 
             if (isset($stmt->var->inferredType)) {
                 $stmt->inferredType = clone $stmt->var->inferredType;
@@ -201,44 +176,29 @@ class ExpressionChecker
                 $stmt->inferredType = Type::getMixed();
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\New_) {
-            if (CallChecker::analyzeNew($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            CallChecker::analyzeNew($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\Array_) {
-            if (ArrayChecker::analyze($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            ArrayChecker::analyze($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\Encapsed) {
-            if (self::analyzeEncapsulatedString($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            self::analyzeEncapsulatedString($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\FuncCall) {
             $project_checker = $statements_checker->getFileChecker()->project_checker;
-            if (CallChecker::analyzeFunctionCall(
+            CallChecker::analyzeFunctionCall(
                 $project_checker,
                 $statements_checker,
                 $stmt,
                 $context
-            ) === false
-            ) {
-                return false;
-            }
+            );
         } elseif ($stmt instanceof PhpParser\Node\Expr\Ternary) {
-            if (TernaryChecker::analyze($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            TernaryChecker::analyze($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\BooleanNot) {
-            if (self::analyzeBooleanNot($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            self::analyzeBooleanNot($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\Empty_) {
             self::analyzeEmpty($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\Closure) {
             $closure_checker = new ClosureChecker($stmt, $statements_checker->getSource());
 
-            if (self::analyzeClosureUses($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            self::analyzeClosureUses($statements_checker, $stmt, $context);
 
             $codebase = $statements_checker->getFileChecker()->project_checker->codebase;
 
@@ -293,35 +253,25 @@ class ExpressionChecker
                 $stmt->inferredType = Type::getClosure();
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\ArrayDimFetch) {
-            if (ArrayFetchChecker::analyze(
+            ArrayFetchChecker::analyze(
                 $statements_checker,
                 $stmt,
                 $context
-            ) === false) {
-                return false;
-            }
+            );
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Int_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $stmt->inferredType = Type::getInt();
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Double) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $stmt->inferredType = Type::getFloat();
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Bool_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $stmt->inferredType = Type::getBool();
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\String_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $container_type = Type::getString();
 
@@ -337,28 +287,22 @@ class ExpressionChecker
                 )
                 && !$has_scalar_match
             ) {
-                if (IssueBuffer::accepts(
+                IssueBuffer::accepts(
                     new InvalidCast(
                         $stmt->expr->inferredType . ' cannot be cast to ' . $container_type,
                         new CodeLocation($statements_checker->getSource(), $stmt)
                     ),
                     $statements_checker->getSuppressedIssues()
-                )) {
-                    return false;
-                }
+                );
             }
 
             $stmt->inferredType = $container_type;
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Object_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $stmt->inferredType = new Type\Union([new TNamedObject('stdClass')]);
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Array_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $permissible_atomic_types = [];
             $all_permissible = false;
@@ -386,17 +330,13 @@ class ExpressionChecker
                 $stmt->inferredType = Type::getArray();
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Unset_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             $stmt->inferredType = Type::getNull();
         } elseif ($stmt instanceof PhpParser\Node\Expr\Clone_) {
             self::analyzeClone($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\Instanceof_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
 
             if ($stmt->class instanceof PhpParser\Node\Name &&
                 !in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)
@@ -407,24 +347,20 @@ class ExpressionChecker
                         $statements_checker->getAliases()
                     );
 
-                    if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
+                    ClassLikeChecker::checkFullyQualifiedClassLikeName(
                         $statements_checker,
                         $fq_class_name,
                         new CodeLocation($statements_checker->getSource(), $stmt->class),
                         $statements_checker->getSuppressedIssues(),
                         false
-                    ) === false) {
-                        return false;
-                    }
+                    );
                 }
             }
 
             $stmt->inferredType = Type::getBool();
         } elseif ($stmt instanceof PhpParser\Node\Expr\Exit_) {
             if ($stmt->expr) {
-                if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                    return false;
-                }
+                self::analyze($statements_checker, $stmt->expr, $context);
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Include_) {
             IncludeChecker::analyze($statements_checker, $stmt, $context);
@@ -432,29 +368,21 @@ class ExpressionChecker
             $context->check_classes = false;
             $context->check_variables = false;
 
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\AssignRef) {
-            if (AssignmentChecker::analyzeAssignmentRef($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            AssignmentChecker::analyzeAssignmentRef($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\ErrorSuppress) {
             // do nothing
         } elseif ($stmt instanceof PhpParser\Node\Expr\ShellExec) {
-            if (IssueBuffer::accepts(
+            IssueBuffer::accepts(
                 new ForbiddenCode(
                     'Use of shell_exec',
                     new CodeLocation($statements_checker->getSource(), $stmt)
                 ),
                 $statements_checker->getSuppressedIssues()
-            )) {
-                return false;
-            }
+            );
         } elseif ($stmt instanceof PhpParser\Node\Expr\Print_) {
-            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->expr, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\Yield_) {
             self::analyzeYield($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\YieldFrom) {
@@ -480,16 +408,14 @@ class ExpressionChecker
             $code_location = new CodeLocation($statements_checker->getSource(), $stmt);
 
             foreach ($plugins as $plugin) {
-                if ($plugin->afterExpressionCheck(
+                $plugin->afterExpressionCheck(
                     $statements_checker,
                     $stmt,
                     $context,
                     $code_location,
                     $statements_checker->getSuppressedIssues(),
                     $file_manipulations
-                ) === false) {
-                    return false;
-                }
+                );
             }
 
             if ($file_manipulations) {
@@ -800,15 +726,13 @@ class ExpressionChecker
 
                 if (!isset($context->vars_possibly_in_scope[$use_var_id])) {
                     if ($context->check_variables) {
-                        if (IssueBuffer::accepts(
+                        IssueBuffer::accepts(
                             new UndefinedVariable(
                                 'Cannot find referenced variable ' . $use_var_id,
                                 new CodeLocation($statements_checker->getSource(), $use)
                             ),
                             $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
+                        );
 
                         return null;
                     }
@@ -817,30 +741,26 @@ class ExpressionChecker
                 $first_appearance = $statements_checker->getFirstAppearance($use_var_id);
 
                 if ($first_appearance) {
-                    if (IssueBuffer::accepts(
+                    IssueBuffer::accepts(
                         new PossiblyUndefinedVariable(
                             'Possibly undefined variable ' . $use_var_id . ', first seen on line ' .
                                 $first_appearance->getLineNumber(),
                             new CodeLocation($statements_checker->getSource(), $use)
                         ),
                         $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                    );
 
                     continue;
                 }
 
                 if ($context->check_variables) {
-                    if (IssueBuffer::accepts(
+                    IssueBuffer::accepts(
                         new UndefinedVariable(
                             'Cannot find referenced variable ' . $use_var_id,
                             new CodeLocation($statements_checker->getSource(), $use)
                         ),
                         $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                    );
 
                     continue;
                 }
@@ -896,15 +816,11 @@ class ExpressionChecker
         }
 
         if ($stmt->key) {
-            if (self::analyze($statements_checker, $stmt->key, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->key, $context);
         }
 
         if ($stmt->value) {
-            if (self::analyze($statements_checker, $stmt->value, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $stmt->value, $context);
 
             if ($var_comment && !$var_comment->var_id) {
                 $stmt->inferredType = $var_comment->type;
@@ -932,9 +848,7 @@ class ExpressionChecker
         PhpParser\Node\Expr\YieldFrom $stmt,
         Context $context
     ) {
-        if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-            return false;
-        }
+        self::analyze($statements_checker, $stmt->expr, $context);
 
         if (isset($stmt->expr->inferredType)) {
             // this should be whatever the generator above returns, but *not* the return type
@@ -958,9 +872,7 @@ class ExpressionChecker
     ) {
         $stmt->inferredType = Type::getBool();
 
-        if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-            return false;
-        }
+        self::analyze($statements_checker, $stmt->expr, $context);
     }
 
     /**
@@ -1004,9 +916,7 @@ class ExpressionChecker
 
         /** @var PhpParser\Node\Expr $part */
         foreach ($stmt->parts as $part) {
-            if (self::analyze($statements_checker, $part, $context) === false) {
-                return false;
-            }
+            self::analyze($statements_checker, $part, $context);
 
             if ($function_storage) {
                 $context->inferType($part, $function_storage, Type::getString());
@@ -1062,9 +972,8 @@ class ExpressionChecker
     ) {
         $context->inside_isset = true;
 
-        if (self::analyze($statements_checker, $stmt, $context) === false) {
-            return false;
-        }
+        // TODO: Should the old code restore inside_isset? Would a count of entries or fetching and restoring $old_include_isset be more effective?
+        self::analyze($statements_checker, $stmt, $context);
 
         $context->inside_isset = false;
     }
@@ -1081,9 +990,7 @@ class ExpressionChecker
         PhpParser\Node\Expr\Clone_ $stmt,
         Context $context
     ) {
-        if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
-            return false;
-        }
+        self::analyze($statements_checker, $stmt->expr, $context);
 
         if (isset($stmt->expr->inferredType)) {
             foreach ($stmt->expr->inferredType->getTypes() as $clone_type_part) {

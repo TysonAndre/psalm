@@ -71,9 +71,7 @@ class ReturnChecker
         }
 
         if ($stmt->expr) {
-            if (ExpressionChecker::analyze($statements_checker, $stmt->expr, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->expr, $context);
 
             if ($var_comment && !$var_comment->var_id) {
                 $stmt->inferredType = $var_comment->type;
@@ -116,44 +114,39 @@ class ReturnChecker
 
                     if ($stmt->inferredType->isMixed()) {
                         if ($local_return_type->isVoid()) {
-                            if (IssueBuffer::accepts(
+                            IssueBuffer::accepts(
                                 new InvalidReturnStatement(
                                     'No return values are expected for ' . $cased_method_id,
                                     new CodeLocation($source, $stmt)
                                 ),
                                 $statements_checker->getSuppressedIssues()
-                            )) {
-                                return false;
-                            }
+                            );
                         }
 
-                        if (IssueBuffer::accepts(
+                        IssueBuffer::accepts(
                             new MixedReturnStatement(
                                 'Could not infer a return type',
                                 new CodeLocation($source, $stmt)
                             ),
                             $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
+                        );
 
                         return null;
                     }
 
                     if ($local_return_type->isVoid()) {
-                        if (IssueBuffer::accepts(
+                        IssueBuffer::accepts(
                             new InvalidReturnStatement(
                                 'No return values are expected for ' . $cased_method_id,
                                 new CodeLocation($source, $stmt)
                             ),
                             $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
+                        );
 
                         return null;
                     }
 
+                    // TODO: If the incompatibility is severe (e.g. int|null to `@return stdClass`), then emit the more severe issue type
                     if (!$stmt->inferredType->ignore_nullable_issues
                         && $inferred_type->isNullable()
                         && !$local_return_type->isNullable()
@@ -167,7 +160,7 @@ class ReturnChecker
                             ),
                             $statements_checker->getSuppressedIssues()
                         )) {
-                            return false;
+                            return null;
                         }
                     }
 
@@ -184,7 +177,7 @@ class ReturnChecker
                             ),
                             $statements_checker->getSuppressedIssues()
                         )) {
-                            return false;
+                            return null;
                         }
                     }
 
@@ -211,7 +204,7 @@ class ReturnChecker
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                return null;
                             }
                         } elseif ($has_partial_match) {
                             if (IssueBuffer::accepts(
@@ -222,7 +215,7 @@ class ReturnChecker
                                 ),
                                $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                return null;
                             }
                         } else {
                             if (IssueBuffer::accepts(
@@ -233,7 +226,7 @@ class ReturnChecker
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                return null;
                             }
                         }
                     }
@@ -249,7 +242,7 @@ class ReturnChecker
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
-                        return false;
+                        return null;
                     }
 
                     return null;

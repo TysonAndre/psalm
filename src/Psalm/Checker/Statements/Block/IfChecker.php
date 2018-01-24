@@ -68,10 +68,8 @@ class IfChecker
         $pre_assigned_var_ids = $context->assigned_var_ids;
         $context->assigned_var_ids = [];
 
-        if ($first_if_cond_expr &&
-            ExpressionChecker::analyze($statements_checker, $first_if_cond_expr, $context) === false
-        ) {
-            return false;
+        if ($first_if_cond_expr) {
+            ExpressionChecker::analyze($statements_checker, $first_if_cond_expr, $context);
         }
 
         $first_cond_assigned_var_ids = $context->assigned_var_ids;
@@ -111,10 +109,8 @@ class IfChecker
         $referenced_var_ids = $context->referenced_var_ids;
         $if_context->referenced_var_ids = [];
 
-        if ($first_if_cond_expr !== $stmt->cond &&
-            ExpressionChecker::analyze($statements_checker, $stmt->cond, $if_context) === false
-        ) {
-            return false;
+        if ($first_if_cond_expr !== $stmt->cond) {
+            ExpressionChecker::analyze($statements_checker, $stmt->cond, $if_context);
         }
 
         /** @var array<string, bool> */
@@ -270,7 +266,7 @@ class IfChecker
         $pre_assignment_else_redefined_vars = $temp_else_context->getRedefinedVars($context->vars_in_scope);
 
         // check the if
-        if (self::analyzeIfBlock(
+        self::analyzeIfBlock(
             $statements_checker,
             $stmt,
             $if_scope,
@@ -279,9 +275,7 @@ class IfChecker
             $context,
             $pre_assignment_else_redefined_vars,
             $loop_scope
-        ) === false) {
-            return false;
-        }
+        );
 
         // check the elseifs
         foreach ($stmt->elseifs as $elseif) {
@@ -292,16 +286,14 @@ class IfChecker
                     $elseif_context->branch_point ?: (int) $stmt->getAttribute('startFilePos');
             }
 
-            if (self::analyzeElseIfBlock(
+            self::analyzeElseIfBlock(
                 $statements_checker,
                 $elseif,
                 $if_scope,
                 $elseif_context,
                 $context,
                 $loop_scope
-            ) === false) {
-                return false;
-            }
+            );
         }
 
         // check the else
@@ -313,16 +305,14 @@ class IfChecker
                     $else_context->branch_point ?: (int) $stmt->getAttribute('startFilePos');
             }
 
-            if (self::analyzeElseBlock(
+            self::analyzeElseBlock(
                 $statements_checker,
                 $stmt->else,
                 $if_scope,
                 $else_context,
                 $context,
                 $loop_scope
-            ) === false) {
-                return false;
-            }
+            );
         } else {
             $if_scope->final_actions[] = ScopeChecker::ACTION_NONE;
         }
@@ -426,14 +416,11 @@ class IfChecker
         $assigned_var_ids = $if_context->assigned_var_ids;
         $if_context->assigned_var_ids = [];
 
-        if ($statements_checker->analyze(
+        $statements_checker->analyze(
             $stmt->stmts,
             $if_context,
             $loop_scope
-        ) === false
-        ) {
-            return false;
-        }
+        );
 
         /** @var array<string, bool> */
         $new_assigned_var_ids = $if_context->assigned_var_ids;
@@ -697,9 +684,7 @@ class IfChecker
         $elseif_context->referenced_var_ids = [];
 
         // check the elseif
-        if (ExpressionChecker::analyze($statements_checker, $elseif->cond, $elseif_context) === false) {
-            return false;
-        }
+        ExpressionChecker::analyze($statements_checker, $elseif->cond, $elseif_context);
 
         $new_referenced_var_ids = $elseif_context->referenced_var_ids;
         $elseif_context->referenced_var_ids = array_merge(
@@ -814,14 +799,11 @@ class IfChecker
         $pre_stmts_assigned_var_ids = $elseif_context->assigned_var_ids;
         $elseif_context->assigned_var_ids = [];
 
-        if ($statements_checker->analyze(
+        $statements_checker->analyze(
             $elseif->stmts,
             $elseif_context,
             $loop_scope
-        ) === false
-        ) {
-            return false;
-        }
+        );
 
         /** @var array<string, bool> */
         $new_stmts_assigned_var_ids = $elseif_context->assigned_var_ids;

@@ -866,6 +866,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     )
                 )
             ) {
+                // TODO: Emit all issues?
                 if (IssueBuffer::accepts(
                     new MethodSignatureMismatch(
                         'Argument ' . ($i + 1) . ' of ' . $cased_implementer_method_id . ' has wrong type \'' .
@@ -905,7 +906,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         ),
                         $suppressed_issues
                     )) {
-                        return false;
+                        // return false;
                     }
                 }
             }
