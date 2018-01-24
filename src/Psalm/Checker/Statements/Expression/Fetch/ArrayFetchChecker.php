@@ -64,7 +64,7 @@ class ArrayFetchChecker
         );
 
         if ($stmt->dim && ExpressionChecker::analyze($statements_checker, $stmt->dim, $context) === false) {
-            return false;
+            //return false;
         }
 
         if ($stmt->dim) {
@@ -83,7 +83,7 @@ class ArrayFetchChecker
             $stmt->var,
             $context
         ) === false) {
-            return false;
+            //return false;
         }
 
         if (isset($stmt->var->inferredType)) {

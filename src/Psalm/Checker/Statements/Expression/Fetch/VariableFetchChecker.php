@@ -144,15 +144,13 @@ class VariableFetchChecker
                     }
                 } elseif (!$context->inside_isset) {
                     if ($context->is_global) {
-                        if (IssueBuffer::accepts(
+                        IssueBuffer::accepts(
                             new UndefinedGlobalVariable(
                                 'Cannot find referenced variable ' . $var_name . ' in global scope',
                                 new CodeLocation($statements_checker->getSource(), $stmt)
                             ),
                             $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
+                        );
 
                         $stmt->inferredType = Type::getMixed();
 

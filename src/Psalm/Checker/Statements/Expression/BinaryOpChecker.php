@@ -58,9 +58,7 @@ class BinaryOpChecker
 
             $pre_assigned_var_ids = $context->assigned_var_ids;
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->left, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->left, $context);
 
             $new_referenced_var_ids = $context->referenced_var_ids;
             $context->referenced_var_ids = array_merge($pre_referenced_var_ids, $new_referenced_var_ids);
@@ -96,9 +94,7 @@ class BinaryOpChecker
 
             $op_context->removeReconciledClauses($changed_var_ids);
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->right, $op_context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->right, $op_context);
 
             $context->referenced_var_ids = array_merge(
                 $op_context->referenced_var_ids,
@@ -139,9 +135,7 @@ class BinaryOpChecker
 
             $pre_assigned_var_ids = $context->assigned_var_ids;
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->left, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->left, $context);
 
             $new_referenced_var_ids = $context->referenced_var_ids;
             $context->referenced_var_ids = array_merge($pre_referenced_var_ids, $new_referenced_var_ids);
@@ -189,9 +183,7 @@ class BinaryOpChecker
 
             $op_context->removeReconciledClauses($changed_var_ids);
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->right, $op_context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->right, $op_context);
 
             if (!($stmt->right instanceof PhpParser\Node\Expr\Exit_)) {
                 foreach ($op_context->vars_in_scope as $var_id => $type) {
@@ -237,13 +229,9 @@ class BinaryOpChecker
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
             $stmt->inferredType = Type::getString();
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->left, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->left, $context);
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->right, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->right, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Coalesce) {
             $t_if_context = clone $context;
 
@@ -279,9 +267,7 @@ class BinaryOpChecker
 
             $t_if_context->vars_in_scope = $t_if_vars_in_scope_reconciled;
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->left, $t_if_context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->left, $t_if_context);
 
             foreach ($t_if_context->vars_in_scope as $var_id => $type) {
                 if (isset($context->vars_in_scope[$var_id])) {
@@ -316,9 +302,7 @@ class BinaryOpChecker
                 $t_else_context->vars_in_scope = $t_else_vars_in_scope_reconciled;
             }
 
-            if (ExpressionChecker::analyze($statements_checker, $stmt->right, $t_else_context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->right, $t_else_context);
 
             $context->referenced_var_ids = array_merge(
                 $context->referenced_var_ids,
@@ -351,23 +335,15 @@ class BinaryOpChecker
             }
         } else {
             if ($stmt->left instanceof PhpParser\Node\Expr\BinaryOp) {
-                if (self::analyze($statements_checker, $stmt->left, $context, ++$nesting) === false) {
-                    return false;
-                }
+                self::analyze($statements_checker, $stmt->left, $context, ++$nesting);
             } else {
-                if (ExpressionChecker::analyze($statements_checker, $stmt->left, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $stmt->left, $context);
             }
 
             if ($stmt->right instanceof PhpParser\Node\Expr\BinaryOp) {
-                if (self::analyze($statements_checker, $stmt->right, $context, ++$nesting) === false) {
-                    return false;
-                }
+                self::analyze($statements_checker, $stmt->right, $context, ++$nesting);
             } else {
-                if (ExpressionChecker::analyze($statements_checker, $stmt->right, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $stmt->right, $context);
             }
         }
 

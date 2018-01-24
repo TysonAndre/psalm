@@ -55,9 +55,7 @@ class TryChecker
         $assigned_var_ids = $context->assigned_var_ids;
         $context->assigned_var_ids = [];
 
-        if ($statements_checker->analyze($stmt->stmts, $context, $loop_scope) === false) {
-            return false;
-        }
+        $statements_checker->analyze($stmt->stmts, $context, $loop_scope);
 
         $context->assigned_var_ids = $assigned_var_ids;
 
@@ -109,15 +107,13 @@ class TryChecker
                 );
 
                 if ($original_context->check_classes) {
-                    if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
+                    ClassLikeChecker::checkFullyQualifiedClassLikeName(
                         $statements_checker,
                         $fq_catch_class,
                         new CodeLocation($statements_checker->getSource(), $catch_type, $context->include_location),
                         $statements_checker->getSuppressedIssues(),
                         false
-                    ) === false) {
-                        return false;
-                    }
+                    );
                 }
 
                 if ((ClassChecker::classExists($project_checker, $fq_catch_class)
@@ -128,15 +124,13 @@ class TryChecker
                         && strtolower($fq_catch_class) !== 'throwable'
                         && !InterfaceChecker::interfaceExtends($project_checker, $fq_catch_class, 'Throwable'))
                 ) {
-                    if (IssueBuffer::accepts(
+                    IssueBuffer::accepts(
                         new InvalidCatch(
                             'Class/interface ' . $fq_catch_class . ' cannot be caught',
                             new CodeLocation($statements_checker->getSource(), $stmt)
                         ),
                         $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                    );
                 }
 
                 $fq_catch_classes[] = $fq_catch_class;

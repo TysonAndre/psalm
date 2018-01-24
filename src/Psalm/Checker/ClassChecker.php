@@ -195,10 +195,7 @@ class ClassChecker extends ClassLikeChecker
                 $parent_reference_location,
                 $this->getSuppressedIssues(),
                 false
-            ) === false) {
-                return false;
-            }
-
+            )) {
             try {
                 $parent_class_storage = $classlike_storage_provider->get($this->parent_fq_class_name);
 
@@ -223,6 +220,7 @@ class ClassChecker extends ClassLikeChecker
             } catch (\InvalidArgumentException $e) {
                 // do nothing
             }
+            }  // checkFullyQualifiedClassLikeName
         }
 
         foreach ($this->class->implements as $interface_name) {
@@ -233,15 +231,13 @@ class ClassChecker extends ClassLikeChecker
 
             $interface_location = new CodeLocation($this, $interface_name);
 
-            if (self::checkFullyQualifiedClassLikeName(
+            self::checkFullyQualifiedClassLikeName(
                 $this,
                 $fq_interface_name,
                 $interface_location,
                 $this->getSuppressedIssues(),
                 false
-            ) === false) {
-                return false;
-            }
+            );
         }
 
         $trait_checkers = [];
@@ -299,33 +295,27 @@ class ClassChecker extends ClassLikeChecker
                             : null;
 
                         if (!$implementer_method_storage) {
-                            if (IssueBuffer::accepts(
+                            IssueBuffer::accepts(
                                 new UnimplementedInterfaceMethod(
                                     'Method ' . $method_name . ' is not defined on class ' .
                                     $storage->name,
                                     $code_location
                                 ),
                                 $this->source->getSuppressedIssues()
-                            )) {
-                                return false;
-                            }
-
-                            return null;
+                            );
+                            continue;
                         }
 
                         if ($implementer_method_storage->visibility !== self::VISIBILITY_PUBLIC) {
-                            if (IssueBuffer::accepts(
+                            IssueBuffer::accepts(
                                 new InaccessibleMethod(
                                     'Interface-defined method ' . $implementer_method_storage->cased_name
                                         . ' must be public in ' . $storage->name,
                                     $code_location
                                 ),
                                 $this->source->getSuppressedIssues()
-                            )) {
-                                return false;
-                            }
-
-                            return null;
+                            );
+                            continue;
                         }
 
                         FunctionLikeChecker::compareMethods(
@@ -359,7 +349,7 @@ class ClassChecker extends ClassLikeChecker
                 list($declaring_class_name, $method_name) = explode('::', $declaring_method_id);
 
                 if ($method_storage->abstract) {
-                    if (IssueBuffer::accepts(
+                    IssueBuffer::accepts(
                         new UnimplementedAbstractMethod(
                             'Method ' . $method_name . ' is not defined on class ' .
                             $this->fq_class_name . ', defined abstract in ' . $declaring_class_name,
@@ -371,9 +361,7 @@ class ClassChecker extends ClassLikeChecker
                             )
                         ),
                         $this->source->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                    );
                 }
             }
         }
@@ -454,7 +442,7 @@ class ClassChecker extends ClassLikeChecker
                             ),
                             $this->source->getSuppressedIssues()
                         )) {
-                            return false;
+                            // return false;
                         }
                     } else {
                         if (!$codebase->traitHasCorrectCase($fq_trait_name)) {
@@ -465,7 +453,7 @@ class ClassChecker extends ClassLikeChecker
                                 ),
                                 $this->source->getSuppressedIssues()
                             )) {
-                                return false;
+                                // return false;
                             }
 
                             continue;

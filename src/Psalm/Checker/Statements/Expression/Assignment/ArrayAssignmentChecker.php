@@ -122,13 +122,11 @@ class ArrayAssignmentChecker
             }
 
             if ($child_stmt->dim) {
-                if (ExpressionChecker::analyze(
+                ExpressionChecker::analyze(
                     $statements_checker,
                     $child_stmt->dim,
                     $context
-                ) === false) {
-                    return false;
-                }
+                );
 
                 if (!isset($child_stmt->dim->inferredType)) {
                     return null;
@@ -321,13 +319,9 @@ class ArrayAssignmentChecker
                     false
                 );
             } else {
-                if (ExpressionChecker::analyze($statements_checker, $root_array_expr->name, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $root_array_expr->name, $context);
 
-                if (ExpressionChecker::analyze($statements_checker, $root_array_expr->var, $context) === false) {
-                    return false;
-                }
+                ExpressionChecker::analyze($statements_checker, $root_array_expr->var, $context);
             }
         } elseif ($root_var_id) {
             if ($context->hasVariable($root_var_id)) {

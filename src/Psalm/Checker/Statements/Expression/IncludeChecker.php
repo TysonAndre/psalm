@@ -30,9 +30,7 @@ class IncludeChecker
             );
         }
 
-        if (ExpressionChecker::analyze($statements_checker, $stmt->expr, $context) === false) {
-            return false;
-        }
+        ExpressionChecker::analyze($statements_checker, $stmt->expr, $context);
 
         $path_to_file = null;
 

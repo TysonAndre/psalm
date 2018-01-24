@@ -88,9 +88,7 @@ class PropertyAssignmentChecker
 
             $var_id = '$this->' . $prop_name;
         } else {
-            if (ExpressionChecker::analyze($statements_checker, $stmt->var, $context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->var, $context);
 
             $lhs_type = isset($stmt->var->inferredType) ? $stmt->var->inferredType : null;
 
@@ -162,7 +160,7 @@ class PropertyAssignmentChecker
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
-                    return false;
+                    // return false;
                 }
             }
 
@@ -321,7 +319,8 @@ class PropertyAssignmentChecker
                         new CodeLocation($statements_checker->getSource(), $stmt),
                         $statements_checker->getSuppressedIssues()
                     ) === false) {
-                        return false;
+                        continue;
+                        // return false;
                     }
                 } else {
                     if (ClassLikeChecker::checkPropertyVisibility(

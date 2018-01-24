@@ -59,15 +59,13 @@ class ConstFetchChecker
                 if ($const_type) {
                     $stmt->inferredType = clone $const_type;
                 } elseif ($context->check_consts) {
-                    if (IssueBuffer::accepts(
+                    IssueBuffer::accepts(
                         new UndefinedConstant(
                             'Const ' . $const_name . ' is not defined',
                             new CodeLocation($statements_checker->getSource(), $stmt)
                         ),
                         $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                    );
                 }
         }
 
@@ -119,15 +117,13 @@ class ConstFetchChecker
                     $statements_checker->getAliases()
                 );
 
-                if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
+                ClassLikeChecker::checkFullyQualifiedClassLikeName(
                     $statements_checker,
                     $fq_class_name,
                     new CodeLocation($statements_checker->getSource(), $stmt->class),
                     $statements_checker->getSuppressedIssues(),
                     false
-                ) === false) {
-                    return false;
-                }
+                );
             }
 
             if ($stmt->name === 'class') {

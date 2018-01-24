@@ -28,9 +28,7 @@ class TernaryChecker
         $context->referenced_var_ids = [];
 
         $context->inside_conditional = true;
-        if (ExpressionChecker::analyze($statements_checker, $stmt->cond, $context) === false) {
-            return false;
-        }
+        ExpressionChecker::analyze($statements_checker, $stmt->cond, $context);
 
         $new_referenced_var_ids = $context->referenced_var_ids;
         $context->referenced_var_ids = array_merge($pre_referenced_var_ids, $new_referenced_var_ids);
@@ -65,6 +63,7 @@ class TernaryChecker
             $statements_checker->getSuppressedIssues()
         );
 
+        // TODO: More elaborate warnings about ternary operator (low priority)
         if ($t_if_vars_in_scope_reconciled === false) {
             return false;
         }
@@ -73,9 +72,7 @@ class TernaryChecker
         $t_else_context = clone $context;
 
         if ($stmt->if) {
-            if (ExpressionChecker::analyze($statements_checker, $stmt->if, $t_if_context) === false) {
-                return false;
-            }
+            ExpressionChecker::analyze($statements_checker, $stmt->if, $t_if_context);
 
             foreach ($t_if_context->vars_in_scope as $var_id => $type) {
                 if (isset($context->vars_in_scope[$var_id])) {
@@ -107,9 +104,7 @@ class TernaryChecker
             $t_else_context->vars_in_scope = $t_else_vars_in_scope_reconciled;
         }
 
-        if (ExpressionChecker::analyze($statements_checker, $stmt->else, $t_else_context) === false) {
-            return false;
-        }
+        ExpressionChecker::analyze($statements_checker, $stmt->else, $t_else_context);
 
         foreach ($t_else_context->vars_in_scope as $var_id => $type) {
             if (isset($context->vars_in_scope[$var_id])) {

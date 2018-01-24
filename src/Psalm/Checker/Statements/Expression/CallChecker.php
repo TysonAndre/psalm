@@ -108,7 +108,7 @@ class CallChecker
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
-                    return false;
+                    // return false;
                 }
             } elseif ($method->parts === ['define']) {
                 if ($first_arg && $first_arg->value instanceof PhpParser\Node\Scalar\String_) {
@@ -144,7 +144,7 @@ class CallChecker
 
         if ($stmt->name instanceof PhpParser\Node\Expr) {
             if (ExpressionChecker::analyze($statements_checker, $stmt->name, $context) === false) {
-                return false;
+                // return false;
             }
 
             if (isset($stmt->name->inferredType)) {
@@ -506,7 +506,7 @@ class CallChecker
                         $statements_checker->getSuppressedIssues(),
                         false
                     ) === false) {
-                        return false;
+                        // return false;
                     }
                 }
             } else {
@@ -551,7 +551,7 @@ class CallChecker
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
-                        return false;
+                        // return false;
                     }
                 }
 
@@ -582,7 +582,7 @@ class CallChecker
                         new CodeLocation($statements_checker->getSource(), $stmt),
                         $statements_checker
                     ) === false) {
-                        return false;
+                        // return false;
                     }
 
                     if (MethodChecker::checkMethodVisibility(
@@ -592,7 +592,7 @@ class CallChecker
                         new CodeLocation($statements_checker->getSource(), $stmt),
                         $statements_checker->getSuppressedIssues()
                     ) === false) {
-                        return false;
+                        // return false;
                     }
 
                     $generic_params = null;
@@ -693,9 +693,7 @@ class CallChecker
         PhpParser\Node\Expr\MethodCall $stmt,
         Context $context
     ) {
-        if (ExpressionChecker::analyze($statements_checker, $stmt->var, $context) === false) {
-            return false;
-        }
+        ExpressionChecker::analyze($statements_checker, $stmt->var, $context);
 
         $class_type = null;
         $method_id = null;
@@ -709,7 +707,7 @@ class CallChecker
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
-                    return false;
+                    // return false;
                 }
             }
         }
@@ -745,7 +743,7 @@ class CallChecker
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
-                return false;
+                // return false;
             }
 
             return null;
@@ -763,7 +761,7 @@ class CallChecker
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
-                return false;
+                // return false;
             }
         }
 
@@ -778,7 +776,7 @@ class CallChecker
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
-                return false;
+                // return false;
             }
         }
 
