@@ -167,6 +167,7 @@ class ArrayUtilChecker
         $inside_isset = false
     ) {
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         $has_array_access = false;
         $non_array_types = [];
@@ -283,7 +284,7 @@ class ArrayUtilChecker
                         }
                     } elseif (!$type->type_params[0]->isEmpty()) {
                         if (!TypeChecker::isContainedBy(
-                            $project_checker,
+                            $codebase,
                             $offset_type,
                             $type->type_params[0],
                             true
@@ -376,7 +377,7 @@ class ArrayUtilChecker
                             $array_access_type = Type::getMixed();
                         }
                     } elseif (TypeChecker::isContainedBy(
-                        $project_checker,
+                        $codebase,
                         $offset_type,
                         $type->getGenericKeyType(),
                         true
@@ -441,7 +442,7 @@ class ArrayUtilChecker
                 }
 
                 if (!TypeChecker::isContainedBy(
-                    $project_checker,
+                    $codebase,
                     $offset_type,
                     Type::getInt(),
                     true
@@ -492,8 +493,8 @@ class ArrayUtilChecker
 
             if ($type instanceof TNamedObject) {
                 if (strtolower($type->value) !== 'simplexmlelement'
-                    && ClassChecker::classExists($project_checker, $type->value)
-                    && !ClassChecker::classImplements($project_checker, $type->value, 'ArrayAccess')
+                    && $codebase->classExists($type->value)
+                    && !$codebase->classImplements($type->value, 'ArrayAccess')
                 ) {
                     $non_array_types[] = (string)$type;
                 } else {

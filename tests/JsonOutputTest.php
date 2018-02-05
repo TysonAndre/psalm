@@ -20,7 +20,6 @@ class JsonOutputTest extends TestCase
 
         $config = new TestConfig();
         $config->throw_exception = false;
-        $config->stop_on_first_error = false;
 
         $this->project_checker = new ProjectChecker(
             $config,
@@ -31,7 +30,7 @@ class JsonOutputTest extends TestCase
             ProjectChecker::TYPE_JSON
         );
 
-        $this->project_checker->getCodebase()->collect_references = true;
+        $this->project_checker->getCodebase()->collectReferences();
     }
 
     /**
@@ -86,7 +85,7 @@ echo $a;';
             $file_contents
         );
 
-        $this->project_checker->getCodebase()->checkClassReferences();
+        $this->project_checker->getCodebase()->classlikes->checkClassReferences();
 
         $this->analyzeFile('somefile.php', new Context());
 

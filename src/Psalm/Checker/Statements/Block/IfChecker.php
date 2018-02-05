@@ -225,7 +225,8 @@ class IfChecker
                 );
 
             $if_context->vars_in_scope = $if_vars_in_scope_reconciled;
-            foreach ($reconcilable_if_types as $var_id => $type) {
+
+            foreach ($reconcilable_if_types as $var_id => $_) {
                 $if_context->vars_possibly_in_scope[$var_id] = true;
             }
 
@@ -269,6 +270,20 @@ class IfChecker
         // which vars of the if we can safely change
         $pre_assignment_else_redefined_vars = $temp_else_context->getRedefinedVars($context->vars_in_scope);
 
+        $old_unreferenced_vars = $context->unreferenced_vars;
+        $newly_unreferenced_locations = [];
+
+        // this captures statements in the if conditional
+        if ($context->collect_references) {
+            foreach ($if_context->unreferenced_vars as $var_id => $location) {
+                if (!isset($old_unreferenced_vars[$var_id])
+                    || $old_unreferenced_vars[$var_id] !== $location
+                ) {
+                    $newly_unreferenced_locations[$var_id][] = $location;
+                }
+            }
+        }
+
         // check the if
         if (self::analyzeIfBlock(
             $statements_checker,
@@ -281,6 +296,16 @@ class IfChecker
             $loop_scope
         ) === false) {
             return false;
+        }
+
+        if ($context->collect_references && $if_scope->final_actions !== [ScopeChecker::ACTION_END]) {
+            foreach ($if_context->unreferenced_vars as $var_id => $location) {
+                if (!isset($old_unreferenced_vars[$var_id])
+                    || $old_unreferenced_vars[$var_id] !== $location
+                ) {
+                    $newly_unreferenced_locations[$var_id][] = $location;
+                }
+            }
         }
 
         // check the elseifs
@@ -301,6 +326,16 @@ class IfChecker
                 $loop_scope
             ) === false) {
                 return false;
+            }
+
+            if ($context->collect_references && $if_scope->final_actions !== [ScopeChecker::ACTION_END]) {
+                foreach ($elseif_context->unreferenced_vars as $var_id => $location) {
+                    if (!isset($old_unreferenced_vars[$var_id])
+                        || $old_unreferenced_vars[$var_id] !== $location
+                    ) {
+                        $newly_unreferenced_locations[$var_id][] = $location;
+                    }
+                }
             }
         }
 
@@ -323,6 +358,16 @@ class IfChecker
             ) === false) {
                 return false;
             }
+
+            if ($context->collect_references && $if_scope->final_actions !== [ScopeChecker::ACTION_END]) {
+                foreach ($else_context->unreferenced_vars as $var_id => $location) {
+                    if (!isset($old_unreferenced_vars[$var_id])
+                        || $old_unreferenced_vars[$var_id] !== $location
+                    ) {
+                        $newly_unreferenced_locations[$var_id][] = $location;
+                    }
+                }
+            }
         } else {
             $if_scope->final_actions[] = ScopeChecker::ACTION_NONE;
         }
@@ -341,13 +386,13 @@ class IfChecker
             $if_scope->new_vars_possibly_in_scope
         );
 
-        $context->assigned_var_ids = array_merge(
-            $context->assigned_var_ids,
-            $if_context->assigned_var_ids
-        );
-
         // vars can only be defined/redefined if there was an else (defined in every block)
         if ($stmt->else) {
+            $context->assigned_var_ids = array_merge(
+                $context->assigned_var_ids,
+                $if_scope->assigned_var_ids ?: []
+            );
+
             if ($if_scope->new_vars) {
                 $context->vars_in_scope = array_merge($context->vars_in_scope, $if_scope->new_vars);
             }
@@ -376,11 +421,28 @@ class IfChecker
 
         if ($if_scope->possibly_redefined_vars) {
             foreach ($if_scope->possibly_redefined_vars as $var => $type) {
-                if (!$type->failed_reconciliation &&
-                    $context->hasVariable($var) &&
+                if ($context->hasVariable($var) &&
+                    !$type->failed_reconciliation &&
                     !isset($if_scope->updated_vars[$var])
                 ) {
                     $context->vars_in_scope[$var] = Type::combineUnionTypes($context->vars_in_scope[$var], $type);
+                }
+            }
+        }
+
+        if ($context->collect_references) {
+            foreach ($newly_unreferenced_locations as $var_id => $locations) {
+                if ((
+                    $stmt->else
+                        && (isset($if_scope->assigned_var_ids[$var_id])
+                            || isset($if_scope->new_vars[$var_id]))
+                    ) || (!isset($context->vars_in_scope[$var_id]))
+                ) {
+                    $context->unreferenced_vars[$var_id] = array_shift($locations);
+                }
+
+                foreach ($locations as $location) {
+                    $statements_checker->registerVariableUse($location);
                 }
             }
         }
@@ -441,12 +503,14 @@ class IfChecker
 
         if ($if_context->byref_constraints !== null) {
             foreach ($if_context->byref_constraints as $var_id => $byref_constraint) {
-                if ($outer_context->byref_constraints !== null &&
-                    isset($outer_context->byref_constraints[$var_id]) &&
-                    !TypeChecker::isContainedBy(
-                        $project_checker,
+                if ($outer_context->byref_constraints !== null
+                    && isset($outer_context->byref_constraints[$var_id])
+                    && $byref_constraint->type
+                    && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
+                    && !TypeChecker::isContainedBy(
+                        $project_checker->codebase,
                         $byref_constraint->type,
-                        $outer_context->byref_constraints[$var_id]->type
+                        $outer_constraint_type
                     )
                 ) {
                     if (IssueBuffer::accepts(
@@ -491,6 +555,7 @@ class IfChecker
 
             $if_scope->redefined_vars = $if_context->getRedefinedVars($outer_context->vars_in_scope);
             $if_scope->possibly_redefined_vars = $if_scope->redefined_vars;
+            $if_scope->assigned_var_ids = $new_assigned_var_ids;
 
             $changed_var_ids = array_keys($new_assigned_var_ids);
 
@@ -829,12 +894,14 @@ class IfChecker
 
         if ($elseif_context->byref_constraints !== null) {
             foreach ($elseif_context->byref_constraints as $var_id => $byref_constraint) {
-                if ($outer_context->byref_constraints !== null &&
-                    isset($outer_context->byref_constraints[$var_id]) &&
-                    !TypeChecker::isContainedBy(
-                        $project_checker,
+                if ($outer_context->byref_constraints !== null
+                    && isset($outer_context->byref_constraints[$var_id])
+                    && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
+                    && $byref_constraint->type
+                    && !TypeChecker::isContainedBy(
+                        $project_checker->codebase,
                         $byref_constraint->type,
-                        $outer_context->byref_constraints[$var_id]->type
+                        $outer_constraint_type
                     )
                 ) {
                     if (IssueBuffer::accepts(
@@ -871,7 +938,7 @@ class IfChecker
                 $if_scope->new_vars = array_diff_key($elseif_context->vars_in_scope, $outer_context->vars_in_scope);
             } else {
                 foreach ($if_scope->new_vars as $new_var => $type) {
-                    if (!$elseif_context->hasVariable($new_var)) {
+                    if (!$elseif_context->hasVariable($new_var, $statements_checker)) {
                         unset($if_scope->new_vars[$new_var]);
                     } else {
                         $if_scope->new_vars[$new_var] = Type::combineUnionTypes(
@@ -890,6 +957,14 @@ class IfChecker
                 ) {
                     unset($possibly_redefined_vars[$var_id]);
                 }
+            }
+
+            $assigned_var_ids = array_merge($new_stmts_assigned_var_ids, $new_assigned_var_ids);
+
+            if ($if_scope->assigned_var_ids === null) {
+                $if_scope->assigned_var_ids = $assigned_var_ids;
+            } else {
+                $if_scope->assigned_var_ids = array_intersect_key($assigned_var_ids, $if_scope->assigned_var_ids);
             }
 
             if ($if_scope->redefined_vars === null) {
@@ -1074,6 +1149,9 @@ class IfChecker
 
         $old_else_context = clone $else_context;
 
+        $pre_stmts_assigned_var_ids = $else_context->assigned_var_ids;
+        $else_context->assigned_var_ids = [];
+
         if ($statements_checker->analyze(
             $else->stmts,
             $else_context,
@@ -1083,16 +1161,22 @@ class IfChecker
             return false;
         }
 
+        /** @var array<string, bool> */
+        $new_assigned_var_ids = $else_context->assigned_var_ids;
+        $else_context->assigned_var_ids = $pre_stmts_assigned_var_ids;
+
         if ($else_context->byref_constraints !== null) {
             $project_checker = $statements_checker->getFileChecker()->project_checker;
 
             foreach ($else_context->byref_constraints as $var_id => $byref_constraint) {
-                if ($outer_context->byref_constraints !== null &&
-                    isset($outer_context->byref_constraints[$var_id]) &&
-                    !TypeChecker::isContainedBy(
-                        $project_checker,
+                if ($outer_context->byref_constraints !== null
+                    && isset($outer_context->byref_constraints[$var_id])
+                    && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
+                    && $byref_constraint->type
+                    && !TypeChecker::isContainedBy(
+                        $project_checker->codebase,
                         $byref_constraint->type,
-                        $outer_context->byref_constraints[$var_id]->type
+                        $outer_constraint_type
                     )
                 ) {
                     if (IssueBuffer::accepts(
@@ -1145,6 +1229,12 @@ class IfChecker
                         );
                     }
                 }
+            }
+
+            if ($if_scope->assigned_var_ids === null) {
+                $if_scope->assigned_var_ids = $new_assigned_var_ids;
+            } else {
+                $if_scope->assigned_var_ids = array_intersect_key($new_assigned_var_ids, $if_scope->assigned_var_ids);
             }
 
             if ($if_scope->redefined_vars === null) {

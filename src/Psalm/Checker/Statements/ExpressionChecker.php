@@ -2,17 +2,18 @@
 namespace Psalm\Checker\Statements;
 
 use PhpParser;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\ClosureChecker;
 use Psalm\Checker\CommentChecker;
 use Psalm\Checker\FunctionLikeChecker;
-use Psalm\Checker\MethodChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\Statements\Expression\ArrayChecker;
 use Psalm\Checker\Statements\Expression\AssignmentChecker;
 use Psalm\Checker\Statements\Expression\BinaryOpChecker;
-use Psalm\Checker\Statements\Expression\CallChecker;
+use Psalm\Checker\Statements\Expression\Call\FunctionCallChecker;
+use Psalm\Checker\Statements\Expression\Call\MethodCallChecker;
+use Psalm\Checker\Statements\Expression\Call\NewChecker;
+use Psalm\Checker\Statements\Expression\Call\StaticCallChecker;
 use Psalm\Checker\Statements\Expression\Fetch\ArrayFetchChecker;
 use Psalm\Checker\Statements\Expression\Fetch\ConstFetchChecker;
 use Psalm\Checker\Statements\Expression\Fetch\PropertyFetchChecker;
@@ -97,11 +98,11 @@ class ExpressionChecker
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\MethodCall) {
-            if (CallChecker::analyzeMethodCall($statements_checker, $stmt, $context) === false) {
+            if (MethodCallChecker::analyze($statements_checker, $stmt, $context) === false) {
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\StaticCall) {
-            if (CallChecker::analyzeStaticCall($statements_checker, $stmt, $context) === false) {
+            if (StaticCallChecker::analyze($statements_checker, $stmt, $context) === false) {
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\ConstFetch) {
@@ -201,7 +202,7 @@ class ExpressionChecker
                 $stmt->inferredType = Type::getMixed();
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\New_) {
-            if (CallChecker::analyzeNew($statements_checker, $stmt, $context) === false) {
+            if (NewChecker::analyze($statements_checker, $stmt, $context) === false) {
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Array_) {
@@ -214,7 +215,7 @@ class ExpressionChecker
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\FuncCall) {
             $project_checker = $statements_checker->getFileChecker()->project_checker;
-            if (CallChecker::analyzeFunctionCall(
+            if (FunctionCallChecker::analyze(
                 $project_checker,
                 $statements_checker,
                 $stmt,
@@ -248,8 +249,7 @@ class ExpressionChecker
             if (!$statements_checker->isStatic()) {
                 if ($context->collect_mutations &&
                     $context->self &&
-                    ClassChecker::classExtends(
-                        $statements_checker->getFileChecker()->project_checker,
+                    $codebase->classExtends(
                         $context->self,
                         (string)$statements_checker->getFQCLN()
                     )
@@ -266,7 +266,7 @@ class ExpressionChecker
                 }
             }
 
-            foreach ($context->vars_possibly_in_scope as $var => $type) {
+            foreach ($context->vars_possibly_in_scope as $var => $_) {
                 if (strpos($var, '$this->') === 0) {
                     $use_context->vars_possibly_in_scope[$var] = true;
                 }
@@ -275,12 +275,12 @@ class ExpressionChecker
             foreach ($stmt->uses as $use) {
                 // insert the ref into the current context if passed by ref, as whatever we're passing
                 // the closure to could execute it straight away.
-                if (!$context->hasVariable('$' . $use->var) && $use->byRef) {
+                if (!$context->hasVariable('$' . $use->var, $statements_checker) && $use->byRef) {
                     $context->vars_in_scope['$' . $use->var] = Type::getMixed();
                 }
 
                 $use_context->vars_in_scope['$' . $use->var] =
-                    $context->hasVariable('$' . $use->var) && !$use->byRef
+                    $context->hasVariable('$' . $use->var, $statements_checker) && !$use->byRef
                     ? clone $context->vars_in_scope['$' . $use->var]
                     : Type::getMixed();
 
@@ -328,7 +328,7 @@ class ExpressionChecker
             if (isset($stmt->expr->inferredType)
                 && !$stmt->expr->inferredType->isMixed()
                 && !TypeChecker::isContainedBy(
-                    $statements_checker->getFileChecker()->project_checker,
+                    $statements_checker->getFileChecker()->project_checker->codebase,
                     $stmt->expr->inferredType,
                     $container_type,
                     true,
@@ -527,12 +527,18 @@ class ExpressionChecker
                 $context->byref_constraints[$var_id] = new \Psalm\ReferenceConstraint($by_ref_type);
             }
 
-            if (!$context->hasVariable($var_id)) {
+            if (!$context->hasVariable($var_id, $statements_checker)) {
                 $context->vars_possibly_in_scope[$var_id] = true;
 
                 if (!$statements_checker->hasVariable($var_id)) {
-                    $statements_checker->registerVariable($var_id, new CodeLocation($statements_checker, $stmt), null);
-                    $context->hasVariable($var_id);
+                    $location = new CodeLocation($statements_checker, $stmt);
+                    $statements_checker->registerVariable($var_id, $location, null);
+
+                    if ($context->collect_references) {
+                        $context->unreferenced_vars[$var_id] = $location;
+                    }
+
+                    $context->hasVariable($var_id, $statements_checker);
                 }
             } else {
                 $existing_type = $context->vars_in_scope[$var_id];
@@ -686,16 +692,16 @@ class ExpressionChecker
 
     /**
      * @param  Type\Union   $return_type
-     * @param  string|null  $calling_class
-     * @param  string|null  $method_id
+     * @param  string|null  $self_class
+     * @param  string|null  $static_class
      *
      * @return Type\Union
      */
     public static function fleshOutType(
         ProjectChecker $project_checker,
         Type\Union $return_type,
-        $calling_class = null,
-        $method_id = null
+        $self_class = null,
+        $static_class = null
     ) {
         $return_type = clone $return_type;
 
@@ -705,8 +711,8 @@ class ExpressionChecker
             $new_return_type_parts[] = self::fleshOutAtomicType(
                 $project_checker,
                 $return_type_part,
-                $calling_class,
-                $method_id
+                $self_class,
+                $static_class
             );
         }
 
@@ -714,6 +720,7 @@ class ExpressionChecker
 
         $fleshed_out_type->from_docblock = $return_type->from_docblock;
         $fleshed_out_type->ignore_nullable_issues = $return_type->ignore_nullable_issues;
+        $fleshed_out_type->ignore_falsable_issues = $return_type->ignore_falsable_issues;
         $fleshed_out_type->by_ref = $return_type->by_ref;
 
         return $fleshed_out_type;
@@ -721,47 +728,47 @@ class ExpressionChecker
 
     /**
      * @param  Type\Atomic  &$return_type
-     * @param  string|null  $calling_class
-     * @param  string|null  $method_id
+     * @param  string|null  $self_class
+     * @param  string|null  $static_class
      *
      * @return Type\Atomic
      */
-    protected static function fleshOutAtomicType(
+    private static function fleshOutAtomicType(
         ProjectChecker $project_checker,
         Type\Atomic $return_type,
-        $calling_class,
-        $method_id
+        $self_class,
+        $static_class
     ) {
         if ($return_type instanceof TNamedObject) {
             $return_type_lc = strtolower($return_type->value);
 
-            if (in_array($return_type_lc, ['$this', 'static', 'self'], true)) {
-                if (!$calling_class) {
+            if ($return_type_lc === 'static' || $return_type_lc === '$this') {
+                if (!$static_class) {
                     throw new \InvalidArgumentException(
-                        'Cannot handle ' . $return_type->value . ' when $calling_class is empty'
+                        'Cannot handle ' . $return_type->value . ' when $static_class is empty'
                     );
                 }
 
-                if ($return_type_lc === 'static' || !$method_id) {
-                    $return_type->value = $calling_class;
-                } elseif (strpos($method_id, ':-:closure') !== false) {
-                    $return_type->value = $calling_class;
-                } else {
-                    list(, $method_name) = explode('::', $method_id);
-
-                    $appearing_method_id = MethodChecker::getAppearingMethodId(
-                        $project_checker,
-                        $calling_class . '::' . $method_name
+                $return_type->value = $static_class;
+            } elseif ($return_type_lc === 'self') {
+                if (!$self_class) {
+                    throw new \InvalidArgumentException(
+                        'Cannot handle ' . $return_type->value . ' when $self_class is empty'
                     );
-
-                    $return_type->value = explode('::', (string)$appearing_method_id)[0];
                 }
+
+                $return_type->value = $self_class;
             }
         }
 
         if ($return_type instanceof Type\Atomic\TArray || $return_type instanceof Type\Atomic\TGenericObject) {
             foreach ($return_type->type_params as &$type_param) {
-                $type_param = self::fleshOutType($project_checker, $type_param, $calling_class, $method_id);
+                $type_param = self::fleshOutType(
+                    $project_checker,
+                    $type_param,
+                    $self_class,
+                    $static_class
+                );
             }
         }
 
@@ -782,7 +789,7 @@ class ExpressionChecker
     ) {
         foreach ($stmt->uses as $use) {
             $use_var_id = '$' . $use->var;
-            if (!$context->hasVariable($use_var_id)) {
+            if (!$context->hasVariable($use_var_id, $statements_checker)) {
                 if ($use->byRef) {
                     $context->vars_in_scope[$use_var_id] = Type::getMixed();
                     $context->vars_possibly_in_scope[$use_var_id] = true;
@@ -888,6 +895,7 @@ class ExpressionChecker
                 $comment_type = ExpressionChecker::fleshOutType(
                     $statements_checker->getFileChecker()->project_checker,
                     $var_comment->type,
+                    $context->self,
                     $context->self
                 );
 

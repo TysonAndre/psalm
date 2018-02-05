@@ -75,7 +75,7 @@ class TypeReconciliationTest extends TestCase
     {
         $this->assertTrue(
             TypeChecker::isContainedBy(
-                $this->project_checker,
+                $this->project_checker->codebase,
                 Type::parseString($input),
                 Type::parseString($container)
             )
@@ -697,6 +697,31 @@ class TypeReconciliationTest extends TestCase
                             $one = current(static::getArr());
                             return $one instanceof static ? $one : null;
                         }
+                    }',
+            ],
+            'isaStaticClass' => [
+                '<?php
+                    abstract class Foo {
+                        /**
+                         * @return static[]
+                         */
+                        abstract public static function getArr() : array;
+
+                        /**
+                         * @return static|null
+                         */
+                        public static function getOne() {
+                            $one = current(static::getArr());
+                            return is_a($one, static::class, false) ? $one : null;
+                        }
+                    }',
+            ],
+            'isAClass' => [
+                '<?php
+                    class A {}
+                    $a_class = rand(0, 1) ? A::class : "blargle";
+                    if (is_a($a_class, A::class, true)) {
+                      echo "cool";
                     }',
             ],
         ];

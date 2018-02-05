@@ -4,10 +4,7 @@ namespace Psalm\Checker\Statements\Expression\Assignment;
 use PhpParser;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Stmt\PropertyProperty;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
-use Psalm\Checker\InterfaceChecker;
-use Psalm\Checker\MethodChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TypeChecker;
@@ -62,6 +59,7 @@ class PropertyAssignmentChecker
         $class_property_types = [];
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         $property_exists = false;
 
@@ -127,6 +125,8 @@ class PropertyAssignmentChecker
             }
 
             if ($lhs_type->isMixed()) {
+                $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
                 if (IssueBuffer::accepts(
                     new MixedPropertyAssignment(
                         $lhs_var_id . ' of type mixed cannot be assigned to',
@@ -139,6 +139,8 @@ class PropertyAssignmentChecker
 
                 return null;
             }
+
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
 
             if ($lhs_type->isNull()) {
                 if (IssueBuffer::accepts(
@@ -212,7 +214,6 @@ class PropertyAssignmentChecker
                 }
 
                 if (ExpressionChecker::isMock($lhs_type_part->value)) {
-                    $has_regular_setter = true;
                     if ($var_id) {
                         $context->vars_in_scope[$var_id] = Type::getMixed();
                     }
@@ -220,8 +221,8 @@ class PropertyAssignmentChecker
                     return null;
                 }
 
-                if (!ClassChecker::classExists($project_checker, $lhs_type_part->value)) {
-                    if (InterfaceChecker::interfaceExists($project_checker, $lhs_type_part->value)) {
+                if (!$codebase->classExists($lhs_type_part->value)) {
+                    if ($codebase->interfaceExists($lhs_type_part->value)) {
                         if (IssueBuffer::accepts(
                             new NoInterfaceProperties(
                                 'Interfaces cannot have properties',
@@ -249,7 +250,7 @@ class PropertyAssignmentChecker
                 }
 
                 if ($lhs_var_id !== '$this' &&
-                    MethodChecker::methodExists($project_checker, $lhs_type_part->value . '::__set')
+                    $codebase->methodExists($lhs_type_part->value . '::__set')
                 ) {
                     $class_storage = $project_checker->classlike_storage_provider->get((string)$lhs_type_part);
 
@@ -279,8 +280,6 @@ class PropertyAssignmentChecker
                 $property_id = $lhs_type_part->value . '::$' . $prop_name;
 
                 if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
-                    $has_regular_setter = true;
-
                     if ($stmt->var instanceof PhpParser\Node\Expr\Variable && $stmt->var->name === 'this') {
                         // if this is a proper error, we'll see it on the first pass
                         if ($context->collect_mutations) {
@@ -380,6 +379,7 @@ class PropertyAssignmentChecker
                     $class_property_type = ExpressionChecker::fleshOutType(
                         $project_checker,
                         $class_property_type,
+                        $lhs_type_part->value,
                         $lhs_type_part->value
                     );
                 }
@@ -468,7 +468,10 @@ class PropertyAssignmentChecker
                 }
             }
 
-            if ($assignment_value_type->isFalsable() && !$class_property_type->hasBool()) {
+            if (!$assignment_value_type->ignore_falsable_issues
+                && $assignment_value_type->isFalsable()
+                && !$class_property_type->hasBool()
+            ) {
                 if (IssueBuffer::accepts(
                     new PossiblyFalsePropertyAssignmentValue(
                         $var_id . ' with non-falsable declared type \'' . $class_property_type .
@@ -486,7 +489,7 @@ class PropertyAssignmentChecker
             }
 
             $type_match_found = TypeChecker::isContainedBy(
-                $project_checker,
+                $project_checker->codebase,
                 $assignment_value_type,
                 $class_property_type,
                 true,
@@ -620,6 +623,7 @@ class PropertyAssignmentChecker
         $fq_class_name = (string)$stmt->class->inferredType;
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         $prop_name = $stmt->name;
 
@@ -711,11 +715,12 @@ class PropertyAssignmentChecker
         $class_property_type = ExpressionChecker::fleshOutType(
             $project_checker,
             $class_property_type,
+            $fq_class_name,
             $fq_class_name
         );
 
         if (!TypeChecker::isContainedBy(
-            $project_checker,
+            $codebase,
             $assignment_value_type,
             $class_property_type
         )) {

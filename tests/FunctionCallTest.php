@@ -195,7 +195,12 @@ class FunctionCallTest extends TestCase
                       }
                     );',
                 'assertions' => [],
-                'error_levels' => ['MixedArrayAccess', 'MixedArgument', 'UntypedParam', 'MissingClosureReturnType'],
+                'error_levels' => [
+                    'MixedArrayAccess',
+                    'MixedArgument',
+                    'MissingClosureParamType',
+                    'MissingClosureReturnType',
+                ],
             ],
             'byRefAfterCallable' => [
                 '<?php
@@ -213,6 +218,24 @@ class FunctionCallTest extends TestCase
                     'MixedAssignment',
                     'MixedArrayAccess',
                 ],
+            ],
+            'ignoreNullablePregReplace' => [
+                '<?php
+                    function foo(string $s): string {
+                        $s = preg_replace("/hello/", "", $s);
+                        if ($s === null) {
+                            return "hello";
+                        }
+                        return $s;
+                    }
+                    function bar(string $s): string {
+                        $s = preg_replace("/hello/", "", $s);
+                        return $s;
+                    }
+                    function bat(string $s): ?string {
+                        $s = preg_replace("/hello/", "", $s);
+                        return $s;
+                    }',
             ],
             'extractVarCheck' => [
                 '<?php
@@ -375,7 +398,7 @@ class FunctionCallTest extends TestCase
                     '$a' => 'array<int, string>',
                 ],
                 'error_levels' => [
-                    'UntypedParam',
+                    'MissingClosureParamType',
                 ],
             ],
             'arrayFilterUseKey' => [
@@ -398,6 +421,47 @@ class FunctionCallTest extends TestCase
                 'assertions' => [
                     '$foo' => 'array<string, Closure>',
                 ],
+            ],
+            'ignoreFalsableCurrent' => [
+                '<?php
+                    /** @param string[] $arr */
+                    function foo(array $arr): string {
+                        return current($arr);
+                    }
+                    /** @param string[] $arr */
+                    function bar(array $arr): string {
+                        $a = current($arr);
+                        if ($a === false) {
+                            return "hello";
+                        }
+                        return $a;
+                    }
+                    /**
+                     * @param string[] $arr
+                     * @return string|false
+                     */
+                    function bat(array $arr) {
+                        return current($arr);
+                    }',
+            ],
+            'ignoreFalsableFileGetContents' => [
+                '<?php
+                    function foo(string $s): string {
+                        return file_get_contents($s);
+                    }
+                    function bar(string $s): string {
+                        $a = file_get_contents($s);
+                        if ($a === false) {
+                            return "hello";
+                        }
+                        return $a;
+                    }
+                    /**
+                     * @return string|false
+                     */
+                    function bat(string $s) {
+                        return file_get_contents($s);
+                    }',
             ],
         ];
     }
@@ -439,7 +503,8 @@ class FunctionCallTest extends TestCase
                 '<?php
                     function fooFoo(int $a): void {}
                     fooFoo(5, "dfd");',
-                'error_message' => 'TooManyArguments',
+                'error_message' => 'TooManyArguments - src/somefile.php:3 - Too many arguments for method fooFoo '
+                    . '- expecting 1 but saw 2',
             ],
             'tooManyArgumentsForConstructor' => [
                 '<?php
@@ -476,7 +541,7 @@ class FunctionCallTest extends TestCase
                      */
                     function f($p, $p) {}',
                 'error_message' => 'DuplicateParam',
-                'error_levels' => ['UntypedParam'],
+                'error_levels' => ['MissingParamType'],
             ],
             'invalidParamDefault' => [
                 '<?php

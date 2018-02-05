@@ -1,7 +1,6 @@
 <?xml version="1.0"?>
 <psalm
     name="Psalm for Psalm"
-    stopOnFirstError="false"
     useDocblockTypes="true"
     totallyTyped="true"
     strictBinaryOperands="false"
@@ -61,6 +60,9 @@
             <errorLevel type="suppress">
                 <directory name="tests" />
                 <file name="src/Psalm/Type/Atomic/GenericTrait.php" />
+            </errorLevel>
+            <errorLevel type="info">
+                <file name="src/Psalm/Codebase.php" />
             </errorLevel>
         </PossiblyUnusedMethod>
 

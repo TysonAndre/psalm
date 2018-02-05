@@ -2,7 +2,6 @@
 namespace Psalm\Checker\Statements\Expression\Fetch;
 
 use PhpParser;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
@@ -88,16 +87,17 @@ class ConstFetchChecker
     ) {
         if ($context->check_consts &&
             $stmt->class instanceof PhpParser\Node\Name &&
-            strtolower($stmt->class->parts[0]) !== 'static' &&
             is_string($stmt->name)
         ) {
-            if (strtolower($stmt->class->parts[0]) === 'self') {
+            $first_part_lc = strtolower($stmt->class->parts[0]);
+
+            if ($first_part_lc === 'self' || $first_part_lc === 'static') {
                 if (!$context->self) {
                     throw new \UnexpectedValueException('$context->self cannot be null');
                 }
 
                 $fq_class_name = (string)$context->self;
-            } elseif ($stmt->class->parts[0] === 'parent') {
+            } elseif ($first_part_lc === 'parent') {
                 $fq_class_name = $statements_checker->getParentFQCLN();
 
                 if ($fq_class_name === null) {
@@ -137,9 +137,10 @@ class ConstFetchChecker
             }
 
             $project_checker = $statements_checker->getFileChecker()->project_checker;
+            $codebase = $project_checker->codebase;
 
             // if we're ignoring that the class doesn't exist, exit anyway
-            if (!ClassLikeChecker::classOrInterfaceExists($project_checker, $fq_class_name)) {
+            if (!$codebase->classOrInterfaceExists($fq_class_name)) {
                 $stmt->inferredType = Type::getMixed();
 
                 return null;
@@ -155,7 +156,7 @@ class ConstFetchChecker
             ) {
                 $class_visibility = \ReflectionProperty::IS_PRIVATE;
             } elseif ($context->self &&
-                ClassChecker::classExtends($project_checker, $context->self, $fq_class_name)
+                $codebase->classExtends($context->self, $fq_class_name)
             ) {
                 $class_visibility = \ReflectionProperty::IS_PROTECTED;
             } else {
@@ -168,7 +169,7 @@ class ConstFetchChecker
                 $class_visibility
             );
 
-            if (!isset($class_constants[$stmt->name])) {
+            if (!isset($class_constants[$stmt->name]) && $first_part_lc !== 'static') {
                 $all_class_constants = [];
 
                 if ($fq_class_name !== $context->self) {
@@ -197,7 +198,10 @@ class ConstFetchChecker
 
                 return false;
             }
-            $stmt->inferredType = $class_constants[$stmt->name];
+            $stmt->inferredType = isset($class_constants[$stmt->name])
+                && $first_part_lc !== 'static'
+                ? $class_constants[$stmt->name]
+                : Type::getMixed();
 
             return null;
         }

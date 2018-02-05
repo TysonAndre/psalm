@@ -52,13 +52,6 @@ class Config
     private static $instance;
 
     /**
-     * Whether or not to stop when the first error is seen
-     *
-     * @var bool
-     */
-    public $stop_on_first_error = true;
-
-    /**
      * Whether or not to use types as defined in docblocks
      *
      * @var bool
@@ -182,6 +175,11 @@ class Config
     public $use_igbinary = false;
 
     /**
+     * @var bool
+     */
+    public $allow_phpstorm_generics = false;
+
+    /**
      * Psalm plugins
      *
      * @var array<Plugin>
@@ -275,13 +273,12 @@ class Config
             throw new \InvalidArgumentException('Cannot open ' . $file_path);
         }
 
-        return self::loadFromXML($file_path, $base_dir, $file_contents);
+        return self::loadFromXML($base_dir, $file_contents);
     }
 
     /**
      * Creates a new config object from an XML string
      *
-     * @param  string           $file_path
      * @param  string           $base_dir
      * @param  string           $file_contents
      *
@@ -293,7 +290,7 @@ class Config
      * @psalm-suppress MixedOperand
      * @psalm-suppress MixedPropertyAssignment
      */
-    public static function loadFromXML($file_path, $base_dir, $file_contents)
+    public static function loadFromXML($base_dir, $file_contents)
     {
         $config = new static();
 
@@ -325,11 +322,6 @@ class Config
         }
 
         $config_xml = new SimpleXMLElement($file_contents);
-
-        if (isset($config_xml['stopOnFirstError'])) {
-            $attribute_text = (string) $config_xml['stopOnFirstError'];
-            $config->stop_on_first_error = $attribute_text === 'true' || $attribute_text === '1';
-        }
 
         if (isset($config_xml['useDocblockTypes'])) {
             $attribute_text = (string) $config_xml['useDocblockTypes'];
@@ -403,6 +395,11 @@ class Config
         if (isset($config_xml['serializer'])) {
             $attribute_text = (string) $config_xml['serializer'];
             $config->use_igbinary = $attribute_text === 'igbinary';
+        }
+
+        if (isset($config_xml['allowPhpStormGenerics'])) {
+            $attribute_text = (string) $config_xml['allowPhpStormGenerics'];
+            $config->allow_phpstorm_generics = $attribute_text === 'true' || $attribute_text === '1';
         }
 
         if (isset($config_xml->projectFiles)) {
@@ -560,8 +557,7 @@ class Config
             /** @psalm-suppress UnresolvableInclude */
             require_once($path);
 
-            if (!\Psalm\Checker\ClassChecker::classExtends(
-                $project_checker,
+            if (!$codebase->classExtends(
                 $declared_classes[0],
                 'Psalm\\Scanner\\FileScanner'
             )
@@ -595,8 +591,7 @@ class Config
             /** @psalm-suppress UnresolvableInclude */
             require_once($path);
 
-            if (!\Psalm\Checker\ClassChecker::classExtends(
-                $project_checker,
+            if (!$codebase->classExtends(
                 $declared_classes[0],
                 'Psalm\\Checker\\FileChecker'
             )
@@ -635,7 +630,7 @@ class Config
         if ($this->hide_external_errors) {
             $codebase = ProjectChecker::getInstance()->codebase;
 
-            if (!$codebase->canReportIssues($file_path)) {
+            if (!$codebase->analyzer->canReportIssues($file_path)) {
                 return false;
             }
         }
@@ -731,15 +726,15 @@ class Config
             throw new \UnexpectedValueException('Cannot locate core generic stubs');
         }
 
-        $file_storage = $codebase->createFileStorageForPath($generic_stubs_path);
-        $file_to_scan = new FileScanner($generic_stubs_path, $this->shortenFileName($generic_stubs_path), false);
-        $file_to_scan->scan(
-            $codebase,
-            $codebase->getStatementsForFile($generic_stubs_path),
-            $file_storage
-        );
+        $generic_classes_path = realpath(__DIR__ . '/Stubs/CoreGenericClasses.php');
 
-        foreach ($this->stub_files as $stub_file_path) {
+        if (!$generic_classes_path) {
+            throw new \UnexpectedValueException('Cannot locate core generic classes');
+        }
+
+        $stub_files = array_merge([$generic_stubs_path, $generic_classes_path], $this->stub_files);
+
+        foreach ($stub_files as $stub_file_path) {
             $file_storage = $codebase->createFileStorageForPath($stub_file_path);
             $file_to_scan = new FileScanner($stub_file_path, $this->shortenFileName($stub_file_path), false);
             $file_to_scan->scan(
@@ -923,11 +918,43 @@ class Config
     }
 
     /**
+     * @param  string $current_dir
+     *
+     * @return string
+     *
+     * @psalm-suppress PossiblyFalseArgument
+     * @psalm-suppress MixedArrayAccess
+     * @psalm-suppress MixedAssignment
+     */
+    private static function getVendorDir($current_dir)
+    {
+        $composer_json_path = $current_dir . DIRECTORY_SEPARATOR . 'composer.json';
+
+        if (!file_exists($composer_json_path)) {
+            return 'vendor';
+        }
+
+        if (!$composer_json = json_decode(file_get_contents($composer_json_path), true)) {
+            throw new \UnexpectedValueException('Invalid composer.json at ' . $composer_json_path);
+        }
+
+        if (isset($composer_json['config']['vendor-dir'])) {
+            return (string) $composer_json['config']['vendor-dir'];
+        }
+
+        return 'vendor';
+    }
+
+    /**
      * @return array<string, string>
      */
     public function getComposerClassMap()
     {
-        $vendor_dir = $this->base_dir . 'vendor'; // this should ideally not be hardcoded
+        $vendor_dir = realpath($this->base_dir . self::getVendorDir($this->base_dir));
+
+        if (!$vendor_dir) {
+            return [];
+        }
 
         $autoload_files_classmap =
             $vendor_dir . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'autoload_classmap.php';

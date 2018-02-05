@@ -2,7 +2,6 @@
 namespace Psalm\Checker\Statements\Expression\Fetch;
 
 use PhpParser;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TypeChecker;
@@ -48,9 +47,6 @@ class ArrayFetchChecker
         PhpParser\Node\Expr\ArrayDimFetch $stmt,
         Context $context
     ) {
-        $var_type = null;
-        $used_key_type = null;
-
         $array_var_id = ExpressionChecker::getArrayVarId(
             $stmt->var,
             $statements_checker->getFQCLN(),
@@ -124,7 +120,7 @@ class ArrayFetchChecker
             );
         }
 
-        if ($keyed_array_var_id && $context->hasVariable($keyed_array_var_id)) {
+        if ($keyed_array_var_id && $context->hasVariable($keyed_array_var_id, $statements_checker)) {
             $stmt->inferredType = $context->vars_in_scope[$keyed_array_var_id];
         }
 
@@ -138,7 +134,7 @@ class ArrayFetchChecker
     /**
      * @param  Type\Union $array_type
      * @param  Type\Union $offset_type
-     * @param  ?string    $array_var_id
+     * @param  null|string    $array_var_id
      * @param  bool       $in_assignment
      * @param  bool       $inside_isset
      *
@@ -155,6 +151,7 @@ class ArrayFetchChecker
         $inside_isset = false
     ) {
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         $has_array_access = false;
         $non_array_types = [];
@@ -271,7 +268,7 @@ class ArrayFetchChecker
                         }
                     } elseif (!$type->type_params[0]->isEmpty()) {
                         if (!TypeChecker::isContainedBy(
-                            $project_checker,
+                            $project_checker->codebase,
                             $offset_type,
                             $type->type_params[0],
                             true
@@ -364,7 +361,7 @@ class ArrayFetchChecker
                             $array_access_type = Type::getMixed();
                         }
                     } elseif (TypeChecker::isContainedBy(
-                        $project_checker,
+                        $codebase,
                         $offset_type,
                         $type->getGenericKeyType(),
                         true
@@ -416,20 +413,26 @@ class ArrayFetchChecker
             }
 
             if ($type instanceof TString) {
-                if ($in_assignment && $replacement_type && $replacement_type->isMixed()) {
-                    if (IssueBuffer::accepts(
-                        new MixedStringOffsetAssignment(
-                            'Right-hand-side of string offset assignment cannot be mixed',
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        // fall through
+                if ($in_assignment && $replacement_type) {
+                    if ($replacement_type->isMixed()) {
+                        $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
+                        if (IssueBuffer::accepts(
+                            new MixedStringOffsetAssignment(
+                                'Right-hand-side of string offset assignment cannot be mixed',
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    } else {
+                        $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
                     }
                 }
 
                 if (!TypeChecker::isContainedBy(
-                    $project_checker,
+                    $project_checker->codebase,
                     $offset_type,
                     Type::getInt(),
                     true
@@ -452,6 +455,8 @@ class ArrayFetchChecker
             }
 
             if ($type instanceof TMixed || $type instanceof TEmpty) {
+                $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
                 if ($in_assignment) {
                     if (IssueBuffer::accepts(
                         new MixedArrayAssignment(
@@ -478,10 +483,12 @@ class ArrayFetchChecker
                 break;
             }
 
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+
             if ($type instanceof TNamedObject) {
                 if (strtolower($type->value) !== 'simplexmlelement'
-                    && ClassChecker::classExists($project_checker, $type->value)
-                    && !ClassChecker::classImplements($project_checker, $type->value, 'ArrayAccess')
+                    && $codebase->classExists($type->value)
+                    && !$codebase->classImplements($type->value, 'ArrayAccess')
                 ) {
                     $non_array_types[] = (string)$type;
                 } else {
@@ -549,6 +556,8 @@ class ArrayFetchChecker
         }
 
         if ($offset_type->isMixed()) {
+            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
             if (IssueBuffer::accepts(
                 new MixedArrayOffset(
                     'Cannot access value on variable ' . $array_var_id . ' using mixed offset',
@@ -558,30 +567,34 @@ class ArrayFetchChecker
             )) {
                 // fall through
             }
-        } elseif ($invalid_offset_types) {
-            $invalid_offset_type = $invalid_offset_types[0];
+        } else {
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
 
-            if ($has_valid_offset) {
-                if (IssueBuffer::accepts(
-                    new PossiblyInvalidArrayOffset(
-                        'Cannot access value on variable ' . $array_var_id . ' using ' . $offset_type
-                            . ' offset, expecting ' . $invalid_offset_type,
-                        new CodeLocation($statements_checker->getSource(), $stmt)
-                    ),
-                    $statements_checker->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-            } else {
-                if (IssueBuffer::accepts(
-                    new InvalidArrayOffset(
-                        'Cannot access value on variable ' . $array_var_id . ' using ' . $offset_type
-                            . ' offset, expecting ' . $invalid_offset_type,
-                        new CodeLocation($statements_checker->getSource(), $stmt)
-                    ),
-                    $statements_checker->getSuppressedIssues()
-                )) {
-                    // fall through
+            if ($invalid_offset_types) {
+                $invalid_offset_type = $invalid_offset_types[0];
+
+                if ($has_valid_offset) {
+                    if (IssueBuffer::accepts(
+                        new PossiblyInvalidArrayOffset(
+                            'Cannot access value on variable ' . $array_var_id . ' using ' . $offset_type
+                                . ' offset, expecting ' . $invalid_offset_type,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new InvalidArrayOffset(
+                            'Cannot access value on variable ' . $array_var_id . ' using ' . $offset_type
+                                . ' offset, expecting ' . $invalid_offset_type,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
                 }
             }
         }

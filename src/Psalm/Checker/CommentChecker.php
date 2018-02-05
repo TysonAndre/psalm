@@ -70,7 +70,7 @@ class CommentChecker
                         throw new IncorrectDocblockException('Misplaced variable');
                     }
 
-                    $var_type_string = FunctionLikeChecker::fixUpLocalType(
+                    $var_type_string = Type::fixUpLocalType(
                         $line_parts[0],
                         $aliases,
                         $template_types
@@ -292,6 +292,7 @@ class CommentChecker
 
         $info->variadic = isset($comments['specials']['psalm-variadic']);
         $info->ignore_nullable_return = isset($comments['specials']['psalm-ignore-nullable-return']);
+        $info->ignore_falsable_return = isset($comments['specials']['psalm-ignore-falsable-return']);
 
         return $info;
     }
@@ -589,7 +590,7 @@ class CommentChecker
             $description_lines = explode(PHP_EOL, $parsed_doc_comment['description']);
 
             foreach ($description_lines as $line) {
-                $doc_comment_text .= $left_padding . ' * ' . $line . PHP_EOL;
+                $doc_comment_text .= $left_padding . ' *' . (trim($line) ? ' ' . $line : '') . PHP_EOL;
             }
         }
 

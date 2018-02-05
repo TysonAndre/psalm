@@ -18,7 +18,7 @@ $options = getopt(
         'help', 'debug', 'config:', 'monochrome', 'show-info:', 'diff',
         'self-check', 'output-format:', 'report:', 'find-dead-code', 'init',
         'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache',
-        'version', 'plugin:', 'no-vendor-autoloader',
+        'version', 'plugin:', 'no-vendor-autoloader', 'stats',
     ]
 );
 
@@ -112,6 +112,9 @@ Options:
     --no-vendor-autoloader
         Set this option to allow Psalm to run when vendor/autoload.php doesn't exist (e.g. for analyzing standalone scripts).
 
+    --stats
+        Shows a breakdown of Psalm's ability to infer types in the codebase
+
 HELP;
 
     exit;
@@ -137,7 +140,9 @@ if (isset($options['r']) && is_string($options['r'])) {
     $current_dir = $root_path . DIRECTORY_SEPARATOR;
 }
 
-requireAutoloaders($current_dir, isset($options['r']), isset($options['no-vendor-autoloader']));
+$vendor_dir = getVendorDir($current_dir);
+
+requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
 
 if (array_key_exists('v', $options)) {
     /** @var string */
@@ -273,9 +278,12 @@ $project_checker = new ProjectChecker(
     $output_format,
     $threads,
     array_key_exists('debug', $options),
-    $find_dead_code || $find_references_to !== null,
     isset($options['report']) && is_string($options['report']) ? $options['report'] : null
 );
+
+if ($find_dead_code || $find_references_to !== null) {
+    $project_checker->getCodebase()->collectReferences();
+}
 
 if (isset($options['clear-cache'])) {
     $cache_directory = Config::getInstance()->getCacheDirectory();
@@ -308,8 +316,14 @@ if (array_key_exists('self-check', $options)) {
 
 if ($find_references_to) {
     $project_checker->findReferencesTo($find_references_to);
-} elseif ($find_dead_code) {
-    $project_checker->checkClassReferences();
+} elseif ($find_dead_code && !$paths_to_check && !$is_diff) {
+    if ($threads > 1) {
+        if ($output_format === ProjectChecker::TYPE_CONSOLE) {
+            echo 'Unused classes and methods cannot currently be found in multithreaded mode' . PHP_EOL;
+        }
+    } else {
+        $project_checker->checkClassReferences();
+    }
 }
 
-IssueBuffer::finish($project_checker, !$is_diff, $start_time);
+IssueBuffer::finish($project_checker, !$is_diff, $start_time, isset($options['stats']));

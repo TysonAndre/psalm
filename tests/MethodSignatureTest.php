@@ -164,6 +164,86 @@ class MethodSignatureTest extends TestCase
                         public function foo() {}
                     }',
             ],
+            'selfReturnShouldBeParent' => [
+                '<?php
+                    class A {
+                      /** @return self */
+                      public function foo() {
+                        return new A();
+                      }
+                    }
+
+                    class B extends A {
+                      public function foo() {
+                        return new A();
+                      }
+                    }',
+            ],
+            'staticReturnShouldBeStatic' => [
+                '<?php
+                    class A {
+                      /** @return static */
+                      public static function foo() {
+                        return new A();
+                      }
+                    }
+
+                    class B extends A {
+                      public static function foo() {
+                        return new B();
+                      }
+                    }
+
+                    $b = B::foo();',
+                'assertions' => [
+                    '$b' => 'B',
+                ],
+            ],
+            'allowSomeCovariance' => [
+                '<?php
+                    interface I1 {
+                        public function test(string $s) : ?string;
+                        public function testIterable(array $a) : ?iterable;
+                    }
+
+                    class A1 implements I1 {
+                        public function test(?string $s) : string {
+                            return "value";
+                        }
+                        public function testIterable(?iterable $i) : array {
+                            return [];
+                        }
+                    }',
+            ],
+            'allowVoidToNullConversion' => [
+                '<?php
+                    class A {
+                      /** @return ?string */
+                      public function foo() {
+                        return rand(0, 1) ? "hello" : null;
+                      }
+                    }
+
+                    class B extends A {
+                      public function foo(): void {
+                        return;
+                      }
+                    }
+
+                    class C extends A {
+                      /** @return void */
+                      public function foo() {
+                        return;
+                      }
+                    }
+
+                    class D extends A {
+                      /** @return null */
+                      public function foo() {
+                        return null;
+                      }
+                    }',
+            ],
         ];
     }
 
@@ -304,6 +384,21 @@ class MethodSignatureTest extends TestCase
                       }
                     }',
                 'error_message' => 'MoreSpecificImplementedParamType',
+            ],
+            'disallowVoidToNullConversionSignature' => [
+                '<?php
+                    class A {
+                      public function foo(): ?string {
+                        return rand(0, 1) ? "hello" : null;
+                      }
+                    }
+
+                    class B extends A {
+                      public function foo(): void {
+                        return;
+                      }
+                    }',
+                'error_message' => 'MethodSignatureMismatch',
             ],
         ];
     }

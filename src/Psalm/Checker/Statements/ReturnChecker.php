@@ -41,6 +41,8 @@ class ReturnChecker
 
         $source = $statements_checker->getSource();
 
+        $codebase = $project_checker->codebase;
+
         if ($doc_comment_text) {
             try {
                 $var_comment = CommentChecker::getTypeFromComment(
@@ -63,6 +65,7 @@ class ReturnChecker
                 $comment_type = ExpressionChecker::fleshOutType(
                     $project_checker,
                     $var_comment->type,
+                    $context->self,
                     $context->self
                 );
 
@@ -105,7 +108,7 @@ class ReturnChecker
                         $project_checker,
                         $stmt->inferredType,
                         $source->getFQCLN(),
-                        ''
+                        $source->getFQCLN()
                     );
 
                     $local_return_type = $source->getLocalReturnType($storage->return_type);
@@ -127,6 +130,8 @@ class ReturnChecker
                             }
                         }
 
+                        $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
                         if (IssueBuffer::accepts(
                             new MixedReturnStatement(
                                 'Could not infer a return type',
@@ -139,6 +144,8 @@ class ReturnChecker
 
                         return null;
                     }
+
+                    $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
 
                     if ($local_return_type->isVoid()) {
                         if (IssueBuffer::accepts(
@@ -154,42 +161,8 @@ class ReturnChecker
                         return null;
                     }
 
-                    if (!$stmt->inferredType->ignore_nullable_issues
-                        && $inferred_type->isNullable()
-                        && !$local_return_type->isNullable()
-                    ) {
-                        if (IssueBuffer::accepts(
-                            new NullableReturnStatement(
-                                'The declared return type \'' . $local_return_type . '\' for '
-                                    . $cased_method_id . ' is not nullable, but \'' . $inferred_type
-                                    . '\' contains null',
-                                new CodeLocation($source, $stmt)
-                            ),
-                            $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
-                    }
-
-                    if ($inferred_type->isFalsable()
-                        && !$local_return_type->isFalsable()
-                        && !$local_return_type->hasBool()
-                    ) {
-                        if (IssueBuffer::accepts(
-                            new FalsableReturnStatement(
-                                'The declared return type \'' . $local_return_type . '\' for '
-                                    . $cased_method_id . ' does not allow false, but \'' . $inferred_type
-                                    . '\' contains false',
-                                new CodeLocation($source, $stmt)
-                            ),
-                            $statements_checker->getSuppressedIssues()
-                        )) {
-                            return false;
-                        }
-                    }
-
                     if (!TypeChecker::isContainedBy(
-                        $source->getFileChecker()->project_checker,
+                        $codebase,
                         $inferred_type,
                         $local_return_type,
                         true,
@@ -235,6 +208,41 @@ class ReturnChecker
                             )) {
                                 return false;
                             }
+                        }
+                    }
+
+                    if (!$stmt->inferredType->ignore_nullable_issues
+                        && $inferred_type->isNullable()
+                        && !$local_return_type->isNullable()
+                    ) {
+                        if (IssueBuffer::accepts(
+                            new NullableReturnStatement(
+                                'The declared return type \'' . $local_return_type . '\' for '
+                                    . $cased_method_id . ' is not nullable, but \'' . $inferred_type
+                                    . '\' contains null',
+                                new CodeLocation($source, $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
+                    }
+
+                    if (!$stmt->inferredType->ignore_falsable_issues
+                        && $inferred_type->isFalsable()
+                        && !$local_return_type->isFalsable()
+                        && !$local_return_type->hasBool()
+                    ) {
+                        if (IssueBuffer::accepts(
+                            new FalsableReturnStatement(
+                                'The declared return type \'' . $local_return_type . '\' for '
+                                    . $cased_method_id . ' does not allow false, but \'' . $inferred_type
+                                    . '\' contains false',
+                                new CodeLocation($source, $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            return false;
                         }
                     }
                 }

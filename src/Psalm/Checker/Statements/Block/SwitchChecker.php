@@ -55,7 +55,7 @@ class SwitchChecker
         for ($i = count($stmt->cases) - 1; $i >= 0; --$i) {
             $case = $stmt->cases[$i];
 
-            $case_actions = $case_action_map[$i] = ScopeChecker::getFinalControlActions($case->stmts);
+            $case_actions = $case_action_map[$i] = ScopeChecker::getFinalControlActions($case->stmts, true);
 
             if (!in_array(ScopeChecker::ACTION_NONE, $case_actions, true)) {
                 if ($case_actions === [ScopeChecker::ACTION_END]) {
@@ -84,6 +84,7 @@ class SwitchChecker
                 $case_context->branch_point = $case_context->branch_point ?: (int) $stmt->getAttribute('startFilePos');
             }
             $case_context->parent_context = $context;
+            $case_context->inside_case = true;
 
             if ($case->cond) {
                 if (ExpressionChecker::analyze($statements_checker, $case->cond, $case_context) === false) {
@@ -165,7 +166,7 @@ class SwitchChecker
                     }
 
                     $case_context->vars_in_scope = $case_vars_in_scope_reconciled;
-                    foreach ($reconcilable_if_types as $var_id => $type) {
+                    foreach ($reconcilable_if_types as $var_id => $_) {
                         $case_context->vars_possibly_in_scope[$var_id] = true;
                     }
 
@@ -265,7 +266,7 @@ class SwitchChecker
                         );
                     } else {
                         foreach ($new_vars_in_scope as $new_var => $type) {
-                            if (!$case_context->hasVariable($new_var)) {
+                            if (!$case_context->hasVariable($new_var, $statements_checker)) {
                                 unset($new_vars_in_scope[$new_var]);
                             } else {
                                 $new_vars_in_scope[$new_var] =
@@ -290,6 +291,21 @@ class SwitchChecker
 
             if (!$case->cond) {
                 $has_default = true;
+            }
+
+            if ($context->collect_references) {
+                foreach ($case_context->unreferenced_vars as $var_id => $location) {
+                    if (isset($context->unreferenced_vars[$var_id])
+                        && $context->unreferenced_vars[$var_id] !== $location
+                    ) {
+                        $context->hasVariable($var_id, $statements_checker);
+                    }
+                }
+
+                $context->unreferenced_vars = array_merge(
+                    $context->unreferenced_vars,
+                    $case_context->unreferenced_vars
+                );
             }
         }
 

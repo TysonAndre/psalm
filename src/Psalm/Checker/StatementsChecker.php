@@ -26,6 +26,7 @@ use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidGlobal;
 use Psalm\Issue\UnevaluatedCode;
 use Psalm\Issue\UnrecognizedStatement;
+use Psalm\Issue\UnusedVariable;
 use Psalm\IssueBuffer;
 use Psalm\Scope\LoopScope;
 use Psalm\StatementsSource;
@@ -64,6 +65,11 @@ class StatementsChecker extends SourceChecker implements StatementsSource
      * @var array<string, FunctionChecker>
      */
     private $function_checkers = [];
+
+    /**
+     * @var array<string, array{0: string, 1: CodeLocation}>
+     */
+    private $unused_var_locations = [];
 
     /**
      * @param StatementsSource $source
@@ -244,14 +250,16 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Continue_) {
                 if ($loop_scope === null) {
-                    if (IssueBuffer::accepts(
-                        new ContinueOutsideLoop(
-                            'Continue call outside loop context',
-                            new CodeLocation($this->source, $stmt)
-                        ),
-                        $this->source->getSuppressedIssues()
-                    )) {
-                        return false;
+                    if (!$context->inside_case) {
+                        if (IssueBuffer::accepts(
+                            new ContinueOutsideLoop(
+                                'Continue call outside loop context',
+                                new CodeLocation($this->source, $stmt)
+                            ),
+                            $this->source->getSuppressedIssues()
+                        )) {
+                            return false;
+                        }
                     }
                 } elseif ($original_context) {
                     $loop_scope->final_actions[] = ScopeChecker::ACTION_CONTINUE;
@@ -326,7 +334,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                         /** @var string */
                         $method_id = $this->function_checkers[$function_id]->getMethodId();
 
-                        $function_storage = $codebase->getFunctionStorage(
+                        $function_storage = $codebase->functions->getStorage(
                             $this,
                             $method_id
                         );
@@ -367,7 +375,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                             $var_id = '$' . $var->name;
 
                             $context->vars_in_scope[$var_id] =
-                                $global_context && $global_context->hasVariable($var_id)
+                                $global_context && $global_context->hasVariable($var_id, $this)
                                     ? clone $global_context->vars_in_scope[$var_id]
                                     : Type::getMixed();
 
@@ -432,6 +440,8 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Nop) {
                 if ((string)$stmt->getDocComment()) {
+                    $var_comment = null;
+
                     try {
                         $var_comment = CommentChecker::getTypeFromComment(
                             (string)$stmt->getDocComment(),
@@ -512,6 +522,14 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
         }
 
+        if ($root_scope
+            && $context->collect_references
+            && !$project_checker->find_references_to
+            && $context->check_variables
+        ) {
+            $this->checkUnreferencedVars();
+        }
+
         if ($project_checker->alter_code && $root_scope && $this->vars_to_initialize) {
             $file_contents = $project_checker->codebase->getFileContents($this->getFilePath());
 
@@ -525,6 +543,33 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         }
 
         return null;
+    }
+
+    /**
+     * @return void
+     */
+    private function checkUnreferencedVars()
+    {
+        $source = $this->getSource();
+        $function_storage = $source instanceof FunctionLikeChecker ? $source->getFunctionLikeStorage($this) : null;
+
+        foreach ($this->unused_var_locations as list($var_id, $original_location)) {
+            if ($var_id === '$_') {
+                continue;
+            }
+
+            if (!$function_storage || !array_key_exists(substr($var_id, 1), $function_storage->param_types)) {
+                if (IssueBuffer::accepts(
+                    new UnusedVariable(
+                        'Variable ' . $var_id . ' is never referenced',
+                        $original_location
+                    ),
+                    $this->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            }
+        }
     }
 
     /**
@@ -835,7 +880,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         } elseif ($is_fully_qualified) {
             $fq_const_name = $const_name;
         } elseif (strpos($const_name, '\\')) {
-            $fq_const_name = ClassLikeChecker::getFQCLNFromString($const_name, $this->getAliases());
+            $fq_const_name = Type::getFQCLNFromString($const_name, $this->getAliases());
         }
 
         if ($fq_const_name) {
@@ -853,7 +898,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
         }
 
-        if ($context->hasVariable($const_name)) {
+        if ($context->hasVariable($const_name, $statements_checker)) {
             return $context->vars_in_scope[$const_name];
         }
 
@@ -928,6 +973,35 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         if ($branch_point) {
             $this->var_branch_points[$var_id] = $branch_point;
         }
+
+        $this->registerVariableAssignment($var_id, $location);
+    }
+
+    /**
+     * @param  string       $var_id
+     * @param  CodeLocation $location
+     *
+     * @return void
+     */
+    public function registerVariableAssignment($var_id, CodeLocation $location)
+    {
+        $this->unused_var_locations[spl_object_hash($location)] = [$var_id, $location];
+    }
+
+    /**
+     * @return void
+     */
+    public function registerVariableUse(CodeLocation $location)
+    {
+        unset($this->unused_var_locations[spl_object_hash($location)]);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: CodeLocation}>
+     */
+    public function getUnusedVarLocations()
+    {
+        return $this->unused_var_locations;
     }
 
     /**

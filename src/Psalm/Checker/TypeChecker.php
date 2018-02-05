@@ -2,6 +2,7 @@
 namespace Psalm\Checker;
 
 use Psalm\Checker\Statements\ExpressionChecker;
+use Psalm\Codebase;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
@@ -28,7 +29,6 @@ class TypeChecker
      *
      * @param  Type\Union   $input_type
      * @param  Type\Union   $container_type
-     * @param  ProjectChecker  $project_checker
      * @param  bool         $ignore_null
      * @param  bool         $ignore_false
      * @param  bool         &$has_scalar_match
@@ -40,7 +40,7 @@ class TypeChecker
      * @return bool
      */
     public static function isContainedBy(
-        ProjectChecker $project_checker,
+        Codebase $codebase,
         Type\Union $input_type,
         Type\Union $container_type,
         $ignore_null = false,
@@ -55,6 +55,7 @@ class TypeChecker
             return true;
         }
 
+        // TODO: can scalar/partial be removed?
         $has_scalar_match = true;
         $has_partial_match = false;
         $has_overall_match = true;
@@ -75,7 +76,7 @@ class TypeChecker
 
             foreach ($container_type->getTypes() as $container_type_part) {
                 $is_atomic_contained_by = self::isAtomicContainedBy(
-                    $project_checker,
+                    $codebase,
                     $input_type_part,
                     $container_type_part,
                     $scalar_type_match_found,
@@ -115,16 +116,53 @@ class TypeChecker
     }
 
     /**
-     * Can any part of the $type1 be equal to any part of $type2
+     * Used for comparing signature typehints, uses PHP's light contravariance rules
      *
-     * @param  Type\Union   $type1
-     * @param  Type\Union   $type2
-     * @param  ProjectChecker  $project_checker
+     * @param  Type\Union   $input_type
+     * @param  Type\Union   $container_type
+     *
+     * @return bool
+     */
+    public static function isContainedByInPhp(
+        Type\Union $input_type = null,
+        Type\Union $container_type
+    ) {
+        if (!$input_type) {
+            return false;
+        }
+
+        if ($input_type->getId() === $container_type->getId()) {
+            return true;
+        }
+
+        if ($input_type->isNullable() && !$container_type->isNullable()) {
+            return false;
+        }
+
+        $input_type_not_null = clone $input_type;
+        $input_type_not_null->removeType('null');
+
+        $container_type_not_null = clone $container_type;
+        $container_type_not_null->removeType('null');
+
+        if ($input_type_not_null->getId() === $container_type_not_null->getId()) {
+            return true;
+        }
+
+        if ($input_type_not_null->hasArray() && $container_type_not_null->hasType('iterable')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Can any part of the $type1 be equal to any part of $type2
      *
      * @return bool
      */
     public static function canBeIdenticalTo(
-        ProjectChecker $project_checker,
+        Codebase $codebase,
         Type\Union $type1,
         Type\Union $type2
     ) {
@@ -147,11 +185,11 @@ class TypeChecker
                 }
 
                 $either_contains = self::isAtomicContainedBy(
-                    $project_checker,
+                    $codebase,
                     $type1_part,
                     $type2_part
                 ) || self::isAtomicContainedBy(
-                    $project_checker,
+                    $codebase,
                     $type2_part,
                     $type1_part
                 );
@@ -166,14 +204,14 @@ class TypeChecker
     }
 
     /**
-     * @param  ProjectChecker $project_checker
+     * @param  Codebase       $codebase
      * @param  TNamedObject   $input_type_part
      * @param  TNamedObject   $container_type_part
      *
      * @return bool
      */
     private static function isObjectContainedByObject(
-        ProjectChecker $project_checker,
+        Codebase $codebase,
         TNamedObject $input_type_part,
         TNamedObject $container_type_part
     ) {
@@ -194,9 +232,8 @@ class TypeChecker
                 return true;
             }
 
-            if (ClassChecker::classExists($project_checker, $intersection_input_type->value)
-                && ClassChecker::classExtendsOrImplements(
-                    $project_checker,
+            if ($codebase->classExists($intersection_input_type->value)
+                && $codebase->classExtendsOrImplements(
                     $intersection_input_type->value,
                     $container_type_part->value
                 )
@@ -204,9 +241,8 @@ class TypeChecker
                 return true;
             }
 
-            if (InterfaceChecker::interfaceExists($project_checker, $intersection_input_type->value)
-                && InterfaceChecker::interfaceExtends(
-                    $project_checker,
+            if ($codebase->interfaceExists($intersection_input_type->value)
+                && $codebase->interfaceExtends(
                     $intersection_input_type->value,
                     $container_type_part->value
                 )
@@ -227,7 +263,7 @@ class TypeChecker
      *
      * @param  Type\Atomic  $input_type_part
      * @param  Type\Atomic  $container_type_part
-     * @param  ProjectChecker  $project_checker
+     * @param  Codebase     $codebase
      * @param  bool         &$has_scalar_match
      * @param  bool         &$type_coerced    whether or not there was type coercion involved
      * @param  bool         &$type_coerced_from_mixed
@@ -236,7 +272,7 @@ class TypeChecker
      * @return bool
      */
     public static function isAtomicContainedBy(
-        ProjectChecker $project_checker,
+        Codebase $codebase,
         Type\Atomic $input_type_part,
         Type\Atomic $container_type_part,
         &$has_scalar_match = null,
@@ -255,16 +291,11 @@ class TypeChecker
             return true;
         }
 
-        $input_is_object = $input_type_part->isObjectType();
-        $container_is_object = $container_type_part->isObjectType();
-
         if ($input_type_part->shallowEquals($container_type_part) ||
             (
-                $input_is_object &&
-                $container_is_object &&
                 $input_type_part instanceof TNamedObject &&
                 $container_type_part instanceof TNamedObject &&
-                self::isObjectContainedByObject($project_checker, $input_type_part, $container_type_part)
+                self::isObjectContainedByObject($codebase, $input_type_part, $container_type_part)
             )
         ) {
             $all_types_contain = true;
@@ -292,11 +323,11 @@ class TypeChecker
 
                     if (!$input_param->isEmpty() &&
                         !self::isContainedBy(
-                            $project_checker,
+                            $codebase,
                             $input_param,
                             $container_param,
                             $input_param->ignore_nullable_issues,
-                            false,
+                            $input_param->ignore_falsable_issues,
                             $has_scalar_match,
                             $type_coerced,
                             $type_coerced_from_mixed
@@ -370,17 +401,17 @@ class TypeChecker
 
                 if (!$input_property_type->isEmpty() &&
                     !self::isContainedBy(
-                        $project_checker,
+                        $codebase,
                         $input_property_type,
                         $container_property_type,
                         $input_property_type->ignore_nullable_issues,
-                        false,
+                        $input_property_type->ignore_falsable_issues,
                         $has_scalar_match,
                         $type_coerced,
                         $type_coerced_from_mixed
                     )
                 ) {
-                    if (self::isContainedBy($project_checker, $container_property_type, $input_property_type)) {
+                    if (self::isContainedBy($codebase, $container_property_type, $input_property_type)) {
                         $type_coerced = true;
                     }
 
@@ -405,9 +436,12 @@ class TypeChecker
                 (
                     $input_type_part instanceof TNamedObject &&
                     (
-                        strtolower($input_type_part->value) === 'traversable' ||
-                        ClassChecker::classExtendsOrImplements(
-                            $project_checker,
+                        strtolower($input_type_part->value) === 'traversable'
+                        || $codebase->classExtendsOrImplements(
+                            $input_type_part->value,
+                            'Traversable'
+                        )
+                        || $codebase->interfaceExtends(
                             $input_type_part->value,
                             'Traversable'
                         )
@@ -426,8 +460,8 @@ class TypeChecker
             $input_type_part instanceof TNamedObject
         ) {
             // check whether the object has a __toString method
-            if (ClassChecker::classOrInterfaceExists($project_checker, $input_type_part->value) &&
-                MethodChecker::methodExists($project_checker, $input_type_part->value . '::__toString')
+            if ($codebase->classOrInterfaceExists($input_type_part->value)
+                && $codebase->methodExists($input_type_part->value . '::__toString')
             ) {
                 $to_string_cast = true;
 
@@ -449,8 +483,8 @@ class TypeChecker
                 $input_type_part instanceof ObjectLike ||
                 (
                     $input_type_part instanceof TNamedObject &&
-                    ClassChecker::classExists($project_checker, $input_type_part->value) &&
-                    MethodChecker::methodExists($project_checker, $input_type_part->value . '::__invoke')
+                    $codebase->classExists($input_type_part->value) &&
+                    $codebase->methodExists($input_type_part->value . '::__invoke')
                 )
             )
         ) {
@@ -465,8 +499,8 @@ class TypeChecker
                 $container_type_part instanceof ObjectLike ||
                 (
                     $container_type_part instanceof TNamedObject &&
-                    ClassChecker::classExists($project_checker, $container_type_part->value) &&
-                    MethodChecker::methodExists($project_checker, $container_type_part->value . '::__invoke')
+                    $codebase->classExists($container_type_part->value) &&
+                    $codebase->methodExists($container_type_part->value . '::__invoke')
                 )
             )
         ) {
@@ -491,22 +525,21 @@ class TypeChecker
             return true;
         } elseif ($input_type_part instanceof TObject && $container_type_part instanceof TNamedObject) {
             $type_coerced = true;
-        } elseif ($container_type_part instanceof TNamedObject &&
-            $input_type_part instanceof TNamedObject &&
-            ClassChecker::classOrInterfaceExists($project_checker, $input_type_part->value) &&
-            (
+        } elseif ($container_type_part instanceof TNamedObject
+            && $input_type_part instanceof TNamedObject
+            && $codebase->classOrInterfaceExists($input_type_part->value)
+            && (
                 (
-                ClassChecker::classExists($project_checker, $container_type_part->value) &&
-                    ClassChecker::classExtendsOrImplements(
-                        $project_checker,
+                    $codebase->classExists($container_type_part->value)
+                    && $codebase->classExtendsOrImplements(
                         $container_type_part->value,
                         $input_type_part->value
                     )
-                ) ||
+                )
+                ||
                 (
-                    InterfaceChecker::interfaceExists($project_checker, $container_type_part->value) &&
-                    InterfaceChecker::interfaceExtends(
-                        $project_checker,
+                    $codebase->interfaceExists($container_type_part->value)
+                    && $codebase->interfaceExtends(
                         $container_type_part->value,
                         $input_type_part->value
                     )
@@ -607,14 +640,10 @@ class TypeChecker
     }
 
     /**
-     * @param  Type\Union   $declared_type
-     * @param  Type\Union   $inferred_type
-     * @param  ProjectChecker  $project_checker
-     *
      * @return bool
      */
     public static function hasIdenticalTypes(
-        ProjectChecker $project_checker,
+        Codebase $codebase,
         Type\Union $declared_type,
         Type\Union $inferred_type
     ) {
@@ -686,7 +715,7 @@ class TypeChecker
                         continue;
                     }
 
-                    if (!ClassLikeChecker::classOrInterfaceExists($project_checker, $differing_type)) {
+                    if (!$codebase->classOrInterfaceExists($differing_type)) {
                         break;
                     }
 
@@ -695,22 +724,17 @@ class TypeChecker
                         break;
                     }
 
-                    if (!ClassLikeChecker::classOrInterfaceExists($project_checker, $simple_declared_type)) {
+                    if (!$codebase->classOrInterfaceExists($simple_declared_type)) {
                         break;
                     }
 
-                    if (ClassChecker::classExtendsOrImplements(
-                        $project_checker,
-                        $differing_type,
-                        $simple_declared_type
-                    )
-                    ) {
+                    if ($codebase->classExtendsOrImplements($differing_type, $simple_declared_type)) {
                         $is_match = true;
                         break;
                     }
 
-                    if (InterfaceChecker::interfaceExists($project_checker, $differing_type) &&
-                        InterfaceChecker::interfaceExtends($project_checker, $differing_type, $simple_declared_type)
+                    if ($codebase->interfaceExists($differing_type) &&
+                        $codebase->interfaceExtends($differing_type, $simple_declared_type)
                     ) {
                         $is_match = true;
                         break;
@@ -745,8 +769,8 @@ class TypeChecker
 
             foreach ($declared_atomic_type->type_params as $offset => $type_param) {
                 if (!self::hasIdenticalTypes(
-                    $project_checker,
-                    $declared_atomic_type->type_params[$offset],
+                    $codebase,
+                    $type_param,
                     $inferred_atomic_type->type_params[$offset]
                 )) {
                     return false;
@@ -776,7 +800,7 @@ class TypeChecker
                 }
 
                 if (!self::hasIdenticalTypes(
-                    $project_checker,
+                    $codebase,
                     $type_param,
                     $inferred_atomic_type->properties[$property_name]
                 )) {
@@ -789,12 +813,9 @@ class TypeChecker
     }
 
     /**
-     * @param  Type\Union  $union
-     * @param  ProjectChecker $project_checker
-     *
      * @return Type\Union
      */
-    public static function simplifyUnionType(ProjectChecker $project_checker, Type\Union $union)
+    public static function simplifyUnionType(Codebase $codebase, Type\Union $union)
     {
         $union_type_count = count($union->getTypes());
 
@@ -804,6 +825,7 @@ class TypeChecker
 
         $from_docblock = $union->from_docblock;
         $ignore_nullable_issues = $union->ignore_nullable_issues;
+        $ignore_falsable_issues = $union->ignore_falsable_issues;
 
         $unique_types = [];
 
@@ -831,7 +853,7 @@ class TypeChecker
                     ) &&
                     !isset($inverse_contains[$string_input_part][$string_container_part]) &&
                     TypeChecker::isAtomicContainedBy(
-                        $project_checker,
+                        $codebase,
                         $type_part,
                         $container_type_part,
                         $has_scalar_match,
@@ -861,6 +883,7 @@ class TypeChecker
 
         $unique_type->from_docblock = $from_docblock;
         $unique_type->ignore_nullable_issues = $ignore_nullable_issues;
+        $unique_type->ignore_falsable_issues = $ignore_falsable_issues;
 
         return $unique_type;
     }

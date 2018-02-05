@@ -947,22 +947,18 @@ class PropertyTypeTest extends TestCase
             ],
             'possiblyBadArrayProperty' => [
                 '<?php
-                    class A {}
+                    class A {
+                        /** @var int[] */
+                        public $bb = [];
+                    }
 
-                    class B {}
-
-                    class C {
-                        /** @var array<int, B> */
+                    class B {
+                        /** @var string[] */
                         public $bb;
                     }
 
-                    class D {
-                        /** @var array<int, A|B> */
-                        public $bb;
-                    }
-
-                    $c = rand(0, 5) > 3 ? new C : new D;
-                    $c->bb = [new A, new B];',
+                    $c = rand(0, 1) ? new A : new B;
+                    $c->bb = ["hello", "world"];',
                 'error_message' => 'PossiblyInvalidPropertyAssignmentValue',
             ],
             'notSetInEmptyConstructor' => [
@@ -996,11 +992,8 @@ class PropertyTypeTest extends TestCase
             'abstractClassInheritsPrivateConstructor' => [
                 '<?php
                     abstract class A {
-                        /** @var string */
-                        public $foo;
-
                         private function __construct() {
-                            $this->foo = "hello";
+                            echo "hello";
                         }
                     }
 
@@ -1156,6 +1149,38 @@ class PropertyTypeTest extends TestCase
                     $a = new A();
                     $a->foo = new B;',
                 'error_message' => 'ImplicitToStringCast',
+            ],
+            'noInfiniteLoop' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        public function __construct() {
+                            $this->doThing();
+                        }
+
+                        private function doThing(): void {
+                            if (rand(0, 1)) {
+                                $this->doOtherThing();
+                            }
+                        }
+
+                        private function doOtherThing(): void {
+                            if (rand(0, 1)) {
+                                $this->doThing();
+                            }
+                        }
+                    }',
+                'error_message' => 'PropertyNotSetInConstructor',
+            ],
+            'invalidPropertyDefault' => [
+                '<?php
+                    class A {
+                        /** @var int */
+                        public $a = "hello";
+                    }',
+                'error_message' => 'InvalidPropertyAssignmentValue',
             ],
         ];
     }

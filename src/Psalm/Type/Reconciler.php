@@ -1,9 +1,7 @@
 <?php
 namespace Psalm\Type;
 
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
-use Psalm\Checker\InterfaceChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TraitChecker;
@@ -171,6 +169,7 @@ class Reconciler
         &$failed_reconciliation = false
     ) {
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         if ($existing_var_type === null) {
             if ($new_var_type === '^isset' || $new_var_type === '^!empty') {
@@ -519,8 +518,7 @@ class Reconciler
                 return $existing_var_type;
             }
 
-            $did_remove_type = $did_remove_type = $existing_var_type->hasString()
-                || $existing_var_type->hasNumericType();
+            $did_remove_type = $existing_var_type->hasString() || $existing_var_type->hasNumericType();
 
             if ($existing_var_type->hasType('bool')) {
                 $did_remove_type = true;
@@ -753,7 +751,7 @@ class Reconciler
         if ($new_type->hasObjectType()) {
             foreach ($new_type->getTypes() as $new_type_part) {
                 if ($new_type_part instanceof TNamedObject &&
-                    InterfaceChecker::interfaceExists($project_checker, $new_type_part->value)
+                    $codebase->interfaceExists($new_type_part->value)
                 ) {
                     $has_interface = true;
                     break;
@@ -768,7 +766,7 @@ class Reconciler
 
             foreach ($existing_var_type->getTypes() as $existing_var_type_part) {
                 if (TypeChecker::isAtomicContainedBy(
-                    $project_checker,
+                    $codebase,
                     $existing_var_type_part,
                     $new_type_part,
                     $scalar_type_match_found,
@@ -781,8 +779,8 @@ class Reconciler
                 }
 
                 if ($existing_var_type_part instanceof TNamedObject
-                    && (ClassChecker::classExists($project_checker, $existing_var_type_part->value)
-                        || InterfaceChecker::interfaceExists($project_checker, $existing_var_type_part->value))
+                    && ($codebase->classExists($existing_var_type_part->value)
+                        || $codebase->interfaceExists($existing_var_type_part->value))
                 ) {
                     $existing_var_type_part->addIntersectionType($new_type_part);
                     $acceptable_atomic_types[] = $existing_var_type_part;
@@ -803,7 +801,7 @@ class Reconciler
 
                 foreach ($existing_var_type->getTypes() as $existing_var_type_part) {
                     if (TypeChecker::isAtomicContainedBy(
-                        $project_checker,
+                        $project_checker->codebase,
                         $new_type_part,
                         $existing_var_type_part,
                         $scalar_type_match_found,
@@ -887,6 +885,8 @@ class Reconciler
             return null;
         }
 
+        $codebase = $project_checker->codebase;
+
         while ($key_parts) {
             $divider = array_shift($key_parts);
 
@@ -947,10 +947,7 @@ class Reconciler
                         ) {
                             $class_property_type = Type::getMixed();
                         } elseif ($existing_key_type_part instanceof TNamedObject) {
-                            if (!ClassLikeChecker::classOrInterfaceExists(
-                                $project_checker,
-                                $existing_key_type_part->value
-                            )) {
+                            if (!$codebase->classOrInterfaceExists($existing_key_type_part->value)) {
                                 continue;
                             }
 

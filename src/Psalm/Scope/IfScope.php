@@ -27,6 +27,11 @@ class IfScope
     public $redefined_vars = null;
 
     /**
+     * @var array<string, bool>|null
+     */
+    public $assigned_var_ids = null;
+
+    /**
      * @var array<string, Type\Union>
      */
     public $possibly_redefined_vars = [];
@@ -64,7 +69,7 @@ class IfScope
     /**
      * Variables that were mixed, but are no longer
      *
-     * @var array<string, Type\Union>
+     * @var array<string, Type\Union>|null
      */
     public $possible_param_types = null;
 

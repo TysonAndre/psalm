@@ -93,6 +93,7 @@ class AssignmentChecker
                 $comment_type = ExpressionChecker::fleshOutType(
                     $statements_checker->getFileChecker()->project_checker,
                     $var_comment->type,
+                    $context->self,
                     $context->self
                 );
 
@@ -155,7 +156,12 @@ class AssignmentChecker
             }
         }
 
+        $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
+
         if ($assign_value_type->isMixed()) {
+            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
             if (IssueBuffer::accepts(
                 new MixedAssignment(
                     'Cannot assign ' . $var_id . ' to a mixed type',
@@ -165,22 +171,32 @@ class AssignmentChecker
             )) {
                 // fall through
             }
-        } elseif ($var_id && isset($context->byref_constraints[$var_id])) {
-            if (!TypeChecker::isContainedBy(
-                $statements_checker->getFileChecker()->project_checker,
-                $assign_value_type,
-                $context->byref_constraints[$var_id]->type
-            )
+        } else {
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+
+            if ($var_id
+                && isset($context->byref_constraints[$var_id])
+                && ($outer_constraint_type = $context->byref_constraints[$var_id]->type)
             ) {
-                if (IssueBuffer::accepts(
-                    new ReferenceConstraintViolation(
-                        'Variable ' . $var_id . ' is limited to values of type ' .
-                            $context->byref_constraints[$var_id]->type . ' because it is passed by reference',
-                        new CodeLocation($statements_checker->getSource(), $assign_var)
-                    ),
-                    $statements_checker->getSuppressedIssues()
-                )) {
-                    // fall through
+                if (!TypeChecker::isContainedBy(
+                    $codebase,
+                    $assign_value_type,
+                    $outer_constraint_type,
+                    $assign_value_type->ignore_nullable_issues,
+                    $assign_value_type->ignore_falsable_issues
+                )
+                ) {
+                    if (IssueBuffer::accepts(
+                        new ReferenceConstraintViolation(
+                            'Variable ' . $var_id . ' is limited to values of type '
+                                . $context->byref_constraints[$var_id]->type
+                                . ' because it is passed by reference',
+                            new CodeLocation($statements_checker->getSource(), $assign_var)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
                 }
             }
         }
@@ -212,12 +228,27 @@ class AssignmentChecker
             $context->vars_possibly_in_scope[$var_id] = true;
             $context->assigned_var_ids[$var_id] = true;
 
+            $location = new CodeLocation($statements_checker, $assign_var);
+
+            if ($context->collect_references) {
+                $context->unreferenced_vars[$var_id] = $location;
+            }
+
             if (!$statements_checker->hasVariable($var_id)) {
                 $statements_checker->registerVariable(
                     $var_id,
-                    new CodeLocation($statements_checker, $assign_var),
+                    $location,
                     $context->branch_point
                 );
+            } else {
+                $statements_checker->registerVariableAssignment(
+                    $var_id,
+                    $location
+                );
+            }
+
+            if (isset($context->byref_constraints[$var_id])) {
+                $statements_checker->registerVariableUse($location);
             }
         } elseif ($assign_var instanceof PhpParser\Node\Expr\List_
             || $assign_var instanceof PhpParser\Node\Expr\Array_
@@ -286,12 +317,29 @@ class AssignmentChecker
                 if ($list_var_id) {
                     $context->vars_possibly_in_scope[$list_var_id] = true;
 
-                    if (!$statements_checker->hasVariable($list_var_id)) {
-                        $statements_checker->registerVariable(
-                            $list_var_id,
-                            new CodeLocation($statements_checker, $var),
-                            $context->branch_point
-                        );
+                    if (strpos($list_var_id, '-') === false && strpos($list_var_id, '[') === false) {
+                        $location = new CodeLocation($statements_checker, $assign_var);
+
+                        if ($context->collect_references) {
+                            $context->unreferenced_vars[$list_var_id] = $location;
+                        }
+
+                        if (!$statements_checker->hasVariable($list_var_id)) {
+                            $statements_checker->registerVariable(
+                                $list_var_id,
+                                $location,
+                                $context->branch_point
+                            );
+                        } else {
+                            $statements_checker->registerVariableAssignment(
+                                $list_var_id,
+                                $location
+                            );
+                        }
+
+                        if (isset($context->byref_constraints[$list_var_id])) {
+                            $statements_checker->registerVariableUse($location);
+                        }
                     }
 
                     $new_assign_type = null;

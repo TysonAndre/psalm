@@ -53,6 +53,18 @@ function array_intersect(array $arr, array $arr2, array $arr3 = null, array $arr
  * @template TKey
  * @template TValue
  *
+ * @param array<TKey, TValue> $arr
+ * @param array $arr2
+ * @param array|null $arr3
+ * @param array|null $arr4
+ * @return array<TKey, TValue>
+ */
+function array_intersect_key(array $arr, array $arr2, array $arr3 = null, array $arr4 = null) {}
+
+/**
+ * @template TKey
+ * @template TValue
+ *
  * @param array<mixed, TKey> $arr
  * @param array<mixed, TValue> $arr2
  * @return array<TKey, TValue>
@@ -88,7 +100,7 @@ function array_diff_key(array $arr, array $arr2, array $arr3 = null, array $arr4
  * @template TValue
  *
  * @param array<TKey, TValue> $arr
- * @return ?TValue
+ * @return null|TValue
  * @psalm-ignore-nullable-return
  */
 function array_shift(array &$arr) {}
@@ -98,7 +110,7 @@ function array_shift(array &$arr) {}
  * @template TValue
  *
  * @param array<TKey, TValue> $arr
- * @return ?TValue
+ * @return null|TValue
  * @psalm-ignore-nullable-return
  */
 function array_pop(array &$arr) {}
@@ -119,6 +131,7 @@ function array_reverse(array $arr, bool $preserve_keys = false) {}
  *
  * @param array<TKey, TValue> $arr
  * @return TValue|false
+ * @psalm-ignore-falsable-return
  */
 function current(array $arr) {}
 
@@ -128,6 +141,7 @@ function current(array $arr) {}
  *
  * @param array<TKey, TValue> $arr
  * @return TValue|false
+ * @psalm-ignore-falsable-return
  */
 function reset(array &$arr) {}
 
@@ -137,6 +151,7 @@ function reset(array &$arr) {}
  *
  * @param array<TKey, TValue> $arr
  * @return TValue|false
+ * @psalm-ignore-falsable-return
  */
 function end(array &$arr) {}
 

@@ -3,9 +3,6 @@ namespace Psalm\Codebase;
 
 use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\CommentChecker;
-use Psalm\Checker\FunctionChecker;
-use Psalm\Checker\FunctionLikeChecker;
-use Psalm\Checker\MethodChecker;
 use Psalm\Codebase;
 use Psalm\FunctionLikeParameter;
 use Psalm\Provider\ClassLikeStorageProvider;
@@ -39,15 +36,10 @@ class Reflection
     }
 
     /**
-     * @param  string          $class_name
-     * @param  \ReflectionClass $reflected_class
-     *
      * @return void
      */
-    public function registerClass(
-        $class_name,
-        \ReflectionClass $reflected_class
-    ) {
+    public function registerClass(\ReflectionClass $reflected_class)
+    {
         $class_name = $reflected_class->name;
 
         if ($class_name === 'LibXMLError') {
@@ -71,7 +63,7 @@ class Reflection
 
         if ($reflected_parent_class) {
             $parent_class_name = $reflected_parent_class->getName();
-            $this->registerClass($parent_class_name, $reflected_parent_class);
+            $this->registerClass($reflected_parent_class);
 
             $parent_storage = $this->storage_provider->get($parent_class_name);
 
@@ -82,15 +74,19 @@ class Reflection
 
             $storage->public_class_constants = $parent_storage->public_class_constants;
             $storage->protected_class_constants = $parent_storage->protected_class_constants;
-            $storage->parent_classes = array_merge([strtolower($parent_class_name)], $parent_storage->parent_classes);
+            $parent_class_name_lc = strtolower($parent_class_name);
+            $storage->parent_classes = array_merge(
+                [$parent_class_name_lc => $parent_class_name_lc],
+                $parent_storage->parent_classes
+            );
 
             $storage->used_traits = $parent_storage->used_traits;
         }
 
         $class_properties = $reflected_class->getProperties();
 
-        $public_mapped_properties = ClassLikeChecker::inPropertyMap($class_name)
-            ? ClassLikeChecker::getPropertyMap()[strtolower($class_name)]
+        $public_mapped_properties = PropertyMap::inPropertyMap($class_name)
+            ? PropertyMap::getPropertyMap()[strtolower($class_name)]
             : [];
 
         /** @var \ReflectionProperty $class_property */
@@ -146,11 +142,11 @@ class Reflection
         }
 
         if ($reflected_class->isInterface()) {
-            $this->codebase->addFullyQualifiedInterfaceName($class_name);
+            $this->codebase->classlikes->addFullyQualifiedInterfaceName($class_name);
         } elseif ($reflected_class->isTrait()) {
-            $this->codebase->addFullyQualifiedTraitName($class_name);
+            $this->codebase->classlikes->addFullyQualifiedTraitName($class_name);
         } else {
-            $this->codebase->addFullyQualifiedClassName($class_name);
+            $this->codebase->classlikes->addFullyQualifiedClassName($class_name);
         }
 
         $reflection_methods = $reflected_class->getMethods(
@@ -166,7 +162,7 @@ class Reflection
         /** @var \ReflectionClass $interface */
         foreach ($interfaces as $interface) {
             $interface_name = $interface->getName();
-            $this->registerClass($interface_name, $interface);
+            $this->registerClass($interface);
 
             if ($reflected_class->isInterface()) {
                 $storage->parent_interfaces[strtolower($interface_name)] = $interface_name;
@@ -178,21 +174,18 @@ class Reflection
         /** @var \ReflectionMethod $reflection_method */
         foreach ($reflection_methods as $reflection_method) {
             $method_reflection_class = $reflection_method->getDeclaringClass();
-            $method_class_name = $method_reflection_class->getName();
 
-            $this->registerClass($method_class_name, $method_reflection_class);
+            $this->registerClass($method_reflection_class);
 
             $this->extractReflectionMethodInfo($reflection_method);
 
             if ($reflection_method->class !== $class_name) {
-                MethodChecker::setDeclaringMethodId(
-                    $this->storage_provider,
+                $this->codebase->methods->setDeclaringMethodId(
                     $class_name . '::' . strtolower($reflection_method->name),
                     $reflection_method->class . '::' . strtolower($reflection_method->name)
                 );
 
-                MethodChecker::setAppearingMethodId(
-                    $this->storage_provider,
+                $this->codebase->methods->setAppearingMethodId(
                     $class_name . '::' . strtolower($reflection_method->name),
                     $reflection_method->class . '::' . strtolower($reflection_method->name)
                 );
@@ -224,13 +217,11 @@ class Reflection
         $storage->cased_name = $method->name;
 
         if (strtolower((string)$method->name) === strtolower((string)$method->class)) {
-            MethodChecker::setDeclaringMethodId(
-                $this->storage_provider,
+            $this->codebase->methods->setDeclaringMethodId(
                 $method->class . '::__construct',
                 $method->class . '::' . $method_name
             );
-            MethodChecker::setAppearingMethodId(
-                $this->storage_provider,
+            $this->codebase->methods->setAppearingMethodId(
                 $method->class . '::__construct',
                 $method->class . '::' . $method_name
             );
@@ -248,7 +239,7 @@ class Reflection
         $class_storage->overridden_method_ids[$method_name] = [];
 
         try {
-            $storage->return_type = FunctionChecker::getReturnTypeFromCallMap($method_id);
+            $storage->return_type = CallMap::getReturnTypeFromCallMap($method_id);
             $storage->return_type->queueClassLikesForScanning($this->codebase);
         } catch (\InvalidArgumentException $e) {
             // do nothing
@@ -258,7 +249,7 @@ class Reflection
             ? ClassLikeChecker::VISIBILITY_PRIVATE
             : ($method->isProtected() ? ClassLikeChecker::VISIBILITY_PROTECTED : ClassLikeChecker::VISIBILITY_PUBLIC);
 
-        $possible_params = FunctionChecker::getParamsFromCallMap($method_id);
+        $possible_params = CallMap::getParamsFromCallMap($method_id);
 
         if ($possible_params === null) {
             $params = $method->getParameters();
@@ -415,7 +406,7 @@ class Reflection
                     if (!$storage->return_type) {
                         $namespace = $reflection_function->getNamespaceName();
                         $aliases = new \Psalm\Aliases($namespace);
-                        $fq_return_type = FunctionLikeChecker::fixUpLocalType(
+                        $fq_return_type = Type::fixUpLocalType(
                             $docblock_info->return_type,
                             $aliases
                         );
@@ -448,8 +439,6 @@ class Reflection
 
         // register where they appear (can never be in a trait)
         foreach ($parent_storage->appearing_method_ids as $method_name => $appearing_method_id) {
-            $implemented_method_id = $fq_class_name . '::' . $method_name;
-
             $storage->appearing_method_ids[$method_name] = $appearing_method_id;
         }
 
@@ -460,7 +449,10 @@ class Reflection
             $storage->declaring_method_ids[$method_name] = $declaring_method_id;
             $storage->inheritable_method_ids[$method_name] = $declaring_method_id;
 
-            MethodChecker::setOverriddenMethodId($this->storage_provider, $implemented_method_id, $declaring_method_id);
+            $this->codebase->methods->setOverriddenMethodId(
+                $implemented_method_id,
+                $declaring_method_id
+            );
         }
     }
 

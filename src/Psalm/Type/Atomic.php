@@ -199,7 +199,7 @@ abstract class Atomic
         array $phantom_classes = []
     ) {
         if ($this instanceof TNamedObject && !isset($phantom_classes[strtolower($this->value)])) {
-            $codebase->queueClassLikeForScanning($this->value, $referencing_file_path);
+            $codebase->scanner->queueClassLikeForScanning($this->value, $referencing_file_path);
 
             return;
         }
@@ -259,7 +259,7 @@ abstract class Atomic
      * @param  int           $php_major_version
      * @param  int           $php_minor_version
      *
-     * @return ?string
+     * @return null|string
      */
     abstract public function toPhpString(
         $namespace,

@@ -45,7 +45,7 @@ class Context
     public $inside_isset = false;
 
     /**
-     * @var ?CodeLocation
+     * @var null|CodeLocation
      */
     public $include_location = null;
 
@@ -113,6 +113,13 @@ class Context
     public $collect_initializations = false;
 
     /**
+     * Stored to prevent re-analysing methods when checking for initialised properties
+     *
+     * @var array<string, bool>|null
+     */
+    public $initialized_methods = null;
+
+    /**
      * @var array<string, Type\Union>
      */
     public $constants = [];
@@ -130,6 +137,13 @@ class Context
      * @var array<string, bool>
      */
     public $referenced_var_ids = [];
+
+    /**
+     * A list of variables that have never been referenced
+     *
+     * @var array<string, CodeLocation>
+     */
+    public $unreferenced_vars = [];
 
     /**
      * A list of variables that have been passed by reference (where we know their type)
@@ -173,6 +187,13 @@ class Context
      * @var int|null
      */
     public $branch_point;
+
+    /**
+     * If we're inside case statements we allow continue; statements as an alias of break;
+     *
+     * @var bool
+     */
+    public $inside_case = false;
 
     /**
      * @param string|null $self
@@ -446,7 +467,7 @@ class Context
     /**
      * @param  string               $remove_var_id
      * @param  Union|null           $new_type
-     * @param  ?StatementsChecker   $statements_checker
+     * @param  null|StatementsChecker   $statements_checker
      *
      * @return void
      */
@@ -466,7 +487,7 @@ class Context
      * @param  string                 $remove_var_id
      * @param  \Psalm\Type\Union|null $existing_type
      * @param  \Psalm\Type\Union|null $new_type
-     * @param  ?StatementsChecker     $statements_checker
+     * @param  null|StatementsChecker     $statements_checker
      *
      * @return void
      */
@@ -602,7 +623,7 @@ class Context
      *
      * @return bool
      */
-    public function hasVariable($var_name)
+    public function hasVariable($var_name, StatementsChecker $statements_checker = null)
     {
         if (!$var_name ||
             (!isset($this->vars_possibly_in_scope[$var_name]) &&
@@ -615,6 +636,14 @@ class Context
 
         if ($stripped_var[0] === '$' && $stripped_var !== '$this') {
             $this->referenced_var_ids[$var_name] = true;
+
+            if ($this->collect_references && $statements_checker) {
+                if (isset($this->unreferenced_vars[$var_name])) {
+                    $statements_checker->registerVariableUse($this->unreferenced_vars[$var_name]);
+                }
+
+                unset($this->unreferenced_vars[$var_name]);
+            }
         }
 
         return isset($this->vars_in_scope[$var_name]);

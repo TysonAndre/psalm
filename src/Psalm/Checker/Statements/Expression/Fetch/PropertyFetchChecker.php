@@ -2,10 +2,7 @@
 namespace Psalm\Checker\Statements\Expression\Fetch;
 
 use PhpParser;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
-use Psalm\Checker\InterfaceChecker;
-use Psalm\Checker\MethodChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\CodeLocation;
@@ -49,13 +46,12 @@ class PropertyFetchChecker
             }
         }
 
-        $var_id = null;
-
         if (ExpressionChecker::analyze($statements_checker, $stmt->var, $context) === false) {
             return false;
         }
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         $stmt_var_id = ExpressionChecker::getVarId(
             $stmt->var,
@@ -71,7 +67,7 @@ class PropertyFetchChecker
 
         $stmt_var_type = null;
 
-        if ($var_id && $context->hasVariable($var_id)) {
+        if ($var_id && $context->hasVariable($var_id, $statements_checker)) {
             // we don't need to check anything
             $stmt->inferredType = $context->vars_in_scope[$var_id];
 
@@ -83,6 +79,10 @@ class PropertyFetchChecker
                 // log the appearance
                 foreach ($stmt->var->inferredType->getTypes() as $lhs_type_part) {
                     if ($lhs_type_part instanceof TNamedObject) {
+                        if (!$codebase->classExists($lhs_type_part->value)) {
+                            continue;
+                        }
+
                         $property_id = $lhs_type_part->value . '::$' . $stmt->name;
 
                         ClassLikeChecker::propertyExists(
@@ -97,7 +97,7 @@ class PropertyFetchChecker
             return null;
         }
 
-        if ($stmt_var_id && $context->hasVariable($stmt_var_id)) {
+        if ($stmt_var_id && $context->hasVariable($stmt_var_id, $statements_checker)) {
             $stmt_var_type = $context->vars_in_scope[$stmt_var_id];
         } elseif (isset($stmt->var->inferredType)) {
             /** @var Type\Union */
@@ -137,6 +137,8 @@ class PropertyFetchChecker
         }
 
         if ($stmt_var_type->isMixed()) {
+            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
             if (IssueBuffer::accepts(
                 new MixedPropertyFetch(
                     'Cannot fetch property on mixed var ' . $stmt_var_id,
@@ -151,6 +153,8 @@ class PropertyFetchChecker
 
             return null;
         }
+
+        $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
 
         if ($stmt_var_type->isNullable() && !$stmt_var_type->ignore_nullable_issues && !$context->inside_isset) {
             if (IssueBuffer::accepts(
@@ -204,8 +208,8 @@ class PropertyFetchChecker
                 continue;
             }
 
-            if (!ClassChecker::classExists($project_checker, $lhs_type_part->value)) {
-                if (InterfaceChecker::interfaceExists($project_checker, $lhs_type_part->value)) {
+            if (!$codebase->classExists($lhs_type_part->value)) {
+                if ($codebase->interfaceExists($lhs_type_part->value)) {
                     if (IssueBuffer::accepts(
                         new NoInterfaceProperties(
                             'Interfaces cannot have properties',
@@ -234,7 +238,7 @@ class PropertyFetchChecker
 
             $property_id = $lhs_type_part->value . '::$' . $stmt->name;
 
-            if (MethodChecker::methodExists($project_checker, $lhs_type_part->value . '::__get')) {
+            if ($codebase->methodExists($lhs_type_part->value . '::__get')) {
                 if ($stmt_var_id !== '$this' || !ClassLikeChecker::propertyExists($project_checker, $property_id)) {
                     $class_storage = $project_checker->classlike_storage_provider->get((string)$lhs_type_part);
 
@@ -341,6 +345,7 @@ class PropertyFetchChecker
                 $class_property_type = ExpressionChecker::fleshOutType(
                     $project_checker,
                     clone $class_property_type,
+                    $declaring_property_class,
                     $declaring_property_class
                 );
 
@@ -504,7 +509,7 @@ class PropertyFetchChecker
 
             $property_id = $fq_class_name . '::$' . $stmt->name;
 
-            if ($var_id && $context->hasVariable($var_id)) {
+            if ($var_id && $context->hasVariable($var_id, $statements_checker)) {
                 // we don't need to check anything
                 $stmt->inferredType = $context->vars_in_scope[$var_id];
 

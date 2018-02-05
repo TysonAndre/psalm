@@ -28,7 +28,7 @@ class TemplateChecker extends Psalm\Checker\FileChecker
     public function analyze(Context $context = null, $update_docblocks = false)
     {
         $codebase = $this->project_checker->getCodebase();
-        $codebase->enableCheckerCache();
+        $this->project_checker->enableCheckerCache();
         $stmts = $codebase->getStatementsForFile($this->file_path);
 
         if (empty($stmts)) {
@@ -77,7 +77,7 @@ class TemplateChecker extends Psalm\Checker\FileChecker
 
         $this->checkWithViewClass($this_params, $stmts);
 
-        $codebase->disableCheckerCache();
+        $this->project_checker->disableCheckerCache();
     }
 
     /**
@@ -118,7 +118,7 @@ class TemplateChecker extends Psalm\Checker\FileChecker
         $view_context->self = self::VIEW_CLASS;
 
         // add all $this-> vars to scope
-        foreach ($this_context->vars_possibly_in_scope as $var => $type) {
+        foreach ($this_context->vars_possibly_in_scope as $var => $_) {
             $view_context->vars_in_scope[str_replace('$this->', '$', $var)] = Type::getMixed();
         }
 

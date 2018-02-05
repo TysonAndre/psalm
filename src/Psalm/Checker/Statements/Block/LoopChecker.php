@@ -21,7 +21,7 @@ class LoopChecker
      *
      * @param  array<PhpParser\Node\Stmt|PhpParser\Node\Expr>   $stmts
      * @param  PhpParser\Node\Expr[]                            $pre_conditions
-     * @param  PhpParser\Node\Expr[]                            $post_conditions
+     * @param  PhpParser\Node\Expr[]                            $post_expressions
      * @param  Context                                          $loop_scope->loop_context
      * @param  Context                                          $loop_scope->loop_parent_context
      *
@@ -31,7 +31,7 @@ class LoopChecker
         StatementsChecker $statements_checker,
         array $stmts,
         array $pre_conditions,
-        array $post_conditions,
+        array $post_expressions,
         LoopScope $loop_scope,
         Context &$inner_context = null
     ) {
@@ -40,7 +40,7 @@ class LoopChecker
         $assignment_mapper = new \Psalm\Visitor\AssignmentMapVisitor($loop_scope->loop_context->self);
         $traverser->addVisitor($assignment_mapper);
 
-        $traverser->traverse(array_merge($stmts, $post_conditions));
+        $traverser->traverse(array_merge($stmts, $post_expressions));
 
         $assignment_map = $assignment_mapper->getAssignmentMap();
 
@@ -101,10 +101,10 @@ class LoopChecker
             $statements_checker->analyze($stmts, $inner_context, $loop_scope);
             self::updateLoopScopeContexts($loop_scope, $loop_scope->loop_parent_context);
 
-            foreach ($post_conditions as $post_condition) {
+            foreach ($post_expressions as $post_expression) {
                 if (ExpressionChecker::analyze(
                     $statements_checker,
-                    $post_condition,
+                    $post_expression,
                     $loop_scope->loop_context
                 ) === false
                 ) {
@@ -149,8 +149,8 @@ class LoopChecker
 
             $inner_context->protected_var_ids = $original_protected_var_ids;
 
-            foreach ($post_conditions as $post_condition) {
-                if (ExpressionChecker::analyze($statements_checker, $post_condition, $inner_context) === false) {
+            foreach ($post_expressions as $post_expression) {
+                if (ExpressionChecker::analyze($statements_checker, $post_expression, $inner_context) === false) {
                     return false;
                 }
             }
@@ -225,6 +225,17 @@ class LoopChecker
                     break;
                 }
 
+                if ($inner_context->collect_references) {
+                    foreach ($inner_context->unreferenced_vars as $var_id => $location) {
+                        if (isset($loop_scope->loop_parent_context->vars_in_scope[$var_id])
+                            && (!isset($loop_scope->loop_parent_context->unreferenced_vars[$var_id])
+                                || $loop_scope->loop_parent_context->unreferenced_vars[$var_id] !== $location)
+                        ) {
+                            $statements_checker->registerVariableUse($location);
+                        }
+                    }
+                }
+
                 // remove vars that were defined in the foreach
                 foreach ($vars_to_remove as $var_id) {
                     unset($inner_context->vars_in_scope[$var_id]);
@@ -252,8 +263,8 @@ class LoopChecker
 
                 $inner_context->protected_var_ids = $original_protected_var_ids;
 
-                foreach ($post_conditions as $post_condition) {
-                    if (ExpressionChecker::analyze($statements_checker, $post_condition, $inner_context) === false) {
+                foreach ($post_expressions as $post_expression) {
+                    if (ExpressionChecker::analyze($statements_checker, $post_expression, $inner_context) === false) {
                         return false;
                     }
                 }
@@ -365,6 +376,18 @@ class LoopChecker
             $inner_context->referenced_var_ids,
             $loop_scope->loop_context->referenced_var_ids
         );
+
+        if ($inner_context->collect_references) {
+            foreach ($inner_context->unreferenced_vars as $var_id => $location) {
+                if (!isset($loop_scope->loop_context->unreferenced_vars[$var_id])) {
+                    $loop_scope->loop_context->unreferenced_vars[$var_id] = $location;
+                } elseif (!isset($loop_scope->loop_context->unreferenced_vars[$var_id])
+                    || $loop_scope->loop_context->unreferenced_vars[$var_id] !== $location
+                ) {
+                    $statements_checker->registerVariableUse($location);
+                }
+            }
+        }
     }
 
     /**
@@ -391,7 +414,9 @@ class LoopChecker
 
             if ($loop_scope->possibly_redefined_loop_vars) {
                 foreach ($loop_scope->possibly_redefined_loop_vars as $var => $type) {
-                    if ($loop_scope->loop_context->hasVariable($var) && !isset($updated_loop_vars[$var])) {
+                    if ($loop_scope->loop_context->hasVariable($var)
+                        && !isset($updated_loop_vars[$var])
+                    ) {
                         $loop_scope->loop_context->vars_in_scope[$var] = Type::combineUnionTypes(
                             $loop_scope->loop_context->vars_in_scope[$var],
                             $type

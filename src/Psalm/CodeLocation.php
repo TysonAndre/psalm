@@ -41,7 +41,7 @@ class CodeLocation
     /** @var string */
     private $snippet = '';
 
-    /** @var ?string */
+    /** @var null|string */
     private $text;
 
     /** @var int|null */
@@ -50,13 +50,13 @@ class CodeLocation
     /** @var int|null */
     private $docblock_line_number;
 
-    /** @var ?int */
+    /** @var null|int */
     private $regex_type;
 
     /** @var bool */
     private $have_recalculated = false;
 
-    /** @var ?CodeLocation */
+    /** @var null|CodeLocation */
     public $previous_location;
 
     const VAR_TYPE = 0;
@@ -65,12 +65,13 @@ class CodeLocation
     const FUNCTION_PHPDOC_RETURN_TYPE = 3;
     const FUNCTION_PHPDOC_PARAM_TYPE = 4;
     const FUNCTION_PARAM_VAR = 5;
+    const CATCH_VAR = 6;
 
     /**
-     * @param bool             $single_line
-     * @param ?int             $regex_type
-     * @param ?CodeLocation    $previous_location
-     * @param ?string          $selected_text
+     * @param bool                 $single_line
+     * @param null|int             $regex_type
+     * @param null|CodeLocation    $previous_location
+     * @param null|string          $selected_text
      */
     public function __construct(
         FileSource $file_source,
@@ -153,8 +154,6 @@ class CodeLocation
 
             $preview_offset = 0;
 
-            $i = 0;
-
             $comment_line_offset = $this->docblock_line_number - $this->docblock_start_line_number;
 
             for ($i = 0; $i < $comment_line_offset; ++$i) {
@@ -200,6 +199,11 @@ class CodeLocation
 
                 case self::FUNCTION_PARAM_VAR:
                     $regex = '/(\$[^ ]*)/';
+                    $match_offset = 1;
+                    break;
+
+                case self::CATCH_VAR:
+                    $regex = '/(\$[^ ^\)]*)/';
                     $match_offset = 1;
                     break;
 

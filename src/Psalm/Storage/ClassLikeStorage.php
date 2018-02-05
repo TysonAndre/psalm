@@ -35,6 +35,11 @@ class ClassLikeStorage
     /**
      * @var bool
      */
+    public $stubbed = false;
+
+    /**
+     * @var bool
+     */
     public $all_properties_set_in_constructor = false;
 
     /**
@@ -81,7 +86,7 @@ class ClassLikeStorage
     /**
      * Parent class names (normalized to be lowercase)
      *
-     * @var  array<string>
+     * @var array<string, string>
      */
     public $parent_classes = [];
 
@@ -134,6 +139,11 @@ class ClassLikeStorage
      * @var array<string, array<string>>
      */
     public $overridden_method_ids = [];
+
+    /**
+     * @var array<string, array<string>>
+     */
+    public $interface_method_ids = [];
 
     /**
      * @var array<string, string>

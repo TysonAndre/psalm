@@ -39,6 +39,11 @@ use function trim;
 abstract class Type
 {
     /**
+     * @var array<string, string[]>
+     */
+    private static $memoized_tokens = [];
+
+    /**
      * Parses a string type representation
      *
      * @param  string $type_string
@@ -91,7 +96,7 @@ abstract class Type
      *
      * @return string
      */
-    public static function fixScalarTerms($type_string, $php_compatible = false)
+    private static function fixScalarTerms($type_string, $php_compatible = false)
     {
         $type_string_lc = strtolower($type_string);
 
@@ -250,6 +255,10 @@ abstract class Type
             $return_type = str_replace(' ', '', $return_type);
         }
 
+        if (isset(self::$memoized_tokens[$return_type])) {
+            return self::$memoized_tokens[$return_type];
+        }
+
         // index of last type token
         $rtc = 0;
 
@@ -283,7 +292,93 @@ abstract class Type
             }
         }
 
+        self::$memoized_tokens[$return_type] = $return_type_tokens;
+
         return $return_type_tokens;
+    }
+
+    /**
+     * @param  string                       $return_type
+     * @param  Aliases                      $aliases
+     * @param  array<string, string>|null   $template_types
+     *
+     * @return string
+     */
+    public static function fixUpLocalType(
+        $return_type,
+        Aliases $aliases,
+        array $template_types = null
+    ) {
+        if (strpos($return_type, '[') !== false) {
+            $return_type = self::convertSquareBrackets($return_type);
+        }
+
+        $return_type_tokens = self::tokenize($return_type);
+
+        foreach ($return_type_tokens as $i => &$return_type_token) {
+            if (in_array($return_type_token, ['<', '>', '|', '?', ',', '{', '}', ':'], true)) {
+                continue;
+            }
+
+            if (isset($return_type_tokens[$i + 1]) && $return_type_tokens[$i + 1] === ':') {
+                continue;
+            }
+
+            $return_type_token = self::fixScalarTerms($return_type_token);
+
+            if ($return_type_token[0] === strtoupper($return_type_token[0]) &&
+                !isset($template_types[$return_type_token])
+            ) {
+                if ($return_type_token[0] === '$') {
+                    if ($return_type === '$this') {
+                        $return_type_token = 'static';
+                    }
+
+                    continue;
+                }
+
+                $return_type_token = self::getFQCLNFromString(
+                    $return_type_token,
+                    $aliases
+                );
+            }
+        }
+
+        return implode('', $return_type_tokens);
+    }
+
+    /**
+     * @param  string                   $class
+     * @param  Aliases                  $aliases
+     *
+     * @return string
+     */
+    public static function getFQCLNFromString($class, Aliases $aliases)
+    {
+        if (empty($class)) {
+            throw new \InvalidArgumentException('$class cannot be empty');
+        }
+
+        if ($class[0] === '\\') {
+            return substr($class, 1);
+        }
+
+        $imported_namespaces = $aliases->uses;
+
+        if (strpos($class, '\\') !== false) {
+            $class_parts = explode('\\', $class);
+            $first_namespace = array_shift($class_parts);
+
+            if (isset($imported_namespaces[strtolower($first_namespace)])) {
+                return $imported_namespaces[strtolower($first_namespace)] . '\\' . implode('\\', $class_parts);
+            }
+        } elseif (isset($imported_namespaces[strtolower($class)])) {
+            return $imported_namespaces[strtolower($class)];
+        }
+
+        $namespace = $aliases->namespace;
+
+        return ($namespace ? $namespace . '\\' : '') . $class;
     }
 
     /**
@@ -541,6 +636,10 @@ abstract class Type
             $combined_type->ignore_nullable_issues = true;
         }
 
+        if ($type_1->ignore_falsable_issues || $type_2->ignore_falsable_issues) {
+            $combined_type->ignore_falsable_issues = true;
+        }
+
         if ($both_failed_reconciliation) {
             $combined_type->failed_reconciliation = true;
         }
@@ -764,9 +863,7 @@ abstract class Type
         $type_key = $type->getKey();
 
         if ($type instanceof TArray || $type instanceof TGenericObject) {
-            for ($i = 0; $i < count($type->type_params); ++$i) {
-                $type_param = $type->type_params[$i];
-
+            foreach ($type->type_params as $i => $type_param) {
                 if (isset($combination->type_params[$type_key][$i])) {
                     $combination->type_params[$type_key][$i] = Type::combineUnionTypes(
                         $combination->type_params[$type_key][$i],

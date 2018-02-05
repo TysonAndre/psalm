@@ -1,10 +1,86 @@
 <?php
 namespace Psalm\Tests;
 
+use Psalm\Config;
+use Psalm\Context;
+
 class AnnotationTest extends TestCase
 {
     use Traits\FileCheckerInvalidCodeParseTestTrait;
     use Traits\FileCheckerValidCodeParseTestTrait;
+
+    /**
+     * @return void
+     */
+    public function testPhpStormGenericsWithValidArgument()
+    {
+        Config::getInstance()->allow_phpstorm_generics = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param ArrayIterator|string[] $i */
+                function takesArrayIteratorOfString(ArrayIterator $i): void {
+                    $s = $i->offsetGet("a");
+                    takesString($s);
+
+                    foreach ($i as $s2) {
+                        takesString($s2);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidScalarArgument
+     *
+     * @return                   void
+     */
+    public function testPhpStormGenericsInvalidArgument()
+    {
+        Config::getInstance()->allow_phpstorm_generics = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesInt(int $s): void {}
+
+                /** @param ArrayIterator|string[] $i */
+                function takesArrayIteratorOfString(ArrayIterator $i): void {
+                    $s = $i->offsetGet("a");
+                    takesInt($s);
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage PossiblyInvalidMethodCall
+     *
+     * @return                   void
+     */
+    public function testPhpStormGenericsNoTypehint()
+    {
+        Config::getInstance()->allow_phpstorm_generics = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /** @param ArrayIterator|string[] $i */
+                function takesArrayIteratorOfString($i): void {
+                    $s = $i->offsetGet("a");
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
 
     /**
      * @return array
@@ -115,6 +191,8 @@ class AnnotationTest extends TestCase
             ],
             'propertyDocblock' => [
                 '<?php
+                    namespace Bar;
+
                     /**
                      * @property string $foo
                      */
@@ -138,8 +216,37 @@ class AnnotationTest extends TestCase
                     $a->foo = "hello";
                     $a->bar = "hello"; // not a property',
             ],
+            'propertyOfTypeClassDocblock' => [
+                '<?php
+                    namespace Bar;
+
+                    class PropertyType {}
+
+                    /**
+                     * @property PropertyType $foo
+                     */
+                    class A {
+                        /** @param string $name */
+                        public function __get($name): ?string {
+                            if ($name === "foo") {
+                                return "hello";
+                            }
+                        }
+
+                        /**
+                         * @param string $name
+                         * @param mixed $value
+                         */
+                        public function __set($name, $value): void {
+                        }
+                    }
+
+                    $a = new A();
+                    $a->foo = new PropertyType();',
+            ],
             'propertySealedDocblockDefinedPropertyFetch' => [
                 '<?php
+                    namespace Bar;
                     /**
                      * @property string $foo
                      * @psalm-seal-properties
@@ -413,7 +520,8 @@ class AnnotationTest extends TestCase
                     }
 
                     fooBar("hello");',
-                'error_message' => 'TooManyArguments',
+                'error_message' => 'TooManyArguments - src/somefile.php:8 - Too many arguments for method fooBar '
+                    . '- expecting 0 but saw 1',
             ],
             'missingParamVar' => [
                 '<?php
@@ -454,6 +562,37 @@ class AnnotationTest extends TestCase
                     $a = new A();
                     $a->foo = 5;',
                 'error_message' => 'InvalidPropertyAssignmentValue',
+            ],
+            'propertyInvalidClassAssignment' => [
+                '<?php
+                    namespace Bar;
+
+                    class PropertyType {}
+                    class SomeOtherPropertyType {}
+
+                    /**
+                     * @property PropertyType $foo
+                     */
+                    class A {
+                        /** @param string $name */
+                        public function __get($name): ?string {
+                            if ($name === "foo") {
+                                return "hello";
+                            }
+                        }
+
+                        /**
+                         * @param string $name
+                         * @param mixed $value
+                         */
+                        public function __set($name, $value): void {
+                        }
+                    }
+
+                    $a = new A();
+                    $a->foo = new SomeOtherPropertyType();',
+                'error_message' => 'InvalidPropertyAssignmentValue - src/somefile.php:27 - $a->foo with declared type'
+                    . ' \'Bar\PropertyType\' cannot',
             ],
             'propertyWriteDocblockInvalidAssignment' => [
                 '<?php
@@ -609,7 +748,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo substr($a, 4, 2);
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be string',
                 'error_levels' => ['MixedArgument'],
             ],
@@ -618,7 +757,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo $a . "foo";
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be string',
                 'error_levels' => ['MixedOperand'],
             ],
@@ -627,7 +766,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo $a + 5;
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be int|float',
                 'error_levels' => ['MixedOperand', 'MixedArgument'],
             ],
@@ -636,7 +775,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo $a / 5;
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be int|float',
                 'error_levels' => ['MixedOperand', 'MixedArgument'],
             ],
@@ -645,7 +784,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo "$a";
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be string',
                 'error_levels' => ['MixedOperand'],
             ],
@@ -658,7 +797,7 @@ class AnnotationTest extends TestCase
                             echo substr("hello", $a, 2);
                         }
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be int|string',
                 'error_levels' => ['MixedArgument'],
             ],
@@ -671,7 +810,7 @@ class AnnotationTest extends TestCase
                     class B extends A {
                         public function foo($a): void {}
                     }',
-                'error_message' => 'UntypedParam',
+                'error_message' => 'MissingParamType',
                 'error_levels' => ['MethodSignatureMismatch'],
             ],
             'alreadyHasCheck' => [
@@ -681,7 +820,7 @@ class AnnotationTest extends TestCase
                     function shouldTakeString($s): void {
                       if (is_string($s)) takesString($s);
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:4 - Parameter $s has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:4 - Parameter $s has no provided type,'
                     . ' could not infer',
                 'error_levels' => ['MixedArgument'],
             ],
@@ -696,7 +835,7 @@ class AnnotationTest extends TestCase
                       $s = returnsMixed();
                       takesString($s);
                     }',
-                'error_message' => 'UntypedParam - src/somefile.php:7 - Parameter $s has no provided type,'
+                'error_message' => 'MissingParamType - src/somefile.php:7 - Parameter $s has no provided type,'
                     . ' could not infer',
                 'error_levels' => ['MixedArgument', 'InvalidReturnType', 'MixedAssignment'],
             ],
@@ -775,6 +914,20 @@ class AnnotationTest extends TestCase
                         return true;
                     }',
                 'error_message' => 'UndefinedClass',
+            ],
+            'noPhpStormAnnotationsThankYou' => [
+                '<?php
+                    /** @param ArrayIterator|string[] $i */
+                    function takesArrayIteratorOfString(ArrayIterator $i): void {}',
+                'error_message' => 'MismatchingDocblockParamType',
+            ],
+            'noPhpStormAnnotationsPossiblyInvalid' => [
+                '<?php
+                    /** @param ArrayIterator|string[] $i */
+                    function takesArrayIteratorOfString($i): void {
+                        $s = $i->offsetGet("a");
+                    }',
+                'error_message' => 'PossiblyInvalidMethodCall',
             ],
         ];
     }

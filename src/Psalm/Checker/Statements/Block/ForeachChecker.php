@@ -2,11 +2,8 @@
 namespace Psalm\Checker\Statements\Block;
 
 use PhpParser;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\CommentChecker;
-use Psalm\Checker\InterfaceChecker;
-use Psalm\Checker\MethodChecker;
 use Psalm\Checker\Statements\Expression\AssignmentChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
@@ -44,6 +41,7 @@ class ForeachChecker
         $foreach_context = clone $context;
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         if ($project_checker->alter_code) {
             $foreach_context->branch_point =
@@ -62,7 +60,7 @@ class ForeachChecker
         if (isset($stmt->expr->inferredType)) {
             /** @var Type\Union */
             $iterator_type = $stmt->expr->inferredType;
-        } elseif ($var_id && $foreach_context->hasVariable($var_id)) {
+        } elseif ($var_id && $foreach_context->hasVariable($var_id, $statements_checker)) {
             $iterator_type = $foreach_context->vars_in_scope[$var_id];
         } else {
             $iterator_type = null;
@@ -162,8 +160,7 @@ class ForeachChecker
                     if ($iterator_type instanceof Type\Atomic\TGenericObject &&
                         (strtolower($iterator_type->value) === 'iterable' ||
                             strtolower($iterator_type->value) === 'traversable' ||
-                            ClassChecker::classImplements(
-                                $project_checker,
+                            $codebase->classImplements(
                                 $iterator_type->value,
                                 'Traversable'
                             ))
@@ -189,29 +186,31 @@ class ForeachChecker
                         continue;
                     }
 
-                    if (ClassChecker::classImplements(
-                        $project_checker,
+                    if ($codebase->classImplements(
                         $iterator_type->value,
                         'Iterator'
                     ) ||
                         (
-                            InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
-                            && InterfaceChecker::interfaceExtends(
-                                $project_checker,
+                            $codebase->interfaceExists($iterator_type->value)
+                            && $codebase->interfaceExtends(
                                 $iterator_type->value,
                                 'Iterator'
                             )
                         )
                     ) {
                         $iterator_method = $iterator_type->value . '::current';
-                        $iterator_class_type = MethodChecker::getMethodReturnType($project_checker, $iterator_method);
+                        $self_class = $iterator_type->value;
+                        $iterator_class_type = $codebase->methods->getMethodReturnType(
+                            $iterator_method,
+                            $self_class
+                        );
 
                         if ($iterator_class_type) {
                             $value_type_part = ExpressionChecker::fleshOutType(
                                 $project_checker,
                                 $iterator_class_type,
-                                $iterator_type->value,
-                                $iterator_method
+                                $self_class,
+                                $self_class
                             );
 
                             if (!$value_type) {
@@ -222,15 +221,13 @@ class ForeachChecker
                         } else {
                             $value_type = Type::getMixed();
                         }
-                    } elseif (ClassChecker::classImplements(
-                        $project_checker,
+                    } elseif ($codebase->classImplements(
                         $iterator_type->value,
                         'Traversable'
                     ) ||
                         (
-                            InterfaceChecker::interfaceExists($project_checker, $iterator_type->value)
-                            && InterfaceChecker::interfaceExtends(
-                                $project_checker,
+                            $codebase->interfaceExists($iterator_type->value)
+                            && $codebase->interfaceExtends(
                                 $iterator_type->value,
                                 'Traversable'
                             )
@@ -256,20 +253,37 @@ class ForeachChecker
             }
         }
 
-        $before_context = clone $foreach_context;
-
         if ($stmt->keyVar && $stmt->keyVar instanceof PhpParser\Node\Expr\Variable && is_string($stmt->keyVar->name)) {
             $key_var_id = '$' . $stmt->keyVar->name;
             $foreach_context->vars_in_scope[$key_var_id] = $key_type ?: Type::getMixed();
             $foreach_context->vars_possibly_in_scope[$key_var_id] = true;
 
+            $location = new CodeLocation($statements_checker, $stmt->keyVar);
+
+            if ($context->collect_references && !isset($foreach_context->byref_constraints[$key_var_id])) {
+                $foreach_context->unreferenced_vars[$key_var_id] = $location;
+            }
+
             if (!$statements_checker->hasVariable($key_var_id)) {
                 $statements_checker->registerVariable(
                     $key_var_id,
-                    new CodeLocation($statements_checker, $stmt->keyVar),
+                    $location,
                     $foreach_context->branch_point
                 );
             }
+
+            if ($stmt->byRef) {
+                $statements_checker->registerVariableUse($location);
+            }
+        }
+
+        if ($context->collect_references
+            && $stmt->byRef
+            && $stmt->valueVar instanceof PhpParser\Node\Expr\Variable
+            && is_string($stmt->valueVar->name)
+        ) {
+            $foreach_context->byref_constraints['$' . $stmt->valueVar->name]
+                = new \Psalm\ReferenceConstraint($value_type);
         }
 
         AssignmentChecker::analyze(
@@ -308,6 +322,7 @@ class ForeachChecker
                 $comment_type = ExpressionChecker::fleshOutType(
                     $project_checker,
                     $var_comment->type,
+                    $context->self,
                     $context->self
                 );
 
@@ -334,6 +349,10 @@ class ForeachChecker
             $foreach_context->referenced_var_ids,
             $context->referenced_var_ids
         );
+
+        if ($context->collect_references) {
+            $context->unreferenced_vars = $foreach_context->unreferenced_vars;
+        }
 
         return null;
     }

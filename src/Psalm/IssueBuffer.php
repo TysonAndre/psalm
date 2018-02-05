@@ -108,10 +108,6 @@ class IssueBuffer
             self::$issues_data[] = $e->toArray(Config::REPORT_ERROR);
         }
 
-        if ($config->stop_on_first_error) {
-            exit(1);
-        }
-
         return true;
     }
 
@@ -160,7 +156,7 @@ class IssueBuffer
             $selection_length = $issue_data['to'] - $issue_data['from'];
 
             $issue_string .= substr($snippet, 0, $selection_start) .
-                ($is_error ? "\e[97;41m" : "\e[;47m") . substr($snippet, $selection_start, $selection_length) .
+                ($is_error ? "\e[97;41m" : "\e[30;47m") . substr($snippet, $selection_start, $selection_length) .
                 "\e[0m" . substr($snippet, $selection_length + $selection_start) . PHP_EOL;
         }
 
@@ -228,17 +224,20 @@ class IssueBuffer
      * @param  ProjectChecker       $project_checker
      * @param  bool                 $is_full
      * @param  float                $start_time
+     * @param  bool                 $add_stats
      *
      * @return void
      */
-    public static function finish(ProjectChecker $project_checker, $is_full, $start_time)
-    {
-        $scanned_files = $project_checker->codebase->getScannedFiles();
+    public static function finish(
+        ProjectChecker $project_checker,
+        $is_full,
+        $start_time,
+        $add_stats = false
+    ) {
+        $scanned_files = $project_checker->codebase->scanner->getScannedFiles();
         Provider\FileReferenceProvider::updateReferenceCache($project_checker, $scanned_files);
 
         $has_error = false;
-
-        $project_checker = ProjectChecker::getInstance();
 
         if (self::$issues_data) {
             usort(
@@ -277,8 +276,27 @@ class IssueBuffer
         }
 
         if ($start_time) {
-            echo 'Checks took ' . ((float)microtime(true) - $start_time);
-            echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB' . PHP_EOL;
+            echo 'Checks took ' . number_format((float)microtime(true) - $start_time, 2) . ' seconds';
+            echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB of memory' . PHP_EOL;
+
+            $nonmixed_percentage = $project_checker->codebase->analyzer->getNonMixedPercentage();
+
+            if ($is_full) {
+                echo 'Psalm was able to infer types for ' . number_format($nonmixed_percentage, 3) . '%'
+                    . ' of the codebase';
+
+                if (!$add_stats) {
+                    echo ' - get a breakdown by running Psalm with --stats';
+                }
+
+                echo PHP_EOL;
+            }
+
+            if ($add_stats) {
+                echo '-----------------' . PHP_EOL;
+                echo $project_checker->codebase->analyzer->getNonMixedStats();
+                echo PHP_EOL;
+            }
         }
 
         if ($has_error) {

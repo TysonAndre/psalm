@@ -83,6 +83,10 @@ class WhileChecker
             $while_context->referenced_var_ids
         );
 
+        if ($context->collect_references) {
+            $context->unreferenced_vars = $while_context->unreferenced_vars;
+        }
+
         return null;
     }
 }
