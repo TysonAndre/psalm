@@ -16,7 +16,7 @@ rm $ACTUAL_PATH -f || exit 1
 ../../../psalm --output-format=pylint --no-vendor-autoloader | tee $ACTUAL_PATH
 # NOTE: normalize any dynamic strings if applicable
 # Delete the summary of running time and memory
-# JSON_UNESCAPED_LINE_TERMINATOR was introduced in php7.1, ignore it so this test passes in php 7.0
+sed -i '/^Checks took .* and used .*/,+1 d' $ACTUAL_PATH
 
 # diff returns a non-zero exit code if files differ or are missing
 # This outputs the difference between actual and expected output.
