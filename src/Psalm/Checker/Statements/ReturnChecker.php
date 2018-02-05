@@ -249,6 +249,7 @@ class ReturnChecker
             } else {
                 if ($storage->signature_return_type
                     && !$storage->signature_return_type->isVoid()
+                    && !($storage->return_type && $source->getLocalReturnType($storage->return_type)->isGenerator())
                 ) {
                     if (IssueBuffer::accepts(
                         new InvalidReturnStatement(
