@@ -115,6 +115,13 @@ class Analyzer
     {
         $filetype_checkers = $this->config->getFiletypeCheckers();
 
+        // Run any plugins that must be run after scanning,
+        // but before analysis of methods, functions, etc (and forking)
+        foreach ($this->config->getPlugins() as $plugin) {
+            // Pass in ProjectChecker
+            $plugin->beforeAnalyzeFiles($project_checker);
+        }
+
         $analysis_worker =
             /**
              * @param int $i
