@@ -1031,8 +1031,8 @@ class Config
         }
 
         /**
-         * @var Plugin
          * @psalm-suppress UnresolvableInclude
+         * @psalm-suppress MixedAssignment
          */
         $loaded_plugin = require_once($path);
 

@@ -56,7 +56,7 @@ class TypeReconciliationTest extends TestCase
             (string) $reconciled
         );
 
-        if ($reconciled && is_array($reconciled->getTypes())) {
+        if (is_array($reconciled->getTypes())) {
             foreach ($reconciled->getTypes() as $type) {
                 $this->assertInstanceOf('Psalm\Type\Atomic', $type);
             }
@@ -264,6 +264,8 @@ class TypeReconciliationTest extends TestCase
                         if ($a instanceof A) {
                         }
                     }',
+                'assertions' => [],
+                'error_levels' => ['DocblockTypeContradiction'],
             ],
             'arrayTypeResolutionFromDocblock' => [
                 '<?php
@@ -273,9 +275,11 @@ class TypeReconciliationTest extends TestCase
                      */
                     function foo(array $strs) {
                         foreach ($strs as $str) {
-                            if (is_string($str)) {} // Issue emitted here
+                            if (is_string($str)) {}
                         }
                     }',
+                'assertions' => [],
+                'error_levels' => ['DocblockTypeContradiction'],
             ],
             'typeResolutionFromDocblockInside' => [
                 '<?php
@@ -289,6 +293,8 @@ class TypeReconciliationTest extends TestCase
                             }
                         }
                     }',
+                'assertions' => [],
+                'error_levels' => ['DocblockTypeContradiction'],
             ],
             'notInstanceof' => [
                 '<?php
@@ -800,6 +806,14 @@ class TypeReconciliationTest extends TestCase
                       echo $a + 3;
                     }',
                 'error_message' => 'PossiblyNullOperand',
+            ],
+            'nonDocblockTypeContradiction' => [
+                '<?php
+                    /** @param array[] $arr */
+                    function foo(array $arr) : void {
+                       if ($arr === "hello") {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }
