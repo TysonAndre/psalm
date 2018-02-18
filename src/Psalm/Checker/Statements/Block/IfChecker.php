@@ -62,6 +62,8 @@ class IfChecker
 
         $context->inside_conditional = true;
 
+        $pre_condition_vars_in_scope = $context->vars_in_scope;
+
         $referenced_var_ids = $context->referenced_var_ids;
         $context->referenced_var_ids = [];
 
@@ -143,6 +145,20 @@ class IfChecker
 
         // get all the var ids that were referened in the conditional, but not assigned in it
         $cond_referenced_var_ids = array_diff_key($cond_referenced_var_ids, $cond_assigned_var_ids);
+
+        // remove all newly-asserted var ids too
+        $cond_referenced_var_ids = array_filter(
+            $cond_referenced_var_ids,
+            /**
+             * @param string $var_id
+             *
+             * @return bool
+             */
+            function ($var_id) use ($pre_condition_vars_in_scope) {
+                return isset($pre_condition_vars_in_scope[$var_id]);
+            },
+            ARRAY_FILTER_USE_KEY
+        );
 
         $if_context->inside_conditional = false;
 
@@ -257,7 +273,7 @@ class IfChecker
                 $if_scope->negated_types,
                 $temp_else_context->vars_in_scope,
                 $changed_var_ids,
-                $cond_referenced_var_ids,
+                $stmt->else || $stmt->elseifs ? $cond_referenced_var_ids : [],
                 $statements_checker,
                 new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
                 $statements_checker->getSuppressedIssues()
@@ -268,7 +284,7 @@ class IfChecker
 
         // we calculate the vars redefined in a hypothetical else statement to determine
         // which vars of the if we can safely change
-        $pre_assignment_else_redefined_vars = $temp_else_context->getRedefinedVars($context->vars_in_scope);
+        $pre_assignment_else_redefined_vars = $temp_else_context->getRedefinedVars($context->vars_in_scope, true);
 
         $old_unreferenced_vars = $context->unreferenced_vars;
         $newly_unreferenced_locations = [];
@@ -410,10 +426,6 @@ class IfChecker
                 }
             }
         } else {
-            if ($if_scope->forced_new_vars) {
-                $context->vars_in_scope = array_merge($context->vars_in_scope, $if_scope->forced_new_vars);
-            }
-
             if ($loop_scope && !in_array(ScopeChecker::ACTION_NONE, $if_scope->final_actions, true)) {
                 $loop_scope->redefined_loop_vars = null;
             }
@@ -539,19 +551,6 @@ class IfChecker
 
         if (!$has_leaving_statements) {
             $if_scope->new_vars = array_diff_key($if_context->vars_in_scope, $outer_context->vars_in_scope);
-
-            // if we have a check like if (!isset($a)) { $a = true; } we want to make sure $a is always set
-            foreach ($if_scope->new_vars as $var_id => $_) {
-                if (isset($if_scope->negated_types[$var_id])
-                    && (
-                        $if_scope->negated_types[$var_id] === 'isset'
-                        || $if_scope->negated_types[$var_id] === '^isset'
-                        || $if_scope->negated_types[$var_id] === '!empty'
-                    )
-                ) {
-                    $if_scope->forced_new_vars[$var_id] = Type::getMixed();
-                }
-            }
 
             $if_scope->redefined_vars = $if_context->getRedefinedVars($outer_context->vars_in_scope);
             $if_scope->possibly_redefined_vars = $if_scope->redefined_vars;

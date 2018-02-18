@@ -154,6 +154,8 @@ if (array_key_exists('v', $options)) {
 // If XDebug is enabled, restart without it
 (new \Composer\XdebugHandler(\Composer\Factory::createOutput()))->check();
 
+setlocale(LC_CTYPE, 'C');
+
 if (isset($options['i'])) {
     if (file_exists('psalm.xml')) {
         die('A config file already exists in the current directory' . PHP_EOL);
@@ -269,6 +271,14 @@ if ($path_to_config) {
     $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
 }
 
+if (isset($options['clear-cache'])) {
+    $cache_directory = $config->getCacheDirectory();
+
+    Config::removeCacheDirectory($cache_directory);
+    echo 'Cache directory deleted' . PHP_EOL;
+    exit;
+}
+
 $project_checker = new ProjectChecker(
     $config,
     new Psalm\Provider\FileProvider(),
@@ -285,12 +295,8 @@ if ($find_dead_code || $find_references_to !== null) {
     $project_checker->getCodebase()->collectReferences();
 }
 
-if (isset($options['clear-cache'])) {
-    $cache_directory = Config::getInstance()->getCacheDirectory();
-
-    Config::removeCacheDirectory($cache_directory);
-    echo 'Cache directory deleted' . PHP_EOL;
-    exit;
+if ($find_dead_code) {
+    $project_checker->getCodebase()->reportUnusedCode();
 }
 
 /** @var string $plugin_path */

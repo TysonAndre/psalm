@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Type;
 
-use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TraitChecker;
@@ -9,6 +8,7 @@ use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
 use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\RedundantCondition;
+use Psalm\Issue\RedundantConditionGivenDocblockType;
 use Psalm\Issue\TypeDoesNotContainNull;
 use Psalm\Issue\TypeDoesNotContainType;
 use Psalm\IssueBuffer;
@@ -344,7 +344,7 @@ class Reconciler
                 $did_remove_type = $existing_var_type->hasString()
                     || $existing_var_type->hasNumericType()
                     || $existing_var_type->isEmpty()
-                    || $existing_var_type->hasBool();
+                    || $existing_var_type->hasType('bool');
 
                 if ($existing_var_type->hasType('null')) {
                     $did_remove_type = true;
@@ -753,6 +753,16 @@ class Reconciler
         } elseif ($code_location && !$new_type->isMixed()) {
             $has_match = true;
 
+            if ($key && $new_type->getId() === $existing_var_type->getId() && !$is_strict_equality) {
+                self::triggerIssueForImpossible(
+                    $existing_var_type,
+                    $key,
+                    $new_var_type,
+                    $code_location,
+                    $suppressed_issues
+                );
+            }
+
             foreach ($new_type->getTypes() as $new_type_part) {
                 $has_local_match = false;
 
@@ -860,9 +870,17 @@ class Reconciler
         array $suppressed_issues
     ) {
         $reconciliation = ' and trying to reconcile type \'' . $existing_var_type . '\' to ' . $new_var_type;
-        if ($existing_var_type->from_docblock) {
+
+        $existing_var_atomic_types = $existing_var_type->getTypes();
+        $potential_key = str_replace('!', '', $new_var_type);
+
+        $from_docblock = $existing_var_type->from_docblock
+            || (isset($existing_var_atomic_types[$potential_key])
+                && $existing_var_atomic_types[$potential_key]->from_docblock);
+
+        if ($from_docblock) {
             if (IssueBuffer::accepts(
-                new DocblockTypeContradiction(
+                new RedundantConditionGivenDocblockType(
                     'Found a contradiction with a docblock-defined type '
                         . 'when evaluating ' . $key . $reconciliation,
                     $code_location
@@ -926,6 +944,8 @@ class Reconciler
                             $new_base_type_candidate = clone $existing_key_type_part->type_params[1];
                         } elseif (!$existing_key_type_part instanceof Type\Atomic\ObjectLike) {
                             return null;
+                        } elseif ($array_key[0] === '$') {
+                            $new_base_type_candidate = $existing_key_type_part->getGenericValueType();
                         } else {
                             $array_properties = $existing_key_type_part->properties;
 
@@ -975,12 +995,11 @@ class Reconciler
 
                             $property_id = $existing_key_type_part->value . '::$' . $property_name;
 
-                            if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+                            if (!$codebase->properties->propertyExists($property_id)) {
                                 return null;
                             }
 
-                            $declaring_property_class = ClassLikeChecker::getDeclaringClassForProperty(
-                                $project_checker,
+                            $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
                                 $property_id
                             );
 

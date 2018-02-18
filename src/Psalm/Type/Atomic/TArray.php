@@ -1,7 +1,10 @@
 <?php
 namespace Psalm\Type\Atomic;
 
-class TArray extends \Psalm\Type\Atomic implements Generic
+/**
+ * Represents an array with generic type parameters.
+ */
+class TArray extends \Psalm\Type\Atomic
 {
     use GenericTrait;
 

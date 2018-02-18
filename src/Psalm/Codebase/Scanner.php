@@ -8,6 +8,11 @@ use Psalm\Provider\FileStorageProvider;
 use Psalm\Provider\StatementsProvider;
 use Psalm\Scanner\FileScanner;
 
+/**
+ * @internal
+ *
+ * Contains methods that aid in the scanning of Psalm's codebase
+ */
 class Scanner
 {
     /**
@@ -222,7 +227,9 @@ class Scanner
                         $this->reflection->registerClass($reflected_class);
                         $this->reflected_classlikes_lc[$fq_classlike_name_lc] = true;
                     } elseif ($this->fileExistsForClassLike($classlikes, $fq_classlike_name)) {
+                        // even though we've checked this above, calling the method invalidates it
                         if (isset($this->classlike_files[$fq_classlike_name_lc])) {
+                            /** @var string */
                             $file_path = $this->classlike_files[$fq_classlike_name_lc];
                             $this->files_to_scan[$file_path] = $file_path;
                             if (isset($this->classes_to_deep_scan[$fq_classlike_name_lc])) {
@@ -246,24 +253,15 @@ class Scanner
      * @param  bool   $will_analyze
      *
      * @return FileScanner
+     *
+     * @psalm-suppress MixedOffset
      */
     private function scanFile(
         $file_path,
         array $filetype_scanners,
         $will_analyze = false
     ) {
-        $path_parts = explode(DIRECTORY_SEPARATOR, $file_path);
-        $file_name_parts = explode('.', array_pop($path_parts));
-        $extension = count($file_name_parts) > 1 ? array_pop($file_name_parts) : null;
-
-        $file_name = $this->config->shortenFileName($file_path);
-
-        if (isset($filetype_scanners[$extension])) {
-            /** @var FileScanner */
-            $file_checker = new $filetype_scanners[$extension]($file_path, $file_name, $will_analyze);
-        } else {
-            $file_checker = new FileScanner($file_path, $file_name, $will_analyze);
-        }
+        $file_scanner = $this->getScannerForPath($file_path, $filetype_scanners, $will_analyze);
 
         if (isset($this->scanned_files[$file_path])) {
             throw new \UnexpectedValueException('Should not be rescanning ' . $file_path);
@@ -281,7 +279,7 @@ class Scanner
 
         $this->scanned_files[$file_path] = true;
 
-        $file_checker->scan(
+        $file_scanner->scan(
             $this->codebase,
             $this->statements_provider->getStatementsForFile(
                 $file_path,
@@ -290,7 +288,33 @@ class Scanner
             $this->file_storage_provider->get($file_path)
         );
 
-        return $file_checker;
+        return $file_scanner;
+    }
+
+    /**
+     * @param  string $file_path
+     * @param  array<string, string>  $filetype_scanners
+     * @param  bool   $will_analyze
+     *
+     * @return FileScanner
+     */
+    private function getScannerForPath(
+        $file_path,
+        array $filetype_scanners,
+        $will_analyze = false
+    ) {
+        $path_parts = explode(DIRECTORY_SEPARATOR, $file_path);
+        $file_name_parts = explode('.', array_pop($path_parts));
+        $extension = count($file_name_parts) > 1 ? array_pop($file_name_parts) : null;
+
+        $file_name = $this->config->shortenFileName($file_path);
+
+        if (isset($filetype_scanners[$extension])) {
+            /** @var FileScanner */
+            return new $filetype_scanners[$extension]($file_path, $file_name, $will_analyze);
+        }
+
+        return new FileScanner($file_path, $file_name, $will_analyze);
     }
 
     /**

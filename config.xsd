@@ -108,6 +108,7 @@
             <xs:element name="InaccessibleClassConstant" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InaccessibleMethod" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InaccessibleProperty" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="InterfaceInstantiation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidArgument" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidArrayAccess" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidArrayAssignment" type="IssueHandlerType" minOccurs="0" />
@@ -148,6 +149,7 @@
             <xs:element name="MissingClosureParamType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingClosureReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingConstructor" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="MissingDependency" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingFile" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingParamType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingPropertyType" type="IssueHandlerType" minOccurs="0" />
@@ -218,6 +220,7 @@
             <xs:element name="PropertyNotSetInConstructor" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="RawObjectIteration" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="RedundantCondition" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="RedundantConditionGivenDocblockType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ReferenceConstraintViolation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ReservedWord" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TooFewArguments" type="IssueHandlerType" minOccurs="0" />

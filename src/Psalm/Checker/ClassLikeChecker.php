@@ -10,6 +10,7 @@ use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\DuplicateClass;
 use Psalm\Issue\InaccessibleProperty;
 use Psalm\Issue\InvalidClass;
+use Psalm\Issue\MissingDependency;
 use Psalm\Issue\ReservedWord;
 use Psalm\Issue\UndefinedClass;
 use Psalm\IssueBuffer;
@@ -17,7 +18,6 @@ use Psalm\Provider\FileReferenceProvider;
 use Psalm\StatementsSource;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
-use ReflectionProperty;
 
 abstract class ClassLikeChecker extends SourceChecker implements StatementsSource
 {
@@ -268,8 +268,22 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
             return null;
         }
 
+        $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
+
+        foreach ($class_storage->invalid_dependencies as $dependency_class_name) {
+            if (IssueBuffer::accepts(
+                new MissingDependency(
+                    $fq_class_name . ' depends on class or interface '
+                        . $dependency_class_name . ' that does not exist',
+                    $code_location
+                ),
+                $suppressed_issues
+            )) {
+                return false;
+            }
+        }
+
         if ($project_checker->getCodeBase()->collect_references && !$inferred) {
-            $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
             if ($class_storage->referencing_locations === null) {
                 $class_storage->referencing_locations = [];
             }
@@ -298,13 +312,13 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         );
 
         if (!$inferred) {
-            $plugins = $codebase->config->getPlugins();
+            $plugin_classes = $codebase->config->after_classlike_exists_checks;
 
-            if ($plugins) {
+            if ($plugin_classes) {
                 $file_manipulations = [];
 
-                foreach ($plugins as $plugin) {
-                    $plugin->afterClassLikeExistsCheck(
+                foreach ($plugin_classes as $plugin_fq_class_name) {
+                    $plugin_fq_class_name::afterClassLikeExistsCheck(
                         $statements_source,
                         $fq_class_name,
                         $code_location,
@@ -313,6 +327,7 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
                 }
 
                 if ($file_manipulations) {
+                    /** @psalm-suppress MixedTypeCoercion */
                     FileManipulationBuffer::add($code_location->file_path, $file_manipulations);
                 }
             }
@@ -431,106 +446,6 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
     }
 
     /**
-     * @param  string $class_name
-     * @param  mixed  $visibility
-     *
-     * @return array<string,Type\Union>
-     */
-    public static function getConstantsForClass(ProjectChecker $project_checker, $class_name, $visibility)
-    {
-        $class_name = strtolower($class_name);
-
-        $storage = $project_checker->classlike_storage_provider->get($class_name);
-
-        if ($visibility === ReflectionProperty::IS_PUBLIC) {
-            return $storage->public_class_constants;
-        }
-
-        if ($visibility === ReflectionProperty::IS_PROTECTED) {
-            return array_merge(
-                $storage->public_class_constants,
-                $storage->protected_class_constants
-            );
-        }
-
-        if ($visibility === ReflectionProperty::IS_PRIVATE) {
-            return array_merge(
-                $storage->public_class_constants,
-                $storage->protected_class_constants,
-                $storage->private_class_constants
-            );
-        }
-
-        throw new \InvalidArgumentException('Must specify $visibility');
-    }
-
-    /**
-     * @param   string      $class_name
-     * @param   string      $const_name
-     * @param   Type\Union  $type
-     * @param   int         $visibility
-     *
-     * @return  void
-     */
-    public static function setConstantType(
-        ProjectChecker $project_checker,
-        $class_name,
-        $const_name,
-        Type\Union $type,
-        $visibility
-    ) {
-        $storage = $project_checker->classlike_storage_provider->get($class_name);
-
-        if ($visibility === ReflectionProperty::IS_PUBLIC) {
-            $storage->public_class_constants[$const_name] = $type;
-        } elseif ($visibility === ReflectionProperty::IS_PROTECTED) {
-            $storage->protected_class_constants[$const_name] = $type;
-        } elseif ($visibility === ReflectionProperty::IS_PRIVATE) {
-            $storage->private_class_constants[$const_name] = $type;
-        }
-    }
-
-    /**
-     * Whether or not a given property exists
-     *
-     * @param  string $property_id
-     *
-     * @return bool
-     */
-    public static function propertyExists(
-        ProjectChecker $project_checker,
-        $property_id,
-        CodeLocation $code_location = null
-    ) {
-        // remove trailing backslash if it exists
-        $property_id = preg_replace('/^\\\\/', '', $property_id);
-
-        list($fq_class_name, $property_name) = explode('::$', $property_id);
-
-        $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
-
-        if (isset($class_storage->declaring_property_ids[$property_name])) {
-            if ($project_checker->getCodeBase()->collect_references && $code_location) {
-                $declaring_property_id = $class_storage->declaring_property_ids[$property_name];
-                list($declaring_property_class, $declaring_property_name) = explode('::$', $declaring_property_id);
-
-                $declaring_class_storage = $project_checker->classlike_storage_provider->get($declaring_property_class);
-                $declaring_property_storage = $declaring_class_storage->properties[$declaring_property_name];
-
-                if ($declaring_property_storage->referencing_locations === null) {
-                    $declaring_property_storage->referencing_locations = [];
-                }
-
-                $declaring_property_storage->referencing_locations[$code_location->file_path][] = $code_location;
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
      * @param  string           $property_id
      * @param  string|null      $calling_context
      * @param  StatementsSource $source
@@ -551,8 +466,8 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         $project_checker = $source->getFileChecker()->project_checker;
         $codebase = $project_checker->codebase;
 
-        $declaring_property_class = self::getDeclaringClassForProperty($project_checker, $property_id);
-        $appearing_property_class = self::getAppearingClassForProperty($project_checker, $property_id);
+        $declaring_property_class = $codebase->properties->getDeclaringClassForProperty($property_id);
+        $appearing_property_class = $codebase->properties->getAppearingClassForProperty($property_id);
 
         if (!$declaring_property_class || !$appearing_property_class) {
             throw new \UnexpectedValueException(
@@ -642,51 +557,9 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
     }
 
     /**
-     * @param  string $property_id
-     *
-     * @return string|null
-     */
-    public static function getDeclaringClassForProperty(ProjectChecker $project_checker, $property_id)
-    {
-        list($fq_class_name, $property_name) = explode('::$', $property_id);
-
-        $fq_class_name = strtolower($fq_class_name);
-
-        $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
-
-        if (isset($class_storage->declaring_property_ids[$property_name])) {
-            $declaring_property_id = $class_storage->declaring_property_ids[$property_name];
-
-            return explode('::$', $declaring_property_id)[0];
-        }
-    }
-
-    /**
-     * Get the class this property appears in (vs is declared in, which could give a trait)
-     *
-     * @param  string $property_id
-     *
-     * @return string|null
-     */
-    public static function getAppearingClassForProperty(ProjectChecker $project_checker, $property_id)
-    {
-        list($fq_class_name, $property_name) = explode('::$', $property_id);
-
-        $fq_class_name = strtolower($fq_class_name);
-
-        $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
-
-        if (isset($class_storage->appearing_property_ids[$property_name])) {
-            $appearing_property_id = $class_storage->appearing_property_ids[$property_name];
-
-            return explode('::$', $appearing_property_id)[0];
-        }
-    }
-
-    /**
      * @param   string $file_path
      *
-     * @return  array<string>
+     * @return  array<string, string>
      */
     public static function getClassesForFile(ProjectChecker $project_checker, $file_path)
     {

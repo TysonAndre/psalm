@@ -12,6 +12,11 @@ use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Type;
 
+/**
+ * @internal
+ *
+ * Populates file and class information so that analysis can work properly
+ */
 class Populator
 {
     /**
@@ -233,9 +238,12 @@ class Populator
         ClassLikeStorageProvider $storage_provider,
         array $dependent_classlikes
     ) {
+        $parent_storage_class = reset($storage->parent_classes);
+
         try {
-            $parent_storage = $storage_provider->get(reset($storage->parent_classes));
+            $parent_storage = $storage_provider->get($parent_storage_class);
         } catch (\InvalidArgumentException $e) {
+            $storage->invalid_dependencies[] = $parent_storage_class;
             $parent_storage = null;
         }
 
@@ -248,6 +256,10 @@ class Populator
             $this->inheritPropertiesFromParent($storage, $parent_storage);
 
             $storage->class_implements += $parent_storage->class_implements;
+            $storage->invalid_dependencies = array_merge(
+                $storage->invalid_dependencies,
+                $parent_storage->invalid_dependencies
+            );
 
             $storage->public_class_constants += $parent_storage->public_class_constants;
             $storage->protected_class_constants += $parent_storage->protected_class_constants;
@@ -268,6 +280,7 @@ class Populator
             try {
                 $parent_interface_storage = $storage_provider->get($parent_interface_lc);
             } catch (\InvalidArgumentException $e) {
+                $storage->invalid_dependencies[] = $parent_interface_lc;
                 continue;
             }
 
@@ -277,6 +290,11 @@ class Populator
             $storage->public_class_constants = array_merge(
                 $storage->public_class_constants,
                 $parent_interface_storage->public_class_constants
+            );
+
+            $storage->invalid_dependencies = array_merge(
+                $storage->invalid_dependencies,
+                $parent_interface_storage->invalid_dependencies
             );
 
             $parent_interfaces = array_merge($parent_interfaces, $parent_interface_storage->parent_interfaces);
@@ -301,6 +319,7 @@ class Populator
             try {
                 $implemented_interface_storage = $storage_provider->get($implemented_interface_lc);
             } catch (\InvalidArgumentException $e) {
+                $storage->invalid_dependencies[] = $implemented_interface_lc;
                 continue;
             }
 
@@ -310,6 +329,11 @@ class Populator
             $storage->public_class_constants = array_merge(
                 $storage->public_class_constants,
                 $implemented_interface_storage->public_class_constants
+            );
+
+            $storage->invalid_dependencies = array_merge(
+                $storage->invalid_dependencies,
+                $implemented_interface_storage->invalid_dependencies
             );
 
             $extra_interfaces = array_merge($extra_interfaces, $implemented_interface_storage->parent_interfaces);

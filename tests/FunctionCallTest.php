@@ -217,7 +217,7 @@ class FunctionCallTest extends TestCase
                 'error_levels' => [
                     'MixedAssignment',
                     'MixedArrayAccess',
-                    'DocblockTypeContradiction',
+                    'RedundantConditionGivenDocblockType',
                 ],
             ],
             'ignoreNullablePregReplace' => [
@@ -464,6 +464,21 @@ class FunctionCallTest extends TestCase
                         return file_get_contents($s);
                     }',
             ],
+            'byRefString' => [
+                '<?php
+                    $arr = [];
+                    function fooFoo(array &$v): void {}
+                    $function = "fooFoo";
+                    $function($arr);
+                    if ($arr) {}',
+            ],
+            'arraySumEmpty' => [
+                '<?php
+                    $foo = array_sum([]) + 1;',
+                'assertions' => [
+                    '$foo' => 'numeric',
+                ],
+            ],
         ];
     }
 
@@ -586,7 +601,7 @@ class FunctionCallTest extends TestCase
                 'error_levels' => [
                     'MixedAssignment',
                     'MixedArrayAccess',
-                    'DocblockTypeContradiction',
+                    'RedundantConditionGivenDocblockType',
                 ],
             ],
             'undefinedFunctionInArrayMap' => [
@@ -631,7 +646,7 @@ class FunctionCallTest extends TestCase
             ],
             'possiblyInvalidFunctionCall' => [
                 '<?php
-                    $a = rand(0, 1) ? function(): void {} : "hello";
+                    $a = rand(0, 1) ? function(): void {} : 23515;
                     $a();',
                 'error_message' => 'PossiblyInvalidFunctionCall',
             ],

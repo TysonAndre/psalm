@@ -7,6 +7,11 @@ use Psalm\Provider\ClassLikeStorageProvider;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
 
+/**
+ * @internal
+ *
+ * Handles information about class methods
+ */
 class Methods
 {
     /**
@@ -24,6 +29,9 @@ class Methods
      */
     public $collect_references = false;
 
+    /**
+     * @param ClassLikeStorageProvider $storage_provider
+     */
     public function __construct(
         ClassLikeStorageProvider $storage_provider
     ) {

@@ -116,7 +116,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             $original_context = clone $context;
         }
 
-        $plugins = $codebase->config->getPlugins();
+        $plugin_classes = $codebase->config->after_statement_checks;
 
         foreach ($stmts as $stmt) {
             if ($has_returned && !($stmt instanceof PhpParser\Node\Stmt\Nop) &&
@@ -184,15 +184,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Const_) {
                 $this->analyzeConstAssignment($stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Unset_) {
-                $suppressed_issues = $this->getSuppressedIssues();
-
-                if (!in_array('PossiblyUndefinedGlobalVariable', $suppressed_issues, true)) {
-                    $this->addSuppressedIssues(['PossiblyUndefinedGlobalVariable']);
-                }
-
-                if (!in_array('PossiblyUndefinedVariable', $suppressed_issues, true)) {
-                    $this->addSuppressedIssues(['PossiblyUndefinedVariable']);
-                }
+                $context->inside_unset = true;
 
                 foreach ($stmt->vars as $var) {
                     ExpressionChecker::analyze($this, $var, $context);
@@ -208,13 +200,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     }
                 }
 
-                if (!in_array('PossiblyUndefinedGlobalVariable', $suppressed_issues, true)) {
-                    $this->removeSuppressedIssues(['PossiblyUndefinedGlobalVariable']);
-                }
-
-                if (!in_array('PossiblyUndefinedVariable', $suppressed_issues, true)) {
-                    $this->removeSuppressedIssues(['PossiblyUndefinedVariable']);
-                }
+                $context->inside_unset = false;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Return_) {
                 $has_returned = true;
                 ReturnChecker::analyze($this, $project_checker, $stmt, $context);
@@ -417,8 +403,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     ExpressionChecker::analyze($this, $const->value, $context);
 
                     if (isset($const->value->inferredType) && !$const->value->inferredType->isMixed()) {
-                        ClassLikeChecker::setConstantType(
-                            $project_checker,
+                        $codebase->classlikes->setConstantType(
                             (string)$this->getFQCLN(),
                             $const->name,
                             $const->value->inferredType,
@@ -436,10 +421,10 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Nop) {
                 if ((string)$stmt->getDocComment()) {
-                    $var_comment = null;
+                    $var_comments = [];
 
                     try {
-                        $var_comment = CommentChecker::getTypeFromComment(
+                        $var_comments = CommentChecker::getTypeFromComment(
                             (string)$stmt->getDocComment(),
                             $this->getSource(),
                             $this->getSource()->getAliases()
@@ -455,7 +440,11 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                         }
                     }
 
-                    if ($var_comment && $var_comment->var_id) {
+                    foreach ($var_comments as $var_comment) {
+                        if (!$var_comment->var_id) {
+                            continue;
+                        }
+
                         $comment_type = ExpressionChecker::fleshOutType(
                             $project_checker,
                             $var_comment->type,
@@ -490,12 +479,12 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 //$has_returned = true;
             }
 
-            if ($plugins) {
+            if ($plugin_classes) {
                 $file_manipulations = [];
                 $code_location = new CodeLocation($this->source, $stmt);
 
-                foreach ($plugins as $plugin) {
-                    if ($plugin->afterStatementCheck(
+                foreach ($plugin_classes as $plugin_fq_class_name) {
+                    if ($plugin_fq_class_name::afterStatementCheck(
                         $this,
                         $stmt,
                         $context,
@@ -508,6 +497,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
 
                 if ($file_manipulations) {
+                    /** @psalm-suppress MixedTypeCoercion */
                     FileManipulationBuffer::add($this->getFilePath(), $file_manipulations);
                 }
             }
@@ -520,7 +510,8 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
         if ($root_scope
             && $context->collect_references
-            && !$project_checker->find_references_to
+            && !$context->collect_initializations
+            && $project_checker->codebase->find_unused_code
             && $context->check_variables
         ) {
             $this->checkUnreferencedVars();

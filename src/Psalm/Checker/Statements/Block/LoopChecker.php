@@ -179,7 +179,6 @@ class LoopChecker
                             || $type->getId() !== $pre_loop_context->vars_in_scope[$var_id]->getId()
                             || $type->from_docblock !== $pre_loop_context->vars_in_scope[$var_id]->from_docblock
                         ) {
-                            $inner_context->vars_in_scope[$var_id] = clone $pre_loop_context->vars_in_scope[$var_id];
                             $has_changes = true;
                         }
                     } elseif (isset($pre_outer_context->vars_in_scope[$var_id])) {
@@ -212,12 +211,6 @@ class LoopChecker
                         }
                     } else {
                         $vars_to_remove[] = $var_id;
-                    }
-                }
-
-                foreach ($asserted_var_ids as $var_id) {
-                    if (!isset($inner_context->vars_in_scope[$var_id])) {
-                        $inner_context->vars_in_scope[$var_id] = clone $pre_loop_context->vars_in_scope[$var_id];
                     }
                 }
 
@@ -257,6 +250,17 @@ class LoopChecker
                         $inner_context,
                         $loop_scope->loop_parent_context
                     );
+                }
+
+                foreach ($asserted_var_ids as $var_id) {
+                    if (!isset($inner_context->vars_in_scope[$var_id])
+                        || $inner_context->vars_in_scope[$var_id]->getId()
+                            !== $pre_loop_context->vars_in_scope[$var_id]->getId()
+                        || $inner_context->vars_in_scope[$var_id]->from_docblock
+                            !== $pre_loop_context->vars_in_scope[$var_id]->from_docblock
+                    ) {
+                        $inner_context->vars_in_scope[$var_id] = clone $pre_loop_context->vars_in_scope[$var_id];
+                    }
                 }
 
                 $inner_context->clauses = $pre_loop_context->clauses;
@@ -387,9 +391,7 @@ class LoopChecker
             foreach ($inner_context->unreferenced_vars as $var_id => $location) {
                 if (!isset($loop_scope->loop_context->unreferenced_vars[$var_id])) {
                     $loop_scope->loop_context->unreferenced_vars[$var_id] = $location;
-                } elseif (!isset($loop_scope->loop_context->unreferenced_vars[$var_id])
-                    || $loop_scope->loop_context->unreferenced_vars[$var_id] !== $location
-                ) {
+                } elseif ($loop_scope->loop_context->unreferenced_vars[$var_id] !== $location) {
                     $statements_checker->registerVariableUse($location);
                 }
             }

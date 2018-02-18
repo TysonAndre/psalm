@@ -265,7 +265,7 @@ class TypeReconciliationTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['DocblockTypeContradiction'],
+                'error_levels' => ['RedundantConditionGivenDocblockType'],
             ],
             'arrayTypeResolutionFromDocblock' => [
                 '<?php
@@ -279,7 +279,7 @@ class TypeReconciliationTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['DocblockTypeContradiction'],
+                'error_levels' => ['RedundantConditionGivenDocblockType'],
             ],
             'typeResolutionFromDocblockInside' => [
                 '<?php
@@ -294,7 +294,7 @@ class TypeReconciliationTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['DocblockTypeContradiction'],
+                'error_levels' => ['RedundantConditionGivenDocblockType'],
             ],
             'notInstanceof' => [
                 '<?php
@@ -499,6 +499,8 @@ class TypeReconciliationTest extends TestCase
 
                         throw new \LogicException("Runtime error");
                     }',
+                'assertions' => [],
+                'error_levels' => ['RedundantConditionGivenDocblockType'],
             ],
             'ignoreNullCheckAndMaintainNullValue' => [
                 '<?php
@@ -730,6 +732,22 @@ class TypeReconciliationTest extends TestCase
                       echo "cool";
                     }',
             ],
+            'specificArrayFields' => [
+                '<?php
+                    /**
+                     * @param array{field:string} $array
+                     */
+                    function print_field($array) : void {
+                        echo $array["field"];
+                    }
+
+                    /**
+                     * @param array{field:string,otherField:string} $array
+                     */
+                    function has_mix_of_fields($array) : void {
+                        print_field($array);
+                    }',
+            ],
         ];
     }
 
@@ -807,13 +825,30 @@ class TypeReconciliationTest extends TestCase
                     }',
                 'error_message' => 'PossiblyNullOperand',
             ],
-            'nonDocblockTypeContradiction' => [
+            'nonRedundantConditionGivenDocblockType' => [
                 '<?php
                     /** @param array[] $arr */
                     function foo(array $arr) : void {
                        if ($arr === "hello") {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'lessSpecificArrayFields' => [
+                '<?php
+                    /**
+                     * @param array{field:string, otherField:string} $array
+                     */
+                    function print_field($array) : void {
+                        echo $array["field"] . " " . $array["otherField"];
+                    }
+
+                    /**
+                     * @param array{field:string} $array
+                     */
+                    function has_mix_of_fields($array) : void {
+                        print_field($array);
+                    }',
+                'error_message' => 'PossiblyInvalidArgument',
             ],
         ];
     }

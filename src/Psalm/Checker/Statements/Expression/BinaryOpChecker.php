@@ -24,6 +24,7 @@ use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNull;
+use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Reconciler;
 
 class BinaryOpChecker
@@ -55,6 +56,7 @@ class BinaryOpChecker
 
             $pre_referenced_var_ids = $context->referenced_var_ids;
             $context->referenced_var_ids = [];
+            $original_vars_in_scope = $context->vars_in_scope;
 
             $pre_assigned_var_ids = $context->assigned_var_ids;
 
@@ -68,6 +70,20 @@ class BinaryOpChecker
             $new_assigned_var_ids = array_diff_key($context->assigned_var_ids, $pre_assigned_var_ids);
 
             $new_referenced_var_ids = array_diff_key($new_referenced_var_ids, $new_assigned_var_ids);
+
+            // remove all newly-asserted var ids too
+            $new_referenced_var_ids = array_filter(
+                $new_referenced_var_ids,
+                /**
+                 * @param string $var_id
+                 *
+                 * @return bool
+                 */
+                function ($var_id) use ($original_vars_in_scope) {
+                    return isset($original_vars_in_scope[$var_id]);
+                },
+                ARRAY_FILTER_USE_KEY
+            );
 
             $simplified_clauses = AlgebraChecker::simplifyCNF(array_merge($context->clauses, $if_clauses));
 
@@ -655,6 +671,18 @@ class BinaryOpChecker
                     }
 
                     if ($left_type_part->isNumericType() || $right_type_part->isNumericType()) {
+                        if (($left_type_part instanceof TNumeric || $right_type_part instanceof TNumeric)
+                            && ($left_type_part->isNumericType() && $right_type_part->isNumericType())
+                        ) {
+                            if (!$result_type) {
+                                $result_type = Type::getNumeric();
+                            } else {
+                                $result_type = Type::combineUnionTypes(Type::getNumeric(), $result_type);
+                            }
+
+                            continue;
+                        }
+
                         if ($left_type_part instanceof TInt && $right_type_part instanceof TInt) {
                             if (!$result_type) {
                                 $result_type = Type::getInt();

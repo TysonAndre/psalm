@@ -123,6 +123,16 @@ class Config
     private $filetype_checkers = [];
 
     /**
+     * @var array<string, string>
+     */
+    private $filetype_scanner_paths = [];
+
+    /**
+     * @var array<string, string>
+     */
+    private $filetype_checker_paths = [];
+
+    /**
      * @var array<string, IssueHandler>
      */
     private $issue_handlers = [];
@@ -180,11 +190,44 @@ class Config
     public $allow_phpstorm_generics = false;
 
     /**
-     * Psalm plugins
-     *
-     * @var array<Plugin>
+     * @var string[]
      */
-    private $plugins = [];
+    private $plugin_paths = [];
+
+    /**
+     * Static methods to be called after method checks have completed
+     *
+     * @var string[]
+     */
+    public $after_method_checks = [];
+
+    /**
+     * Static methods to be called after expression checks have completed
+     *
+     * @var string[]
+     */
+    public $after_expression_checks = [];
+
+    /**
+     * Static methods to be called after statement checks have completed
+     *
+     * @var string[]
+     */
+    public $after_statement_checks = [];
+
+    /**
+     * Static methods to be called after classlike exists checks have completed
+     *
+     * @var string[]
+     */
+    public $after_classlike_exists_checks = [];
+
+    /**
+     * Static methods to be called after classlikes have been scanned
+     *
+     * @var string[]
+     */
+    public $after_visit_classlikes = [];
 
     // Cache the plugins which are fetched the most frequently, for performance.
     /** @var array<Plugin>|null lazily loaded */
@@ -509,7 +552,7 @@ class Config
                     throw new Exception\ConfigException('Error parsing config: cannot find file ' . $path);
                 }
 
-                $this->filetype_scanners[$extension_name] = $path;
+                $this->filetype_scanner_paths[$extension_name] = $path;
             }
 
             if (isset($extension['checker'])) {
@@ -519,9 +562,23 @@ class Config
                     throw new Exception\ConfigException('Error parsing config: cannot find file ' . $path);
                 }
 
-                $this->filetype_checkers[$extension_name] = $path;
+                $this->filetype_checker_paths[$extension_name] = $path;
             }
         }
+    }
+
+    /**
+     * @param string $path
+     *
+     * @return void
+     */
+    public function addPluginPath($path)
+    {
+        if (!file_exists($path)) {
+            throw new \InvalidArgumentException('Cannot find plugin file ' . $path);
+        }
+
+        $this->plugin_paths[] = $path;
     }
 
     /**
@@ -536,73 +593,92 @@ class Config
     {
         $codebase = $project_checker->codebase;
 
-        foreach ($this->filetype_scanners as &$path) {
-            $file_storage = $codebase->createFileStorageForPath($path);
-            $file_to_scan = new FileScanner($path, $this->shortenFileName($path), false);
-            $file_to_scan->scan(
-                $codebase,
-                $codebase->getStatementsForFile($path),
-                $file_storage
-            );
+        foreach ($this->filetype_scanner_paths as $extension => $path) {
+            $fq_class_name = $this->getPluginClassForPath($project_checker, $path, 'Psalm\\Scanner\\FileScanner');
 
-            $declared_classes = ClassLikeChecker::getClassesForFile($project_checker, $path);
+            $this->filetype_scanners[$extension] = $fq_class_name;
 
-            if (count($declared_classes) !== 1) {
-                throw new \InvalidArgumentException(
-                    'Filetype handlers must have exactly one class in the file - ' . $path . ' has ' .
-                        count($declared_classes)
-                );
-            }
+            /** @psalm-suppress UnresolvableInclude */
+            require_once($path);
+        }
+
+        foreach ($this->filetype_checker_paths as $extension => $path) {
+            $fq_class_name = $this->getPluginClassForPath($project_checker, $path, 'Psalm\\Checker\\FileChecker');
+
+            $this->filetype_checkers[$extension] = $fq_class_name;
+
+            /** @psalm-suppress UnresolvableInclude */
+            require_once($path);
+        }
+
+        foreach ($this->plugin_paths as $path) {
+            $fq_class_name = $this->getPluginClassForPath($project_checker, $path, 'Psalm\\Plugin');
 
             /** @psalm-suppress UnresolvableInclude */
             require_once($path);
 
-            if (!$codebase->classExtends(
-                $declared_classes[0],
-                'Psalm\\Scanner\\FileScanner'
-            )
-            ) {
-                throw new \InvalidArgumentException(
-                    'Filetype handlers must extend \Psalm\Checker\FileChecker - ' . $path . ' does not'
-                );
+            if ($codebase->methods->methodExists($fq_class_name . '::afterMethodCallCheck')) {
+                $this->after_method_checks[$fq_class_name] = $fq_class_name;
             }
 
-            $path = $declared_classes[0];
-        }
+            if ($codebase->methods->methodExists($fq_class_name . '::afterExpressionCheck')) {
+                $this->after_expression_checks[$fq_class_name] = $fq_class_name;
+            }
 
-        foreach ($this->filetype_checkers as &$path) {
-            $file_storage = $codebase->createFileStorageForPath($path);
-            $file_to_scan = new FileScanner($path, $this->shortenFileName($path), false);
-            $file_to_scan->scan(
-                $codebase,
-                $codebase->getStatementsForFile($path),
-                $file_storage
+            if ($codebase->methods->methodExists($fq_class_name . '::afterStatementCheck')) {
+                $this->after_statement_checks[$fq_class_name] = $fq_class_name;
+            }
+
+            if ($codebase->methods->methodExists($fq_class_name . '::afterClassLikeExistsCheck')) {
+                $this->after_classlike_exists_checks[$fq_class_name] = $fq_class_name;
+            }
+
+            if ($codebase->methods->methodExists($fq_class_name . '::afterVisitClassLike')) {
+                $this->after_visit_classlikes[$fq_class_name] = $fq_class_name;
+            }
+        }
+    }
+
+    /**
+     * @param  string $path
+     * @param  string $must_extend
+     *
+     * @return string
+     */
+    private function getPluginClassForPath(ProjectChecker $project_checker, $path, $must_extend)
+    {
+        $codebase = $project_checker->codebase;
+
+        $file_storage = $codebase->createFileStorageForPath($path);
+        $file_to_scan = new FileScanner($path, $this->shortenFileName($path), false);
+        $file_to_scan->scan(
+            $codebase,
+            $codebase->getStatementsForFile($path),
+            $file_storage
+        );
+
+        $declared_classes = ClassLikeChecker::getClassesForFile($project_checker, $path);
+
+        if (count($declared_classes) !== 1) {
+            throw new \InvalidArgumentException(
+                'Plugins must have exactly one class in the file - ' . $path . ' has ' .
+                    count($declared_classes)
             );
-
-            $declared_classes = ClassLikeChecker::getClassesForFile($project_checker, $path);
-
-            if (count($declared_classes) !== 1) {
-                throw new \InvalidArgumentException(
-                    'Filetype handlers must have exactly one class in the file - ' . $path . ' has ' .
-                        count($declared_classes)
-                );
-            }
-
-            /** @psalm-suppress UnresolvableInclude */
-            require_once($path);
-
-            if (!$codebase->classExtends(
-                $declared_classes[0],
-                'Psalm\\Checker\\FileChecker'
-            )
-            ) {
-                throw new \InvalidArgumentException(
-                    'Filetype handlers must extend \Psalm\Checker\FileChecker - ' . $path . ' does not'
-                );
-            }
-
-            $path = $declared_classes[0];
         }
+
+        $fq_class_name = reset($declared_classes);
+
+        if (!$codebase->classExtends(
+            $fq_class_name,
+            $must_extend
+        )
+        ) {
+            throw new \InvalidArgumentException(
+                'This plugin must extend ' . $must_extend . ' - ' . $path . ' does not'
+            );
+        }
+
+        return $fq_class_name;
     }
 
     /**
@@ -761,34 +837,6 @@ class Config
     public function getPlugins()
     {
         return $this->plugins;
-    }
-
-    /**
-     * @return array<Plugin>
-     */
-    public function getPluginsForAfterExpressionCheck()
-    {
-        // Cache because this is called much more frequently than other methods
-        $result = $this->plugins_for_after_expression_check;
-        if (!is_array($result)) {
-            $result = $this->getPluginsDefiningMethod('afterExpressionCheck');
-            $this->plugins_for_after_expression_check = $result;
-        }
-        return $result;
-    }
-
-    /**
-     * @return array<Plugin>
-     */
-    public function getPluginsForAfterStatementCheck()
-    {
-        // Cache because this is called much more frequently than other methods
-        $result = $this->plugins_for_after_statements_check;
-        if (!is_array($result)) {
-            $result = $this->getPluginsDefiningMethod('afterStatementCheck');
-            $this->plugins_for_after_statements_check = $result;
-        }
-        return $result;
     }
 
     /**
@@ -1017,38 +1065,5 @@ class Config
             reset($objects);
             rmdir($dir);
         }
-    }
-
-    /**
-     * @param string $path
-     *
-     * @return void
-     */
-    public function addPluginPath($path)
-    {
-        if (!file_exists($path)) {
-            throw new \InvalidArgumentException('Cannot find file ' . $path);
-        }
-
-        /**
-         * @psalm-suppress UnresolvableInclude
-         * @psalm-suppress MixedAssignment
-         */
-        $loaded_plugin = require_once($path);
-
-        if (!$loaded_plugin) {
-            throw new \InvalidArgumentException(
-                'Plugins must return an instance of that plugin at the end of the file - ' .
-                    $plugin_file_name . ' does not'
-            );
-        }
-
-        if (!($loaded_plugin instanceof Plugin)) {
-            throw new \InvalidArgumentException(
-                'Plugins must extend \Psalm\Plugin - ' . $path . ' does not'
-            );
-        }
-
-        $this->plugins[] = $loaded_plugin;
     }
 }

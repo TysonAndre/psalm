@@ -4,6 +4,7 @@ namespace Psalm\Codebase;
 use PhpParser;
 use Psalm\Aliases;
 use Psalm\Checker\ClassLikeChecker;
+use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Issue\PossiblyUnusedMethod;
@@ -15,9 +16,21 @@ use Psalm\Issue\UnusedProperty;
 use Psalm\IssueBuffer;
 use Psalm\Provider\ClassLikeStorageProvider;
 use Psalm\Storage\ClassLikeStorage;
+use Psalm\Type;
+use ReflectionProperty;
 
+/**
+ * @internal
+ *
+ * Handles information about classes, interfaces and traits
+ */
 class ClassLikes
 {
+    /**
+     * @var Codebase
+     */
+    private $codebase;
+
     /**
      * @var ClassLikeStorageProvider
      */
@@ -103,6 +116,7 @@ class ClassLikes
      */
     public function __construct(
         Config $config,
+        Codebase $codebase,
         ClassLikeStorageProvider $storage_provider,
         Scanner $scanner,
         Methods $methods,
@@ -113,6 +127,7 @@ class ClassLikes
         $this->scanner = $scanner;
         $this->debug_output = $debug_output;
         $this->methods = $methods;
+        $this->codebase = $codebase;
 
         $this->collectPredefinedClassLikes();
     }
@@ -248,7 +263,7 @@ class ClassLikes
                 }
                 // attempt to load in the class
                 $this->scanner->queueClassLikeForScanning($fq_class_name);
-                $this->scanner->scanFiles($this);
+                $this->codebase->scanFiles();
 
                 if (!isset($this->existing_classes_lc[$fq_class_name_lc])) {
                     $this->existing_classes_lc[$fq_class_name_lc] = false;
@@ -612,6 +627,65 @@ class ClassLikes
                     $this->checkMethodReferences($classlike_storage);
                 }
             }
+        }
+    }
+
+    /**
+     * @param  string $class_name
+     * @param  mixed  $visibility
+     *
+     * @return array<string,Type\Union>
+     */
+    public function getConstantsForClass($class_name, $visibility)
+    {
+        $class_name = strtolower($class_name);
+
+        $storage = $this->classlike_storage_provider->get($class_name);
+
+        if ($visibility === ReflectionProperty::IS_PUBLIC) {
+            return $storage->public_class_constants;
+        }
+
+        if ($visibility === ReflectionProperty::IS_PROTECTED) {
+            return array_merge(
+                $storage->public_class_constants,
+                $storage->protected_class_constants
+            );
+        }
+
+        if ($visibility === ReflectionProperty::IS_PRIVATE) {
+            return array_merge(
+                $storage->public_class_constants,
+                $storage->protected_class_constants,
+                $storage->private_class_constants
+            );
+        }
+
+        throw new \InvalidArgumentException('Must specify $visibility');
+    }
+
+    /**
+     * @param   string      $class_name
+     * @param   string      $const_name
+     * @param   Type\Union  $type
+     * @param   int         $visibility
+     *
+     * @return  void
+     */
+    public function setConstantType(
+        $class_name,
+        $const_name,
+        Type\Union $type,
+        $visibility
+    ) {
+        $storage = $this->classlike_storage_provider->get($class_name);
+
+        if ($visibility === ReflectionProperty::IS_PUBLIC) {
+            $storage->public_class_constants[$const_name] = $type;
+        } elseif ($visibility === ReflectionProperty::IS_PROTECTED) {
+            $storage->protected_class_constants[$const_name] = $type;
+        } elseif ($visibility === ReflectionProperty::IS_PRIVATE) {
+            $storage->private_class_constants[$const_name] = $type;
         }
     }
 

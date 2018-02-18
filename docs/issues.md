@@ -120,20 +120,16 @@ class A {
 
 ### DocblockTypeContradiction
 
-Emitted when conditional is redundant given information supplied in one or more docblocks.
-
-This may be desired (e.g. when checking user input) so is distinct from RedundantCondition, which only applies to non-docblock types.
+Emitted when conditional doesn't make sense given the docblock types supplied.
 
 ```php
-class A {}
-
 /**
  * @param string $s
  *
  * @return void
  */
 function foo($s) {
-    if (is_string($s)) {};
+    if ($s === 5) { }
 }
 ```
 
@@ -253,6 +249,15 @@ class A {
     protected function foo() : void {}
 }
 echo (new A)->foo();
+```
+
+### InterfaceInstantiation
+
+Emitted when an attempt is made to instatiate an interface:
+
+```php
+interface I {}
+new I();
 ```
 
 ### InaccessibleProperty
@@ -734,6 +739,19 @@ class A {
     /** @var string */
     public $foo;
 }
+```
+
+### MissingDependency
+
+Emitted when referencing a class that doesn’t exist
+
+```php
+/**
+ * @psalm-suppress UndefinedClass
+ */
+class A extends B {}
+
+$a = new A();
 ```
 
 ### MissingDocblockType
@@ -1533,6 +1551,23 @@ class A {}
 function foo(?A $a) : ?A {
     if ($a) return $a;
     if ($a) echo "cannot happen";
+}
+```
+
+### RedundantConditionGivenDocblockType
+
+Emitted when conditional is redundant given information supplied in one or more docblocks.
+
+This may be desired (e.g. when checking user input) so is distinct from RedundantCondition, which only applies to non-docblock types.
+
+```php
+/**
+ * @param string $s
+ *
+ * @return void
+ */
+function foo($s) {
+    if (is_string($s)) {};
 }
 ```
 

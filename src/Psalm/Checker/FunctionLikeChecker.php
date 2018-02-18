@@ -340,7 +340,11 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             }
 
             if ($parser_param->default) {
-                $default_type = StatementsChecker::getSimpleType($parser_param->default);
+                ExpressionChecker::analyze($statements_checker, $parser_param->default, $context);
+
+                $default_type = isset($parser_param->default->inferredType)
+                    ? $parser_param->default->inferredType
+                    : null;
 
                 if ($default_type &&
                     !TypeChecker::isContainedBy(
@@ -569,7 +573,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         }
 
         if ($context->collect_references
-            && !$project_checker->find_references_to
+            && !$context->collect_initializations
+            && $project_checker->codebase->find_unused_code
             && $context->check_variables
         ) {
             foreach ($statements_checker->getUnusedVarLocations() as list($var_name, $original_location)) {

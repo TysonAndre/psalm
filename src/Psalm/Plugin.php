@@ -7,6 +7,7 @@ use Psalm\Checker\StatementsChecker;
 use Psalm\FileManipulation\FileManipulation;
 use Psalm\Scanner\FileScanner;
 use Psalm\Storage\ClassLikeStorage;
+use Psalm\Type\Union;
 
 /**
  * Example plugins can be found in the examples folder.
@@ -28,7 +29,7 @@ abstract class Plugin
      *
      * @return null|false
      */
-    public function afterExpressionCheck(
+    public static function afterExpressionCheck(
         StatementsChecker $statements_checker,
         PhpParser\Node\Expr $stmt,
         Context $context,
@@ -52,7 +53,7 @@ abstract class Plugin
      *
      * @return null|false
      */
-    public function afterStatementCheck(
+    public static function afterStatementCheck(
         StatementsChecker $statements_checker,
         PhpParser\Node $stmt,
         Context $context,
@@ -72,7 +73,7 @@ abstract class Plugin
      *
      * @return void
      */
-    public function visitClassLike(
+    public static function afterVisitClassLike(
         PhpParser\Node\Stmt\ClassLike $stmt,
         ClassLikeStorage $storage,
         FileScanner $file,
@@ -101,11 +102,31 @@ abstract class Plugin
      *
      * @return void
      */
-    public function afterClassLikeExistsCheck(
+    public static function afterClassLikeExistsCheck(
         StatementsSource $statements_source,
         $fq_class_name,
         CodeLocation $code_location,
         array &$file_replacements = []
+    ) {
+    }
+
+    /**
+     * @param  string $method_id - the method id being checked
+     * @param  string $appearing_method_id - the method id of the class that contains the method
+     * @param  string $declaring_method_id - the method id of the class or trait that declares the method
+     * @param  PhpParser\Node\Arg[] $args
+     * @param  FileManipulation[] $file_replacements
+     *
+     * @return void
+     */
+    public static function afterMethodCallCheck(
+        StatementsSource $statements_source,
+        $method_id,
+        $declaring_method_id,
+        array $args,
+        CodeLocation $code_location,
+        array &$file_replacements = [],
+        Union &$return_type_candidate = null
     ) {
     }
 }

@@ -106,9 +106,7 @@ class ExpressionChecker
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\ConstFetch) {
-            if (ConstFetchChecker::analyze($statements_checker, $stmt, $context) === false) {
-                return false;
-            }
+            ConstFetchChecker::analyze($statements_checker, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\String_) {
             $stmt->inferredType = Type::getString();
         } elseif ($stmt instanceof PhpParser\Node\Scalar\EncapsedStringPart) {
@@ -473,14 +471,14 @@ class ExpressionChecker
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
-        $plugins = $project_checker->config->getPluginsForAfterExpressionCheck();
+        $plugin_classes = $project_checker->config->after_expression_checks;
 
-        if ($plugins) {
+        if ($plugin_classes) {
             $file_manipulations = [];
             $code_location = new CodeLocation($statements_checker->getSource(), $stmt);
 
-            foreach ($plugins as $plugin) {
-                if ($plugin->afterExpressionCheck(
+            foreach ($plugin_classes as $plugin_fq_class_name) {
+                if ($plugin_fq_class_name::afterExpressionCheck(
                     $statements_checker,
                     $stmt,
                     $context,
@@ -493,6 +491,7 @@ class ExpressionChecker
             }
 
             if ($file_manipulations) {
+                /** @psalm-suppress MixedTypeCoercion */
                 FileManipulationBuffer::add($statements_checker->getFilePath(), $file_manipulations);
             }
         }
@@ -675,16 +674,26 @@ class ExpressionChecker
             return self::getArrayVarId($stmt->var, $this_class_name, $source);
         }
 
-        if ($stmt instanceof PhpParser\Node\Expr\ArrayDimFetch &&
-            ($stmt->dim instanceof PhpParser\Node\Scalar\String_ ||
-                $stmt->dim instanceof PhpParser\Node\Scalar\LNumber)
-        ) {
+        if ($stmt instanceof PhpParser\Node\Expr\ArrayDimFetch) {
             $root_var_id = self::getArrayVarId($stmt->var, $this_class_name, $source);
-            $offset = $stmt->dim instanceof PhpParser\Node\Scalar\String_
-                ? '\'' . $stmt->dim->value . '\''
-                : $stmt->dim->value;
 
-            return $root_var_id ? $root_var_id . '[' . $offset . ']' : null;
+            $offset = null;
+
+            if ($root_var_id) {
+                if ($stmt->dim instanceof PhpParser\Node\Scalar\String_
+                    || $stmt->dim instanceof PhpParser\Node\Scalar\LNumber
+                ) {
+                    $offset = $stmt->dim instanceof PhpParser\Node\Scalar\String_
+                        ? '\'' . $stmt->dim->value . '\''
+                        : $stmt->dim->value;
+                } elseif ($stmt->dim instanceof PhpParser\Node\Expr\Variable
+                    && is_string($stmt->dim->name)
+                ) {
+                    $offset = '$' . $stmt->dim->name;
+                }
+
+                return $root_var_id && $offset !== null ? $root_var_id . '[' . $offset . ']' : null;
+            }
         }
 
         return self::getVarId($stmt, $this_class_name, $source);
@@ -871,11 +880,12 @@ class ExpressionChecker
     ) {
         $doc_comment_text = (string)$stmt->getDocComment();
 
-        $var_comment = null;
+        $var_comments = [];
+        $var_comment_type = null;
 
         if ($doc_comment_text) {
             try {
-                $var_comment = CommentChecker::getTypeFromComment(
+                $var_comments = CommentChecker::getTypeFromComment(
                     $doc_comment_text,
                     $statements_checker,
                     $statements_checker->getAliases()
@@ -891,13 +901,18 @@ class ExpressionChecker
                 }
             }
 
-            if ($var_comment && $var_comment->var_id) {
+            foreach ($var_comments as $var_comment) {
                 $comment_type = ExpressionChecker::fleshOutType(
                     $statements_checker->getFileChecker()->project_checker,
                     $var_comment->type,
                     $context->self,
                     $context->self
                 );
+
+                if (!$var_comment->var_id) {
+                    $var_comment_type = $comment_type;
+                    continue;
+                }
 
                 $context->vars_in_scope[$var_comment->var_id] = $comment_type;
             }
@@ -914,8 +929,8 @@ class ExpressionChecker
                 return false;
             }
 
-            if ($var_comment && !$var_comment->var_id) {
-                $stmt->inferredType = $var_comment->type;
+            if ($var_comment_type) {
+                $stmt->inferredType = $var_comment_type;
             } elseif (isset($stmt->value->inferredType)) {
                 $stmt->inferredType = $stmt->value->inferredType;
             } else {

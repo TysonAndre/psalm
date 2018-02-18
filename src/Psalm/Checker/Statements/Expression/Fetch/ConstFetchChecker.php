@@ -21,7 +21,7 @@ class ConstFetchChecker
      * @param   PhpParser\Node\Expr\ConstFetch  $stmt
      * @param   Context                         $context
      *
-     * @return  false|null
+     * @return  void
      */
     public static function analyze(
         StatementsChecker $statements_checker,
@@ -65,12 +65,10 @@ class ConstFetchChecker
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
-                        return false;
+                        // fall through
                     }
                 }
         }
-
-        return null;
     }
 
     /**
@@ -163,8 +161,7 @@ class ConstFetchChecker
                 $class_visibility = \ReflectionProperty::IS_PUBLIC;
             }
 
-            $class_constants = ClassLikeChecker::getConstantsForClass(
-                $project_checker,
+            $class_constants = $codebase->classlikes->getConstantsForClass(
                 $fq_class_name,
                 $class_visibility
             );
@@ -173,8 +170,7 @@ class ConstFetchChecker
                 $all_class_constants = [];
 
                 if ($fq_class_name !== $context->self) {
-                    $all_class_constants = ClassLikeChecker::getConstantsForClass(
-                        $project_checker,
+                    $all_class_constants = $codebase->classlikes->getConstantsForClass(
                         $fq_class_name,
                         \ReflectionProperty::IS_PRIVATE
                     );

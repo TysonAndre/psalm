@@ -11,6 +11,11 @@ use Psalm\IssueBuffer;
 use Psalm\Provider\FileProvider;
 use Psalm\Provider\FileReferenceProvider;
 
+/**
+ * @internal
+ *
+ * Called in the analysis phase of Psalm's execution
+ */
 class Analyzer
 {
     /**
@@ -83,6 +88,8 @@ class Analyzer
      * @param  bool   $will_analyze
      *
      * @return FileChecker
+     *
+     * @psalm-suppress MixedOperand
      */
     private function getFileChecker(ProjectChecker $project_checker, $file_path, array $filetype_checkers)
     {

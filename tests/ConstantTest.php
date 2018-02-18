@@ -82,6 +82,20 @@ class ConstantTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedArgument'],
             ],
+            'undefinedConstant' => [
+                '<?php
+                    switch (rand(0, 50)) {
+                        case FORTY: // Observed a valid UndeclaredConstant warning
+                            $x = "value";
+                            break;
+                        default:
+                            $x = "other";
+                        }
+
+                        echo $x;',
+                'assertions' => [],
+                'error_levels' => ['UndefinedConstant'],
+            ],
         ];
     }
 
@@ -101,6 +115,13 @@ class ConstantTest extends TestCase
                     }
 
                     echo CONSTANT;',
+                'error_message' => 'UndefinedConstant',
+            ],
+            'undefinedClassConstantInParamDefault' => [
+                '<?php
+                    class A {
+                        public function doSomething(int $howManyTimes = self::DEFAULT_TIMES): void {}
+                    }',
                 'error_message' => 'UndefinedConstant',
             ],
         ];

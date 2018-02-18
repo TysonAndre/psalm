@@ -25,7 +25,7 @@ class UnusedCodeTest extends TestCase
             new Provider\FakeParserCacheProvider()
         );
 
-        $this->project_checker->getCodebase()->collectReferences();
+        $this->project_checker->getCodebase()->reportUnusedCode();
     }
 
     /**
@@ -64,7 +64,8 @@ class UnusedCodeTest extends TestCase
         $context->collect_references = true;
 
         $this->analyzeFile($file_path, $context);
-        $this->project_checker->getCodebase()->classlikes->checkClassReferences();
+
+        $this->project_checker->checkClassReferences();
     }
 
     /**
@@ -100,7 +101,8 @@ class UnusedCodeTest extends TestCase
         $context->collect_references = true;
 
         $this->analyzeFile($file_path, $context);
-        $this->project_checker->getCodebase()->classlikes->checkClassReferences();
+
+        $this->project_checker->checkClassReferences();
     }
 
     /**
@@ -575,6 +577,70 @@ class UnusedCodeTest extends TestCase
                     }
                     $a = new A();
                     echo (bool) $a;',
+            ],
+            'everythingUsed' => [
+                '<?php
+                    interface I {
+                        public function foo();
+                    }
+                    class B implements I {
+                        public function foo() : void {}
+                    }
+
+                    class A
+                    {
+                        /**
+                         * @var I
+                         */
+                        private $i;
+
+                        /**
+                         * @param int[] $as
+                         */
+                        public function __construct(array $as) {
+
+                            foreach ($as as $a) {
+                                $this->a($a, 1);
+                            }
+
+                            $this->i = new B();
+                        }
+
+                        private function a(int $a, int $b): self
+                        {
+                            $this->v($a, $b);
+
+                            $this->i->foo();
+
+                            return $this;
+                        }
+
+                        private function v(int $a, int $b): void
+                        {
+                            if ($a + $b > 0) {
+                                throw new \RuntimeException("");
+                            }
+                        }
+                    }
+
+                    new A([1, 2, 3]);',
+            ],
+            'usedMethodCallVariable' => [
+                '<?php
+                    function reindex(array $arr, string $methodName): array {
+                        $ret = [];
+
+                        foreach ($arr as $element) {
+                            $ret[$element->$methodName()] = true;
+                        }
+
+                        return $ret;
+                    }',
+                'error_levels' => [
+                    'MixedAssignment',
+                    'MixedMethodCall',
+                    'MixedArrayOffset',
+                ],
             ],
         ];
     }

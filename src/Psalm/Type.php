@@ -3,7 +3,6 @@ namespace Psalm;
 
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\Type\Atomic;
-use Psalm\Type\Atomic\Generic;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TBool;
@@ -15,6 +14,7 @@ use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
+use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TString;
@@ -426,6 +426,16 @@ abstract class Type
     /**
      * @return Type\Union
      */
+    public static function getNumeric()
+    {
+        $type = new TNumeric;
+
+        return new Union([$type]);
+    }
+
+    /**
+     * @return Type\Union
+     */
     public static function getString()
     {
         $type = new TString;
@@ -562,43 +572,6 @@ abstract class Type
     }
 
     /**
-     * @param  array<string, Union> $redefined_vars
-     * @param  Context              $context
-     *
-     * @return void
-     */
-    public static function redefineGenericUnionTypes(array $redefined_vars, Context $context)
-    {
-        foreach ($redefined_vars as $var_name => $redefined_union_type) {
-            foreach ($redefined_union_type->getTypes() as $redefined_atomic_type) {
-                foreach ($context->vars_in_scope[$var_name]->getTypes() as $context_type) {
-                    if ($context_type instanceof Type\Atomic\TArray &&
-                        $redefined_atomic_type instanceof Type\Atomic\TArray
-                    ) {
-                        if ($context_type->type_params[1]->isEmpty()) {
-                            $context_type->type_params[1] = $redefined_atomic_type->type_params[1];
-                        } else {
-                            $context_type->type_params[1] = Type::combineUnionTypes(
-                                $redefined_atomic_type->type_params[1],
-                                $context_type->type_params[1]
-                            );
-                        }
-
-                        if ($context_type->type_params[0]->isEmpty()) {
-                            $context_type->type_params[0] = $redefined_atomic_type->type_params[0];
-                        } else {
-                            $context_type->type_params[0] = Type::combineUnionTypes(
-                                $redefined_atomic_type->type_params[0],
-                                $context_type->type_params[0]
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
      * Combines two union types into one
      *
      * @param  Union  $type_1
@@ -608,6 +581,10 @@ abstract class Type
      */
     public static function combineUnionTypes(Union $type_1, Union $type_2)
     {
+        if ($type_1->isMixed() || $type_2->isMixed()) {
+            return Type::getMixed();
+        }
+
         $both_failed_reconciliation = false;
 
         if ($type_1->failed_reconciliation) {

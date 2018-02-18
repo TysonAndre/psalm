@@ -74,7 +74,7 @@ class Php70Test extends TestCase
                     $var = 0;
                     ($a =& $var) ?? "hello";',
                 'assertions' => [
-                    '$a' => 'int',
+                    '$a' => 'mixed',
                 ],
             ],
             'spaceship' => [
@@ -269,6 +269,18 @@ class Php70Test extends TestCase
 
                         new A();
                         new B();
+                    }',
+            ],
+            'generatorVoidReturn' => [
+                '<?php
+                    /**
+                     * @return Generator
+                     */
+                    function generator2() : Generator {
+                        if (rand(0,1)) {
+                            return;
+                        }
+                        yield 2;
                     }',
             ],
         ];

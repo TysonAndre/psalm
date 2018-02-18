@@ -76,6 +76,11 @@ class Codebase
     public $register_global_functions = false;
 
     /**
+     * @var bool
+     */
+    public $find_unused_code = false;
+
+    /**
      * @var Codebase\Reflection
      */
     private $reflection;
@@ -104,6 +109,11 @@ class Codebase
      * @var Codebase\Methods
      */
     public $methods;
+
+    /**
+     * @var Codebase\Properties
+     */
+    public $properties;
 
     /**
      * @var Codebase\Populator
@@ -147,8 +157,10 @@ class Codebase
 
         $this->functions = new Codebase\Functions($file_storage_provider, $this->reflection);
         $this->methods = new Codebase\Methods($classlike_storage_provider);
+        $this->properties = new Codebase\Properties($classlike_storage_provider);
         $this->classlikes = new Codebase\ClassLikes(
             $config,
+            $this,
             $classlike_storage_provider,
             $this->scanner,
             $this->methods,
@@ -172,6 +184,16 @@ class Codebase
         $this->collect_references = true;
         $this->classlikes->collect_references = true;
         $this->methods->collect_references = true;
+        $this->properties->collect_references = true;
+    }
+
+    /**
+     * @return void
+     */
+    public function reportUnusedCode()
+    {
+        $this->collectReferences();
+        $this->find_unused_code = true;
     }
 
     /**

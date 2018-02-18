@@ -9,9 +9,6 @@ class FileManipulationTest extends TestCase
     /** @var \Psalm\Checker\ProjectChecker */
     protected $project_checker;
 
-    /** @var TestConfig|null */
-    private static $config;
-
     /**
      * @return void
      */
@@ -21,17 +18,6 @@ class FileManipulationTest extends TestCase
         \Psalm\FileManipulation\FunctionDocblockManipulator::clearCache();
 
         $this->file_provider = new Provider\FakeFileProvider();
-
-        if (!self::$config) {
-            self::$config = new TestConfig();
-            self::$config->addPluginPath('examples/ClassUnqualifier.php');
-        }
-
-        $this->project_checker = new \Psalm\Checker\ProjectChecker(
-            self::$config,
-            $this->file_provider,
-            new Provider\FakeParserCacheProvider()
-        );
     }
 
     /**
@@ -57,6 +43,18 @@ class FileManipulationTest extends TestCase
         } elseif (strpos($test_name, 'SKIPPED-') !== false) {
             $this->markTestSkipped('Skipped due to a bug.');
         }
+
+        $config = new TestConfig();
+
+        if (empty($issues_to_fix)) {
+            $config->addPluginPath('examples/ClassUnqualifier.php');
+        }
+
+        $this->project_checker = new \Psalm\Checker\ProjectChecker(
+            $config,
+            $this->file_provider,
+            new Provider\FakeParserCacheProvider()
+        );
 
         $context = new Context();
 
@@ -829,6 +827,21 @@ class FileManipulationTest extends TestCase
                     }
 
                     echo $a;',
+                '5.6',
+                ['PossiblyUndefinedGlobalVariable'],
+                true,
+            ],
+            'unsetPossiblyUndefinedVariable' => [
+                '<?php
+                    if (rand(0, 1)) {
+                      $a = "bar";
+                    }
+                    unset($a);',
+                '<?php
+                    if (rand(0, 1)) {
+                      $a = "bar";
+                    }
+                    unset($a);',
                 '5.6',
                 ['PossiblyUndefinedGlobalVariable'],
                 true,

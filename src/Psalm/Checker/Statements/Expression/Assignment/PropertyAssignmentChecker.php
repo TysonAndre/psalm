@@ -70,13 +70,13 @@ class PropertyAssignmentChecker
 
             $property_id = $context->self . '::$' . $prop_name;
 
-            if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+            if (!$codebase->properties->propertyExists($property_id)) {
                 return null;
             }
 
             $property_exists = true;
 
-            $declaring_property_class = ClassLikeChecker::getDeclaringClassForProperty($project_checker, $property_id);
+            $declaring_property_class = $codebase->properties->getDeclaringClassForProperty($property_id);
 
             $class_storage = $project_checker->classlike_storage_provider->get((string)$declaring_property_class);
 
@@ -192,7 +192,6 @@ class PropertyAssignmentChecker
                 // Hack has a similar issue: https://github.com/facebook/hhvm/issues/5164
                 if ($lhs_type_part instanceof TObject ||
                     (
-                        $lhs_type_part instanceof TNamedObject &&
                         in_array(
                             strtolower($lhs_type_part->value),
                             ['stdclass', 'simplexmlelement', 'dateinterval', 'domdocument', 'domnode'],
@@ -279,7 +278,7 @@ class PropertyAssignmentChecker
 
                 $property_id = $lhs_type_part->value . '::$' . $prop_name;
 
-                if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+                if (!$codebase->properties->propertyExists($property_id)) {
                     if ($stmt->var instanceof PhpParser\Node\Expr\Variable && $stmt->var->name === 'this') {
                         // if this is a proper error, we'll see it on the first pass
                         if ($context->collect_mutations) {
@@ -335,8 +334,7 @@ class PropertyAssignmentChecker
                     }
                 }
 
-                $declaring_property_class = ClassLikeChecker::getDeclaringClassForProperty(
-                    $project_checker,
+                $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
                     $lhs_type_part->value . '::$' . $prop_name
                 );
 
@@ -633,7 +631,7 @@ class PropertyAssignmentChecker
 
         $property_id = $fq_class_name . '::$' . $prop_name;
 
-        if (!ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+        if (!$codebase->properties->propertyExists($property_id)) {
             if ($stmt->class instanceof PhpParser\Node\Name && $stmt->class->parts[0] === 'this') {
                 if (IssueBuffer::accepts(
                     new UndefinedThisPropertyAssignment(
@@ -669,8 +667,7 @@ class PropertyAssignmentChecker
             return false;
         }
 
-        $declaring_property_class = ClassLikeChecker::getDeclaringClassForProperty(
-            $project_checker,
+        $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
             $fq_class_name . '::$' . $prop_name
         );
 

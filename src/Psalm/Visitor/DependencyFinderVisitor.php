@@ -79,8 +79,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /** @var ClassLikeStorage[] */
     private $classlike_storages = [];
 
-    /** @var \Psalm\Plugin[] defining visitClassLike */
-    private $plugins;
+    /** @var string[] */
+    private $after_classlike_check_plugins;
 
     public function __construct(Codebase $codebase, FileStorage $file_storage, FileScanner $file_scanner)
     {
@@ -91,7 +91,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         $this->config = $codebase->config;
         $this->aliases = $this->file_aliases = new Aliases();
         $this->file_storage = $file_storage;
-        $this->plugins = $this->config->getPluginsForVisitClassLike();
+        $this->after_classlike_check_plugins = $this->config->after_visit_classlikes;
     }
 
     /**
@@ -157,7 +157,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             } else {
                 $fq_classlike_name = ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $node->name;
                 $fq_classlike_name_lc = strtolower($fq_classlike_name);
-                $this->file_storage->classes_in_file[] = $fq_classlike_name_lc;
+                $this->file_storage->classes_in_file[$fq_classlike_name_lc] = $fq_classlike_name;
             }
 
             $this->fq_classlike_names[] = $fq_classlike_name;
@@ -404,9 +404,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             || $node instanceof PhpParser\Node\Expr\AssignRef
         ) {
             if ($doc_comment = $node->getDocComment()) {
-                $var_comment = null;
+                $var_comments = [];
+
                 try {
-                    $var_comment = CommentChecker::getTypeFromComment(
+                    $var_comments = CommentChecker::getTypeFromComment(
                         (string)$doc_comment,
                         $this->file_scanner,
                         $this->aliases,
@@ -417,9 +418,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     // do nothing
                 }
 
-                if ($var_comment) {
+                foreach ($var_comments as $var_comment) {
                     $var_type = $var_comment->type;
-
                     $var_type->queueClassLikesForScanning($this->codebase, $this->file_path);
                 }
             }
@@ -485,11 +485,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             $this->class_template_types = [];
 
-            if ($this->plugins) {
+            if ($this->after_classlike_check_plugins) {
                 $file_manipulations = [];
 
-                foreach ($this->plugins as $plugin) {
-                    $plugin->visitClassLike(
+                foreach ($this->after_classlike_check_plugins as $plugin_fq_class_name) {
+                    $plugin_fq_class_name::afterVisitClassLike(
                         $node,
                         $classlike_storage,
                         $this->file_scanner,
@@ -1192,13 +1192,15 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             try {
                 $property_type_line_number = $comment->getLine();
-                $var_comment = CommentChecker::getTypeFromComment(
+                $var_comments = CommentChecker::getTypeFromComment(
                     $comment->getText(),
                     $this->file_scanner,
                     $this->aliases,
                     $this->function_template_types + $this->class_template_types,
                     $property_type_line_number
                 );
+
+                $var_comment = array_pop($var_comments);
             } catch (IncorrectDocblockException $e) {
                 if (IssueBuffer::accepts(
                     new MissingDocblockType(

@@ -236,6 +236,23 @@ class MethodCallTest extends TestCase
                     $a->bar();',
                 'error_message' => 'PossiblyFalseReference',
             ],
+            'undefinedParentClass' => [
+                '<?php
+                    /**
+                     * @psalm-suppress UndefinedClass
+                     */
+                    class B extends A {}
+
+                    $b = new B();',
+                'error_message' => 'MissingDependency - src/somefile.php:7',
+            ],
+            'variableMethodCallOnArray' => [
+                '<?php
+                    $arr = [];
+                    $b = "foo";
+                    $arr->$b();',
+                'error_message' => 'InvalidMethodCall',
+            ],
         ];
     }
 }

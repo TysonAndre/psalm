@@ -85,8 +85,7 @@ class PropertyFetchChecker
 
                         $property_id = $lhs_type_part->value . '::$' . $stmt->name;
 
-                        ClassLikeChecker::propertyExists(
-                            $project_checker,
+                        $codebase->properties->propertyExists(
                             $property_id,
                             new CodeLocation($statements_checker->getSource(), $stmt)
                         );
@@ -193,11 +192,8 @@ class PropertyFetchChecker
             // stdClass and SimpleXMLElement are special cases where we cannot infer the return types
             // but we don't want to throw an error
             // Hack has a similar issue: https://github.com/facebook/hhvm/issues/5164
-            if ($lhs_type_part instanceof TObject ||
-                (
-                    $lhs_type_part instanceof TNamedObject &&
-                    in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement'], true)
-                )
+            if ($lhs_type_part instanceof TObject
+                || in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement'], true)
             ) {
                 $stmt->inferredType = Type::getMixed();
                 continue;
@@ -239,7 +235,7 @@ class PropertyFetchChecker
             $property_id = $lhs_type_part->value . '::$' . $stmt->name;
 
             if ($codebase->methodExists($lhs_type_part->value . '::__get')) {
-                if ($stmt_var_id !== '$this' || !ClassLikeChecker::propertyExists($project_checker, $property_id)) {
+                if ($stmt_var_id !== '$this' || !$codebase->properties->propertyExists($property_id)) {
                     $class_storage = $project_checker->classlike_storage_provider->get((string)$lhs_type_part);
 
                     if (isset($class_storage->pseudo_property_get_types['$' . $stmt->name])) {
@@ -258,8 +254,7 @@ class PropertyFetchChecker
                 }
             }
 
-            if (!ClassLikeChecker::propertyExists(
-                $project_checker,
+            if (!$codebase->properties->propertyExists(
                 $property_id,
                 $context->collect_references ? new CodeLocation($statements_checker->getSource(), $stmt) : null
             )
@@ -307,7 +302,7 @@ class PropertyFetchChecker
                 return false;
             }
 
-            $declaring_property_class = ClassLikeChecker::getDeclaringClassForProperty($project_checker, $property_id);
+            $declaring_property_class = $codebase->properties->getDeclaringClassForProperty($property_id);
 
             $declaring_class_storage = $project_checker->classlike_storage_provider->get(
                 (string)$declaring_property_class
@@ -441,6 +436,7 @@ class PropertyFetchChecker
         $fq_class_name = null;
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         if ($stmt->class instanceof PhpParser\Node\Name) {
             if (count($stmt->class->parts) === 1
@@ -515,8 +511,7 @@ class PropertyFetchChecker
 
                 if ($context->collect_references) {
                     // log the appearance
-                    ClassLikeChecker::propertyExists(
-                        $project_checker,
+                    $codebase->properties->propertyExists(
                         $property_id,
                         new CodeLocation($statements_checker->getSource(), $stmt)
                     );
@@ -525,8 +520,7 @@ class PropertyFetchChecker
                 return null;
             }
 
-            if (!ClassLikeChecker::propertyExists(
-                $project_checker,
+            if (!$codebase->properties->propertyExists(
                 $property_id,
                 $context->collect_references ? new CodeLocation($statements_checker->getSource(), $stmt) : null
             )
@@ -554,8 +548,7 @@ class PropertyFetchChecker
                 return false;
             }
 
-            $declaring_property_class = ClassLikeChecker::getDeclaringClassForProperty(
-                $project_checker,
+            $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
                 $fq_class_name . '::$' . $stmt->name
             );
 
