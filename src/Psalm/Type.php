@@ -248,9 +248,6 @@ abstract class Type
      */
     public static function tokenize($return_type, $ignore_space = true)
     {
-        $return_type_tokens = [''];
-        $was_char = false;
-
         if ($ignore_space) {
             $return_type = str_replace(' ', '', $return_type);
         }
@@ -258,6 +255,9 @@ abstract class Type
         if (isset(self::$memoized_tokens[$return_type])) {
             return self::$memoized_tokens[$return_type];
         }
+
+        $return_type_tokens = [''];
+        $was_char = false;
 
         // index of last type token
         $rtc = 0;

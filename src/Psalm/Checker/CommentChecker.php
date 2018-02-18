@@ -11,6 +11,8 @@ use Psalm\FunctionDocblockComment;
 use Psalm\Type;
 use Psalm\VarDocblockComment;
 
+use function strlen;
+
 class CommentChecker
 {
     const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_\<,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_\<,\>\|\[\]-\{\}:]+)';
@@ -546,17 +548,9 @@ class CommentChecker
 
         // Smush the whole docblock to the left edge.
         $min_indent = 80;
-        $indent = 0;
         foreach (array_filter(explode("\n", $docblock)) as $line) {
-            for ($ii = 0; $ii < strlen($line); ++$ii) {
-                if ($line[$ii] != ' ') {
-                    break;
-                }
-                ++$indent;
-            }
-
-            /** @var int */
-            $min_indent = min($indent, $min_indent);
+            // Check if the next line has **fewer** leading spaces than the previous $min_indent, and update the minimum accordingly.
+            $min_indent = strspn($line, ' ', 0, $min_indent);
         }
 
         $docblock = preg_replace('/^' . str_repeat(' ', $min_indent) . '/m', '', $docblock);
