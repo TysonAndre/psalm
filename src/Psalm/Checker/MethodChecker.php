@@ -12,7 +12,6 @@ use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 
 use function explode;
-use function strtolower;
 
 class MethodChecker extends FunctionLikeChecker
 {
