@@ -124,9 +124,10 @@ class Analyzer
 
         // Run any plugins that must be run after scanning,
         // but before analysis of methods, functions, etc (and forking)
-        foreach ($this->config->getPlugins() as $plugin) {
+        $plugin_classes = $this->config->before_analyze_files;
+        foreach ($plugin_classes as $plugin) {
             // Pass in ProjectChecker
-            $plugin->beforeAnalyzeFiles($project_checker);
+            $plugin::beforeAnalyzeFiles($project_checker);
         }
 
         $analysis_worker =

@@ -7,7 +7,6 @@ use Psalm\Config\IssueHandler;
 use Psalm\Config\ProjectFileFilter;
 use Psalm\Exception\ConfigException;
 use Psalm\Scanner\FileScanner;
-use ReflectionMethod;
 use SimpleXMLElement;
 use function is_array;
 
@@ -229,12 +228,12 @@ class Config
      */
     public $after_visit_classlikes = [];
 
-    // Cache the plugins which are fetched the most frequently, for performance.
-    /** @var array<Plugin>|null lazily loaded */
-    private $plugins_for_after_expression_check = null;
-
-    /** @var array<Plugin>|null lazily loaded */
-    private $plugins_for_after_statements_check = null;
+    /**
+     * Static methods to be called before the analyze phase begins.
+     *
+     * @var string[]
+     */
+    public $before_analyze_files = [];
 
     /** @var array<string, mixed> */
     private $predefined_constants;
@@ -351,7 +350,6 @@ class Config
         // Enable user error handling
         libxml_use_internal_errors(true);
 
-        // TODO(tyson): Figure out how to add custom fields to config.xsd
         if (!$dom_document->schemaValidate($schema_path)) {
             $errors = libxml_get_errors();
             foreach ($errors as $error) {
@@ -636,6 +634,9 @@ class Config
             if ($codebase->methods->methodExists($fq_class_name . '::afterVisitClassLike')) {
                 $this->after_visit_classlikes[$fq_class_name] = $fq_class_name;
             }
+            if ($codebase->methods->methodExists($fq_class_name . '::beforeAnalyzeFiles')) {
+                $this->before_analyze_files[$fq_class_name] = $fq_class_name;
+            }
         }
     }
 
@@ -830,46 +831,6 @@ class Config
     {
         return $this->cache_directory;
     }
-
-    /**
-     * @return array<Plugin>
-     */
-    public function getPlugins()
-    {
-        return $this->plugins;
-    }
-
-    /**
-     * @return array<Plugin>
-     */
-    public function getPluginsForVisitClassLike()
-    {
-        return $this->getPluginsDefiningMethod('visitClassLike');
-    }
-
-    /**
-     * Returns only the methods which have non-empty implementations (i.e. defined by subclasses of Plugin)
-     *
-     * @param string $method_name
-     * @return array<Plugin>
-     */
-    private function getPluginsDefiningMethod($method_name)
-    {
-        $result = [];
-        if (count($this->plugins) === 0) {
-            return $result;
-        }
-
-        foreach ($this->plugins as $plugin) {
-            // TODO: What about traits?
-            $method = new ReflectionMethod($plugin, $method_name);
-            if (is_subclass_of($method->getDeclaringClass()->name, Plugin::class)) {
-                $result[] = $plugin;
-            }
-        }
-        return $result;
-    }
-
 
     /**
      * @return array<string, mixed>

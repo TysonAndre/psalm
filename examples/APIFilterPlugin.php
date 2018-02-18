@@ -27,12 +27,12 @@ class APIFilterPlugin extends \Psalm\Plugin
     const METHOD_FILTERS_CONST_NAME = 'METHOD_FILTERS';
 
     /** @var array<string, APIFilterRecord> maps fully qualified class name to storage and node */
-    private $classes_to_check_later = [];
+    private static $classes_to_check_later = [];
 
     /**
      * @return void
      */
-    public function visitClassLike(
+    public static function visitClassLike(
         ClassLike $class_node,
         ClassLikeStorage $storage,
         FileScanner $file_scanner,
@@ -40,7 +40,7 @@ class APIFilterPlugin extends \Psalm\Plugin
         array &$file_replacements = []
     ) {
         if (isset($storage->public_class_constants[self::METHOD_FILTERS_CONST_NAME])) {
-            $method_filters_node = $this->extractMethodFiltersNode($class_node);
+            $method_filters_node = self::extractMethodFiltersNode($class_node);
             if (!$method_filters_node) {
                 return;
             }
@@ -53,7 +53,7 @@ class APIFilterPlugin extends \Psalm\Plugin
                 // The list of filters is empty
                 return;
             }
-            $this->classes_to_check_later[$name] = $record;
+            self::$classes_to_check_later[$name] = $record;
         }
         return;
     }
@@ -61,7 +61,7 @@ class APIFilterPlugin extends \Psalm\Plugin
     /**
      * @return ?PhpParser\Node (Expected to be PhpParser\Expr\Node\Array_ by convention)
      */
-    private function extractMethodFiltersNode(ClassLike $class_node) {
+    private static function extractMethodFiltersNode(ClassLike $class_node) {
         foreach ($class_node->stmts as $stmt) {
             if (!($stmt instanceof ClassConst)) {
                 continue;
@@ -78,20 +78,20 @@ class APIFilterPlugin extends \Psalm\Plugin
     /**
      * @return void
      */
-    public function beforeAnalyzeFiles(
+    public static function beforeAnalyzeFiles(
         ProjectChecker $project_checker
     ) {
-        foreach ($this->classes_to_check_later as $record) {
-            $this->finishAnalyzing($record->filters, $record->storage, $project_checker);
+        foreach (self::$classes_to_check_later as $record) {
+            self::finishAnalyzing($record->filters, $record->storage, $project_checker);
         }
-        $this->classes_to_check_later = [];
+        self::$classes_to_check_later = [];
     }
 
     /**
      * @param array<string, array<string,string>> $filters
      * @return void
      */
-    private function finishAnalyzing(
+    private static function finishAnalyzing(
         array $filters,
         ClassLikeStorage $storage,
         ProjectChecker $checker
@@ -102,8 +102,8 @@ class APIFilterPlugin extends \Psalm\Plugin
             return;
         }
         foreach ($filters as $method_name => $filters_for_method) {
-            if (is_string($method_name) && is_array($filters_for_method)) {
-                $this->addFiltersForMethod($method_name, $filters_for_method, $storage, $checker);
+            if (is_array($filters_for_method)) {
+                self::addFiltersForMethod($method_name, $filters_for_method, $storage, $checker);
             }
         }
     }
@@ -113,7 +113,7 @@ class APIFilterPlugin extends \Psalm\Plugin
      * @param array<string, string> $filters_for_method
      * @return void
      */
-    private function addFiltersForMethod(
+    private static function addFiltersForMethod(
         $method_name,
         array $filters_for_method,
         ClassLikeStorage $storage,
@@ -136,7 +136,7 @@ class APIFilterPlugin extends \Psalm\Plugin
             return;
         }
         $param_storage = $method_storage->params[0];
-        $new_union_type = $this->convertFiltersToUnionType($filters_for_method);  // TODO: pass in the projectChecker so that names of filtering methods can be converted to union types.
+        $new_union_type = self::convertFiltersToUnionType($filters_for_method);  // TODO: pass in the projectChecker so that names of filtering methods can be converted to union types.
         // var_export($new_union_type);
 
         // TODO warn if variadic (unlikely)
@@ -159,10 +159,11 @@ class APIFilterPlugin extends \Psalm\Plugin
     /**
      * @param array<string|int, string> $filters_for_method
      */
-    public function convertFiltersToUnionType(array $filters_for_method) : Union {
+    public static function convertFiltersToUnionType(array $filters_for_method) : Union {
         $union_type_properties = array_map(
             /**
              * @param string $union_type_string
+             * @suppress RedundantConditionGivenDocblockType
              */
             function($union_type_string) : Union {
             if (!is_string($union_type_string)) {
@@ -213,6 +214,7 @@ class APIFilterRecord {
 
     /**
      * @return int|string|float|array|null
+     * @suppress RedundantConditionGivenDocblockType
      */
     public function convertNodeToPHPLiteral(Node $node) {
         if ($node instanceof Array_) {

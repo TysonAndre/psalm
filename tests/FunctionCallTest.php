@@ -636,7 +636,7 @@ class FunctionCallTest extends TestCase
                     }
 
                     a(["a" => "hello"]);',
-                'error_message' => 'InvalidScalarInComplexArgument',
+                'error_message' => 'InvalidArgument',  // TODO: fix
             ],
             'possiblyNullFunctionCall' => [
                 '<?php

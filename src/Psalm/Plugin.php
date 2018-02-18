@@ -91,7 +91,7 @@ abstract class Plugin
      *
      * @return void
      */
-    public function beforeAnalyzeFiles(
+    public static function beforeAnalyzeFiles(
         ProjectChecker $checker
     ) {
     }
