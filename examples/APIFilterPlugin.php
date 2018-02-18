@@ -9,9 +9,7 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassConst;
 use Psalm\Aliases;
-use Psalm\Checker;
 use Psalm\Checker\ProjectChecker;
-use Psalm\FileManipulation\FileManipulation;
 use Psalm\Scanner\FileScanner;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
@@ -72,7 +70,7 @@ class APIFilterPlugin extends \Psalm\Plugin
                 }
             }
         }
-        return;
+        return null;
     }
 
     /**
@@ -209,7 +207,7 @@ class APIFilterRecord {
                 return $node->value;
             }
         }
-        return;
+        return null;
     }
 
     /**
@@ -222,7 +220,7 @@ class APIFilterRecord {
             foreach ($node->items as $item) {
                 if (!$item) {
                     // add dummy entry of null? (only applies for list(...), so don't?)
-                    return;
+                    return null;
                 }
                 // TODO: Constant lookup
                 $key = $item->key;
