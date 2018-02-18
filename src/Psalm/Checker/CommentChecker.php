@@ -416,13 +416,23 @@ class CommentChecker
         $brackets = '';
 
         $type = '';
+        $N = \strlen($return_block);
 
-        for ($i = 0; $i < strlen($return_block); ++$i) {
+        for ($i = 0; $i < $N; $i++) {
+            $j = \strcspn($return_block, "[{(<>)}] \t", $i);
+            if ($j > 0) {
+                $type .= \substr($return_block, $i, $j);
+            }
+            $i += $j;
+            if ($i >= $N) {
+                break;
+            }
             $char = $return_block[$i];
+            $k = \strpos("[{(<>)}] \t", $char);
 
-            if ($char === '[' || $char === '{' || $char === '(' || $char === '<') {
+            if ($k < 4) {  // $char === '[' || $char === '{' || $char === '(' || $char === '<') {
                 $brackets .= $char;
-            } elseif ($char === ']' || $char === '}' || $char === ')' || $char === '>') {
+            } elseif ($k < 8) {  // $char === ']' || $char === '}' || $char === ')' || $char === '>') {
                 $last_bracket = substr($brackets, -1);
                 $brackets = substr($brackets, 0, -1);
 
@@ -433,7 +443,7 @@ class CommentChecker
                 ) {
                     throw new DocblockParseException('Invalid string ' . $return_block);
                 }
-            } elseif ($char === ' ' || $char === "\t") {
+            } else {
                 if ($brackets) {
                     continue;
                 }

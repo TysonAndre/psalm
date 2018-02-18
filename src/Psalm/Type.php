@@ -54,28 +54,6 @@ abstract class Type
      */
     public static function parseString($type_string, $php_compatible = false)
     {
-
-        /** @var array<string, Union[]> */
-        static $memoized_types = [];
-
-        $key = $php_compatible ? "a$type_string" : "b$type_string";
-        if (isset($memoized_types[$key])) {
-            return $memoized_types[$key];
-        }
-        $memoized_types[$key] = $union_type = clone(self::parseStringInner($type_string, $php_compatible));
-        return clone($union_type);
-    }
-
-    /**
-     * Parses a string type representation
-     *
-     * @param  string $type_string
-     * @param  bool   $php_compatible
-     *
-     * @return Union
-     * @throws TypeParseTreeException
-     */
-    private static function parseStringInner($type_string, $php_compatible) {
         // remove all unacceptable characters
         $type_string = preg_replace('/[^A-Za-z0-9_\\\\|\? \<\>\{\}:,\]\[\(\)\$]/', '', trim($type_string));
 
@@ -92,9 +70,9 @@ abstract class Type
         $type_tokens = self::tokenize($type_string);
 
         if (count($type_tokens) === 1) {
-            $type_tokens[0] = self::fixScalarTerms($type_tokens[0], $php_compatible);
+            $token = self::fixScalarTerms($type_tokens[0], $php_compatible);
 
-            return new Union([Atomic::create($type_tokens[0], $php_compatible)]);
+            return new Union([Atomic::create($token, $php_compatible)]);
         }
 
         try {
@@ -170,7 +148,8 @@ abstract class Type
         }
 
         if ($parse_tree->value === ParseTree::GENERIC) {
-            $generic_type = array_shift($parse_tree->children);
+            $children = $parse_tree->children;
+            $generic_type = array_shift($children);
 
             $generic_params = array_map(
                 /**
@@ -181,7 +160,7 @@ abstract class Type
 
                     return $tree_type instanceof Union ? $tree_type : new Union([$tree_type]);
                 },
-                $parse_tree->children
+                $children
             );
 
             if (!$generic_type->value) {
@@ -232,9 +211,10 @@ abstract class Type
         if ($parse_tree->value === ParseTree::OBJECT_LIKE) {
             $properties = [];
 
-            $type = array_shift($parse_tree->children);
+            $children = $parse_tree->children;
+            $type = array_shift($children);
 
-            foreach ($parse_tree->children as $i => $property_branch) {
+            foreach ($children as $i => $property_branch) {
                 if ($property_branch->value !== ParseTree::OBJECT_PROPERTY) {
                     $property_type = self::getTypeFromTree($property_branch, false);
                     $property_key = (string)$i;
