@@ -50,9 +50,32 @@ abstract class Type
      * @param  bool   $php_compatible
      *
      * @return Union
+     * @throws TypeParseTreeException
      */
     public static function parseString($type_string, $php_compatible = false)
     {
+
+        /** @var array<string, Union[]> */
+        static $memoized_types = [];
+
+        $key = $php_compatible ? "a$type_string" : "b$type_string";
+        if (isset($memoized_types[$key])) {
+            return $memoized_types[$key];
+        }
+        $memoized_types[$key] = $union_type = clone(self::parseStringInner($type_string, $php_compatible));
+        return clone($union_type);
+    }
+
+    /**
+     * Parses a string type representation
+     *
+     * @param  string $type_string
+     * @param  bool   $php_compatible
+     *
+     * @return Union
+     * @throws TypeParseTreeException
+     */
+    private static function parseStringInner($type_string, $php_compatible) {
         // remove all unacceptable characters
         $type_string = preg_replace('/[^A-Za-z0-9_\\\\|\? \<\>\{\}:,\]\[\(\)\$]/', '', trim($type_string));
 
