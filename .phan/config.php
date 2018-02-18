@@ -80,6 +80,8 @@ return [
     // here to inhibit them from being reported
     'suppress_issue_types' => [
         'PhanUndeclaredProperty',  // PhpParser dynamic properties, let Psalm check that
+        'PhanAccessPropertyInternal',  // PhpParser dynamic properties, let Psalm check that
+        'PhanAccessMethodInternal',  // PhpParser dynamic properties, let Psalm check that
         // 'PhanUndeclaredMethod',
     ],
 
@@ -111,11 +113,12 @@ return [
     // your application should be included in this list.
     'directory_list' => [
         'vendor/composer/composer/src/Composer',
+        'vendor/friendsofphp/php-cs-fixer/src',
         'vendor/muglug/package-versions-56/src/PackageVersions',
         'vendor/nikic/php-parser/lib/PhpParser',
         'vendor/openlss/lib-array2xml',
         'vendor/php-cs-fixer/diff/src',
-        'vendor/friendsofphp/php-cs-fixer/src',
+        'vendor/symfony/console',
         'src',
         'examples',
     ],
