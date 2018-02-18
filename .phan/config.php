@@ -110,9 +110,12 @@ return [
     // Thus, both first-party and third-party code being used by
     // your application should be included in this list.
     'directory_list' => [
-        'vendor/nikic/php-parser/lib',
-        'vendor/muglug/package-versions-56/src',
         'vendor/composer/composer/src/Composer',
+        'vendor/muglug/package-versions-56/src/PackageVersions',
+        'vendor/nikic/php-parser/lib/PhpParser',
+        'vendor/openlss/lib-array2xml',
+        'vendor/php-cs-fixer/diff/src',
+        'vendor/friendsofphp/php-cs-fixer/src',
         'src',
         'examples',
     ],
