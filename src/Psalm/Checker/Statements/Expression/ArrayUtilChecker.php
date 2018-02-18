@@ -2,7 +2,6 @@
 namespace Psalm\Checker\Statements\Expression;
 
 use PhpParser;
-use Psalm\Checker\ClassChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
@@ -42,8 +41,8 @@ class ArrayUtilChecker
 {
 
     /**
-     * @param array<int,PhpParser\Node\Arg> $args
      * @param PhpParser\Node\Expr $stmt
+     * @param array<int,PhpParser\Node\Arg> $args
      * @return Type\Union
      * @suppress MixedPropertyFetch
      */
@@ -148,8 +147,8 @@ class ArrayUtilChecker
     /**
      * @param  Type\Union $array_type
      * @param  Type\Union $offset_type
-     * @param  ?string    $array_var_id
      * @param  bool       $in_assignment
+     * @param  ?string    $array_var_id
      * @param  bool       $inside_isset
      *
      * @return Type\Union
