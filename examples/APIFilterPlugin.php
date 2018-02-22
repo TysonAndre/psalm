@@ -19,6 +19,9 @@ use Psalm\Type\Union;
 
 /**
  * This is an example plugin to make union types of API methods in an API class depend on a constant within the same class.
+ *
+ * TODO: This does not work as expected after refactoring class like storage cache for psalm 1.0.0
+ * (integration test fails)
  */
 class APIFilterPlugin extends \Psalm\Plugin
 {
@@ -29,14 +32,16 @@ class APIFilterPlugin extends \Psalm\Plugin
 
     /**
      * @return void
+     * @override
      */
-    public static function visitClassLike(
+    public static function afterVisitClassLike(
         ClassLike $class_node,
         ClassLikeStorage $storage,
         FileScanner $file_scanner,
         Aliases $aliases,
         array &$file_replacements = []
     ) {
+        // var_export($storage);
         if (isset($storage->public_class_constants[self::METHOD_FILTERS_CONST_NAME])) {
             $method_filters_node = self::extractMethodFiltersNode($class_node);
             if (!$method_filters_node) {

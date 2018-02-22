@@ -15,6 +15,16 @@ class ClassLikeStorageProvider
     private static $storage = [];
 
     /**
+     * @var ClassLikeStorageCacheProvider
+     */
+    public $cache;
+
+    public function __construct(ClassLikeStorageCacheProvider $cache)
+    {
+        $this->cache = $cache;
+    }
+
+    /**
      * @param  string $fq_classlike_name
      *
      * @return ClassLikeStorage
@@ -31,13 +41,37 @@ class ClassLikeStorageProvider
     }
 
     /**
-     * @param  string  $fq_classlike_name
+     * @param  string $fq_classlike_name
      *
      * @return bool
      */
     public function has($fq_classlike_name)
     {
-        return isset(self::$storage[strtolower($fq_classlike_name)]);
+        $fq_classlike_name_lc = strtolower($fq_classlike_name);
+
+        return isset(self::$storage[$fq_classlike_name_lc]);
+    }
+
+    /**
+     * @param  string  $fq_classlike_name
+     * @param  string|null $file_path
+     * @param  string|null $file_contents
+     *
+     * @return ClassLikeStorage
+     */
+    public function exhume($fq_classlike_name, $file_path, $file_contents)
+    {
+        $fq_classlike_name_lc = strtolower($fq_classlike_name);
+
+        if (isset(self::$storage[$fq_classlike_name_lc])) {
+            return self::$storage[$fq_classlike_name_lc];
+        }
+
+        self::$storage[$fq_classlike_name_lc]
+            = $cached_value
+            = $this->cache->getLatestFromCache($fq_classlike_name_lc, $file_path, $file_contents);
+
+        return $cached_value;
     }
 
     /**

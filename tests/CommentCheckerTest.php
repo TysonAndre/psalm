@@ -6,7 +6,8 @@ use Psalm\Checker\CommentChecker;
 class CommentCheckerTest extends TestCase
 {
     /** @return void */
-    public function testParseDocComment() {
+    public function testParseDocComment()
+    {
         $input_doc_comment = <<<'EOT'
    /**
     * Description

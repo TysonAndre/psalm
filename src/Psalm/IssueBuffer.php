@@ -8,8 +8,9 @@ use Psalm\Issue\CodeIssue;
 class IssueBuffer
 {
     /**
-     * @var array<int, array{severity: string, line_number: string, type: string, message: string, file_name: string,
-     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int, column: int}>
+     * @var array<int, array{severity: string, line_from: int, line_to: int, type: string, message: string,
+     * file_name: string, file_path: string, snippet: string, from: int, to: int,
+     * snippet_from: int, snippet_to: int, column_from: int, column_to: int}>
      */
     protected static $issues_data = [];
 
@@ -112,22 +113,57 @@ class IssueBuffer
     }
 
     /**
-     * @param  array{severity: string, line_number: string, type: string, message: string, file_name: string,
-     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int,
-     *  column: int} $issue_data
+     * @param  array{severity: string, line_from: int, line_to: int, type: string, message: string,
+     *  file_name: string, file_path: string, snippet: string, from: int, to: int,
+     *  snippet_from: int, snippet_to: int, column_from: int, column_to: int} $issue_data
      *
      * @return string
      */
     protected static function getEmacsOutput(array $issue_data)
     {
-        return $issue_data['file_path'] . ':' . $issue_data['line_number'] . ':' . $issue_data['column'] . ':' .
+        return $issue_data['file_path'] . ':' . $issue_data['line_from'] . ':' . $issue_data['column_from'] . ':' .
             ($issue_data['severity'] === Config::REPORT_ERROR ? 'error' : 'warning') . ' - ' . $issue_data['message'];
     }
 
     /**
-     * @param  array{severity: string, line_number: string, type: string, message: string, file_name: string,
-     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int,
-     *  column: int} $issue_data
+     * @param  array{severity: string, line_from: int, line_to: int, type: string, message: string,
+     *  file_name: string, file_path: string, snippet: string, from: int, to: int,
+     *  snippet_from: int, snippet_to: int, column_from: int, column_to: int} $issue_data
+     *
+     * @return string
+     */
+    protected static function getPylintOutput(array $issue_data)
+    {
+        $message = sprintf(
+            '%s: %s',
+            $issue_data['type'],
+            $issue_data['message']
+        );
+        if ($issue_data['severity'] === Config::REPORT_ERROR) {
+            $code = 'E0001';
+        } else {
+            $code = 'W0001';
+        }
+
+        // https://docs.pylint.org/en/1.6.0/output.html doesn't mention what to do about 'column',
+        // but it's still useful for users.
+        // E.g. jenkins can't parse %s:%d:%d.
+        $message = sprintf('%s (column %d)', $message, $issue_data['column_from']);
+        $issue_string = sprintf(
+            '%s:%d: [%s] %s',
+            $issue_data['file_name'],
+            $issue_data['line_from'],
+            $code,
+            $message
+        );
+
+        return $issue_string;
+    }
+
+    /**
+     * @param  array{severity: string, line_from: int, line_to: int, type: string, message: string,
+     *  file_name: string, file_path: string, snippet: string, from: int, to: int,
+     *  snippet_from: int, snippet_to: int, column_from: int, column_to: int} $issue_data
      * @param  bool  $use_color
      *
      * @return string
@@ -145,7 +181,7 @@ class IssueBuffer
         }
 
         $issue_string .= ': ' . $issue_data['type'] . ' - ' . $issue_data['file_name'] . ':' .
-            $issue_data['line_number'] . ':' . $issue_data['column'] . ' - ' . $issue_data['message'] . PHP_EOL;
+            $issue_data['line_from'] . ':' . $issue_data['column_from'] . ' - ' . $issue_data['message'] . PHP_EOL;
 
         $snippet = $issue_data['snippet'];
 
@@ -164,44 +200,9 @@ class IssueBuffer
     }
 
     /**
-     * @param  array{severity: string, line_number: string, type: string, message: string, file_name: string,
-     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int,
-     *  column: int} $issue_data
-     *
-     * @return string
-     */
-    protected static function getPylintOutput(array $issue_data)
-    {
-        $issue_string = '';
-
-        // TODO: context?
-        $message = sprintf(
-            "%s: %s",
-            $issue_data['type'],
-            $issue_data['message']
-        );
-        if ($issue_data['severity'] === Config::REPORT_ERROR) {
-            $code = 'E0001';
-        } else {
-            $code = 'W0001';
-        }
-
-        // https://docs.pylint.org/en/1.6.0/output.html doesn't mention what to do about 'column'.
-        // Have to check if jenkins can parse other formats.
-        // It can't for pylint. https://github.com/jenkinsci/violations-plugin/blob/master/src/main/java/hudson/plugins/violations/types/pylint/PyLintParser.java
-        $message = sprintf('%s (column %d)', $message, $issue_data['column']);
-        $issue_string = sprintf("%s:%d: [%s] %s",
-            $issue_data['file_name'],
-            $issue_data['line_number'],
-            $code,
-            $message
-        );
-        return $issue_string;
-    }
-
-    /**
-     * @return array<int, array{severity: string, line_number: string, type: string, message: string, file_name: string,
-     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int, column: int}>
+     * @return array<int, array{severity: string, line_from: int, type: string, message: string, file_name: string,
+     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int, column_from: int,
+     *  column_to: int}>
      */
     public static function getIssuesData()
     {
@@ -209,9 +210,9 @@ class IssueBuffer
     }
 
     /**
-     * @param array<int, array{severity: string, line_number: string, type: string, message: string,
+     * @param array<int, array{severity: string, line_from: int, type: string, message: string,
      *  file_name: string, file_path: string, snippet: string, from: int, to: int, snippet_from: int,
-     *  snippet_to: int, column: int}> $issues_data
+     *  snippet_to: int, column_from: int, column_to: int}> $issues_data
      *
      * @return void
      */
@@ -245,15 +246,15 @@ class IssueBuffer
                 /** @return int */
                 function (array $d1, array $d2) {
                     if ($d1['file_path'] === $d2['file_path']) {
-                        if ($d1['line_number'] === $d2['line_number']) {
-                            if ($d1['column'] === $d2['column']) {
+                        if ($d1['line_from'] === $d2['line_from']) {
+                            if ($d1['column_from'] === $d2['column_from']) {
                                 return 0;
                             }
 
-                            return $d1['column'] > $d2['column'] ? 1 : -1;
+                            return $d1['column_from'] > $d2['column_from'] ? 1 : -1;
                         }
 
-                        return $d1['line_number'] > $d2['line_number'] ? 1 : -1;
+                        return $d1['line_from'] > $d2['line_from'] ? 1 : -1;
                     }
 
                     return $d1['file_path'] > $d2['file_path'] ? 1 : -1;
@@ -324,12 +325,12 @@ class IssueBuffer
 
             return implode('', $output);
         } elseif ($format === ProjectChecker::TYPE_PYLINT) {
-            $output = [];
+            $output = '';
             foreach (self::$issues_data as $issue_data) {
-                $output[] = self::getPylintOutput($issue_data) . PHP_EOL;
+                $output .= self::getPylintOutput($issue_data) . PHP_EOL;
             }
 
-            return implode('', $output);
+            return $output;
         }
 
         $output = [];

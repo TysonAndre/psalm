@@ -60,7 +60,7 @@ Options:
 
     -i, --init [source_dir=src] [--level=3]
         Create a psalm config file in the current directory that points to [source_dir]
-        at the required level, from 1, most strict, to 5, most permissive
+        at the required level, from 1, most strict, to 6, most permissive
 
     --debug
         Debug information
@@ -84,7 +84,7 @@ Options:
         Psalm checks itself
 
     --output-format=console
-        Changes the output format. Possible values: console, json, xml
+        Changes the output format. Possible values: console, emacs, json, pylint, xml
 
     --find-dead-code
         Look for dead code
@@ -261,7 +261,7 @@ $find_references_to = isset($options['find-references-to']) && is_string($option
 $threads = isset($options['threads']) ? (int)$options['threads'] : 1;
 
 $cache_provider = isset($options['no-cache'])
-    ? new Psalm\Provider\Cache\NoParserCacheProvider()
+    ? new Psalm\Provider\NoCache\NoParserCacheProvider()
     : new Psalm\Provider\ParserCacheProvider();
 
 // initialise custom config, if passed
@@ -270,6 +270,14 @@ if ($path_to_config) {
 } else {
     $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
 }
+
+$file_storage_cache_provider = isset($options['no-cache'])
+    ? new Psalm\Provider\NoCache\NoFileStorageCacheProvider()
+    : new Psalm\Provider\FileStorageCacheProvider($config);
+
+$classlike_storage_cache_provider = isset($options['no-cache'])
+    ? new Psalm\Provider\NoCache\NoClassLikeStorageCacheProvider()
+    : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
 
 if (isset($options['clear-cache'])) {
     $cache_directory = $config->getCacheDirectory();
@@ -283,6 +291,8 @@ $project_checker = new ProjectChecker(
     $config,
     new Psalm\Provider\FileProvider(),
     $cache_provider,
+    $file_storage_cache_provider,
+    $classlike_storage_cache_provider,
     !array_key_exists('m', $options),
     $show_info,
     $output_format,
@@ -332,4 +342,4 @@ if ($find_references_to) {
     }
 }
 
-IssueBuffer::finish($project_checker, !$is_diff, $start_time, isset($options['stats']));
+IssueBuffer::finish($project_checker, !$paths_to_check, $start_time, isset($options['stats']));

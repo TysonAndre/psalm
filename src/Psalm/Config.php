@@ -436,6 +436,8 @@ class Config
         if (isset($config_xml['serializer'])) {
             $attribute_text = (string) $config_xml['serializer'];
             $config->use_igbinary = $attribute_text === 'igbinary';
+        } elseif ($igbinary_version = phpversion('igbinary')) {
+            $config->use_igbinary = version_compare($igbinary_version, '2.0.5') >= 0;
         }
 
         if (isset($config_xml['allowPhpStormGenerics'])) {
@@ -651,35 +653,37 @@ class Config
         $codebase = $project_checker->codebase;
 
         $file_storage = $codebase->createFileStorageForPath($path);
-        $file_to_scan = new FileScanner($path, $this->shortenFileName($path), false);
+        $file_to_scan = new FileScanner($path, $this->shortenFileName($path), true);
         $file_to_scan->scan(
             $codebase,
-            $codebase->getStatementsForFile($path),
             $file_storage
         );
 
         $declared_classes = ClassLikeChecker::getClassesForFile($project_checker, $path);
+        $declared_plugin_classes = [];
 
-        if (count($declared_classes) !== 1) {
-            throw new \InvalidArgumentException(
-                'Plugins must have exactly one class in the file - ' . $path . ' has ' .
-                    count($declared_classes)
-            );
+        foreach ($declared_classes as $fq_class_name_in_file) {
+            if ($codebase->classExtends($fq_class_name_in_file, $must_extend)) {
+                $declared_plugin_classes[] = $fq_class_name_in_file;
+            }
+        }
+        if (count($declared_plugin_classes) !== 1) {
+            if (count($declared_classes) === 1) {
+                throw new \InvalidArgumentException(
+                    'This plugin must extend ' . $must_extend . ' - ' . 'class ' . \reset($declared_classes) . ' of ' . $path . ' does not'
+                );
+            }
+
+            throw new \InvalidArgumentException(sprintf(
+                'Plugins must have exactly one class in the file that extends %s - %s has %d plugin classes of %d classes',
+                $must_extend,
+                $path,
+                count($declared_plugin_classes),
+                count($declared_classes)
+            ));
         }
 
-        $fq_class_name = reset($declared_classes);
-
-        if (!$codebase->classExtends(
-            $fq_class_name,
-            $must_extend
-        )
-        ) {
-            throw new \InvalidArgumentException(
-                'This plugin must extend ' . $must_extend . ' - ' . $path . ' does not'
-            );
-        }
-
-        return $fq_class_name;
+        return \reset($declared_plugin_classes);;
     }
 
     /**
@@ -814,7 +818,6 @@ class Config
             $file_to_scan = new FileScanner($stub_file_path, $this->shortenFileName($stub_file_path), false);
             $file_to_scan->scan(
                 $codebase,
-                $codebase->getStatementsForFile($stub_file_path),
                 $file_storage
             );
         }
@@ -915,7 +918,6 @@ class Config
                 $file_to_scan = new \Psalm\Scanner\FileScanner($file_path, $this->shortenFileName($file_path), false);
                 $file_to_scan->scan(
                     $codebase,
-                    $codebase->getStatementsForFile($file_path),
                     $file_storage
                 );
             }
@@ -954,6 +956,9 @@ class Config
 
     /**
      * @return array<string, string>
+     *
+     * @psalm-suppress LessSpecificReturnStatement
+     * @psalm-suppress MoreSpecificReturnType
      */
     public function getComposerClassMap()
     {

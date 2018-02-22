@@ -5,12 +5,14 @@ if [ "$#" != 0 ]; then
 	exit 1
 fi
 
+base_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 TEST_FOLDERS="plugin_test"
 
 FAILURES=""
 for TEST_FOLDER in $TEST_FOLDERS; do
 	echo "Running test suite: $TEST_SUITE"
-	pushd tests/integration/$TEST_FOLDER
+	pushd $base_dir/$TEST_FOLDER
 	if ! ./test.sh; then
 		FAILURES="$FAILURES $TEST_SUITE"
 	fi

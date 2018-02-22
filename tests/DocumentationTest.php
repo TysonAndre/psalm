@@ -51,7 +51,7 @@ class DocumentationTest extends TestCase
                     ++$i;
                 } while (substr($file_lines[$i], 0, 3) !== '```' && $i < $j);
 
-                $issue_code[$current_issue][] = trim($current_block);
+                $issue_code[(string) $current_issue][] = trim($current_block);
             }
         }
 
@@ -71,7 +71,9 @@ class DocumentationTest extends TestCase
         $this->project_checker = new \Psalm\Checker\ProjectChecker(
             new TestConfig(),
             $this->file_provider,
-            new Provider\FakeParserCacheProvider()
+            new Provider\FakeParserCacheProvider(),
+            new \Psalm\Provider\NoCache\NoFileStorageCacheProvider(),
+            new \Psalm\Provider\NoCache\NoClassLikeStorageCacheProvider()
         );
     }
 

@@ -116,7 +116,8 @@ class ArrayUtilChecker
                     $stmt->inferredType = Type::getNull();
                 }
 
-                return $stmt->inferredType;;
+                return $stmt->inferredType;
+                ;
             }
 
             $field_type = self::getArrayAccessTypeGivenOffset(
@@ -134,7 +135,6 @@ class ArrayUtilChecker
             // TODO: Add the default's type to $field_type, similar to the null coalesce operator.
             // (Be more precise when ObjectLike)
             $stmt->inferredType = $field_type;
-
         }
 
         if (!isset($stmt->inferredType)) {
