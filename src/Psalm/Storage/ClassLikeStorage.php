@@ -211,4 +211,10 @@ class ClassLikeStorage
      * @var string
      */
     public $hash = '';
+
+    /**
+     * Extra storage, for use by plugins
+     * @var array<string,mixed>
+     */
+    public $plugin_data = [];
 }

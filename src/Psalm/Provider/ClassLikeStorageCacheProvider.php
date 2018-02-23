@@ -140,7 +140,7 @@ class ClassLikeStorageCacheProvider
 
         return $parser_cache_directory
             . DIRECTORY_SEPARATOR
-            . sha1(($file_path ? strtolower($file_path) . ' ' : '') . $fq_classlike_name_lc)
+            . sha1(($file_path ? strtolower($file_path) . ' ' : '') . $fq_classlike_name_lc . $this->config->getPluginHashMaterial())
             . ($this->config->use_igbinary ? '-igbinary' : '');
     }
 }

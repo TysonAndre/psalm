@@ -50,6 +50,9 @@ class Config
      */
     private static $instance;
 
+    /** @var string - Based on the plugins that are loaded. */
+    private $plugin_hash_material = '';
+
     /**
      * Whether or not to use types as defined in docblocks
      *
@@ -639,6 +642,12 @@ class Config
             if ($codebase->methods->methodExists($fq_class_name . '::beforeAnalyzeFiles')) {
                 $this->before_analyze_files[$fq_class_name] = $fq_class_name;
             }
+            if (defined($fq_class_name . '::CLASS_STORAGE_HASH_MATERIAL')) {
+                $this->plugin_hash_material .= $fq_class_name . ':' . json_encode($fq_class_name . '::CLASS_STORAGE_HASH_MATERIAL') . ',';
+            }
+            if ($codebase->methods->methodExists($fq_class_name . '::afterMethodCallCheck')) {
+                $this->after_method_checks[$fq_class_name] = $fq_class_name;
+            }
         }
     }
 
@@ -1000,6 +1009,10 @@ class Config
         }
 
         return $composer_classmap;
+    }
+
+    public function getPluginHashMaterial() {
+        return $this->plugin_hash_material;
     }
 
     /**

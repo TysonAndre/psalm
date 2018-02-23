@@ -27,8 +27,10 @@ class APIFilterPlugin extends \Psalm\Plugin
 {
     const METHOD_FILTERS_CONST_NAME = 'METHOD_FILTERS';
 
-    /** @var array<string, APIFilterRecord> maps fully qualified class name to storage and node */
-    private static $classes_to_check_later = [];
+    // NOTE: Will need to clear the cache folder if the representation changes.
+    const API_FILTER_RECORD_KEY = 'APIFilterRecord';
+
+    const CLASS_STORAGE_HASH_MATERIAL = 'APIFilterRecordV1';
 
     /**
      * @return void
@@ -56,7 +58,7 @@ class APIFilterPlugin extends \Psalm\Plugin
                 // The list of filters is empty
                 return;
             }
-            self::$classes_to_check_later[$name] = $record;
+            $storage->plugin_data[self::API_FILTER_RECORD_KEY] = $record;
         }
         return;
     }
@@ -84,10 +86,12 @@ class APIFilterPlugin extends \Psalm\Plugin
     public static function beforeAnalyzeFiles(
         ProjectChecker $project_checker
     ) {
-        foreach (self::$classes_to_check_later as $record) {
-            self::finishAnalyzing($record->filters, $record->storage, $project_checker);
+        foreach ($project_checker->classlike_storage_provider as $classlike_storage) {
+            $record = $classlike_storage->plugin_data[self::API_FILTER_RECORD_KEY] ?? null;
+            if ($record instanceof APIFilterRecord) {
+                self::finishAnalyzing($record->filters, $record->storage, $project_checker);
+            }
         }
-        self::$classes_to_check_later = [];
     }
 
     /**
