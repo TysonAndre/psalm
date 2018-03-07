@@ -17,7 +17,7 @@ $options = getopt(
     [
         'help', 'debug', 'config:', 'monochrome', 'show-info:', 'diff',
         'output-format:', 'report:', 'find-dead-code', 'init',
-        'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache',
+        'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache', 'no-class-cache',
         'version', 'plugin:', 'no-vendor-autoloader', 'stats',
     ]
 );
@@ -101,7 +101,10 @@ Options:
         Clears all cache files that Psalm uses
 
     --no-cache
-        Runs Psalm without using cache
+        Runs Psalm without using any cache
+
+    --no-class-cache
+        Runs Psalm without using cache of inferences about classlikes.
 
     --plugin=PATH
         Executes a plugin, an alternative to using the Psalm config
@@ -268,11 +271,13 @@ if ($path_to_config) {
 
 $config->setComposerClassLoader($first_autoloader);
 
-$file_storage_cache_provider = isset($options['no-cache'])
+$no_class_cache = isset($options['no-cache']) || isset($options['no-class-cache']);
+
+$file_storage_cache_provider = $no_class_cache
     ? new Psalm\Provider\NoCache\NoFileStorageCacheProvider()
     : new Psalm\Provider\FileStorageCacheProvider($config);
 
-$classlike_storage_cache_provider = isset($options['no-cache'])
+$classlike_storage_cache_provider = $no_class_cache
     ? new Psalm\Provider\NoCache\NoClassLikeStorageCacheProvider()
     : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
 
