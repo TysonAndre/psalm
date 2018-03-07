@@ -174,6 +174,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         case 'Psalm\\Type\\Atomic\\TArray':
                         case 'Psalm\\Type\\Atomic\\TString':
                         case 'Psalm\\Type\\Atomic\\TNumericString':
+                        case 'Psalm\\Type\\Atomic\\TClassString':
                             $invalid_method_call_types[] = (string)$class_type_part;
                             break;
 
@@ -267,6 +268,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $statements_checker->getSource()
                         )
                     ) {
+                        $has_valid_method_call_type = true;
+                        $existent_method_ids[] = $method_id;
                         $return_type = Type::getMixed();
                         continue;
                     }
@@ -450,6 +453,19 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         $returns_by_ref =
                             $returns_by_ref
                                 || $codebase->methods->getMethodReturnsByRef($method_id);
+                    }
+
+                    if (strpos($stmt->name, 'assert') === 0) {
+                        $assertions = $codebase->methods->getMethodAssertions($method_id);
+
+                        if ($assertions) {
+                            self::applyAssertionsToContext(
+                                $assertions,
+                                $stmt->args,
+                                $context,
+                                $statements_checker
+                            );
+                        }
                     }
                 }
 

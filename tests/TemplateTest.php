@@ -78,13 +78,8 @@ class TemplateTest extends TestCase
                     'RedundantConditionGivenDocblockType',
                 ],
             ],
-            'classTemplateWithInstanceofCheck' => [
+            'classTemplateSelfs' => [
                 '<?php
-                    class A {}
-                    class B {}
-                    class C {}
-                    class D {}
-
                     /**
                      * @template T as object
                      */
@@ -109,13 +104,45 @@ class TemplateTest extends TestCase
                         }
                     }
 
-                    $bfoo = new Foo(B::class);
-                    $bfoo_bar = $bfoo->bar();
+                    class E {
+                        /**
+                         * @return Foo<self>
+                         */
+                        public static function getFoo() {
+                            return new Foo(__CLASS__);
+                        }
 
-                    if (!($bfoo_bar instanceof B)) {}',
+                        /**
+                         * @return Foo<self>
+                         */
+                        public static function getFoo2() {
+                            return new Foo(self::class);
+                        }
+
+                        /**
+                         * @return Foo<static>
+                         */
+                        public static function getFoo3() {
+                            return new Foo(static::class);
+                        }
+                    }
+
+                    class G extends E {}
+
+                    $efoo = E::getFoo();
+                    $efoo2 = E::getFoo2();
+                    $efoo3 = E::getFoo3();
+
+                    $gfoo = G::getFoo();
+                    $gfoo2 = G::getFoo2();
+                    $gfoo3 = G::getFoo3();',
                 'assertions' => [
-                    '$bfoo' => 'Foo<B>',
-                    '$bfoo_bar' => 'B',
+                    '$efoo' => 'Foo<E>',
+                    '$efoo2' => 'Foo<E>',
+                    '$efoo3' => 'Foo<E>',
+                    '$gfoo' => 'Foo<E>',
+                    '$gfoo2' => 'Foo<E>',
+                    '$gfoo3' => 'Foo<G>',
                 ],
                 'error_levels' => [
                     'MixedReturnStatement',

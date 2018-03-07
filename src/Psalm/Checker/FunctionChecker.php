@@ -327,13 +327,26 @@ class FunctionChecker extends FunctionLikeChecker
         if ($array_arg && isset($array_arg->inferredType)) {
             $arg_types = $array_arg->inferredType->getTypes();
 
-            if (isset($arg_types['array']) && $arg_types['array'] instanceof Type\Atomic\TArray) {
+            if (isset($arg_types['array'])
+                && ($arg_types['array'] instanceof Type\Atomic\TArray
+                    || $arg_types['array'] instanceof Type\Atomic\ObjectLike)
+            ) {
                 $array_arg_type = $arg_types['array'];
             }
         }
 
         if (isset($call_args[0])) {
             $function_call_arg = $call_args[0];
+
+            if (count($call_args) === 2) {
+                if ($array_arg_type instanceof Type\Atomic\ObjectLike) {
+                    $generic_key_type = $array_arg_type->getGenericKeyType();
+                } else {
+                    $generic_key_type = $array_arg_type ? clone $array_arg_type->type_params[0] : Type::getMixed();
+                }
+            } else {
+                $generic_key_type = Type::getInt();
+            }
 
             if ($function_call_arg->value instanceof PhpParser\Node\Expr\Closure
                 && isset($function_call_arg->value->inferredType)
@@ -354,13 +367,27 @@ class FunctionChecker extends FunctionLikeChecker
                     return Type::getArray();
                 }
 
-                $key_type = $array_arg_type ? clone $array_arg_type->type_params[0] : Type::getMixed();
-
                 $inner_type = clone $closure_return_type;
+
+                if ($array_arg_type instanceof Type\Atomic\ObjectLike && count($call_args) === 2) {
+                    return new Type\Union([
+                        new Type\Atomic\ObjectLike(
+                            array_map(
+                                /**
+                                 * @return Type\Union
+                                 */
+                                function (Type\Union $_) use ($inner_type) {
+                                    return clone $inner_type;
+                                },
+                                $array_arg_type->properties
+                            )
+                        ),
+                    ]);
+                }
 
                 return new Type\Union([
                     new Type\Atomic\TArray([
-                        $key_type,
+                        $generic_key_type,
                         $inner_type,
                     ]),
                 ]);
@@ -380,6 +407,8 @@ class FunctionChecker extends FunctionLikeChecker
                 $codebase = $project_checker->codebase;
 
                 foreach ($mapping_function_ids as $mapping_function_id) {
+                    $mapping_function_id = strtolower($mapping_function_id);
+
                     if (isset($call_map[$mapping_function_id][0])) {
                         if ($call_map[$mapping_function_id][0]) {
                             $mapped_function_return = Type::parseString($call_map[$mapping_function_id][0]);
@@ -448,9 +477,25 @@ class FunctionChecker extends FunctionLikeChecker
                 }
 
                 if ($mapping_return_type) {
+                    if ($array_arg_type instanceof Type\Atomic\ObjectLike && count($call_args) === 2) {
+                        return new Type\Union([
+                            new Type\Atomic\ObjectLike(
+                                array_map(
+                                    /**
+                                     * @return Type\Union
+                                     */
+                                    function (Type\Union $_) use ($mapping_return_type) {
+                                        return clone $mapping_return_type;
+                                    },
+                                    $array_arg_type->properties
+                                )
+                            ),
+                        ]);
+                    }
+
                     return new Type\Union([
                         new Type\Atomic\TArray([
-                            Type::getInt(),
+                            $generic_key_type,
                             $mapping_return_type,
                         ]),
                     ]);

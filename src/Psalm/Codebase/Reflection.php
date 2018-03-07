@@ -359,6 +359,14 @@ class Reflection
                 $storage->params[] = $param_obj;
             }
 
+            $storage->required_param_count = 0;
+
+            foreach ($storage->params as $i => $param) {
+                if (!$param->is_optional) {
+                    $storage->required_param_count = $i + 1;
+                }
+            }
+
             $storage->cased_name = $reflection_function->getName();
 
             $config = \Psalm\Config::getInstance();
@@ -449,15 +457,10 @@ class Reflection
 
         // register where they're declared
         foreach ($parent_storage->inheritable_method_ids as $method_name => $declaring_method_id) {
-            $implemented_method_id = $fq_class_name . '::' . $method_name;
-
             $storage->declaring_method_ids[$method_name] = $declaring_method_id;
             $storage->inheritable_method_ids[$method_name] = $declaring_method_id;
 
-            $this->codebase->methods->setOverriddenMethodId(
-                $implemented_method_id,
-                $declaring_method_id
-            );
+            $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
         }
     }
 

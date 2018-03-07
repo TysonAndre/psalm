@@ -170,15 +170,25 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             if ($stmt instanceof PhpParser\Node\Stmt\If_) {
-                IfChecker::analyze($this, $stmt, $context, $loop_scope);
+                if (IfChecker::analyze($this, $stmt, $context, $loop_scope) === false) {
+                    return false;
+                }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\TryCatch) {
-                TryChecker::analyze($this, $stmt, $context, $loop_scope);
+                if (TryChecker::analyze($this, $stmt, $context, $loop_scope) === false) {
+                    return false;
+                }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\For_) {
-                ForChecker::analyze($this, $stmt, $context);
+                if (ForChecker::analyze($this, $stmt, $context) === false) {
+                    return false;
+                }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Foreach_) {
-                ForeachChecker::analyze($this, $stmt, $context);
+                if (ForeachChecker::analyze($this, $stmt, $context) === false) {
+                    return false;
+                }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\While_) {
-                WhileChecker::analyze($this, $stmt, $context);
+                if (WhileChecker::analyze($this, $stmt, $context) === false) {
+                    return false;
+                }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Do_) {
                 DoChecker::analyze($this, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Const_) {
@@ -304,6 +314,23 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
+                foreach ($stmt->stmts as $function_stmt) {
+                    if ($function_stmt instanceof PhpParser\Node\Stmt\Global_) {
+                        foreach ($function_stmt->vars as $var) {
+                            if ($var instanceof PhpParser\Node\Expr\Variable) {
+                                if (is_string($var->name)) {
+                                    $var_id = '$' . $var->name;
+
+                                    // registers variable in global context
+                                    $context->hasVariable($var_id, $this);
+                                }
+                            }
+                        }
+                    } elseif (!$function_stmt instanceof PhpParser\Node\Stmt\Nop) {
+                        break;
+                    }
+                }
+
                 if (!$project_checker->codebase->register_global_functions) {
                     $function_id = strtolower($stmt->name);
                     $function_context = new Context($context->self);
@@ -534,7 +561,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
     /**
      * @return void
      */
-    private function checkUnreferencedVars()
+    public function checkUnreferencedVars()
     {
         $source = $this->getSource();
         $function_storage = $source instanceof FunctionLikeChecker ? $source->getFunctionLikeStorage($this) : null;
@@ -574,9 +601,23 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             if ($context->check_variables) {
-                $context->vars_in_scope['$' . $var->name] = Type::getMixed();
-                $context->vars_possibly_in_scope['$' . $var->name] = true;
-                $this->registerVariable('$' . $var->name, new CodeLocation($this, $stmt), null);
+                $var_id = '$' . $var->name;
+
+                $context->vars_in_scope[$var_id] = Type::getMixed();
+                $context->vars_possibly_in_scope[$var_id] = true;
+                $context->assigned_var_ids[$var_id] = true;
+
+                $location = new CodeLocation($this, $stmt);
+
+                if ($context->collect_references) {
+                    $context->unreferenced_vars[$var_id] = $location;
+                }
+
+                $this->registerVariable(
+                    $var_id,
+                    $location,
+                    $context->branch_point
+                );
             }
         }
 
@@ -686,6 +727,10 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 && isset($existing_class_constants[$stmt->name])
             ) {
                 return $existing_class_constants[$stmt->name];
+            }
+
+            if (is_string($stmt->name) && strtolower($stmt->name) === 'class') {
+                return Type::getClassString();
             }
 
             return null;

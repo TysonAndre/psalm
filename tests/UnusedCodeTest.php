@@ -644,6 +644,74 @@ class UnusedCodeTest extends TestCase
                     'MixedArrayOffset',
                 ],
             ],
+            'globalVariableUsage' => [
+                '<?php
+                    $a = "hello";
+                    function example() : void {
+                        global $a;
+                        echo $a;
+                    }
+                    example();',
+            ],
+            'staticVar' => [
+                '<?php
+                    function use_static() : void {
+                        static $token;
+                        if (!$token) {
+                            $token = rand(1, 10);
+                        }
+                        echo "token is $token\n";
+                    }',
+            ],
+            'tryCatchWithUseInIf' => [
+                '<?php
+                    function example_string() : string {
+                        if (rand(0, 1) > 0) {
+                            return "value";
+                        }
+                        throw new Exception("fail");
+                    }
+
+                    function main() : void {
+                        try {
+                            $s = example_string();
+                            if (!$s) {
+                                echo "Failed to get string\n";
+                            }
+                        } catch (Exception $e) {
+                            $s = "fallback";
+                        }
+                        printf("s is %s\n", $s);
+                    }',
+            ],
+            'unusedParamWithUnderscore' => [
+                '<?php
+                    function foo(int $_) : void {}
+
+                    foo(4);',
+            ],
+            'unusedParamWithUnusedPrefix' => [
+                '<?php
+                    function foo(int $unusedArg) : void {}
+
+                    foo(4);',
+            ],
+            'possiblyUnusedParamWithUnderscore' => [
+                '<?php
+                    class A {
+                        public static function foo(int $_ = null) : void {}
+                    }
+
+                    A::foo();',
+            ],
+            'possiblyUnusedParamWithUnusedPrefix' => [
+                '<?php
+                    class A {
+                        public static function foo(int $unusedArg = null) : void {}
+                    }
+
+                    A::foo();',
+            ],
         ];
     }
 

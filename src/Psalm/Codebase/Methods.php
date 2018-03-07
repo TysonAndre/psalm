@@ -287,6 +287,32 @@ class Methods
     }
 
     /**
+     * @param  string $method_id
+     *
+     * @return array<int, \Psalm\Storage\Assertion>
+     */
+    public function getMethodAssertions($method_id)
+    {
+        $method_id = $this->getDeclaringMethodId($method_id);
+
+        if (!$method_id) {
+            return [];
+        }
+
+        list($fq_class_name) = explode('::', $method_id);
+
+        $fq_class_storage = $this->classlike_storage_provider->get($fq_class_name);
+
+        if (!$fq_class_storage->user_defined && CallMap::inCallMap($method_id)) {
+            return [];
+        }
+
+        $storage = $this->getStorage($method_id);
+
+        return $storage->assertions;
+    }
+
+    /**
      * @param string $method_id
      * @param string $declaring_method_id
      *
@@ -360,23 +386,6 @@ class Methods
         if (isset($class_storage->appearing_method_ids[$method_name])) {
             return $class_storage->appearing_method_ids[$method_name];
         }
-    }
-
-    /**
-     * @param string  $method_id
-     * @param string  $overridden_method_id
-     *
-     * @return void
-     */
-    public function setOverriddenMethodId(
-        $method_id,
-        $overridden_method_id
-    ) {
-        list($fq_class_name, $method_name) = explode('::', $method_id);
-
-        $class_storage = $this->classlike_storage_provider->get($fq_class_name);
-
-        $class_storage->overridden_method_ids[$method_name][] = $overridden_method_id;
     }
 
     /**

@@ -165,7 +165,11 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
                     ) {
                         // this is fine
                         $has_valid_function_call_type = true;
-                    } elseif ($var_type_part instanceof TString) {
+                    } elseif ($var_type_part instanceof TString
+                        || $var_type_part instanceof Type\Atomic\TArray
+                        || ($var_type_part instanceof Type\Atomic\ObjectLike
+                            && count($var_type_part->properties) === 2)
+                    ) {
                         // this is also kind of fine
                         $has_valid_function_call_type = true;
                     } elseif ($var_type_part instanceof TNull) {
@@ -216,6 +220,9 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
 
             $is_predefined = true;
 
+            $is_maybe_root_function = !$stmt->name instanceof PhpParser\Node\Name\FullyQualified
+                && count($stmt->name->parts) === 1;
+
             if (!$in_call_map) {
                 $predefined_functions = $config->getPredefinedFunctions();
                 $is_predefined = isset($predefined_functions[$function_id]);
@@ -233,13 +240,18 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
                     if (self::checkFunctionExists(
                         $statements_checker,
                         $function_id,
-                        $code_location
+                        $code_location,
+                        $is_maybe_root_function
                     ) === false
                     ) {
                         return false;
                     }
                 } else {
-                    $function_id = self::getExistingFunctionId($statements_checker, $function_id);
+                    $function_id = self::getExistingFunctionId(
+                        $statements_checker,
+                        $function_id,
+                        $is_maybe_root_function
+                    );
                 }
 
                 $function_exists = $is_stubbed || $codebase_functions->functionExists(
@@ -426,6 +438,18 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
 
                 $stmt->inferredType = new Type\Union([$atomic_type]);
             }
+        }
+
+        if ($function_storage
+            && strpos($function_storage->cased_name, 'assert') === 0
+            && $function_storage->assertions
+        ) {
+            self::applyAssertionsToContext(
+                $function_storage->assertions,
+                $stmt->args,
+                $context,
+                $statements_checker
+            );
         }
 
         return null;

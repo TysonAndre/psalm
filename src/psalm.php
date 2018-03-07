@@ -16,7 +16,7 @@ $options = getopt(
     'f:mhvc:ir:',
     [
         'help', 'debug', 'config:', 'monochrome', 'show-info:', 'diff',
-        'self-check', 'output-format:', 'report:', 'find-dead-code', 'init',
+        'output-format:', 'report:', 'find-dead-code', 'init',
         'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache',
         'version', 'plugin:', 'no-vendor-autoloader', 'stats',
     ]
@@ -58,9 +58,9 @@ Options:
     -v, --version
         Display the Psalm version
 
-    -i, --init [source_dir=src] [--level=3]
+    -i, --init [source_dir=src] [level=3]
         Create a psalm config file in the current directory that points to [source_dir]
-        at the required level, from 1, most strict, to 6, most permissive
+        at the required level, from 1, most strict, to 6, most permissive.
 
     --debug
         Debug information
@@ -79,9 +79,6 @@ Options:
 
     --diff
         Runs Psalm in diff mode, only checking files that have changed (and their dependents)
-
-    --self-check
-        Psalm checks itself
 
     --output-format=console
         Changes the output format. Possible values: console, emacs, json, pylint, xml
@@ -142,12 +139,10 @@ if (isset($options['r']) && is_string($options['r'])) {
 
 $vendor_dir = getVendorDir($current_dir);
 
-requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
+$first_autoloader = requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
 
 if (array_key_exists('v', $options)) {
-    /** @var string */
-    $version = \Muglug\PackageVersions\Versions::getVersion('vimeo/psalm');
-    echo 'Psalm ' . $version . PHP_EOL;
+    echo 'Psalm ' . PSALM_VERSION . PHP_EOL;
     exit;
 }
 
@@ -182,8 +177,8 @@ if (isset($options['i'])) {
         }
 
         if (isset($args[1])) {
-            if (!preg_match('/^[1-5]$/', $args[1])) {
-                die('Config strictness must be a number between 1 and 5 inclusive' . PHP_EOL);
+            if (!preg_match('/^[1-6]$/', $args[1])) {
+                die('Config strictness must be a number between 1 and 6 inclusive' . PHP_EOL);
             }
 
             $level = (int)$args[1];
@@ -271,6 +266,8 @@ if ($path_to_config) {
     $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
 }
 
+$config->setComposerClassLoader($first_autoloader);
+
 $file_storage_cache_provider = isset($options['no-cache'])
     ? new Psalm\Provider\NoCache\NoFileStorageCacheProvider()
     : new Psalm\Provider\FileStorageCacheProvider($config);
@@ -316,9 +313,7 @@ foreach ($plugins as $plugin_path) {
 
 $start_time = (float) microtime(true);
 
-if (array_key_exists('self-check', $options)) {
-    $project_checker->checkDir(__DIR__);
-} elseif ($paths_to_check === null) {
+if ($paths_to_check === null) {
     $project_checker->check($current_dir, $is_diff);
 } elseif ($paths_to_check) {
     foreach ($paths_to_check as $path_to_check) {

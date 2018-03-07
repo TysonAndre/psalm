@@ -29,6 +29,8 @@
         <xs:attribute name="rememberPropertyAssignmentsAfterCall" type="xs:string" />
         <xs:attribute name="serializer" type="xs:string" />
         <xs:attribute name="allowPhpStormGenerics" type="xs:string" />
+        <xs:attribute name="allowCoercionFromStringToClassConst" type="xs:string" />
+        <xs:attribute name="allowStringToStandInForClass" type="xs:string" />
     </xs:complexType>
 
     <xs:complexType name="ProjectFilesType">
@@ -137,6 +139,7 @@
             <xs:element name="InvalidScope" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidStaticInvocation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidStaticVariable" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="InvalidStringClass" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidThrow" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidToString" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="LessSpecificReturnStatement" type="IssueHandlerType" minOccurs="0" />
@@ -184,6 +187,7 @@
             <xs:element name="NullPropertyFetch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NullReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="OverriddenMethodAccess" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="OverriddenPropertyAccess" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ParadoxicalCondition" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ParentNotFound" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalseArgument" type="IssueHandlerType" minOccurs="0" />

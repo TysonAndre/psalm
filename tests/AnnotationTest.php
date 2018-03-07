@@ -36,6 +36,29 @@ class AnnotationTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testPhpStormGenericsWithValidIterableArgument()
+    {
+        Config::getInstance()->allow_phpstorm_generics = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param iterable|string[] $i */
+                function takesArrayIteratorOfString(iterable $i): void {
+                    foreach ($i as $s2) {
+                        takesString($s2);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
      * @expectedException        \Psalm\Exception\CodeException
      * @expectedExceptionMessage InvalidScalarArgument
      *
@@ -77,6 +100,80 @@ class AnnotationTest extends TestCase
                 function takesArrayIteratorOfString($i): void {
                     $s = $i->offsetGet("a");
                 }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidArgument
+     *
+     * @return                   void
+     */
+    public function testDontAllowStringConstCoercion()
+    {
+        Config::getInstance()->allow_coercion_from_string_to_class_const = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @param class-string $s
+                 */
+                function takesClassConstants(string $s) : void {}
+
+                class A {}
+
+                takesClassConstants("A");'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidStringClass
+     *
+     * @return                   void
+     */
+    public function testDontAllowStringStandInForNewClass()
+    {
+        Config::getInstance()->allow_string_standin_for_class = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A {}
+
+                $a = "A";
+
+                new $a();'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidStringClass
+     *
+     * @return                   void
+     */
+    public function testDontAllowStringStandInForStaticMethodCall()
+    {
+        Config::getInstance()->allow_string_standin_for_class = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A {
+                    public static function foo() : void {}
+                }
+
+                $a = "A";
+
+                $a::foo();'
         );
 
         $this->analyzeFile('somefile.php', new Context());
@@ -512,6 +609,106 @@ class AnnotationTest extends TestCase
                     }',
                 'assertions' => [],
                 'error_level' => ['MixedAssignment', 'MixedTypeCoercion'],
+            ],
+            'arrayOfClassConstants' => [
+                '<?php
+                    /**
+                     * @param array<class-string> $arr
+                     */
+                    function takesClassConstants(array $arr) : void {}
+
+                    class A {}
+                    class B {}
+
+                    takesClassConstants([A::class, B::class]);',
+            ],
+            'arrayOfStringClasses' => [
+                '<?php
+                    /**
+                     * @param array<class-string> $arr
+                     */
+                    function takesClassConstants(array $arr) : void {}
+
+                    class A {}
+                    class B {}
+
+                    takesClassConstants(["A", "B"]);',
+                'annotations' => [],
+                'error_levels' => ['TypeCoercion'],
+            ],
+            'singleClassConstant' => [
+                '<?php
+                    /**
+                     * @param class-string $s
+                     */
+                    function takesClassConstants(string $s) : void {}
+
+                    class A {}
+
+                    takesClassConstants(A::class);',
+            ],
+            'singleClassConstantWithString' => [
+                '<?php
+                    /**
+                     * @param class-string $s
+                     */
+                    function takesClassConstants(string $s) : void {}
+
+                    class A {}
+
+                    takesClassConstants("A");',
+                'annotations' => [],
+                'error_levels' => ['TypeCoercion'],
+            ],
+            'returnClassConstant' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string
+                     */
+                    function takesClassConstants() : string {
+                        return A::class;
+                    }',
+            ],
+            'returnClassConstantAllowCoercion' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string
+                     */
+                    function takesClassConstants() : string {
+                        return "A";
+                    }',
+                'annotations' => [],
+                'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
+            ],
+            'returnClassConstantArray' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    /**
+                     * @return array<class-string>
+                     */
+                    function takesClassConstants() : array {
+                        return [A::class, B::class];
+                    }',
+            ],
+            'returnClassConstantArrayAllowCoercion' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    /**
+                     * @return array<class-string>
+                     */
+                    function takesClassConstants() : array {
+                        return ["A", "B"];
+                    }',
+                'annotations' => [],
+                'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
             ],
         ];
     }
@@ -1153,6 +1350,74 @@ class AnnotationTest extends TestCase
                     }',
                 'error_message' => 'MixedTypeCoercion',
                 'error_levels' => ['MixedAssignment'],
+            ],
+            'arrayOfStringClasses' => [
+                '<?php
+                    /**
+                     * @param array<class-string> $arr
+                     */
+                    function takesClassConstants(array $arr) : void {}
+
+                    class A {}
+                    class B {}
+
+                    takesClassConstants(["A", "B"]);',
+                'error_message' => 'TypeCoercion',
+            ],
+            'arrayOfNonExistentStringClasses' => [
+                '<?php
+                    /**
+                     * @param array<class-string> $arr
+                     */
+                    function takesClassConstants(array $arr) : void {}
+                    takesClassConstants(["A", "B"]);',
+                'error_message' => 'UndefinedClass',
+                'error_levels' => ['TypeCoercion'],
+            ],
+            'singleClassConstantWithInvalidDocblock' => [
+                '<?php
+                    /**
+                     * @param clas-string $s
+                     */
+                    function takesClassConstants(string $s) : void {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'returnClassConstantDisallowCoercion' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string
+                     */
+                    function takesClassConstants() : string {
+                        return "A";
+                    }',
+                'error_message' => 'LessSpecificReturnStatement',
+            ],
+            'returnClassConstantArrayDisallowCoercion' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return array<class-string>
+                     */
+                    function takesClassConstants() : array {
+                        return ["A", "B"];
+                    }',
+                'error_message' => 'LessSpecificReturnStatement',
+            ],
+            'returnClassConstantArrayAllowCoercionWithUndefinedClass' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return array<class-string>
+                     */
+                    function takesClassConstants() : array {
+                        return ["A", "B"];
+                    }',
+                'error_message' => 'UndefinedClass',
+                'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
             ],
         ];
     }

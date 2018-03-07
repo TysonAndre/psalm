@@ -1,6 +1,7 @@
 <?php
 namespace Psalm;
 
+use Composer\Autoload\ClassLoader;
 use Psalm\Checker\ClassLikeChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Config\IssueHandler;
@@ -189,6 +190,16 @@ class Config
     public $allow_phpstorm_generics = false;
 
     /**
+     * @var bool
+     */
+    public $allow_coercion_from_string_to_class_const = true;
+
+    /**
+     * @var bool
+     */
+    public $allow_string_standin_for_class = true;
+
+    /**
      * @var string[]
      */
     private $plugin_paths = [];
@@ -240,6 +251,9 @@ class Config
 
     /** @var array<string, bool> */
     private $predefined_functions = [];
+
+    /** @var ClassLoader|null */
+    private $composer_class_loader;
 
     protected function __construct()
     {
@@ -445,6 +459,16 @@ class Config
             $config->allow_phpstorm_generics = $attribute_text === 'true' || $attribute_text === '1';
         }
 
+        if (isset($config_xml['allowCoercionFromStringToClassConst'])) {
+            $attribute_text = (string) $config_xml['allowCoercionFromStringToClassConst'];
+            $config->allow_coercion_from_string_to_class_const = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
+        if (isset($config_xml['allowStringToStandInForClass'])) {
+            $attribute_text = (string) $config_xml['allowCoercionFromStringToClassConst'];
+            $config->allow_string_standin_for_class = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
         }
@@ -465,11 +489,11 @@ class Config
         if (isset($config_xml->stubs) && isset($config_xml->stubs->file)) {
             /** @var \SimpleXMLElement $stub_file */
             foreach ($config_xml->stubs->file as $stub_file) {
-                $file_path = realpath($stub_file['name']);
+                $file_path = realpath($config->base_dir . DIRECTORY_SEPARATOR . $stub_file['name']);
 
                 if (!$file_path) {
                     throw new Exception\ConfigException(
-                        'Cannot resolve stubfile path ' . getcwd() . '/' . $stub_file['name']
+                        'Cannot resolve stubfile path ' . $config->base_dir . DIRECTORY_SEPARATOR . $stub_file['name']
                     );
                 }
 
@@ -518,6 +542,14 @@ class Config
         }
 
         throw new \UnexpectedValueException('No config initialized');
+    }
+
+    /**
+     * @return void
+     */
+    public function setComposerClassLoader(ClassLoader $loader)
+    {
+        $this->composer_class_loader = $loader;
     }
 
     /**
@@ -927,79 +959,17 @@ class Config
     }
 
     /**
-     * @param  string $current_dir
+     * @param  string $fq_classlike_name
      *
-     * @return string
-     *
-     * @psalm-suppress PossiblyFalseArgument
-     * @psalm-suppress MixedArrayAccess
-     * @psalm-suppress MixedAssignment
+     * @return string|false
      */
-    private static function getVendorDir($current_dir)
+    public function getComposerFilePathForClassLike($fq_classlike_name)
     {
-        $composer_json_path = $current_dir . DIRECTORY_SEPARATOR . 'composer.json';
-
-        if (!file_exists($composer_json_path)) {
-            return 'vendor';
+        if (!$this->composer_class_loader) {
+            return false;
         }
 
-        if (!$composer_json = json_decode(file_get_contents($composer_json_path), true)) {
-            throw new \UnexpectedValueException('Invalid composer.json at ' . $composer_json_path);
-        }
-
-        if (isset($composer_json['config']['vendor-dir'])) {
-            return (string) $composer_json['config']['vendor-dir'];
-        }
-
-        return 'vendor';
-    }
-
-    /**
-     * @return array<string, string>
-     *
-     * @psalm-suppress LessSpecificReturnStatement
-     * @psalm-suppress MoreSpecificReturnType
-     */
-    public function getComposerClassMap()
-    {
-        $vendor_dir = realpath($this->base_dir . self::getVendorDir($this->base_dir));
-
-        if (!$vendor_dir) {
-            return [];
-        }
-
-        $autoload_files_classmap =
-            $vendor_dir . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'autoload_classmap.php';
-
-        if (!file_exists($autoload_files_classmap)) {
-            return [];
-        }
-
-        /**
-         * @psalm-suppress MixedAssignment
-         * @psalm-suppress UnresolvableInclude
-         */
-        $class_map = include_once $autoload_files_classmap;
-
-        if (is_array($class_map)) {
-            $composer_classmap = array_change_key_case($class_map);
-
-            $composer_classmap = array_filter(
-                $composer_classmap,
-                /**
-                 * @param string $file_path
-                 *
-                 * @return bool
-                 */
-                function ($file_path) use ($vendor_dir) {
-                    return strpos($file_path, $vendor_dir) === 0;
-                }
-            );
-        } else {
-            $composer_classmap = [];
-        }
-
-        return $composer_classmap;
+        return $this->composer_class_loader->findFile($fq_classlike_name);
     }
 
     /**

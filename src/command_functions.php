@@ -6,7 +6,9 @@
  * @param  string $vendor_dir
  * @param  bool   $skipAutoloaderCheck
  *
- * @return void
+ * @psalm-suppress MixedInferred
+ *
+ * @return \Composer\Autoload\ClassLoader
  */
 function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skipAutoloaderCheck = false)
 {
@@ -26,7 +28,10 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
         $nested_autoload_file = dirname(dirname($autoload_root)) . DIRECTORY_SEPARATOR . 'autoload.php';
 
         if (file_exists($nested_autoload_file)) {
-            $autoload_files[] = realpath($nested_autoload_file);
+            $nested_autoload_file_path = realpath($nested_autoload_file);
+            if (!in_array($nested_autoload_file_path, $autoload_files, false)) {
+                $autoload_files[] = $nested_autoload_file_path;
+            }
             $has_autoloader = true;
         }
 
@@ -34,7 +39,10 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
             $autoload_root . DIRECTORY_SEPARATOR . $vendor_dir . DIRECTORY_SEPARATOR . 'autoload.php';
 
         if (file_exists($vendor_autoload_file)) {
-            $autoload_files[] = realpath($vendor_autoload_file);
+            $autoload_file_path = realpath($vendor_autoload_file);
+            if (!in_array($autoload_file_path, $autoload_files, false)) {
+                $autoload_files[] = $autoload_file_path;
+            }
             $has_autoloader = true;
         }
 
@@ -50,10 +58,27 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
         }
     }
 
+    $first_autoloader = null;
+
     foreach ($autoload_files as $file) {
-        /** @psalm-suppress UnresolvableInclude */
-        require_once $file;
+        /**
+         * @psalm-suppress UnresolvableInclude
+         * @var \Composer\Autoload\ClassLoader
+         */
+        $autoloader = require_once $file;
+
+        if (!$first_autoloader) {
+            $first_autoloader = $autoloader;
+        }
     }
+
+    if ($first_autoloader === null) {
+        throw new \LogicException('Cannot be null here');
+    }
+
+    define('PSALM_VERSION', (string) \Muglug\PackageVersions\Versions::getVersion('vimeo/psalm'));
+
+    return $first_autoloader;
 }
 
 /**

@@ -12,7 +12,9 @@ use Psalm\Context;
 use Psalm\Issue\AbstractInstantiation;
 use Psalm\Issue\DeprecatedClass;
 use Psalm\Issue\InterfaceInstantiation;
+use Psalm\Issue\InvalidStringClass;
 use Psalm\Issue\TooManyArguments;
+use Psalm\Issue\UndefinedClass;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
@@ -109,6 +111,55 @@ class NewChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 $statements_checker
             ) === false) {
                 return false;
+            }
+
+            if (isset($stmt->class->inferredType)) {
+                foreach ($stmt->class->inferredType->getTypes() as $lhs_type_part) {
+                    // this is always OK
+                    if ($lhs_type_part instanceof Type\Atomic\TClassString) {
+                        continue;
+                    }
+
+                    if ($lhs_type_part instanceof Type\Atomic\TString) {
+                        if ($config->allow_string_standin_for_class
+                            && !$lhs_type_part instanceof Type\Atomic\TNumericString
+                        ) {
+                            continue;
+                        }
+
+                        if (IssueBuffer::accepts(
+                            new InvalidStringClass(
+                                'String cannot be used as a class',
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+
+                        continue;
+                    }
+
+                    if ($lhs_type_part instanceof Type\Atomic\TMixed) {
+                        continue;
+                    }
+
+                    if ($lhs_type_part instanceof Type\Atomic\TNull
+                        && $stmt->class->inferredType->ignore_nullable_issues
+                    ) {
+                        continue;
+                    }
+
+                    if (IssueBuffer::accepts(
+                        new UndefinedClass(
+                            'Type ' . $lhs_type_part . ' cannot be called as a class',
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
             }
 
             $stmt->inferredType = Type::getObject();

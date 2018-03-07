@@ -479,6 +479,89 @@ class FunctionCallTest extends TestCase
                     '$foo' => 'numeric',
                 ],
             ],
+            'arrayMapObjectLikeAndCallable' => [
+                '<?php
+                    /**
+                     * @psalm-return array{key1:int,key2:int}
+                     */
+                    function foo(): array {
+                      $v = ["key1"=> 1, "key2"=> "2"];
+                      $r = array_map("intval", $v);
+                      return $r;
+                    }',
+            ],
+            'arrayMapObjectLikeAndClosure' => [
+                '<?php
+                    /**
+                     * @psalm-return array{key1:int,key2:int}
+                     */
+                    function foo(): array {
+                      $v = ["key1"=> 1, "key2"=> "2"];
+                      $r = array_map(function($i) : int { return intval($i);}, $v);
+                      return $r;
+                    }',
+                'assertions' => [],
+                'error_levels' => [
+                    'MissingClosureParamType',
+                ],
+            ],
+            'arrayFilterGoodArgs' => [
+                '<?php
+                    function fooFoo(int $i) : bool {
+                      return true;
+                    }
+
+                    class A {
+                        public static function barBar(int $i) : bool {
+                            return true;
+                        }
+                    }
+
+                    array_filter([1, 2, 3], "fooFoo");
+                    array_filter([1, 2, 3], "foofoo");
+                    array_filter([1, 2, 3], "FOOFOO");
+                    array_filter([1, 2, 3], "A::barBar");
+                    array_filter([1, 2, 3], "A::BARBAR");
+                    array_filter([1, 2, 3], "A::barbar");',
+            ],
+            'arrayFilterIgnoreMissingClass' => [
+                '<?php
+                    array_filter([1, 2, 3], "A::bar");',
+                'assertions' => [],
+                'error_levels' => ['UndefinedClass'],
+            ],
+            'arrayFilterIgnoreMissingMethod' => [
+                '<?php
+                    class A {
+                        public static function bar(int $i) : bool {
+                            return true;
+                        }
+                    }
+
+                    array_filter([1, 2, 3], "A::foo");',
+                'assertions' => [],
+                'error_levels' => ['UndefinedMethod'],
+            ],
+            'validCallables' => [
+                '<?php
+                    class A {
+                        public static function b() : void {}
+                    }
+
+                    function c() : void {}
+
+                    ["a", "b"]();
+                    "A::b"();
+                    "c"();'
+            ],
+            'arrayMapParamDefault' => [
+                '<?php
+                    $arr = ["a", "b"];
+                    array_map("mapdef", $arr, array_fill(0, count($arr), 1));
+                    function mapdef(string $_a, int $_b = 0): string {
+                        return "a";
+                    }',
+            ],
         ];
     }
 
@@ -649,6 +732,51 @@ class FunctionCallTest extends TestCase
                     $a = rand(0, 1) ? function(): void {} : 23515;
                     $a();',
                 'error_message' => 'PossiblyInvalidFunctionCall',
+            ],
+            'arrayFilterBadArgs' => [
+                '<?php
+                    function foo(int $i) : bool {
+                      return true;
+                    }
+
+                    array_filter(["hello"], "foo");',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'arrayFilterTooFewArgs' => [
+                '<?php
+                    function foo(int $i, string $s) : bool {
+                      return true;
+                    }
+
+                    array_filter([1, 2, 3], "foo");',
+                'error_message' => 'TooFewArguments',
+            ],
+            'arrayMapBadArgs' => [
+                '<?php
+                    function foo(int $i) : bool {
+                      return true;
+                    }
+
+                    array_map("foo", ["hello"]);',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'arrayMapTooFewArgs' => [
+                '<?php
+                    function foo(int $i, string $s) : bool {
+                      return true;
+                    }
+
+                    array_map("foo", [1, 2, 3]);',
+                'error_message' => 'TooFewArguments',
+            ],
+            'arrayMapTooManyArgs' => [
+                '<?php
+                    function foo() : bool {
+                      return true;
+                    }
+
+                    array_map("foo", [1, 2, 3]);',
+                'error_message' => 'TooManyArguments',
             ],
         ];
     }

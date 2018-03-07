@@ -51,11 +51,6 @@ class Scanner
     private $scanned_files = [];
 
     /**
-     * @var null|array<string, string>
-     */
-    private $composer_classmap;
-
-    /**
      * @var array<string, bool>
      */
     private $store_scan_failure = [];
@@ -377,23 +372,19 @@ class Scanner
             throw new \InvalidArgumentException('Why are you asking about a builtin class?');
         }
 
-        if ($this->composer_classmap === null) {
-            $this->composer_classmap = $this->config->getComposerClassMap();
-        }
+        $composer_file_path = $this->config->getComposerFilePathForClassLike($fq_class_name);
 
-        if (isset($this->composer_classmap[$fq_class_name_lc])) {
-            if (file_exists($this->composer_classmap[$fq_class_name_lc])) {
-                if ($this->debug_output) {
-                    echo 'Using generated composer classmap to locate file for ' . $fq_class_name . PHP_EOL;
-                }
-
-                $classlikes->addFullyQualifiedClassLikeName(
-                    $fq_class_name_lc,
-                    $this->composer_classmap[$fq_class_name_lc]
-                );
-
-                return true;
+        if ($composer_file_path && file_exists($composer_file_path)) {
+            if ($this->debug_output) {
+                echo 'Using composer to locate file for ' . $fq_class_name . PHP_EOL;
             }
+
+            $classlikes->addFullyQualifiedClassLikeName(
+                $fq_class_name_lc,
+                realpath($composer_file_path)
+            );
+
+            return true;
         }
 
         $old_level = error_reporting();

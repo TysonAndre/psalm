@@ -91,6 +91,20 @@ class MethodCallTest extends TestCase
                     $a = new A;
                     $a->bar();',
             ],
+            'canBeCalledOnMagic' => [
+                '<?php
+                    class A {
+                      public function __call(string $method) {}
+                    }
+
+                    class B {}
+
+                    $a = rand(0, 1) ? new A : new B;
+
+                    $a->maybeUndefinedMethod();',
+                'assertions' => [],
+                'error_levels' => ['PossiblyUndefinedMethod'],
+            ],
         ];
     }
 
@@ -252,6 +266,18 @@ class MethodCallTest extends TestCase
                     $b = "foo";
                     $arr->$b();',
                 'error_message' => 'InvalidMethodCall',
+            ],
+            'intVarStaticCall' => [
+                '<?php
+                    $a = 5;
+                    $a::bar();',
+                'error_message' => 'UndefinedClass',
+            ],
+            'intVarNewCall' => [
+                '<?php
+                    $a = 5;
+                    new $a();',
+                'error_message' => 'UndefinedClass',
             ],
         ];
     }

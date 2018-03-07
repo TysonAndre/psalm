@@ -340,6 +340,16 @@ class Foo {}
 (new foo());
 ```
 
+### InvalidStringClass
+
+Emitted when you have `allowStringToStandInForClass="false"` in your config and you’re passing a string instead of calling a class directly
+
+```php
+class Foo {}
+$a = "Foo";
+new $a();
+```
+
 ### InvalidClone
 
 Emitted when trying to clone a value that's not cloneable
@@ -1111,6 +1121,21 @@ class A {
 }
 class B extends A {
     protected function foo() : void {}
+}
+```
+
+### OverriddenPropertyAccess
+
+Emitted when a property is less accessible than the same-named property in its parent class
+
+```php
+class A {
+    /** @var string|null */
+    public $foo;
+}
+class B extends A {
+    /** @var string|null */
+    protected $foo;
 }
 ```
 
