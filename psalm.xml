@@ -6,6 +6,8 @@
     strictBinaryOperands="false"
     rememberPropertyAssignmentsAfterCall="true"
     throwExceptionOnError="0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="config.xsd"
 >
     <projectFiles>
         <directory name="src" />
@@ -23,6 +25,12 @@
         <PossiblyNullOperand errorLevel="suppress" />
         <MissingConstructor errorLevel="suppress" />
         <DeprecatedProperty errorLevel="suppress" />
+
+        <LessSpecificReturnType>
+            <errorLevel type="suppress">
+                <file name="src/Psalm/Plugin.php" />
+            </errorLevel>
+        </LessSpecificReturnType>
 
         <UnusedParam>
             <errorLevel type="suppress">

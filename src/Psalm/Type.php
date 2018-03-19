@@ -56,7 +56,7 @@ abstract class Type
     public static function parseString($type_string, $php_compatible = false)
     {
         // remove all unacceptable characters
-        $type_string = preg_replace('/[^A-Za-z0-9\-_\\\\|\? \<\>\{\}:,\]\[\(\)\$]/', '', trim($type_string));
+        $type_string = preg_replace('/[^A-Za-z0-9\-_\\\\&|\? \<\>\{\}:,\]\[\(\)\$]/', '', trim($type_string));
 
         if (strpos($type_string, '[') !== false) {
             $type_string = self::convertSquareBrackets($type_string);
@@ -64,7 +64,7 @@ abstract class Type
 
         $type_string = preg_replace('/\?(?=[a-zA-Z])/', 'null|', $type_string);
 
-        if (preg_match('/[\[\]()\?]/', $type_string)) {
+        if (preg_match('/[\[\]()]/', $type_string)) {
             throw new TypeParseTreeException('Invalid characters in type');
         }
 
@@ -209,6 +209,39 @@ abstract class Type
             return self::combineTypes($union_types);
         }
 
+        if ($parse_tree->value === ParseTree::INTERSECTION) {
+            $intersection_types = array_map(
+                /**
+                 * @return Atomic
+                 */
+                function (ParseTree $child_tree) {
+                    $atomic_type = self::getTypeFromTree($child_tree, false);
+
+                    if (!$atomic_type instanceof Atomic) {
+                        throw new \UnexpectedValueException(
+                            'Was expecting an atomic type, got ' . get_class($atomic_type)
+                        );
+                    }
+
+                    return $atomic_type;
+                },
+                $parse_tree->children
+            );
+
+            foreach ($intersection_types as $intersection_type) {
+                if (!$intersection_type instanceof TNamedObject) {
+                    throw new TypeParseTreeException('Intersection types must all be objects');
+                }
+            }
+
+            /** @var TNamedObject[] $intersection_types */
+            $first_type = array_shift($intersection_types);
+
+            $first_type->extra_types = $intersection_types;
+
+            return new Type\Union([$first_type]);
+        }
+
         if ($parse_tree->value === ParseTree::OBJECT_LIKE) {
             $properties = [];
 
@@ -218,9 +251,11 @@ abstract class Type
             foreach ($children as $i => $property_branch) {
                 if ($property_branch->value !== ParseTree::OBJECT_PROPERTY) {
                     $property_type = self::getTypeFromTree($property_branch, false);
+                    $property_maybe_undefined = false;
                     $property_key = (string)$i;
                 } elseif (count($property_branch->children) === 2) {
                     $property_type = self::getTypeFromTree($property_branch->children[1], false);
+                    $property_maybe_undefined = $property_branch->possibly_undefined;
                     $property_key = (string)($property_branch->children[0]->value);
                 } else {
                     throw new \InvalidArgumentException('Unexpected number of property parts');
@@ -229,6 +264,11 @@ abstract class Type
                 if (!$property_type instanceof Union) {
                     $property_type = new Union([$property_type]);
                 }
+
+                if ($property_maybe_undefined) {
+                    $property_type->possibly_undefined = true;
+                }
+
                 $properties[$property_key] = $property_type;
             }
 
@@ -281,6 +321,7 @@ abstract class Type
                 $char === '[' ||
                 $char === ']' ||
                 $char === ' ' ||
+                $char === '&' ||
                 $char === ':'
             ) {
                 if ($return_type_tokens[$rtc] === '') {
@@ -635,6 +676,10 @@ abstract class Type
             $combined_type->failed_reconciliation = true;
         }
 
+        if ($type_1->possibly_undefined || $type_2->possibly_undefined) {
+            $combined_type->possibly_undefined = true;
+        }
+
         return $combined_type;
     }
 
@@ -745,18 +790,18 @@ abstract class Type
         foreach ($combination->type_params as $generic_type => $generic_type_params) {
             if ($generic_type === 'array') {
                 if ($combination->objectlike_entries) {
-                    $object_like_generic_type = null;
+                    $objectlike_generic_type = null;
 
                     $objectlike_keys = [];
 
                     foreach ($combination->objectlike_entries as $property_name => $property_type) {
-                        if ($object_like_generic_type) {
-                            $object_like_generic_type = Type::combineUnionTypes(
+                        if ($objectlike_generic_type) {
+                            $objectlike_generic_type = Type::combineUnionTypes(
                                 $property_type,
-                                $object_like_generic_type
+                                $objectlike_generic_type
                             );
                         } else {
-                            $object_like_generic_type = $property_type;
+                            $objectlike_generic_type = clone $property_type;
                         }
 
                         if (is_int($property_name)) {
@@ -770,9 +815,11 @@ abstract class Type
                         }
                     }
 
-                    if (!$object_like_generic_type) {
+                    if (!$objectlike_generic_type) {
                         throw new \InvalidArgumentException('Cannot be null');
                     }
+
+                    $objectlike_generic_type->possibly_undefined = false;
 
                     $objectlike_key_type = new Type\Union(array_values($objectlike_keys));
 
@@ -782,7 +829,7 @@ abstract class Type
                     );
                     $generic_type_params[1] = Type::combineUnionTypes(
                         $generic_type_params[1],
-                        $object_like_generic_type
+                        $objectlike_generic_type
                     );
                 }
 
@@ -865,20 +912,31 @@ abstract class Type
                 }
             }
         } elseif ($type instanceof ObjectLike) {
-            $combination->has_objectlike_entries = true;
+            $existing_objectlike_entries = (bool) $combination->objectlike_entries;
+            $possibly_undefined_entries = $combination->objectlike_entries;
+
             foreach ($type->properties as $candidate_property_name => $candidate_property_type) {
                 $value_type = isset($combination->objectlike_entries[$candidate_property_name])
                     ? $combination->objectlike_entries[$candidate_property_name]
                     : null;
 
                 if (!$value_type) {
-                    $combination->objectlike_entries[$candidate_property_name] = $candidate_property_type;
+                    $combination->objectlike_entries[$candidate_property_name] = clone $candidate_property_type;
+                    // it's possibly undefined if there are existing objectlike entries
+                    $combination->objectlike_entries[$candidate_property_name]->possibly_undefined
+                        = $existing_objectlike_entries;
                 } else {
                     $combination->objectlike_entries[$candidate_property_name] = Type::combineUnionTypes(
                         $value_type,
                         $candidate_property_type
                     );
                 }
+
+                unset($possibly_undefined_entries[$candidate_property_name]);
+            }
+
+            foreach ($possibly_undefined_entries as $type) {
+                $type->possibly_undefined = true;
             }
         } else {
             $combination->value_types[$type_key] = $type;

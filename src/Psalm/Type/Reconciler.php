@@ -1,6 +1,7 @@
 <?php
 namespace Psalm\Type;
 
+use Psalm\Checker\AlgebraChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\TraitChecker;
@@ -91,6 +92,7 @@ class Reconciler
 
             $failed_reconciliation = false;
             $from_docblock = $result_type && $result_type->from_docblock;
+            $possibly_undefined = $result_type && $result_type->possibly_undefined;
 
             foreach ($new_type_parts as $new_type_part) {
                 $new_type_part_parts = explode('|', $new_type_part);
@@ -122,6 +124,7 @@ class Reconciler
 
             if ($result_type->getId() !== $before_adjustment
                 || $result_type->from_docblock !== $from_docblock
+                || $result_type->possibly_undefined !== $possibly_undefined
                 || $failed_reconciliation
             ) {
                 $changed_var_ids[] = $key;
@@ -173,7 +176,7 @@ class Reconciler
                 return Type::getMixed();
             }
 
-            if ($new_var_type === 'isset' || $new_var_type === '!empty') {
+            if ($new_var_type === 'isset' || $new_var_type === '!empty' || $new_var_type === 'array-key-exists') {
                 return Type::getMixed();
             }
 
@@ -202,7 +205,7 @@ class Reconciler
                 return $existing_var_type;
             }
 
-            if ($new_var_type === '!isset') {
+            if ($new_var_type === '!isset' || $new_var_type === '!array-key-exists') {
                 return Type::getNull();
             }
 
@@ -344,7 +347,8 @@ class Reconciler
                 $did_remove_type = $existing_var_type->hasString()
                     || $existing_var_type->hasNumericType()
                     || $existing_var_type->isEmpty()
-                    || $existing_var_type->hasType('bool');
+                    || $existing_var_type->hasType('bool')
+                    || $existing_var_type->possibly_undefined;
 
                 if ($existing_var_type->hasType('null')) {
                     $did_remove_type = true;
@@ -369,6 +373,8 @@ class Reconciler
                         $existing_var_type->removeType('array');
                     }
                 }
+
+                $existing_var_type->possibly_undefined = false;
 
                 if (!$did_remove_type || empty($existing_var_type->getTypes())) {
                     if ($key && $code_location) {
@@ -428,6 +434,21 @@ class Reconciler
             } elseif ($negated_type === 'true' && isset($existing_var_type->getTypes()['bool'])) {
                 $existing_var_type->removeType('bool');
                 $existing_var_type->addType(new TFalse);
+            } elseif (strtolower($negated_type) === 'traversable'
+                && isset($existing_var_type->getTypes()['iterable'])
+            ) {
+                $existing_var_type->removeType('iterable');
+                $existing_var_type->addType(new TArray(
+                    [
+                        new Type\Union([new TMixed]),
+                        new Type\Union([new TMixed]),
+                    ]
+                ));
+            } elseif (strtolower($negated_type) === 'array'
+                && isset($existing_var_type->getTypes()['iterable'])
+            ) {
+                $existing_var_type->removeType('iterable');
+                $existing_var_type->addType(new TNamedObject('Traversable'));
             } else {
                 $existing_var_type->removeType($negated_type);
             }
@@ -465,6 +486,14 @@ class Reconciler
                 // mixed will have to do.
                 return Type::getMixed();
             }
+
+            $existing_var_type->possibly_undefined = false;
+
+            return $existing_var_type;
+        }
+
+        if ($new_var_type === 'array-key-exists') {
+            $existing_var_type->possibly_undefined = false;
 
             return $existing_var_type;
         }
@@ -913,7 +942,7 @@ class Reconciler
      */
     private static function getValueForKey(ProjectChecker $project_checker, $key, array &$existing_keys)
     {
-        $key_parts = preg_split('/(->|\[|\])/', $key, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+        $key_parts = AlgebraChecker::breakUpPathIntoParts($key);
 
         if (count($key_parts) === 1) {
             return isset($existing_keys[$key_parts[0]]) ? clone $existing_keys[$key_parts[0]] : null;

@@ -212,6 +212,25 @@ class Php71Test extends TestCase
 
                     foo(new IteratorObj);',
             ],
+            'iterableIsArrayOrTraversable' => [
+                '<?php
+                    function castToArray(iterable $arr): array {
+                       return $arr instanceof \Traversable ? iterator_to_array($arr, false) : $arr;
+                    }
+                    function castToArray2(iterable $arr): array {
+                       return is_array($arr) ? $arr : iterator_to_array($arr, false);
+                    }',
+            ],
+            'substituteIterable' => [
+                '<?php
+                    function foo(iterable $i): array {
+                      if (!is_array($i)) {
+                        $i = iterator_to_array($i, false);
+                      }
+
+                      return $i;
+                    }',
+            ],
         ];
     }
 

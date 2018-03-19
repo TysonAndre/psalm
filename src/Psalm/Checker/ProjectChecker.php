@@ -78,6 +78,11 @@ class ProjectChecker
      */
     public $alter_code = false;
 
+    /**
+     * @var bool
+     */
+    public $show_issues = true;
+
     /** @var int */
     public $threads;
 
@@ -178,7 +183,8 @@ class ProjectChecker
 
         $statements_provider = new StatementsProvider(
             $file_provider,
-            $cache_provider
+            $cache_provider,
+            $file_storage_cache_provider
         );
 
         $this->codebase = new Codebase(
@@ -604,6 +610,7 @@ class ProjectChecker
         $safe_types = false
     ) {
         $this->alter_code = true;
+        $this->show_issues = false;
         $this->php_major_version = $php_major_version;
         $this->php_minor_version = $php_minor_version;
         $this->dry_run = $dry_run;

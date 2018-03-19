@@ -1,0 +1,24 @@
+{
+    "alias": "psalm.phar",
+    "base-path": "build/psalm",
+    "main" : "./psalm",
+    "output" : "../../build/psalm.phar",
+    "directories" : [
+        "assets",
+        "vendor"
+    ],
+    "finder": [
+        {
+            "in" : "src"
+        }
+    ],
+    "files" : [
+        "config.xsd"
+    ],
+    "intercept" : false,
+    "compactors" : [],
+    "compression" : "BZ2",
+    "chmod" : "0755",
+    "shebang" : "#!/usr/bin/env php",
+    "stub" : true
+}

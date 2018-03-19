@@ -47,7 +47,7 @@ if (isset($options['c']) && is_array($options['c'])) {
 }
 
 if (array_key_exists('h', $options)) {
-    echo <<< HELP
+    echo <<<HELP
 Usage:
     psalm [options] [file...]
 
@@ -150,24 +150,29 @@ if (array_key_exists('v', $options)) {
 }
 
 // If XDebug is enabled, restart without it
-(new \Composer\XdebugHandler(\Composer\Factory::createOutput()))->check();
+(new \Composer\XdebugHandler\XdebugHandler('PSALM'))->check();
 
 setlocale(LC_CTYPE, 'C');
 
 if (isset($options['i'])) {
-    if (file_exists('psalm.xml')) {
+    if (file_exists($current_dir . 'psalm.xml')) {
         die('A config file already exists in the current directory' . PHP_EOL);
     }
 
     $args = array_values(array_filter(
-        array_slice($argv, 2),
+        array_slice($argv, 1),
         /**
          * @param string $arg
          *
          * @return bool
          */
         function ($arg) {
-            return $arg !== '--ansi' && $arg !== '--no-ansi';
+            return $arg !== '--ansi'
+                && $arg !== '--no-ansi'
+                && $arg !== '--i'
+                && $arg !== '--init'
+                && strpos($arg, '--root=') !== 0
+                && strpos($arg, '--r=') !== 0;
         }
     ));
 
@@ -214,7 +219,15 @@ if (isset($options['i'])) {
         <directory name="' . $source_dir . '" />
     </projectFiles>', $template);
 
-    if (!file_put_contents('psalm.xml', $template)) {
+    if (!\Phar::running(false)) {
+        $template = str_replace(
+            'vendor/vimeo/psalm/config.xsd',
+            __DIR__ . DIRECTORY_SEPARATOR . 'config.xsd',
+            $template
+        );
+    }
+
+    if (!file_put_contents($current_dir . 'psalm.xml', $template)) {
         die('Could not write to psalm.xml' . PHP_EOL);
     }
 
@@ -305,6 +318,10 @@ $project_checker = new ProjectChecker(
 
 if ($find_dead_code || $find_references_to !== null) {
     $project_checker->getCodebase()->collectReferences();
+
+    if ($find_references_to) {
+        $project_checker->show_issues = false;
+    }
 }
 
 if ($find_dead_code) {

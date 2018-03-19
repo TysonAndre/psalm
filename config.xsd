@@ -103,6 +103,7 @@
             <xs:element name="DuplicateParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DuplicateClass" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="EmptyArrayAccess" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="FalseOperand" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="FalsableReturnStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ForbiddenCode" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ImplementedReturnTypeMismatch" type="IssueHandlerType" minOccurs="0" />
@@ -191,6 +192,7 @@
             <xs:element name="ParadoxicalCondition" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ParentNotFound" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalseArgument" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyFalseOperand" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalsePropertyAssignmentValue" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalseReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidArgument" type="IssueHandlerType" minOccurs="0" />
@@ -199,6 +201,7 @@
             <xs:element name="PossiblyInvalidArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidMethodCall" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidOperand" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyAssignmentValue" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyFetch" type="IssueHandlerType" minOccurs="0" />

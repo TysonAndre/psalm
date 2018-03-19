@@ -101,13 +101,6 @@ class FileChecker extends SourceChecker implements StatementsSource
         if (!$this->context) {
             $this->context = new Context();
             $this->context->collect_references = $codebase->collect_references;
-            $this->context->vars_in_scope['$argc'] = Type::getInt();
-            $this->context->vars_in_scope['$argv'] = new Type\Union([
-                new Type\Atomic\TArray([
-                    Type::getInt(),
-                    Type::getString(),
-                ]),
-            ]);
         }
 
         $this->context->is_global = true;
@@ -146,7 +139,6 @@ class FileChecker extends SourceChecker implements StatementsSource
      */
     public function populateCheckers(array $stmts)
     {
-        /** @var array<int, PhpParser\Node\Expr|PhpParser\Node\Stmt> */
         $leftover_stmts = [];
 
         foreach ($stmts as $stmt) {

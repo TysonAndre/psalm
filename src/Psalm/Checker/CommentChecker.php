@@ -15,7 +15,7 @@ use function strlen;
 
 class CommentChecker
 {
-    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_\<,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_\<,\>\|\[\]-\{\}:]+)';
+    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_&\<,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_\<,\>\|\[\]-\{\}:]+)';
 
     /**
      * @param  string           $comment
@@ -488,7 +488,6 @@ class CommentChecker
 
         $line_map = [];
 
-        /** @var int|false */
         $last = false;
         foreach ($lines as $k => $line) {
             if (preg_match('/^\s?@\w/i', $line)) {

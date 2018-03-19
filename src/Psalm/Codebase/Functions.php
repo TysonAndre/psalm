@@ -33,11 +33,12 @@ class Functions
     }
 
     /**
+     * @param  StatementsChecker|null $statements_checker
      * @param  string $function_id
      *
      * @return FunctionLikeStorage
      */
-    public function getStorage(StatementsChecker $statements_checker, $function_id)
+    public function getStorage($statements_checker, $function_id)
     {
         if (isset(self::$stubbed_functions[strtolower($function_id)])) {
             return self::$stubbed_functions[strtolower($function_id)];
@@ -45,6 +46,10 @@ class Functions
 
         if ($this->reflection->hasFunction($function_id)) {
             return $this->reflection->getFunctionStorage($function_id);
+        }
+
+        if (!$statements_checker) {
+            throw new \UnexpectedValueException('$statements_checker must not be null here');
         }
 
         $file_path = $statements_checker->getFilePath();
@@ -197,6 +202,16 @@ class Functions
     public static function isVariadic(ProjectChecker $project_checker, $function_id, $file_path)
     {
         $file_storage = $project_checker->file_storage_provider->get($file_path);
+
+        if (!isset($file_storage->declaring_function_ids[$function_id])) {
+            return false;
+        }
+
+        $declaring_file_path = $file_storage->declaring_function_ids[$function_id];
+
+        $file_storage = $declaring_file_path === $file_path
+            ? $file_storage
+            : $project_checker->file_storage_provider->get($declaring_file_path);
 
         return isset($file_storage->functions[$function_id]) && $file_storage->functions[$function_id]->variadic;
     }

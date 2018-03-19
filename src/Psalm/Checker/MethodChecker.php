@@ -57,8 +57,11 @@ class MethodChecker extends FunctionLikeChecker
     ) {
         $codebase_methods = $project_checker->codebase->methods;
 
-        /** @var string */
         $method_id = $codebase_methods->getDeclaringMethodId($method_id);
+
+        if (!$method_id) {
+            throw new \LogicException('Method id should not be null');
+        }
 
         $storage = $codebase_methods->getStorage($method_id);
 
@@ -356,6 +359,7 @@ class MethodChecker extends FunctionLikeChecker
      * @param  MethodStorage    $guide_method_storage
      * @param  CodeLocation     $code_location
      * @param  array            $suppressed_issues
+     * @param  bool             $prevent_abstract_override
      *
      * @return false|null
      */
@@ -366,7 +370,8 @@ class MethodChecker extends FunctionLikeChecker
         MethodStorage $implementer_method_storage,
         MethodStorage $guide_method_storage,
         CodeLocation $code_location,
-        array $suppressed_issues
+        array $suppressed_issues,
+        $prevent_abstract_override = true
     ) {
         $codebase = $project_checker->codebase;
 
@@ -385,6 +390,25 @@ class MethodChecker extends FunctionLikeChecker
                 new OverriddenMethodAccess(
                     'Method ' . $cased_implementer_method_id . ' has different access level than '
                         . $cased_guide_method_id,
+                    $code_location
+                )
+            )) {
+                return false;
+            }
+
+            return null;
+        }
+
+        if ($prevent_abstract_override
+            && !$guide_method_storage->abstract
+            && $implementer_method_storage->abstract
+            && !$guide_classlike_storage->abstract
+            && !$guide_classlike_storage->is_interface
+        ) {
+            if (IssueBuffer::accepts(
+                new MethodSignatureMismatch(
+                    'Method ' . $cased_implementer_method_id . ' cannot be abstract when inherited method '
+                        . $cased_guide_method_id . ' is non-abstract',
                     $code_location
                 )
             )) {
@@ -495,6 +519,10 @@ class MethodChecker extends FunctionLikeChecker
 
         foreach ($guide_method_storage->params as $i => $guide_param) {
             if (!isset($implementer_method_storage->params[$i])) {
+                if (!$prevent_abstract_override && $i >= $guide_method_storage->required_param_count) {
+                    continue;
+                }
+
                 if (IssueBuffer::accepts(
                     new MethodSignatureMismatch(
                         'Method ' . $cased_implementer_method_id . ' has fewer arguments than parent method ' .

@@ -133,7 +133,6 @@ class FunctionDocblockManipulator
         $function_code_after_bracket = substr($function_code, $end_bracket_position + 1 - $function_start);
 
         // do a little parsing here
-        /** @var array<int, string> */
         $chars = str_split($function_code_after_bracket);
 
         $in_single_line_comment = $in_multi_line_comment = false;
@@ -204,12 +203,12 @@ class FunctionDocblockManipulator
                 continue;
             }
 
-            if (preg_match('/\w/', $char)) {
+            if ($chars[$i] === '\\' || preg_match('/\w/', $char)) {
                 if ($this->return_typehint_start === null) {
                     $this->return_typehint_start = $i + $end_bracket_position + 1;
                 }
 
-                if (!preg_match('/\w/', $chars[$i + 1])) {
+                if ($chars[$i + 1] !== '\\' && !preg_match('/[\w]/', $chars[$i + 1])) {
                     $this->return_typehint_end = $i + $end_bracket_position + 2;
                     break;
                 }
@@ -285,7 +284,7 @@ class FunctionDocblockManipulator
         if ($docblock) {
             $parsed_docblock = CommentChecker::parseDocComment((string)$docblock, null, true);
         } else {
-            $parsed_docblock = ['description' => ''];
+            $parsed_docblock = ['description' => '', 'specials' => []];
         }
 
         foreach ($this->new_phpdoc_param_types as $param_name => $phpdoc_type) {

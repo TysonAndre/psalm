@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <psalm
     totallyTyped="false"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="vendor/vimeo/psalm/config.xsd"
 >
     <projectFiles>
         <directory name="src" />
@@ -12,6 +14,8 @@
         <!-- level 3 issues - slightly lazy code writing, but provably low false-negatives -->
 
         <DeprecatedMethod errorLevel="info" />
+        <DeprecatedProperty errorLevel="info" />
+        <DeprecatedClass errorLevel="info" />
 
         <MissingClosureReturnType errorLevel="info" />
         <MissingReturnType errorLevel="info" />
@@ -29,6 +33,8 @@
 
         <UnresolvableInclude errorLevel="info" />
 
+        <RawObjectIteration errorLevel="info" />
+
         <!-- level 4 issues - points to possible deficiencies in logic, higher false-positives -->
 
         <MoreSpecificReturnType errorLevel="info" />
@@ -36,12 +42,16 @@
         <RedundantCondition errorLevel="info" />
 
         <PossiblyFalseArgument errorLevel="info" />
+        <PossiblyFalseOperand errorLevel="info" />
         <PossiblyFalsePropertyAssignmentValue errorLevel="info" />
         <PossiblyFalseReference errorLevel="info" />
         <PossiblyInvalidArgument errorLevel="info" />
         <PossiblyInvalidArrayAccess errorLevel="info" />
         <PossiblyInvalidArrayAssignment errorLevel="info" />
+        <PossiblyInvalidArrayOffset errorLevel="info" />
+        <PossiblyInvalidFunctionCall errorLevel="info" />
         <PossiblyInvalidMethodCall errorLevel="info" />
+        <PossiblyInvalidOperand errorLevel="info" />
         <PossiblyInvalidPropertyAssignment errorLevel="info" />
         <PossiblyInvalidPropertyAssignmentValue errorLevel="info" />
         <PossiblyInvalidPropertyFetch errorLevel="info" />

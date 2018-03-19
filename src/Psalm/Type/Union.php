@@ -55,6 +55,13 @@ class Union
     public $ignore_falsable_issues = false;
 
     /**
+     * Whether or not this variable is possibly undefined
+     *
+     * @var bool
+     */
+    public $possibly_undefined = false;
+
+    /**
      * Whether or not the type was passed by reference
      *
      * @var bool
@@ -260,11 +267,25 @@ class Union
     /**
      * @param  string $type_string
      *
-     * @return void
+     * @return bool
      */
     public function removeType($type_string)
     {
-        unset($this->types[$type_string]);
+        if (isset($this->types[$type_string])) {
+            unset($this->types[$type_string]);
+            $this->id = null;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @return void
+     */
+    public function bustCache()
+    {
         $this->id = null;
     }
 
@@ -421,6 +442,14 @@ class Union
     /**
      * @return bool
      */
+    public function isFalse()
+    {
+        return count($this->types) === 1 && isset($this->types['false']);
+    }
+
+    /**
+     * @return bool
+     */
     public function isVoid()
     {
         return isset($this->types['void']);
@@ -460,7 +489,36 @@ class Union
         }
 
         foreach ($old_type->types as $old_type_part) {
-            $this->removeType($old_type_part->getKey());
+            if (!$this->removeType($old_type_part->getKey())) {
+                if ($old_type_part instanceof Type\Atomic\TFalse
+                    && isset($this->types['bool'])
+                    && !isset($this->types['true'])
+                ) {
+                    $this->removeType('bool');
+                    $this->types['true'] = new Type\Atomic\TTrue;
+                } elseif ($old_type_part instanceof Type\Atomic\TTrue
+                    && isset($this->types['bool'])
+                    && !isset($this->types['false'])
+                ) {
+                    $this->removeType('bool');
+                    $this->types['false'] = new Type\Atomic\TFalse;
+                } elseif (isset($this->types['iterable'])) {
+                    if ($old_type_part instanceof Type\Atomic\TNamedObject
+                        && $old_type_part->value === 'Traversable'
+                        && !isset($this->types['array'])
+                    ) {
+                        $this->removeType('iterable');
+                        $this->types['array'] = new Type\Atomic\TArray([Type::getMixed(), Type::getMixed()]);
+                    }
+
+                    if ($old_type_part instanceof Type\Atomic\TArray
+                        && !isset($this->types['traversable'])
+                    ) {
+                        $this->removeType('iterable');
+                        $this->types['traversable'] = new Type\Atomic\TNamedObject('Traversable');
+                    }
+                }
+            }
         }
 
         if ($new_type) {

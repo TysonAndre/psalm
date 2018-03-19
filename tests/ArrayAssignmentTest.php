@@ -251,7 +251,7 @@ class ArrayAssignmentTest extends TestCase
                     '$foo' => 'array{bar:array{baz:array{bat:string}}}',
                 ],
             ],
-            'conflictingTypes' => [
+            'conflictingTypesWithNoAssignment' => [
                 '<?php
                     $foo = [
                         "bar" => ["a" => "b"],
@@ -838,6 +838,30 @@ class ArrayAssignmentTest extends TestCase
                     'MixedArrayAccess', 'MixedAssignment', 'MixedArrayOffset', 'MixedArrayAssignment', 'MixedArgument',
                 ],
             ],
+            'possiblyUndefinedArrayAccessWithIsset' => [
+                '<?php
+                    if (rand(0,1)) {
+                      $a = ["a" => 1];
+                    } else {
+                      $a = [2, 3];
+                    }
+
+                    if (isset($a[0])) {
+                        echo $a[0];
+                    }',
+            ],
+            'possiblyUndefinedArrayAccessWithArrayKeyExists' => [
+                '<?php
+                    if (rand(0,1)) {
+                      $a = ["a" => 1];
+                    } else {
+                      $a = [2, 3];
+                    }
+
+                    if (array_key_exists(0, $a)) {
+                        echo $a[0];
+                    }',
+            ],
         ];
     }
 
@@ -858,6 +882,17 @@ class ArrayAssignmentTest extends TestCase
                     $a = 5;
                     $a[0] = 5;',
                 'error_message' => 'InvalidArrayAssignment',
+            ],
+            'possiblyUndefinedArrayAccess' => [
+                '<?php
+                    if (rand(0,1)) {
+                      $a = ["a" => 1];
+                    } else {
+                      $a = [2, 3];
+                    }
+
+                    echo $a[0];',
+                'error_message' => 'PossiblyUndefinedGlobalVariable',
             ],
             'mixedStringOffsetAssignment' => [
                 '<?php
@@ -905,6 +940,32 @@ class ArrayAssignmentTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidPropertyAssignmentValue',
+            ],
+            'possiblyUndefinedArrayAccessWithArrayKeyExistsOnWrongKey' => [
+                '<?php
+                    if (rand(0,1)) {
+                      $a = ["a" => 1];
+                    } else {
+                      $a = [2, 3];
+                    }
+
+                    if (array_key_exists("a", $a)) {
+                        echo $a[0];
+                    }',
+                'error_message' => 'PossiblyUndefinedGlobalVariable',
+            ],
+            'possiblyUndefinedArrayAccessWithArrayKeyExistsOnMissingKey' => [
+                '<?php
+                    if (rand(0,1)) {
+                      $a = ["a" => 1];
+                    } else {
+                      $a = [2, 3];
+                    }
+
+                    if (array_key_exists("b", $a)) {
+                        echo $a[0];
+                    }',
+                'error_message' => 'PossiblyUndefinedGlobalVariable',
             ],
         ];
     }

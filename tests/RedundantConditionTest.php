@@ -315,6 +315,24 @@ class RedundantConditionTest extends TestCase
                 'assignments' => [],
                 'error_levels' => [],
             ],
+            'replaceFalseTypeWithTrueConditionalOnMixedEquality' => [
+                '<?php
+                    function getData() {
+                        return rand(0, 1) ? [1, 2, 3] : false;
+                    }
+
+                    $a = false;
+
+                    while ($i = getData()) {
+                        if (!$a && $i[0] === 2) {
+                            $a = true;
+                        }
+
+                        if ($a === false) {}
+                    }',
+                'assignments' => [],
+                'error_levels' => ['MixedAssignment', 'MissingReturnType', 'MixedArrayAccess'],
+            ],
         ];
     }
 
@@ -476,6 +494,28 @@ class RedundantConditionTest extends TestCase
                     takesA($a);
                     if ($a instanceof A) {}',
                 'error_message' => 'RedundantCondition - src/somefile.php:15',
+            ],
+            'replaceFalseType' => [
+                '<?php
+                    function foo(bool $b) : void {
+                      if (!$b) {
+                        $b = true;
+                      }
+
+                      if ($b) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'replaceTrueType' => [
+                '<?php
+                    function foo(bool $b) : void {
+                      if ($b) {
+                        $b = false;
+                      }
+
+                      if ($b) {}
+                    }',
+                'error_message' => 'RedundantCondition',
             ],
         ];
     }

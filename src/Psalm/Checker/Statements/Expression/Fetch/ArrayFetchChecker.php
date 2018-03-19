@@ -23,6 +23,8 @@ use Psalm\Issue\PossiblyInvalidArrayOffset;
 use Psalm\Issue\PossiblyNullArrayAccess;
 use Psalm\Issue\PossiblyNullArrayAssignment;
 use Psalm\Issue\PossiblyNullArrayOffset;
+use Psalm\Issue\PossiblyUndefinedGlobalVariable;
+use Psalm\Issue\PossiblyUndefinedVariable;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
@@ -65,7 +67,6 @@ class ArrayFetchChecker
 
         if ($stmt->dim) {
             if (isset($stmt->dim->inferredType)) {
-                /** @var Type\Union */
                 $used_key_type = $stmt->dim->inferredType;
             } else {
                 $used_key_type = Type::getMixed();
@@ -82,14 +83,16 @@ class ArrayFetchChecker
             return false;
         }
 
-        if ($keyed_array_var_id && isset($context->vars_in_scope[$keyed_array_var_id])) {
+        if ($keyed_array_var_id
+            && isset($context->vars_in_scope[$keyed_array_var_id])
+            && !$context->vars_in_scope[$keyed_array_var_id]->possibly_undefined
+        ) {
             $stmt->inferredType = clone $context->vars_in_scope[$keyed_array_var_id];
 
             return;
         }
 
         if (isset($stmt->var->inferredType)) {
-            /** @var Type\Union */
             $var_type = $stmt->var->inferredType;
 
             if ($var_type->isNull()) {
@@ -132,6 +135,30 @@ class ArrayFetchChecker
 
         if (!isset($stmt->inferredType)) {
             $stmt->inferredType = Type::getMixed();
+        } else {
+            if ($stmt->inferredType->possibly_undefined && !$context->inside_isset && !$context->inside_unset) {
+                if ($context->is_global) {
+                    if (IssueBuffer::accepts(
+                        new PossiblyUndefinedGlobalVariable(
+                            'Possibly undefined array key ' . $keyed_array_var_id,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new PossiblyUndefinedVariable(
+                            'Possibly undefined array key ' . $keyed_array_var_id,
+                            new CodeLocation($statements_checker->getSource(), $stmt)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                }
+            }
         }
 
         return null;
@@ -614,6 +641,10 @@ class ArrayFetchChecker
 
         if ($array_access_type === null) {
             throw new \InvalidArgumentException('This is a bad place');
+        }
+
+        if ($in_assignment) {
+            $array_type->bustCache();
         }
 
         return $array_access_type;

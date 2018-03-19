@@ -56,6 +56,18 @@ class IssueBuffer
             return false;
         }
 
+        $parent_issue_type = self::getParentIssueType($issue_type);
+
+        if ($parent_issue_type) {
+            if (in_array($parent_issue_type, $suppressed_issues, true)) {
+                return false;
+            }
+
+            if (!$config->reportIssueInFile($parent_issue_type, $e->getFilePath())) {
+                return false;
+            }
+        }
+
         if (self::$recording_level > 0) {
             self::$recorded_issues[self::$recording_level][] = $e;
 
@@ -63,6 +75,29 @@ class IssueBuffer
         }
 
         return self::add($e);
+    }
+
+    /**
+     * @param  string $issue_type
+     * @return string|null
+     */
+    private static function getParentIssueType($issue_type)
+    {
+        if (strpos($issue_type, 'Possibly') === 0) {
+            $stripped_issue_type = preg_replace('/^Possibly(False|Null)?/', '', $issue_type);
+
+            if (strpos($stripped_issue_type, 'Invalid') === false && strpos($stripped_issue_type, 'Un') !== 0) {
+                $stripped_issue_type = 'Invalid' . $stripped_issue_type;
+            }
+
+            return $stripped_issue_type;
+        }
+
+        if (preg_match('/^(False|Null)[A-Z]/', $issue_type)) {
+            return preg_replace('/^(False|Null)/', 'Invalid', $issue_type);
+        }
+
+        return null;
     }
 
     /**
@@ -81,13 +116,23 @@ class IssueBuffer
 
         $project_checker = ProjectChecker::getInstance();
 
-        if ($project_checker->alter_code) {
+        if (!$project_checker->show_issues) {
             return false;
         }
 
         $error_message = $issue_type . ' - ' . $e->getShortLocation() . ' - ' . $e->getMessage();
 
         $reporting_level = $config->getReportingLevelForFile($issue_type, $e->getFilePath());
+
+        $parent_issue_type = self::getParentIssueType($issue_type);
+
+        if ($parent_issue_type && $reporting_level === Config::REPORT_ERROR) {
+            $parent_reporting_level = $config->getReportingLevelForFile($parent_issue_type, $e->getFilePath());
+
+            if ($parent_reporting_level !== $reporting_level) {
+                $reporting_level = $parent_reporting_level;
+            }
+        }
 
         if ($reporting_level === Config::REPORT_SUPPRESS) {
             return false;
@@ -210,7 +255,7 @@ class IssueBuffer
     }
 
     /**
-     * @param array<int, array{severity: string, line_from: int, type: string, message: string,
+     * @param array<int, array{severity: string, line_from: int, line_to: int, type: string, message: string,
      *  file_name: string, file_path: string, snippet: string, from: int, to: int, snippet_from: int,
      *  snippet_to: int, column_from: int, column_to: int}> $issues_data
      *
@@ -238,7 +283,10 @@ class IssueBuffer
         $scanned_files = $project_checker->codebase->scanner->getScannedFiles();
         Provider\FileReferenceProvider::updateReferenceCache($project_checker, $scanned_files);
 
-        $has_error = false;
+        echo PHP_EOL;
+
+        $error_count = 0;
+        $info_count = 0;
 
         if (self::$issues_data) {
             usort(
@@ -263,18 +311,42 @@ class IssueBuffer
 
             foreach (self::$issues_data as $issue_data) {
                 if ($issue_data['severity'] === Config::REPORT_ERROR) {
-                    $has_error = true;
+                    ++$error_count;
+                } else {
+                    ++$info_count;
                 }
             }
 
             echo self::getOutput($project_checker->output_format, $project_checker->use_color);
         }
+
         foreach ($project_checker->reports as $format => $path) {
             file_put_contents(
                 $path,
                 self::getOutput($format, $project_checker->use_color)
             );
         }
+
+        echo str_repeat('-', 30) . PHP_EOL;
+
+        if ($error_count) {
+            echo ($project_checker->use_color
+                ? "\e[0;31m" . $error_count . " errors\e[0m"
+                : $error_count . ' errors'
+            ) . ' found' . PHP_EOL;
+        } else {
+            echo 'No errors found!' . PHP_EOL;
+        }
+
+        if ($info_count) {
+            echo str_repeat('-', 30) . PHP_EOL;
+
+            echo $info_count . ' other issues found.' . PHP_EOL
+                . 'You can hide them with ' .
+                ($project_checker->use_color ? "\e[30;48;5;195m--show-info=false\e[0m" : '--show-info=false') . PHP_EOL;
+        }
+
+        echo str_repeat('-', 30) . PHP_EOL . PHP_EOL;
 
         if ($start_time) {
             echo 'Checks took ' . number_format((float)microtime(true) - $start_time, 2) . ' seconds';
@@ -294,7 +366,7 @@ class IssueBuffer
             }
         }
 
-        if ($has_error) {
+        if ($error_count) {
             exit(1);
         }
 

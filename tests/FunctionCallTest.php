@@ -67,11 +67,15 @@ class FunctionCallTest extends TestCase
             'abs' => [
                 '<?php
                     $a = abs(-5);
-                    $b = abs(-7.5);',
+                    $b = abs(-7.5);
+                    $c = $_GET["c"];
+                    $c = is_numeric($c) ? abs($c) : null;',
                 'assertions' => [
                     '$a' => 'int',
-                    '$b' => 'int',
+                    '$b' => 'float',
+                    '$c' => 'numeric|null',
                 ],
+                'error_levels' => ['MixedAssignment', 'MixedArgument'],
             ],
             'validDocblockParamDefault' => [
                 '<?php
@@ -561,6 +565,25 @@ class FunctionCallTest extends TestCase
                     function mapdef(string $_a, int $_b = 0): string {
                         return "a";
                     }',
+            ],
+            'noInvalidOperandForCoreFunctions' => [
+                '<?php
+                    function foo(string $a, string $b) : int {
+                        $aTime = strtotime($a);
+                        $bTime = strtotime($b);
+
+                        return $aTime - $bTime;
+                    }',
+            ],
+            'strposIntSecondParam' => [
+                '<?php
+                    function hasZeroByteOffset(string $s) : bool {
+                        return strpos($s, 0) !== false;
+                    }'
+            ],
+            'functionCallInGlobalScope' => [
+                '<?php
+                    $a = function() use ($argv) : void {};',
             ],
         ];
     }

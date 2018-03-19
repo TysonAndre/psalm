@@ -442,7 +442,9 @@ class ExpressionChecker
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\ErrorSuppress) {
-            // do nothing
+            if (self::analyze($statements_checker, $stmt->expr, $context) === false) {
+                return false;
+            }
         } elseif ($stmt instanceof PhpParser\Node\Expr\ShellExec) {
             if (IssueBuffer::accepts(
                 new ForbiddenCode(
@@ -734,6 +736,7 @@ class ExpressionChecker
         $fleshed_out_type->from_docblock = $return_type->from_docblock;
         $fleshed_out_type->ignore_nullable_issues = $return_type->ignore_nullable_issues;
         $fleshed_out_type->ignore_falsable_issues = $return_type->ignore_falsable_issues;
+        $fleshed_out_type->possibly_undefined = $return_type->possibly_undefined;
         $fleshed_out_type->by_ref = $return_type->by_ref;
 
         return $fleshed_out_type;
@@ -783,6 +786,15 @@ class ExpressionChecker
                     $static_class
                 );
             }
+        } elseif ($return_type instanceof Type\Atomic\ObjectLike) {
+            foreach ($return_type->properties as &$property_type) {
+                $property_type = self::fleshOutType(
+                    $project_checker,
+                    $property_type,
+                    $self_class,
+                    $static_class
+                );
+            }
         }
 
         return $return_type;
@@ -802,7 +814,9 @@ class ExpressionChecker
     ) {
         foreach ($stmt->uses as $use) {
             $use_var_id = '$' . $use->var;
-            if (!$context->hasVariable($use_var_id, $statements_checker)) {
+            if (!$context->hasVariable($use_var_id, $statements_checker)
+                && (!$context->is_global || !in_array($use_var_id, ['$argv', '$argc'], true))
+            ) {
                 if ($use->byRef) {
                     $context->vars_in_scope[$use_var_id] = Type::getMixed();
                     $context->vars_possibly_in_scope[$use_var_id] = true;

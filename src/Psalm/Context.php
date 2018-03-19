@@ -307,7 +307,8 @@ class Context
             if (!$this_type->failed_reconciliation
                 && !$this_type->isEmpty()
                 && !$new_type->isEmpty()
-                && $this_type->getId() !== $new_type->getId()
+                && ($this_type->getId() !== $new_type->getId()
+                    || $this_type->initialized !== $new_type->initialized)
             ) {
                 $redefined_vars[$var_id] = $this_type;
             }
@@ -360,8 +361,9 @@ class Context
         $redefined_var_ids = [];
 
         foreach ($new_context->vars_in_scope as $var_id => $context_type) {
-            if (!isset($original_context->vars_in_scope[$var_id]) ||
-                $original_context->vars_in_scope[$var_id]->getId() !== $context_type->getId()
+            if (!isset($original_context->vars_in_scope[$var_id])
+                || $original_context->vars_in_scope[$var_id]->getId() !== $context_type->getId()
+                || $original_context->vars_in_scope[$var_id]->possibly_undefined !== $context_type->possibly_undefined
             ) {
                 $redefined_var_ids[] = $var_id;
             }

@@ -51,6 +51,14 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testIntersection()
+    {
+        $this->assertSame('I1&I2', (string) Type::parseString('I1&I2'));
+    }
+
+    /**
+     * @return void
+     */
     public function testPhpDocStyle()
     {
         $this->assertSame('array<mixed, A>', (string) Type::parseString('A[]'));
@@ -108,6 +116,22 @@ class TypeParseTest extends TestCase
         $this->assertSame(
             'array{0:array<int, string>}',
             (string)Type::parseString('array{array<int, string>}')
+        );
+
+        $this->assertSame(
+            'array{a:int, b?:int}',
+            (string)Type::parseString('array{a:int, b?:int}')
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testObjectLikeOptional()
+    {
+        $this->assertSame(
+            'array{a:int, b?:int}',
+            (string)Type::parseString('array{a:int, b?:int}')
         );
     }
 }

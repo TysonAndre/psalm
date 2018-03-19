@@ -282,6 +282,24 @@ class FileManipulationTest extends TestCase
                 ['MissingReturnType'],
                 true,
             ],
+            'addMissingObjectLikeReturnType70' => [
+                '<?php
+                    function foo() {
+                        return rand(0, 1) ? ["a" => "hello"] : ["a" => "goodbye", "b" => "hello again"];
+                    }',
+                '<?php
+                    /**
+                     * @return string[]
+                     *
+                     * @psalm-return array{a:string, b?:string}
+                     */
+                    function foo(): array {
+                        return rand(0, 1) ? ["a" => "hello"] : ["a" => "goodbye", "b" => "hello again"];
+                    }',
+                '7.0',
+                ['MissingReturnType'],
+                true,
+            ],
             'addMissingStringArrayReturnTypeFromCall71' => [
                 '<?php
                     /** @return string[] */
@@ -846,6 +864,73 @@ class FileManipulationTest extends TestCase
                     unset($a);',
                 '5.6',
                 ['PossiblyUndefinedGlobalVariable'],
+                true,
+            ],
+            'addLessSpecificArrayReturnType71' => [
+                '<?php
+                    namespace A\B {
+                        class C {}
+                    }
+
+                    namespace C {
+                        use A\B;
+
+                        class D {
+                            public function getArrayOfC(): array {
+                                return [new \A\B\C];
+                            }
+                        }
+                    }',
+                '<?php
+                    namespace A\B {
+                        class C {}
+                    }
+
+                    namespace C {
+                        use A\B;
+
+                        class D {
+                            /**
+                             * @return \A\B\C[]
+                             *
+                             * @psalm-return array{0:\A\B\C}
+                             */
+                            public function getArrayOfC(): array {
+                                return [new \A\B\C];
+                            }
+                        }
+                    }',
+                '7.1',
+                ['LessSpecificReturnType'],
+                true,
+            ],
+            'fixLessSpecificReturnType' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    class C extends B {
+                        public function getB(): ?\A {
+                            return new B;
+                        }
+                        public function getC(): ?\A {
+                            return new C;
+                        }
+                    }',
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    class C extends B {
+                        public function getB(): B {
+                            return new B;
+                        }
+                        public function getC(): self {
+                            return new C;
+                        }
+                    }',
+                '7.1',
+                ['LessSpecificReturnType'],
                 true,
             ],
             'useUnqualifierPlugin' => [

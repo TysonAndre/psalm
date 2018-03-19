@@ -9,6 +9,7 @@ class ParseTree
     const OBJECT_LIKE = '{}';
     const OBJECT_PROPERTY = ':';
     const UNION = '|';
+    const INTERSECTION = '&';
 
     /**
      * @var array<int, ParseTree>
@@ -24,6 +25,11 @@ class ParseTree
      * @var null|ParseTree
      */
     public $parent;
+
+    /**
+     * @var bool
+     */
+    public $possibly_undefined = false;
 
     /**
      * @param string|null    $value
@@ -68,6 +74,8 @@ class ParseTree
         $parse_tree = new self(null, null);
 
         $current_leaf = $parse_tree;
+
+        $last_token = null;
 
         while ($type_tokens) {
             $type_token = array_shift($type_tokens);
@@ -164,11 +172,15 @@ class ParseTree
 
                     $new_parent_leaf = new self(self::OBJECT_PROPERTY, $current_parent);
                     $new_parent_leaf->children = [$current_leaf];
+                    $new_parent_leaf->possibly_undefined = $last_token === '?';
                     $current_leaf->parent = $new_parent_leaf;
 
                     array_pop($current_parent->children);
                     $current_parent->children[] = $new_parent_leaf;
 
+                    break;
+
+                case '?':
                     break;
 
                 case '|':
@@ -179,6 +191,26 @@ class ParseTree
                     }
 
                     $new_parent_leaf = new self(self::UNION, $current_parent);
+                    $new_parent_leaf->children = [$current_leaf];
+                    $current_leaf->parent = $new_parent_leaf;
+
+                    if ($current_parent) {
+                        array_pop($current_parent->children);
+                        $current_parent->children[] = $new_parent_leaf;
+                    } else {
+                        $parse_tree = $new_parent_leaf;
+                    }
+
+                    break;
+
+                case '&':
+                    $current_parent = $current_leaf->parent;
+
+                    if ($current_parent && $current_parent->value === ParseTree::INTERSECTION) {
+                        continue;
+                    }
+
+                    $new_parent_leaf = new self(self::INTERSECTION, $current_parent);
                     $new_parent_leaf->children = [$current_leaf];
                     $current_leaf->parent = $new_parent_leaf;
 
@@ -207,6 +239,8 @@ class ParseTree
 
                     $current_leaf = $new_leaf;
             }
+
+            $last_token = $type_token;
         }
 
         return $parse_tree;

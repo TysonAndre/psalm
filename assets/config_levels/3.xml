@@ -1,6 +1,8 @@
 <?xml version="1.0"?>
 <psalm
     totallyTyped="false"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="vendor/vimeo/psalm/config.xsd"
 >
     <projectFiles>
         <directory name="src" />
@@ -11,6 +13,8 @@
 
         <!-- level 3 issues - slightly lazy code writing, but provably low false-negatives -->
         <DeprecatedMethod errorLevel="info" />
+        <DeprecatedProperty errorLevel="info" />
+        <DeprecatedClass errorLevel="info" />
 
         <MissingClosureReturnType errorLevel="info" />
         <MissingReturnType errorLevel="info" />
@@ -27,5 +31,7 @@
         <RedundantConditionGivenDocblockType errorLevel="info" />
 
         <UnresolvableInclude errorLevel="info" />
+
+        <RawObjectIteration errorLevel="info" />
     </issueHandlers>
 </psalm>

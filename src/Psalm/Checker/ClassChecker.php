@@ -261,7 +261,8 @@ class ClassChecker extends ClassLikeChecker
                             $implementer_method_storage,
                             $interface_method_storage,
                             $code_location,
-                            $implementer_method_storage->suppressed_issues
+                            $implementer_method_storage->suppressed_issues,
+                            false
                         );
                     }
                 }
@@ -774,6 +775,32 @@ class ClassChecker extends ClassLikeChecker
             $declaring_method_id = $codebase->methods->getDeclaringMethodId($analyzed_method_id);
 
             if ($actual_method_id !== $declaring_method_id) {
+                // the method is an abstract trait method
+
+                $implementer_method_storage = $method_checker->getFunctionLikeStorage();
+
+                if (!$implementer_method_storage instanceof \Psalm\Storage\MethodStorage) {
+                    throw new \LogicException('This should never happen');
+                }
+
+                if ($declaring_method_id && $implementer_method_storage->abstract) {
+                    $classlike_storage_provider = $project_checker->classlike_storage_provider;
+                    $appearing_storage = $classlike_storage_provider->get($class_context->self);
+                    $declaring_method_storage = $codebase->methods->getStorage($declaring_method_id);
+
+                    MethodChecker::compareMethods(
+                        $project_checker,
+                        $class_storage,
+                        $appearing_storage,
+                        $implementer_method_storage,
+                        $declaring_method_storage,
+                        new CodeLocation($source, $stmt),
+                        $implementer_method_storage->suppressed_issues,
+                        false
+                    );
+                }
+
+
                 return;
             }
         }
@@ -783,7 +810,9 @@ class ClassChecker extends ClassLikeChecker
             $global_context ? clone $global_context : null
         );
 
-        if ($stmt->name !== '__construct' && $config->reportIssueInFile('InvalidReturnType', $source->getFilePath())) {
+        if ($stmt->name !== '__construct'
+            && $config->reportIssueInFile('InvalidReturnType', $source->getFilePath())
+        ) {
             $return_type_location = null;
             $secondary_return_type_location = null;
 

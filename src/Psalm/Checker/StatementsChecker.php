@@ -12,6 +12,7 @@ use Psalm\Checker\Statements\Block\WhileChecker;
 use Psalm\Checker\Statements\Expression\Assignment\PropertyAssignmentChecker;
 use Psalm\Checker\Statements\Expression\BinaryOpChecker;
 use Psalm\Checker\Statements\Expression\CallChecker;
+use Psalm\Checker\Statements\Expression\Fetch\VariableFetchChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\Statements\ReturnChecker;
 use Psalm\Checker\Statements\ThrowChecker;
@@ -340,7 +341,6 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     $config = Config::getInstance();
 
                     if ($config->reportIssueInFile('InvalidReturnType', $this->getFilePath())) {
-                        /** @var string */
                         $method_id = $this->function_checkers[$function_id]->getMethodId();
 
                         $function_storage = $codebase->functions->getStorage(
@@ -379,6 +379,10 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
                 foreach ($stmt->vars as $var) {
                     if ($var instanceof PhpParser\Node\Expr\Variable) {
+                        if ($global_context && VariableFetchChecker::analyze($this, $var, $global_context) === false) {
+                            return false;
+                        }
+
                         if (is_string($var->name)) {
                             $var_id = '$' . $var->name;
 
@@ -388,8 +392,6 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                                     : Type::getMixed();
 
                             $context->vars_possibly_in_scope[$var_id] = true;
-                        } else {
-                            ExpressionChecker::analyze($this, $var, $context);
                         }
                     }
                 }
@@ -439,7 +441,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Class_) {
                 try {
-                    $class_checker = (new ClassChecker($stmt, $this->source, $stmt->name));
+                    $class_checker = new ClassChecker($stmt, $this->source, $stmt->name);
                     $class_checker->analyze(null, $global_context);
                 } catch (\InvalidArgumentException $e) {
                     // disregard this exception, we'll likely see it elsewhere in the form
@@ -916,7 +918,6 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
         if ($fq_const_name) {
             $const_name_parts = explode('\\', $fq_const_name);
-            /** @var string */
             $const_name = array_pop($const_name_parts);
             $namespace_name = implode('\\', $const_name_parts);
             $namespace_constants = NamespaceChecker::getConstantsForNamespace(

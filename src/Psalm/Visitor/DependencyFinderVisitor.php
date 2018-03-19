@@ -422,7 +422,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             $storage = $this->classlike_storages[count($this->classlike_storages) - 1];
 
-            $method_map = [];
+            $method_map = $storage->trait_alias_map ?: [];
 
             foreach ($node->adaptations as $adaptation) {
                 if ($adaptation instanceof PhpParser\Node\Stmt\TraitUseAdaptation\Alias) {
@@ -487,7 +487,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /**
      * @param  PhpParser\Node $node
      *
-     * @return array<mixed, PhpParser\Node>|null|false|int|PhpParser\Node
+     * @return null
      */
     public function leaveNode(PhpParser\Node $node)
     {
@@ -635,11 +635,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 $class_storage->overridden_method_ids[strtolower($stmt->name)] = [];
             }
 
-            /** @var bool */
-            $storage->is_static = $stmt->isStatic();
-
-            /** @var bool */
-            $storage->abstract = $stmt->isAbstract();
+            $storage->is_static = (bool) $stmt->isStatic();
+            $storage->abstract = (bool) $stmt->isAbstract();
 
             $storage->final = $class_storage->final || $stmt->isFinal();
 
@@ -766,6 +763,30 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
 
             $storage->assertions = $var_assertions;
+        }
+
+        if (!$this->scan_deep
+            && ($stmt instanceof PhpParser\Node\Stmt\Function_
+                || $stmt instanceof PhpParser\Node\Stmt\ClassMethod
+                || $stmt instanceof PhpParser\Node\Expr\Closure)
+            && $stmt->stmts
+        ) {
+            // pick up func_get_args that would otherwise be missed
+            foreach ($stmt->stmts as $function_stmt) {
+                if ($function_stmt instanceof PhpParser\Node\Expr\Assign
+                    && ($function_stmt->expr instanceof PhpParser\Node\Expr\FuncCall)
+                    && ($function_stmt->expr->name instanceof PhpParser\Node\Name)
+                ) {
+                    $function_id = implode('\\', $function_stmt->expr->name->parts);
+
+                    if ($function_id === 'func_get_arg'
+                        || $function_id === 'func_get_args'
+                        || $function_id === 'func_num_args'
+                    ) {
+                        $storage->variadic = true;
+                    }
+                }
+            }
         }
 
         /**
@@ -1386,7 +1407,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /**
      * @param  PhpParser\Node\Expr\Include_ $stmt
      *
-     * @return false|null
+     * @return void
      */
     public function visitInclude(PhpParser\Node\Expr\Include_ $stmt)
     {
@@ -1421,11 +1442,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             // if the file is already included, we can't check much more
             if (in_array($path_to_file, get_included_files(), true)) {
-                return null;
+                return;
             }
 
             if ($this->file_path === $path_to_file) {
-                return null;
+                return;
             }
 
             if ($this->codebase->fileExists($path_to_file)) {
@@ -1433,11 +1454,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
                 $this->file_storage->included_file_paths[strtolower($path_to_file)] = $path_to_file;
 
-                return null;
+                return;
             }
         }
 
-        return null;
+        return;
     }
 
     /**

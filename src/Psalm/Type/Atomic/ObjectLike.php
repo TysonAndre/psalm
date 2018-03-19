@@ -32,12 +32,12 @@ class ObjectLike extends \Psalm\Type\Atomic
                     array_map(
                         /**
                          * @param  string|int $name
-                         * @param  string $type
+                         * @param  Union $type
                          *
                          * @return string
                          */
-                        function ($name, $type) {
-                            return $name . ':' . $type;
+                        function ($name, Union $type) {
+                            return $name . ($type->possibly_undefined ? '?' : '') . ':' . $type;
                         },
                         array_keys($this->properties),
                         $this->properties
@@ -84,7 +84,7 @@ class ObjectLike extends \Psalm\Type\Atomic
                             $this_class,
                             $use_phpdoc_format
                         ) {
-                            return $name . ':' . $type->toNamespacedString(
+                            return $name . ($type->possibly_undefined ? '?' : '') . ':' . $type->toNamespacedString(
                                 $namespace,
                                 $aliased_classes,
                                 $this_class,
@@ -125,7 +125,7 @@ class ObjectLike extends \Psalm\Type\Atomic
         $key_types = [];
 
         foreach ($this->properties as $key => $_) {
-            if (is_int($key) || preg_match('/^\d+$/', $key)) {
+            if (is_int($key)) {
                 $key_types[] = new Type\Atomic\TInt();
             } else {
                 $key_types[] = new Type\Atomic\TString();
@@ -154,6 +154,8 @@ class ObjectLike extends \Psalm\Type\Atomic
             throw new \UnexpectedValueException('$value_type should not be null here');
         }
 
+        $value_type->possibly_undefined = false;
+
         return $value_type;
     }
 
@@ -166,7 +168,7 @@ class ObjectLike extends \Psalm\Type\Atomic
         $value_type = null;
 
         foreach ($this->properties as $key => $property) {
-            if (is_int($key) || preg_match('/^\d+$/', $key)) {
+            if (is_int($key)) {
                 $key_types[] = new Type\Atomic\TInt();
             } else {
                 $key_types[] = new Type\Atomic\TString();
@@ -184,6 +186,8 @@ class ObjectLike extends \Psalm\Type\Atomic
             return new TArray([new Type\Union([new TEmpty]), new Type\Union([new TEmpty])]);
             // throw new \UnexpectedValueException('$value_type should not be null here');
         }
+
+        $value_type->possibly_undefined = false;
 
         return new TArray([Type::combineTypes($key_types), $value_type]);
     }
