@@ -1056,7 +1056,7 @@ class Reconciler
 
                 $base_key = $new_base_key;
             } else {
-                throw new \InvalidArgumentException('Unexpected divider ' . $divider);
+                return null;  // FORK: hack fixing https://github.com/vimeo/psalm/issues/606
             }
         }
 
