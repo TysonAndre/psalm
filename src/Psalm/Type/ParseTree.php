@@ -86,7 +86,11 @@ class ParseTree
                 case '}':
                     do {
                         if ($current_leaf->parent === null) {
-                            throw new TypeParseTreeException('Cannot parse array type');
+                            if (!$current_leaf instanceof ParseTree\ObjectLikeTree) {
+                                throw new TypeParseTreeException('Cannot parse array type');
+                            }
+                            break;  // patch for empty array type array{}
+                            // throw new TypeParseTreeException('Cannot parse array type');
                         }
 
                         $current_leaf = $current_leaf->parent;

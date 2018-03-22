@@ -150,7 +150,7 @@ abstract class Type
 
                     return $tree_type instanceof Union ? $tree_type : new Union([$tree_type]);
                 },
-                $children
+                $parse_tree->children
             );
 
             $generic_type_value = self::fixScalarTerms($generic_type, false);
@@ -900,6 +900,7 @@ abstract class Type
                 }
             }
         } elseif ($type instanceof ObjectLike) {
+            $combination->has_objectlike_entries = true;
             $existing_objectlike_entries = (bool) $combination->objectlike_entries;
             $possibly_undefined_entries = $combination->objectlike_entries;
 

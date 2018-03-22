@@ -936,6 +936,19 @@ class PropertyTypeTest extends TestCase
                     }',
                 'error_message' => 'InvalidPropertyAssignmentValue',
             ],
+            'possiblyFalseAssignment' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        public function barBar(): void
+                        {
+                            $this->foo = rand(0, 1) ? "str" : false;
+                        }
+                    }',
+                'error_message' => 'PossiblyFalsePropertyAssignmentValue',
+            ],
             'possiblyBadAssignment' => [
                 '<?php
                     class A {
@@ -947,7 +960,7 @@ class PropertyTypeTest extends TestCase
                             $this->foo = rand(0, 1) ? 5 : "hello";
                         }
                     }',
-                'error_message' => 'PossiblyFalsePropertyAssignmentValue',
+                'error_message' => 'PossiblyInvalidPropertyAssignmentValue',
             ],
             'badAssignmentAsWell' => [
                 '<?php
