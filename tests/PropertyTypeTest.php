@@ -942,10 +942,9 @@ class PropertyTypeTest extends TestCase
                         /** @var string */
                         public $foo;
 
-                        /** @param string|false $new_value */
-                        public function barBar($new_value) : void
+                        public function barBar(): void
                         {
-                            $this->foo = $new_value;
+                            $this->foo = rand(0, 1) ? 5 : "hello";
                         }
                     }',
                 'error_message' => 'PossiblyFalsePropertyAssignmentValue',

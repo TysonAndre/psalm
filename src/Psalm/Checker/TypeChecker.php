@@ -223,45 +223,53 @@ class TypeChecker
     ) {
         $intersection_input_types = $input_type_part->extra_types ?: [];
         $intersection_input_types[] = $input_type_part;
-        $container_type_lower = strtolower($container_type_part->value);
 
-        foreach ($intersection_input_types as $intersection_input_type) {
-            if ($intersection_input_type->value === $container_type_part->value) {
-                return true;
+        $intersection_container_types = $container_type_part->extra_types ?: [];
+        $intersection_container_types[] = $container_type_part;
+
+        foreach ($intersection_container_types as $intersection_container_type) {
+            $intersection_container_type_lower = strtolower($intersection_container_type->value);
+
+            foreach ($intersection_input_types as $intersection_input_type) {
+                $intersection_input_type_lower = strtolower($intersection_input_type->value);
+
+                if ($intersection_container_type_lower === $intersection_input_type_lower) {
+                    continue 2;
+                }
+
+                if ($intersection_input_type_lower === 'generator'
+                    && in_array($intersection_container_type_lower, ['iterator', 'traversable', 'iterable'], true)
+                ) {
+                    continue 2;
+                }
+
+                if ($codebase->classExists($intersection_input_type->value)
+                    && $codebase->classExtendsOrImplements(
+                        $intersection_input_type->value,
+                        $intersection_container_type->value
+                    )
+                ) {
+                    continue 2;
+                }
+
+                if ($codebase->interfaceExists($intersection_input_type->value)
+                    && $codebase->interfaceExtends(
+                        $intersection_input_type->value,
+                        $intersection_container_type->value
+                    )
+                ) {
+                    continue 2;
+                }
+
+                if (ExpressionChecker::isMock($intersection_input_type->value)) {
+                    return true;
+                }
             }
 
-            $intersection_input_type_lower = strtolower($intersection_input_type->value);
-
-            if ($intersection_input_type_lower === 'generator'
-                && in_array($container_type_lower, ['iterator', 'traversable', 'iterable'], true)
-            ) {
-                return true;
-            }
-
-            if ($codebase->classExists($intersection_input_type->value)
-                && $codebase->classExtendsOrImplements(
-                    $intersection_input_type->value,
-                    $container_type_part->value
-                )
-            ) {
-                return true;
-            }
-
-            if ($codebase->interfaceExists($intersection_input_type->value)
-                && $codebase->interfaceExtends(
-                    $intersection_input_type->value,
-                    $container_type_part->value
-                )
-            ) {
-                return true;
-            }
-
-            if (ExpressionChecker::isMock($intersection_input_type->value)) {
-                return true;
-            }
+            return false;
         }
 
-        return false;
+        return true;
     }
 
     /**
@@ -346,14 +354,18 @@ class TypeChecker
                 && ($container_type_part instanceof TArray || $container_type_part instanceof ObjectLike)
             ) {
                 if ($container_type_part instanceof ObjectLike) {
+                    $generic_container_type_part = $container_type_part->getGenericArrayType();
+
                     if (!$input_type_part instanceof ObjectLike
                         && !$input_type_part->type_params[0]->isMixed()
+                        && !($input_type_part->type_params[1]->isEmpty()
+                            && $generic_container_type_part->type_params[1]->possibly_undefined)
                     ) {
                         $all_types_contain = false;
                         $type_coerced = true;
                     }
 
-                    $container_type_part = $container_type_part->getGenericArrayType();
+                    $container_type_part = $generic_container_type_part;
                 }
 
                 if ($input_type_part instanceof ObjectLike) {
@@ -540,22 +552,6 @@ class TypeChecker
                     $input_type_part instanceof TNamedObject &&
                     $codebase->classExists($input_type_part->value) &&
                     $codebase->methodExists($input_type_part->value . '::__invoke')
-                )
-            )
-        ) {
-            // @todo add value checks if possible here
-            return true;
-        }
-
-        if ($input_type_part instanceof TCallable &&
-            (
-                $container_type_part instanceof TString ||
-                $container_type_part instanceof TArray ||
-                $container_type_part instanceof ObjectLike ||
-                (
-                    $container_type_part instanceof TNamedObject &&
-                    $codebase->classExists($container_type_part->value) &&
-                    $codebase->methodExists($container_type_part->value . '::__invoke')
                 )
             )
         ) {

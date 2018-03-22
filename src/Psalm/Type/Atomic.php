@@ -108,6 +108,9 @@ abstract class Atomic
             case 'class-string':
                 return new TClassString();
 
+            case '$this':
+                return new TNamedObject('static');
+
             default:
                 if (strpos($value, '-')) {
                     throw new \Psalm\Exception\TypeParseTreeException('no hyphens allowed');
@@ -195,7 +198,8 @@ abstract class Atomic
             if (IssueBuffer::accepts(
                 new ReservedWord(
                     '\'resource\' is a reserved word',
-                    $code_location
+                    $code_location,
+                    'resource'
                 ),
                 $source->getSuppressedIssues()
             )) {

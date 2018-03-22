@@ -96,7 +96,8 @@ class ClassChecker extends ClassLikeChecker
                         $this->class,
                         null,
                         true
-                    )
+                    ),
+                    $class_name
                 ),
                 array_merge($storage->suppressed_issues, $this->source->getSuppressedIssues())
             )) {

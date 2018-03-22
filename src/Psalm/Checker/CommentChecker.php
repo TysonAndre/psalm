@@ -15,7 +15,7 @@ use function strlen;
 
 class CommentChecker
 {
-    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_&\<,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_\<,\>\|\[\]-\{\}:]+)';
+    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_&\<,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_&\<,\>\|\[\]-\{\}:]+)';
 
     /**
      * @param  string           $comment
@@ -188,10 +188,8 @@ class CommentChecker
                 && !strpos($line_parts[0], '::')
                 && $line_parts[0][0] !== '{'
             ) {
-                if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
-                    if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
-                        throw new IncorrectDocblockException('Misplaced variable');
-                    }
+                if ($line_parts[0][0] === '$' && !preg_match('/^\$this(\||$)/', $line_parts[0])) {
+                    throw new IncorrectDocblockException('Misplaced variable');
                 }
 
                 $info->return_type = $line_parts[0];
@@ -234,7 +232,7 @@ class CommentChecker
                             $line_parts[1] = substr($line_parts[1], 1);
                         }
 
-                        if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
+                        if ($line_parts[0][0] === '$' && !preg_match('/^\$this(\||$)/', $line_parts[0])) {
                             throw new IncorrectDocblockException('Misplaced variable');
                         }
                         $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);
@@ -382,7 +380,7 @@ class CommentChecker
                         $line_parts[1] = substr($line_parts[1], 1);
                     }
 
-                    if ($line_parts[0][0] === '$' && $line_parts[0] !== '$this') {
+                    if ($line_parts[0][0] === '$' && !preg_match('/^\$this(\||$)/', $line_parts[0])) {
                         throw new IncorrectDocblockException('Misplaced variable');
                     }
 

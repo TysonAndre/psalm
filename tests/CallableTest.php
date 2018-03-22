@@ -1,7 +1,7 @@
 <?php
 namespace Psalm\Tests;
 
-class ClosureTest extends TestCase
+class CallableTest extends TestCase
 {
     use Traits\FileCheckerInvalidCodeParseTestTrait;
     use Traits\FileCheckerValidCodeParseTestTrait;
@@ -205,6 +205,78 @@ class ClosureTest extends TestCase
                     }
 
                     new A([new A, new A]);',
+            ],
+            'possiblyUndefinedFunction' => [
+                '<?php
+                      /**
+                       * @param string|callable $middlewareOrPath
+                       */
+                      function pipe($middlewareOrPath, ?callable $middleware = null): void {  }
+
+                    pipe("zzzz", function() : void {});',
+            ],
+            'callableWithNonInvokable' => [
+                '<?php
+                    function asd(): void {}
+                    class B {}
+
+                    /**
+                     * @param callable|B $p
+                     */
+                    function passes($p): void {}
+
+                    passes("asd");',
+            ],
+            'callableWithInvokable' => [
+                '<?php
+                    function asd(): void {}
+                    class A { public function __invoke(): void {} }
+
+                    /**
+                     * @param callable|A $p
+                     */
+                    function fails($p): void {}
+
+                    fails("asd");',
+            ],
+            'isCallableArray' => [
+                '<?php
+                    class A
+                    {
+                        public function callMeMaybe(string $method): void
+                        {
+                            $handleMethod = [$this, $method];
+
+                            if (is_callable($handleMethod)) {
+                                $handleMethod();
+                            }
+                        }
+
+                        public function foo(): void {}
+                    }
+                    $a = new A();
+                    $a->callMeMaybe("foo");',
+            ],
+            'isCallableString' => [
+                '<?php
+                    function foo(): void {}
+
+                    function callMeMaybe(string $method): void {
+                        if (is_callable($method)) {
+                            $method();
+                        }
+                    }
+
+                    callMeMaybe("foo");',
+            ],
+            'arrayMapVariadicClosureArg' => [
+                '<?php
+                    $a = array_map(
+                      function(int $type, string ...$args):string {
+                        return "hello";
+                      },
+                      [1, 2, 3]
+                    );',
             ],
         ];
     }

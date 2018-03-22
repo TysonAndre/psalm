@@ -240,7 +240,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     if (IssueBuffer::accepts(
                         new UndefinedMethod(
                             $fq_class_name . ' has no defined methods',
-                            $code_location
+                            $code_location,
+                            $fq_class_name . '::' . (!is_string($stmt->name) ? '$method' : $stmt->name)
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
@@ -274,13 +275,34 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
-                if ($var_id === '$this' &&
-                    $context->self &&
-                    $fq_class_name !== $context->self &&
-                    $codebase->methodExists($context->self . '::' . $method_name_lc)
-                ) {
-                    $method_id = $context->self . '::' . $method_name_lc;
-                    $fq_class_name = $context->self;
+                $source_source = $statements_checker->getSource();
+
+                /**
+                 * @var \Psalm\Checker\ClassLikeChecker|null
+                 */
+                $classlike_source = $source_source->getSource();
+                $classlike_source_fqcln = $classlike_source ? $classlike_source->getFQCLN() : null;
+
+                if ($var_id === '$this' && $context->self && $classlike_source_fqcln) {
+                    if ($fq_class_name !== $context->self
+                        && $codebase->methodExists($context->self . '::' . $method_name_lc)
+                    ) {
+                        $method_id = $context->self . '::' . $method_name_lc;
+                        $fq_class_name = $context->self;
+                    } elseif ($classlike_source instanceof \Psalm\Checker\TraitChecker
+                        && $codebase->methodExists($classlike_source_fqcln . '::' . $method_name_lc)
+                    ) {
+                        $declaring_method_id = (string) $codebase->methods->getDeclaringMethodId(
+                            $classlike_source_fqcln . '::' . $method_name_lc
+                        );
+
+                        list($declaring_class) = explode('::', $declaring_method_id);
+
+                        if ($declaring_class === $classlike_source_fqcln) {
+                            $method_id = $classlike_source_fqcln . '::' . $method_name_lc;
+                            $fq_class_name = $classlike_source_fqcln;
+                        }
+                    }
                 }
 
                 if ($intersection_types && !$codebase->methodExists($method_id)) {
@@ -535,7 +557,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     if (IssueBuffer::accepts(
                         new PossiblyUndefinedMethod(
                             'Method ' . $non_existent_method_ids[0] . ' does not exist',
-                            $code_location
+                            $code_location,
+                            $non_existent_method_ids[0]
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
@@ -545,7 +568,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     if (IssueBuffer::accepts(
                         new UndefinedMethod(
                             'Method ' . $non_existent_method_ids[0] . ' does not exist',
-                            $code_location
+                            $code_location,
+                            $non_existent_method_ids[0]
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {

@@ -564,15 +564,24 @@ class TypeReconciliationTest extends TestCase
 
                     function takesI(I $i): void {}
                     function takesA(A $a): void {}
+                    /** @param A&I $a */
+                    function takesAandI($a): void {}
+                    /** @param I&A $a */
+                    function takesIandA($a): void {}
 
                     class A {
-                        public function foo(): void {
+                        /**
+                         * @return A&I|null
+                         */
+                        public function foo() {
                             if ($this instanceof I) {
                                 $this->bar();
                                 $this->bat();
 
                                 takesA($this);
                                 takesI($this);
+                                takesAandI($this);
+                                takesIandA($this);
                             }
                         }
 
@@ -592,24 +601,6 @@ class TypeReconciliationTest extends TestCase
 
                       return "backup";
                     }',
-            ],
-            'isCallableArray' => [
-                '<?php
-                    class A
-                    {
-                        public function callMeMaybe(string $method): void
-                        {
-                            $handleMethod = [$this, $method];
-
-                            if (is_callable($handleMethod)) {
-                                $handleMethod();
-                            }
-                        }
-
-                        public function foo(): void {}
-                    }
-                    $a = new A();
-                    $a->callMeMaybe("foo");',
             ],
             'stringOrCallableArg' => [
                 '<?php
@@ -849,6 +840,26 @@ class TypeReconciliationTest extends TestCase
                         print_field($array);
                     }',
                 'error_message' => 'PossiblyInvalidArgument',
+            ],
+            'intersectionIncorrect' => [
+                '<?php
+                    interface I {
+                        public function bat(): void;
+                    }
+
+                    interface C {}
+
+                    /** @param I&C $a */
+                    function takesIandC($a): void {}
+
+                    class A {
+                        public function foo(): void {
+                            if ($this instanceof I) {
+                                takesIandC($this);
+                            }
+                        }
+                    }',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

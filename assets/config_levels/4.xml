@@ -38,10 +38,12 @@
         <!-- level 4 issues - points to possible deficiencies in logic, higher false-positives -->
 
         <MoreSpecificReturnType errorLevel="info" />
+        <LessSpecificReturnStatement errorLevel="info" />
         <TypeCoercion errorLevel="info" />
         <RedundantCondition errorLevel="info" />
 
         <PossiblyFalseArgument errorLevel="info" />
+        <PossiblyFalseIterator errorLevel="info" />
         <PossiblyFalseOperand errorLevel="info" />
         <PossiblyFalsePropertyAssignmentValue errorLevel="info" />
         <PossiblyFalseReference errorLevel="info" />
@@ -50,6 +52,7 @@
         <PossiblyInvalidArrayAssignment errorLevel="info" />
         <PossiblyInvalidArrayOffset errorLevel="info" />
         <PossiblyInvalidFunctionCall errorLevel="info" />
+        <PossiblyInvalidIterator errorLevel="info" />
         <PossiblyInvalidMethodCall errorLevel="info" />
         <PossiblyInvalidOperand errorLevel="info" />
         <PossiblyInvalidPropertyAssignment errorLevel="info" />
@@ -69,6 +72,5 @@
         <PossiblyUndefinedGlobalVariable errorLevel="info" />
         <PossiblyUndefinedVariable errorLevel="info" />
         <PossiblyUndefinedMethod errorLevel="info" />
-
     </issueHandlers>
 </psalm>
