@@ -58,10 +58,6 @@ abstract class Type
         // remove all unacceptable characters
         $type_string = preg_replace('/[^A-Za-z0-9\-_\\\\&|\? \<\>\{\}:,\]\[\(\)\$]/', '', trim($type_string));
 
-        if (strpos($type_string, '[') !== false) {
-            $type_string = self::convertSquareBrackets($type_string);
-        }
-
         $type_string = preg_replace('/\?(?=[a-zA-Z])/', 'null|', $type_string);
 
         $type_tokens = self::tokenize($type_string);
@@ -203,8 +199,8 @@ abstract class Type
                     $atomic_type = self::getTypeFromTree($child_tree, false);
 
                     if (!$atomic_type instanceof Atomic) {
-                        throw new \UnexpectedValueException(
-                            'Was expecting an atomic type, got ' . get_class($atomic_type)
+                        throw new TypeParseTreeException(
+                            'Intersection types cannot contain unions'
                         );
                     }
 
@@ -263,6 +259,10 @@ abstract class Type
             }
 
             return new ObjectLike($properties);
+        }
+
+        if ($parse_tree instanceof ParseTree\EncapsulationTree) {
+            return self::getTypeFromTree($parse_tree->children[0], false);
         }
 
         if (!$parse_tree instanceof ParseTree\Value) {
@@ -346,14 +346,10 @@ abstract class Type
         Aliases $aliases,
         array $template_types = null
     ) {
-        if (strpos($return_type, '[') !== false) {
-            $return_type = self::convertSquareBrackets($return_type);
-        }
-
         $return_type_tokens = self::tokenize($return_type);
 
         foreach ($return_type_tokens as $i => &$return_type_token) {
-            if (in_array($return_type_token, ['<', '>', '|', '?', ',', '{', '}', ':'], true)) {
+            if (in_array($return_type_token, ['<', '>', '|', '?', ',', '{', '}', ':', '[', ']', '(', ')'], true)) {
                 continue;
             }
 
@@ -412,35 +408,6 @@ abstract class Type
         $namespace = $aliases->namespace;
 
         return ($namespace ? $namespace . '\\' : '') . $class;
-    }
-
-    /**
-     * @param  string $type
-     *
-     * @return string
-     */
-    public static function convertSquareBrackets($type)
-    {
-        $class_chars = '[a-zA-Z0-9\<\>\\\\_]+';
-
-        return preg_replace_callback(
-            '/(' . $class_chars . '|' . '\((' . $class_chars . '(\|' . $class_chars . ')*' . ')\))((\[\])+)/',
-            /**
-             * @return string
-             */
-            function (array $matches) {
-                $inner_type = str_replace(['(', ')'], '', (string)$matches[1]);
-
-                $dimensionality = strlen((string)$matches[4]) / 2;
-
-                for ($i = 0; $i < $dimensionality; ++$i) {
-                    $inner_type = 'array<mixed,' . $inner_type . '>';
-                }
-
-                return $inner_type;
-            },
-            $type
-        );
     }
 
     /**
@@ -622,49 +589,49 @@ abstract class Type
     public static function combineUnionTypes(Union $type_1, Union $type_2)
     {
         if ($type_1->isMixed() || $type_2->isMixed()) {
-            return Type::getMixed();
-        }
+            $combined_type = Type::getMixed();
+        } else {
+             $both_failed_reconciliation = false;
 
-        $both_failed_reconciliation = false;
-
-        if ($type_1->failed_reconciliation) {
-            if ($type_2->failed_reconciliation) {
-                $both_failed_reconciliation = true;
-            } else {
-                return $type_2;
+            if ($type_1->failed_reconciliation) {
+                if ($type_2->failed_reconciliation) {
+                    $both_failed_reconciliation = true;
+                } else {
+                    return $type_2;
+                }
+            } elseif ($type_2->failed_reconciliation) {
+                return $type_1;
             }
-        } elseif ($type_2->failed_reconciliation) {
-            return $type_1;
+
+            $combined_type = self::combineTypes(
+                array_merge(
+                    array_values($type_1->getTypes()),
+                    array_values($type_2->getTypes())
+                )
+            );
+
+            if (!$type_1->initialized || !$type_2->initialized) {
+                $combined_type->initialized = false;
+            }
+
+            if ($type_1->from_docblock || $type_2->from_docblock) {
+                $combined_type->from_docblock = true;
+            }
+
+            if ($type_1->ignore_nullable_issues || $type_2->ignore_nullable_issues) {
+                $combined_type->ignore_nullable_issues = true;
+            }
+
+            if ($type_1->ignore_falsable_issues || $type_2->ignore_falsable_issues) {
+                $combined_type->ignore_falsable_issues = true;
+            }
+
+            if ($both_failed_reconciliation) {
+                $combined_type->failed_reconciliation = true;
+            }
         }
 
-        $combined_type = self::combineTypes(
-            array_merge(
-                array_values($type_1->getTypes()),
-                array_values($type_2->getTypes())
-            )
-        );
-
-        if (!$type_1->initialized || !$type_2->initialized) {
-            $combined_type->initialized = false;
-        }
-
-        if ($type_1->from_docblock || $type_2->from_docblock) {
-            $combined_type->from_docblock = true;
-        }
-
-        if ($type_1->ignore_nullable_issues || $type_2->ignore_nullable_issues) {
-            $combined_type->ignore_nullable_issues = true;
-        }
-
-        if ($type_1->ignore_falsable_issues || $type_2->ignore_falsable_issues) {
-            $combined_type->ignore_falsable_issues = true;
-        }
-
-        if ($both_failed_reconciliation) {
-            $combined_type->failed_reconciliation = true;
-        }
-
-        if ($type_1->possibly_undefined && $type_2->possibly_undefined) {
+        if ($type_1->possibly_undefined || $type_2->possibly_undefined) {
             $combined_type->possibly_undefined = true;
         }
 

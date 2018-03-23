@@ -40,6 +40,14 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testBracketedIntOrString()
+    {
+        $this->assertSame('int|string', (string) Type::parseString('(int|string)'));
+    }
+
+    /**
+     * @return void
+     */
     public function testBoolOrIntOrString()
     {
         $this->assertSame('bool|int|string', (string) Type::parseString('bool|int|string'));
@@ -173,6 +181,17 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testPhpDocObjectLikeArray()
+    {
+        $this->assertSame(
+            'array<mixed, array{b:bool, d:string}>',
+            (string) Type::parseString('array{b:bool,d:string}[]')
+        );
+    }
+
+    /**
+     * @return void
+     */
     public function testPhpDocUnionOfArrays()
     {
         $this->assertSame('array<mixed, A|B>', (string) Type::parseString('A[]|B[]'));
@@ -202,6 +221,16 @@ class TypeParseTest extends TestCase
     public function testInvalidType()
     {
         Type::parseString('array(A)');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testBracketedUnionAndIntersection()
+    {
+        Type::parseString('(A|B)&C');
     }
 
     /**

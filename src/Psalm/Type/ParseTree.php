@@ -70,7 +70,64 @@ class ParseTree
             switch ($type_token) {
                 case '<':
                 case '{':
-                    throw new TypeParseTreeException('Unexpected token');
+                case ']':
+                    throw new TypeParseTreeException('Unexpected token ' . $type_token);
+
+                case '[':
+                    if ($next_token !== ']') {
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                    }
+
+                    $current_parent = $current_leaf->parent;
+
+                    $new_parent_leaf = new ParseTree\GenericTree('array', $current_parent);
+                    $current_leaf->parent = $new_parent_leaf;
+                    $new_parent_leaf->children = [$current_leaf];
+
+                    if ($current_parent) {
+                        array_pop($current_parent->children);
+                        $current_parent->children[] = $new_parent_leaf;
+                    } else {
+                        $parse_tree = $new_parent_leaf;
+                    }
+
+                    $current_leaf = $new_parent_leaf;
+                    ++$i;
+                    break;
+
+                case '(':
+                    if ($current_leaf instanceof ParseTree\Value) {
+                        throw new TypeParseTreeException('Unrecognised token (');
+                    }
+
+                    $new_parent = !$current_leaf instanceof ParseTree\Root ? $current_leaf : null;
+
+                    $new_leaf = new ParseTree\EncapsulationTree(
+                        $new_parent
+                    );
+
+                    if ($current_leaf instanceof ParseTree\Root) {
+                        $current_leaf = $parse_tree = $new_leaf;
+                        break;
+                    }
+
+                    if ($new_leaf->parent) {
+                        $new_leaf->parent->children[] = $new_leaf;
+                    }
+
+                    $current_leaf = $new_leaf;
+                    break;
+
+                case ')':
+                    do {
+                        if ($current_leaf->parent === null) {
+                            throw new TypeParseTreeException('Cannot parse generic type');
+                        }
+
+                        $current_leaf = $current_leaf->parent;
+                    } while (!$current_leaf instanceof ParseTree\EncapsulationTree);
+
+                    break;
 
                 case '>':
                     do {
@@ -244,7 +301,7 @@ class ParseTree
 
                     if ($current_leaf instanceof ParseTree\Root) {
                         $current_leaf = $parse_tree = $new_leaf;
-                        continue;
+                        break;
                     }
 
                     if ($new_leaf->parent) {
@@ -252,6 +309,7 @@ class ParseTree
                     }
 
                     $current_leaf = $new_leaf;
+                    break;
             }
         }
 
