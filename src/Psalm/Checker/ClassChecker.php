@@ -831,6 +831,14 @@ class ClassChecker extends ClassLikeChecker
 
                 $return_type = $codebase->methods->getMethodReturnType($analyzed_method_id, $self_class);
 
+                $overridden_method_ids = isset($class_storage->overridden_method_ids[strtolower($stmt->name)])
+                    ? $class_storage->overridden_method_ids[strtolower($stmt->name)]
+                    : [];
+
+                if ($actual_method_storage->overridden_downstream) {
+                    $overridden_method_ids[] = 'overridden::downstream';
+                }
+
                 if (!$return_type && isset($class_storage->interface_method_ids[strtolower($stmt->name)])) {
                     foreach ($class_storage->interface_method_ids[strtolower($stmt->name)] as $interface_method_id) {
                         list($interface_class) = explode('::', $interface_method_id);
@@ -850,7 +858,8 @@ class ClassChecker extends ClassLikeChecker
                             $method_checker,
                             $interface_return_type,
                             $interface_class,
-                            $interface_return_type_location
+                            $interface_return_type_location,
+                            [$analyzed_method_id]
                         );
                     }
                 }
@@ -861,7 +870,8 @@ class ClassChecker extends ClassLikeChecker
                     $method_checker,
                     $return_type,
                     $self_class,
-                    $return_type_location
+                    $return_type_location,
+                    $overridden_method_ids
                 );
             }
         }
