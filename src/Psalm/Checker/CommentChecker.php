@@ -15,7 +15,7 @@ use function strlen;
 
 class CommentChecker
 {
-    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_&\<,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_&\<,\>\|\[\]-\{\}:]+)';
+    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_&\<\.=,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_]+)';
 
     /**
      * @param  string           $comment
@@ -216,7 +216,7 @@ class CommentChecker
                 }
 
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
-                    array_unshift($line_parts, 'mixed');
+                    continue;
                 }
                 $line_parts[0] = self::getRenamedType($line_parts[0]);
 
@@ -413,23 +413,18 @@ class CommentChecker
         $brackets = '';
 
         $type = '';
-        $N = \strlen($return_block);
 
-        for ($i = 0; $i < $N; $i++) {
-            $j = \strcspn($return_block, "[{(<>)}] \t", $i);
-            if ($j > 0) {
-                $type .= \substr($return_block, $i, $j);
-            }
-            $i += $j;
-            if ($i >= $N) {
-                break;
-            }
+        $expects_callable_return = false;
+
+        $return_block = preg_replace('/[ \t]+/', ' ', $return_block);
+
+        for ($i = 0, $l = strlen($return_block); $i < $l; ++$i) {
             $char = $return_block[$i];
-            $k = \strpos("[{(<>)}] \t", $char);
+            $next_char = $i < $l - 1 ? $return_block[$i + 1] : null;
 
-            if ($k < 4) {  // $char === '[' || $char === '{' || $char === '(' || $char === '<') {
+            if ($char === '[' || $char === '{' || $char === '(' || $char === '<') {
                 $brackets .= $char;
-            } elseif ($k < 8) {  // $char === ']' || $char === '}' || $char === ')' || $char === '>') {
+            } elseif ($char === ']' || $char === '}' || $char === ')' || $char === '>') {
                 $last_bracket = substr($brackets, -1);
                 $brackets = substr($brackets, 0, -1);
 
@@ -440,15 +435,27 @@ class CommentChecker
                 ) {
                     throw new DocblockParseException('Invalid string ' . $return_block);
                 }
-            } else {
+            } elseif ($char === ' ' || $char === "\t") {
                 if ($brackets) {
+                    continue;
+                }
+
+                if ($next_char === ':') {
+                    ++$i;
+                    $type .= ':';
+                    $expects_callable_return = true;
+                    continue;
+                }
+
+                if ($expects_callable_return) {
+                    $expects_callable_return = false;
                     continue;
                 }
 
                 $remaining = trim(substr($return_block, $i + 1));
 
                 if ($remaining) {
-                    return array_merge([$type], preg_split('/[\s\t]+/', $remaining));
+                    return array_merge([$type], explode(' ', $remaining));
                 }
 
                 return [$type];

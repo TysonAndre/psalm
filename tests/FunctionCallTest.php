@@ -480,7 +480,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $foo = array_sum([]) + 1;',
                 'assertions' => [
-                    '$foo' => 'numeric',
+                    '$foo' => 'float|int',
                 ],
             ],
             'arrayMapObjectLikeAndCallable' => [
@@ -584,6 +584,10 @@ class FunctionCallTest extends TestCase
             'functionCallInGlobalScope' => [
                 '<?php
                     $a = function() use ($argv) : void {};',
+            ],
+            'SKIPPED-implodeMultiDimensionalArray' => [
+                '<?php
+                    $urls = array_map("implode", [["a", "b"]]);',
             ],
         ];
     }

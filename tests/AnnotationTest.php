@@ -743,6 +743,13 @@ class AnnotationTest extends TestCase
                     /** @param array{b?: int, c?: string} $a */
                     function foo(array $a = []) : void {}',
             ],
+            'allowEmptyVarAnnotation' => [
+                '<?php
+                    /**
+                     * @param $x
+                     */
+                    function example(array $x) : void {}',
+            ],
         ];
     }
 
@@ -1481,6 +1488,18 @@ class AnnotationTest extends TestCase
                     }',
                 'error_message' => 'UndefinedClass',
                 'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
+            ],
+            'badStaticVar' => [
+                '<?php
+                    /** @var static */
+                    $a = new stdClass();',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'doubleBar' => [
+                '<?php
+                    /** @param PDO||Closure|numeric $a */
+                    function foo($a) : void {}',
+                'error_message' => 'InvalidDocblock',
             ],
         ];
     }
