@@ -55,8 +55,6 @@ class FunctionChecker extends FunctionLikeChecker
         if ($call_args) {
             if (in_array($call_map_key, ['str_replace', 'preg_replace', 'preg_replace_callback'], true)) {
                 if (isset($call_args[2]->value->inferredType)) {
-
-                    /** @var Type\Union */
                     $subject_type = $call_args[2]->value->inferredType;
 
                     if (!$subject_type->hasString() && $subject_type->hasArray()) {
@@ -71,15 +69,31 @@ class FunctionChecker extends FunctionLikeChecker
                     }
 
                     return $return_type;
+                } else {
+                    return Type::getMixed();
                 }
             }
 
-            if (in_array($call_map_key, ['pathinfo'], true)) {
+            if ($call_map_key === 'pathinfo') {
                 if (isset($call_args[1])) {
                     return Type::getString();
                 }
 
                 return Type::getArray();
+            }
+
+            if ($call_map_key === 'var_export') {
+                if (isset($call_args[1]->value->inferredType)) {
+                    $subject_type = $call_args[1]->value->inferredType;
+
+                    if ((string) $subject_type === 'true') {
+                        return Type::getString();
+                    }
+
+                    return new Type\Union([new Type\Atomic\TString, new Type\Atomic\TNull]);
+                }
+
+                return Type::getVoid();
             }
 
             if (substr($call_map_key, 0, 6) === 'array_') {
@@ -244,7 +258,16 @@ class FunctionChecker extends FunctionLikeChecker
 
                                 $unpacked_type_part = $unpacked_type_part->getGenericArrayType();
                             } else {
-                                return Type::getArray();
+                                if ($unpacked_type_part instanceof Type\Atomic\TMixed
+                                    && $unpacked_type_part->from_isset
+                                ) {
+                                    $unpacked_type_part = new Type\Atomic\TArray([
+                                        Type::getMixed(),
+                                        Type::getMixed(true)
+                                    ]);
+                                } else {
+                                    return Type::getArray();
+                                }
                             }
                         } elseif (!$unpacked_type_part->type_params[0]->isEmpty()) {
                             $generic_properties = null;

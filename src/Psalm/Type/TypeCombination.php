@@ -14,4 +14,7 @@ class TypeCombination
 
     /** @var bool */
     public $has_objectlike_entries = false;
+
+    /** @var array<string, string> */
+    public $class_string_types = [];
 }

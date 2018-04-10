@@ -702,6 +702,16 @@ class ExpressionChecker
             }
         }
 
+        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && is_string($stmt->name)) {
+            $object_id = self::getArrayVarId($stmt->var, $this_class_name, $source);
+
+            if (!$object_id) {
+                return null;
+            }
+
+            return $object_id . '->' . $stmt->name;
+        }
+
         return self::getVarId($stmt, $this_class_name, $source);
     }
 
@@ -1017,6 +1027,7 @@ class ExpressionChecker
         Context $context
     ) {
         self::analyzeIssetVar($statements_checker, $stmt->expr, $context);
+        $stmt->inferredType = Type::getBool();
     }
 
     /**
@@ -1087,6 +1098,8 @@ class ExpressionChecker
 
             self::analyzeIssetVar($statements_checker, $isset_var, $context);
         }
+
+        $stmt->inferredType = Type::getBool();
     }
 
     /**

@@ -155,7 +155,7 @@ class EmptyTest extends TestCase
                       }
                     }',
                 'assertions' => [],
-                'error_levels' => ['MixedAssignment'],
+                'error_levels' => ['MixedAssignment', 'MixedArgument'],
             ],
             'emptyObjectLike' => [
                 '<?php
@@ -172,6 +172,11 @@ class EmptyTest extends TestCase
                     foreach ($arr as $item) {
                         if (empty($item["hide"]) || $item["hide"] === 3) {}
                     }',
+            ],
+            'alwaysBoolResult' => [
+                '<?php
+                    function takesBool(bool $p): void {}
+                    takesBool(empty($q));'
             ],
         ];
     }

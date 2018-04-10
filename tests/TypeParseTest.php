@@ -307,7 +307,7 @@ class TypeParseTest extends TestCase
     public function testCallable()
     {
         $this->assertSame(
-            'callable(int, string) : void',
+            'callable(int, string):void',
             (string)Type::parseString('callable(int, string) : void')
         );
     }
@@ -318,7 +318,7 @@ class TypeParseTest extends TestCase
     public function testEmptyCallable()
     {
         $this->assertSame(
-            'callable() : void',
+            'callable():void',
             (string)Type::parseString('callable() : void')
         );
     }
@@ -329,7 +329,7 @@ class TypeParseTest extends TestCase
     public function testCallableWithUnionLastType()
     {
         $this->assertSame(
-            'callable(int, int|string) : void',
+            'callable(int, int|string):void',
             (string)Type::parseString('callable(int, int|string) : void')
         );
     }
@@ -340,7 +340,7 @@ class TypeParseTest extends TestCase
     public function testCallableWithVariadic()
     {
         $this->assertSame(
-            'callable(int, string...) : void',
+            'callable(int, string...):void',
             (string)Type::parseString('callable(int, string...) : void')
         );
     }
@@ -400,6 +400,16 @@ class TypeParseTest extends TestCase
      *
      * @return void
      */
+    public function testBadSemicolon()
+    {
+        Type::parseString('string;');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
     public function testDoubleBar()
     {
         Type::parseString('PDO||Closure|numeric');
@@ -411,7 +421,7 @@ class TypeParseTest extends TestCase
     public function testCallableWithDefault()
     {
         $this->assertSame(
-            'callable(int, string=) : void',
+            'callable(int, string=):void',
             (string)Type::parseString('callable(int, string=) : void')
         );
     }

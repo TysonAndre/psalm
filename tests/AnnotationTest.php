@@ -750,6 +750,15 @@ class AnnotationTest extends TestCase
                      */
                     function example(array $x) : void {}',
             ],
+            'allowCapitalisedNamespacedString' => [
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @param String $x
+                     */
+                    function example(string $x) : void {}',
+            ],
         ];
     }
 
@@ -1499,6 +1508,12 @@ class AnnotationTest extends TestCase
                 '<?php
                     /** @param PDO||Closure|numeric $a */
                     function foo($a) : void {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'badStringVar' => [
+                '<?php
+                    /** @var string; */
+                    $a = "hello";',
                 'error_message' => 'InvalidDocblock',
             ],
         ];

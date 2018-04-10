@@ -174,11 +174,15 @@ class Reconciler
         $codebase = $project_checker->codebase;
 
         if ($existing_var_type === null) {
-            if ($new_var_type === '^isset' || $new_var_type === '^!empty') {
+            if ($new_var_type === '^isset'
+                || $new_var_type === '^!empty'
+                || $new_var_type === 'isset'
+                || $new_var_type === '!empty'
+            ) {
                 return Type::getMixed();
             }
 
-            if ($new_var_type === 'isset' || $new_var_type === '!empty' || $new_var_type === 'array-key-exists') {
+            if ($new_var_type === 'array-key-exists') {
                 return Type::getMixed();
             }
 
@@ -489,6 +493,11 @@ class Reconciler
                 return Type::getMixed();
             }
 
+            if ($existing_var_type->hasType('empty')) {
+                $existing_var_type->removeType('empty');
+                $existing_var_type->addType(new TMixed(true));
+            }
+
             $existing_var_type->possibly_undefined = false;
 
             return $existing_var_type;
@@ -531,7 +540,9 @@ class Reconciler
                 return $existing_var_type;
             }
 
-            $did_remove_type = $existing_var_type->hasString() || $existing_var_type->hasNumericType();
+            $did_remove_type = $existing_var_type->hasString()
+                || $existing_var_type->hasScalar()
+                || $existing_var_type->hasNumericType();
 
             if ($existing_var_type->hasType('bool')) {
                 $did_remove_type = true;
@@ -731,7 +742,26 @@ class Reconciler
             return Type::getMixed();
         }
 
-        $new_type = Type::parseString($new_var_type);
+        if (substr($new_var_type, 0, 4) === 'isa-') {
+            if ($existing_var_type->isMixed()) {
+                return Type::getMixed();
+            }
+
+            $new_var_type = substr($new_var_type, 4);
+
+            $existing_has_object = $existing_var_type->hasObjectType();
+            $existing_has_string = $existing_var_type->hasString();
+
+            if ($existing_has_object && !$existing_has_string) {
+                $new_type = Type::parseString($new_var_type);
+            } elseif ($existing_has_string && !$existing_has_object) {
+                $new_type = Type::getClassString($new_var_type);
+            } else {
+                $new_type = Type::getMixed();
+            }
+        } else {
+            $new_type = Type::parseString($new_var_type);
+        }
 
         if ($existing_var_type->isMixed()) {
             return $new_type;

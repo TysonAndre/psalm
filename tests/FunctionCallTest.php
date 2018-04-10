@@ -254,6 +254,7 @@ class FunctionCallTest extends TestCase
                 'error_levels' => [
                     'MixedAssignment',
                     'MixedArrayAccess',
+                    'MixedArgument',
                 ],
             ],
             'arrayMergeObjectLike' => [
@@ -424,7 +425,7 @@ class FunctionCallTest extends TestCase
                         ARRAY_FILTER_USE_KEY
                     );',
                 'assertions' => [
-                    '$foo' => 'array<string, Closure>',
+                    '$foo' => 'array<string, Closure():string>',
                 ],
             ],
             'ignoreFalsableCurrent' => [
@@ -585,9 +586,26 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $a = function() use ($argv) : void {};',
             ],
-            'SKIPPED-implodeMultiDimensionalArray' => [
+            'implodeMultiDimensionalArray' => [
                 '<?php
                     $urls = array_map("implode", [["a", "b"]]);',
+            ],
+            'varExport' => [
+                '<?php
+                    $a = var_export(["a"], true);',
+                'assertions' => [
+                    '$a' => 'string',
+                ],
+            ],
+            'key' => [
+                '<?php
+                    $a = ["one" => 1, "two" => 3];
+                    $b = key($a);
+                    $c = $a[$b];',
+                'assertions' => [
+                    '$b' => 'false|string',
+                    '$c' => 'int',
+                ],
             ],
         ];
     }
@@ -598,6 +616,17 @@ class FunctionCallTest extends TestCase
     public function providerFileCheckerInvalidCodeParse()
     {
         return [
+            'arrayFilterWithoutTypes' => [
+                '<?php
+                    $e = array_filter(
+                        ["a" => 5, "b" => 12, "c" => null],
+                        function(?int $i) {
+                            return $_GET["a"];
+                        }
+                    );',
+                'error_message' => 'MixedTypeCoercion',
+                'error_levels' => ['MissingClosureParamType', 'MissingClosureReturnType'],
+            ],
             'invalidScalarArgument' => [
                 '<?php
                     function fooFoo(int $a): void {}
@@ -804,6 +833,11 @@ class FunctionCallTest extends TestCase
 
                     array_map("foo", [1, 2, 3]);',
                 'error_message' => 'TooManyArguments',
+            ],
+            'varExportAssignmentToVoid' => [
+                '<?php
+                    $a = var_export(["a"]);',
+                'error_message' => 'AssignmentToVoid',
             ],
         ];
     }

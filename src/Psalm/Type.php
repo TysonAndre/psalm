@@ -42,6 +42,37 @@ use function trim;
 abstract class Type
 {
     /**
+     * @var array<string, bool>
+     */
+    public static $PSALM_RESERVED_WORDS = [
+        'int' => true,
+        'string' => true,
+        'float' => true,
+        'bool' => true,
+        'false' => true,
+        'true' => true,
+        'object' => true,
+        'empty' => true,
+        'callable' => true,
+        'array' => true,
+        'iterable' => true,
+        'null' => true,
+        'mixed' => true,
+        'numeric-string' => true,
+        'class-string' => true,
+        'boolean' => true,
+        'integer' => true,
+        'double' => true,
+        'real' => true,
+        'resource' => true,
+        'void' => true,
+        'self' => true,
+        'static' => true,
+        'scalar' => true,
+        'numeric' => true,
+    ];
+
+    /**
      * @var array<string, array<int, string>>
      */
     private static $memoized_tokens = [];
@@ -58,9 +89,11 @@ abstract class Type
     public static function parseString($type_string, $php_compatible = false)
     {
         // remove all unacceptable characters
-        $type_string = preg_replace('/[^A-Za-z0-9\-_\\\\&|\? \<\>\{\}=:\.,\]\[\(\)\$]/', '', trim($type_string));
-
         $type_string = preg_replace('/\?(?=[a-zA-Z])/', 'null|', $type_string);
+
+        if (preg_match('/[^A-Za-z0-9\-_\\\\&|\? \<\>\{\}=:\.,\]\[\(\)\$]/', trim($type_string))) {
+            throw new TypeParseTreeException('Unrecognised character in type');
+        }
 
         $type_tokens = self::tokenize($type_string);
 
@@ -268,7 +301,7 @@ abstract class Type
         if ($parse_tree instanceof ParseTree\CallableWithReturnTypeTree) {
             $callable_type = self::getTypeFromTree($parse_tree->children[0], false);
 
-            if (!$callable_type instanceof TCallable) {
+            if (!$callable_type instanceof TCallable && !$callable_type instanceof Type\Atomic\Fn) {
                 throw new \InvalidArgumentException('Parsing callable tree node should return TCallable');
             }
 
@@ -312,7 +345,7 @@ abstract class Type
                 $parse_tree->children
             );
 
-            if (in_array($parse_tree->value, ['closure', '\closure'], false)) {
+            if (in_array(strtolower($parse_tree->value), ['closure', '\closure'], true)) {
                 return new Type\Atomic\Fn('Closure', $params);
             }
 
@@ -424,7 +457,9 @@ abstract class Type
     ) {
         $return_type_tokens = self::tokenize($return_type);
 
-        foreach ($return_type_tokens as $i => &$return_type_token) {
+        for ($i = 0, $l = count($return_type_tokens); $i < $l; $i++) {
+            $return_type_token = $return_type_tokens[$i];
+
             if (in_array($return_type_token, ['<', '>', '|', '?', ',', '{', '}', ':', '[', ']', '(', ')'], true)) {
                 continue;
             }
@@ -433,20 +468,35 @@ abstract class Type
                 continue;
             }
 
-            $return_type_token = self::fixScalarTerms($return_type_token);
+            $return_type_tokens[$i] = $return_type_token = self::fixScalarTerms($return_type_token);
 
-            if ($return_type_token[0] === strtoupper($return_type_token[0]) &&
-                !isset($template_types[$return_type_token])
-            ) {
-                if ($return_type_token[0] === '$') {
+            if (isset(self::$PSALM_RESERVED_WORDS[$return_type_token])) {
+                continue;
+            }
+
+            if (isset($template_types[$return_type_token])) {
+                continue;
+            }
+
+            if (isset($return_type_tokens[$i + 1])) {
+                $next_char = $return_type_tokens[$i + 1];
+                if ($next_char === ':') {
                     continue;
                 }
 
-                $return_type_token = self::getFQCLNFromString(
-                    $return_type_token,
-                    $aliases
-                );
+                if ($next_char === '?' && isset($return_type_tokens[$i + 2]) && $return_type_tokens[$i + 2] === ':') {
+                    continue;
+                }
             }
+
+            if ($return_type_token[0] === '$') {
+                continue;
+            }
+
+            $return_type_tokens[$i] = self::getFQCLNFromString(
+                $return_type_token,
+                $aliases
+            );
         }
 
         return implode('', $return_type_tokens);
@@ -517,11 +567,13 @@ abstract class Type
     }
 
     /**
+     * @param string $class_type
+     *
      * @return Type\Union
      */
-    public static function getClassString()
+    public static function getClassString($class_type = 'object')
     {
-        $type = new TClassString;
+        $type = new TClassString($class_type);
 
         return new Union([$type]);
     }
@@ -537,11 +589,13 @@ abstract class Type
     }
 
     /**
+     * @param bool $from_isset
+     *
      * @return Type\Union
      */
-    public static function getMixed()
+    public static function getMixed($from_isset = false)
     {
-        $type = new TMixed;
+        $type = new TMixed($from_isset);
 
         return new Union([$type]);
     }
@@ -664,7 +718,7 @@ abstract class Type
      */
     public static function combineUnionTypes(Union $type_1, Union $type_2)
     {
-        if ($type_1->isMixed() || $type_2->isMixed()) {
+        if ($type_1->isMixedNotFromIsset() || $type_2->isMixedNotFromIsset()) {
             $combined_type = Type::getMixed();
         } else {
              $both_failed_reconciliation = false;
@@ -752,10 +806,24 @@ abstract class Type
 
         $from_docblock = false;
 
+        $has_null = false;
+        $has_mixed = false;
+        $has_non_mixed = false;
+
         foreach ($types as $type) {
             $from_docblock = $from_docblock || $type->from_docblock;
 
             $result = self::scrapeTypeProperties($type, $combination);
+
+            if ($type instanceof TNull) {
+                $has_null = true;
+            }
+
+            if ($type instanceof TMixed) {
+                $has_mixed = true;
+            } else {
+                $has_non_mixed = true;
+            }
 
             if ($result) {
                 if ($from_docblock) {
@@ -764,6 +832,14 @@ abstract class Type
 
                 return $result;
             }
+        }
+
+        if ($has_null && $has_mixed) {
+            return Type::getMixed();
+        }
+
+        if (!$has_non_mixed) {
+            return Type::getMixed(true);
         }
 
         if (count($combination->value_types) === 1
@@ -816,6 +892,10 @@ abstract class Type
 
             // if we're merging an empty array with an object-like, clobber empty array
             unset($combination->type_params['array']);
+        }
+
+        if ($combination->class_string_types) {
+            $new_types[] = new TClassString(implode('|', $combination->class_string_types));
         }
 
         foreach ($combination->type_params as $generic_type => $generic_type_params) {
@@ -913,6 +993,10 @@ abstract class Type
     public static function scrapeTypeProperties(Atomic $type, TypeCombination $combination)
     {
         if ($type instanceof TMixed) {
+            if ($type->from_isset) {
+                return null;
+            }
+
             return Type::getMixed();
         }
 
@@ -956,7 +1040,7 @@ abstract class Type
                     $combination->objectlike_entries[$candidate_property_name] = clone $candidate_property_type;
                     // it's possibly undefined if there are existing objectlike entries
                     $combination->objectlike_entries[$candidate_property_name]->possibly_undefined
-                        = $existing_objectlike_entries;
+                        = $existing_objectlike_entries || $candidate_property_type->possibly_undefined;
                 } else {
                     $combination->objectlike_entries[$candidate_property_name] = Type::combineUnionTypes(
                         $value_type,
@@ -969,6 +1053,14 @@ abstract class Type
 
             foreach ($possibly_undefined_entries as $type) {
                 $type->possibly_undefined = true;
+            }
+        } elseif ($type instanceof TClassString) {
+            if (!isset($combination->class_string_types['object'])) {
+                $class_string_types = explode('|', $type->class_type);
+
+                foreach ($class_string_types as $class_string_type) {
+                    $combination->class_string_types[strtolower($class_string_type)] = $class_string_type;
+                }
             }
         } else {
             $combination->value_types[$type_key] = $type;

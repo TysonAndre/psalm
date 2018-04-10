@@ -78,12 +78,14 @@ trait CallableTrait
         }
 
         if ($this->return_type !== null) {
-            $return_type_string = ' : ' . $this->return_type->toNamespacedString(
+            $return_type_multiple = count($this->return_type->getTypes()) > 1;
+
+            $return_type_string = ':' . ($return_type_multiple ? '(' : '') . $this->return_type->toNamespacedString(
                 $namespace,
                 $aliased_classes,
                 $this_class,
                 false
-            );
+            ) . ($return_type_multiple ? ')' : '');
         }
 
         if ($this instanceof TNamedObject) {
@@ -92,5 +94,28 @@ trait CallableTrait
         }
 
         return 'callable' . $param_string . $return_type_string;
+    }
+
+    public function getId()
+    {
+        $param_string = '';
+        $return_type_string = '';
+
+        if ($this->params !== null) {
+            $param_string = '(' . implode(', ', $this->params) . ')';
+        }
+
+        if ($this->return_type !== null) {
+            $return_type_multiple = count($this->return_type->getTypes()) > 1;
+            $return_type_string = ':' . ($return_type_multiple ? '(' : '')
+                . $this->return_type . ($return_type_multiple ? ')' : '');
+        }
+
+        return $this->value . $param_string . $return_type_string;
+    }
+
+    public function __toString()
+    {
+        return $this->getId();
     }
 }

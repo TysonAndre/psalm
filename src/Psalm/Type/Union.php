@@ -411,6 +411,14 @@ class Union
     /**
      * @return bool
      */
+    public function hasScalar()
+    {
+        return isset($this->types['scalar']);
+    }
+
+    /**
+     * @return bool
+     */
     public function hasScalarType()
     {
         return isset($this->types['int']) ||
@@ -429,6 +437,17 @@ class Union
     public function isMixed()
     {
         return isset($this->types['mixed']);
+    }
+
+    /**
+     * @return bool
+     */
+    public function isMixedNotFromIsset()
+    {
+        /**
+         * @psalm-suppress UndefinedPropertyFetch
+         */
+        return isset($this->types['mixed']) && !$this->types['mixed']->from_isset;
     }
 
     /**
