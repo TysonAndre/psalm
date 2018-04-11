@@ -130,6 +130,16 @@ class Reconciler
                 || $failed_reconciliation
             ) {
                 $changed_var_ids[] = $key;
+
+                if (substr($key, -1) === ']') {
+                    $key_parts = AlgebraChecker::breakUpPathIntoParts($key);
+                    self::adjustObjectLikeType(
+                        $key_parts,
+                        $existing_types,
+                        $changed_var_ids,
+                        $result_type
+                    );
+                }
             }
 
             if ($failed_reconciliation) {
@@ -205,6 +215,8 @@ class Reconciler
             return $existing_var_type;
         }
 
+        $old_var_type_string = $existing_var_type->getId();
+
         if ($new_var_type[0] === '!') {
             // this is a specific value comparison type that cannot be negated
             if ($new_var_type[1] === '^') {
@@ -231,8 +243,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            !$did_remove_type,
                             $code_location,
                             $suppressed_issues
                         );
@@ -264,8 +278,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            !$did_remove_type,
                             $code_location,
                             $suppressed_issues
                         );
@@ -297,8 +313,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            !$did_remove_type,
                             $code_location,
                             $suppressed_issues
                         );
@@ -330,8 +348,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            $did_remove_type,
                             $code_location,
                             $suppressed_issues
                         );
@@ -386,8 +406,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            !$did_remove_type,
                             $code_location,
                             $suppressed_issues
                         );
@@ -415,8 +437,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            !$did_remove_type,
                             $code_location,
                             $suppressed_issues
                         );
@@ -466,8 +490,10 @@ class Reconciler
                     if ($key && $code_location) {
                         self::triggerIssueForImpossible(
                             $existing_var_type,
+                            $old_var_type_string,
                             $key,
                             $new_var_type,
+                            true,
                             $code_location,
                             $suppressed_issues
                         );
@@ -582,8 +608,10 @@ class Reconciler
                 if ($key && $code_location) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
+                        $old_var_type_string,
                         $key,
                         $new_var_type,
+                        !$did_remove_type,
                         $code_location,
                         $suppressed_issues
                     );
@@ -615,8 +643,10 @@ class Reconciler
                 if ($key && $code_location) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
+                        $old_var_type_string,
                         $key,
                         $new_var_type,
+                        !$did_remove_type,
                         $code_location,
                         $suppressed_issues
                     );
@@ -659,8 +689,10 @@ class Reconciler
                 if ($key && $code_location) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
+                        $old_var_type_string,
                         $key,
                         $new_var_type,
+                        !$did_remove_type,
                         $code_location,
                         $suppressed_issues
                     );
@@ -692,8 +724,10 @@ class Reconciler
                 if ($key && $code_location) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
+                        $old_var_type_string,
                         $key,
                         $new_var_type,
+                        !$did_remove_type,
                         $code_location,
                         $suppressed_issues
                     );
@@ -725,8 +759,10 @@ class Reconciler
                 if ($key && $code_location) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
+                        $old_var_type_string,
                         $key,
                         $new_var_type,
+                        !$did_remove_type,
                         $code_location,
                         $suppressed_issues
                     );
@@ -817,8 +853,10 @@ class Reconciler
             if ($key && $new_type->getId() === $existing_var_type->getId() && !$is_strict_equality) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
+                    $old_var_type_string,
                     $key,
                     $new_var_type,
+                    true,
                     $code_location,
                     $suppressed_issues
                 );
@@ -934,19 +972,23 @@ class Reconciler
 
     /**
      * @param  string       $key
+     * @param  string       $old_var_type_string
      * @param  string       $new_var_type
+     * @param  bool         $redundant
      * @param  string[]     $suppressed_issues
      *
      * @return void
      */
     private static function triggerIssueForImpossible(
         Union $existing_var_type,
+        $old_var_type_string,
         $key,
         $new_var_type,
+        $redundant,
         CodeLocation $code_location,
         array $suppressed_issues
     ) {
-        $reconciliation = ' and trying to reconcile type \'' . $existing_var_type . '\' to ' . $new_var_type;
+        $reconciliation = ' and trying to reconcile type \'' . $old_var_type_string . '\' to ' . $new_var_type;
 
         $existing_var_atomic_types = $existing_var_type->getTypes();
         $potential_key = str_replace('!', '', $new_var_type);
@@ -955,26 +997,99 @@ class Reconciler
             || (isset($existing_var_atomic_types[$potential_key])
                 && $existing_var_atomic_types[$potential_key]->from_docblock);
 
-        if ($from_docblock) {
-            if (IssueBuffer::accepts(
-                new RedundantConditionGivenDocblockType(
-                    'Found a contradiction with a docblock-defined type '
-                        . 'when evaluating ' . $key . $reconciliation,
-                    $code_location
-                ),
-                $suppressed_issues
-            )) {
-                // fall through
+        if ($redundant) {
+            if ($from_docblock) {
+                if (IssueBuffer::accepts(
+                    new RedundantConditionGivenDocblockType(
+                        'Found a redundant condition when evaluating docblock-defined type '
+                            . $key . $reconciliation,
+                        $code_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+            } else {
+                if (IssueBuffer::accepts(
+                    new RedundantCondition(
+                        'Found a redundant condition when evaluating ' . $key . $reconciliation,
+                        $code_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
             }
         } else {
-            if (IssueBuffer::accepts(
-                new RedundantCondition(
-                    'Found a redundant condition when evaluating ' . $key . $reconciliation,
-                    $code_location
-                ),
-                $suppressed_issues
-            )) {
-                // fall through
+            if ($from_docblock) {
+                if (IssueBuffer::accepts(
+                    new DocblockTypeContradiction(
+                        'Found a contradiction with a docblock-defined type '
+                            . 'when evaluating ' . $key . $reconciliation,
+                        $code_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+            } else {
+                if (IssueBuffer::accepts(
+                    new TypeDoesNotContainType(
+                        'Found a contradiction when evaluating ' . $key . $reconciliation,
+                        $code_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+            }
+        }
+    }
+
+    /**
+     * @param  string[]                  $key_parts
+     * @param  array<string,Type\Union>  $existing_types
+     * @param  array<string>             $changed_var_ids
+     *
+     * @return void
+     */
+    private static function adjustObjectLikeType(
+        array $key_parts,
+        array &$existing_types,
+        array &$changed_var_ids,
+        Type\Union $result_type
+    ) {
+        array_pop($key_parts);
+        $array_key = array_pop($key_parts);
+        array_pop($key_parts);
+
+        if ($array_key[0] === '$') {
+            return;
+        }
+
+        $array_key_offset = substr($array_key, 1, -1);
+
+        $base_key = implode($key_parts);
+
+        if (isset($existing_types[$base_key])) {
+            $base_atomic_types = $existing_types[$base_key]->getTypes();
+
+            if (isset($base_atomic_types['array'])) {
+                if ($base_atomic_types['array'] instanceof Type\Atomic\ObjectLike) {
+                    $base_atomic_types['array']->properties[$array_key_offset] = clone $result_type;
+                    $changed_var_ids[] = $base_key . '[' . $array_key . ']';
+
+                    if ($key_parts[count($key_parts) - 1] === ']') {
+                        self::adjustObjectLikeType(
+                            $key_parts,
+                            $existing_types,
+                            $changed_var_ids,
+                            $existing_types[$base_key]
+                        );
+                    }
+
+                    $existing_types[$base_key]->bustCache();
+                }
             }
         }
     }
