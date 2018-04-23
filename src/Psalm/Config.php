@@ -174,7 +174,7 @@ class Config
      *
      * @var bool
      */
-    public $use_assert_for_type = false;
+    public $use_assert_for_type = true;
 
     /**
      * @var bool
@@ -198,6 +198,11 @@ class Config
      * @var bool
      */
     public $allow_string_standin_for_class = true;
+
+    /**
+     * @var bool
+     */
+    public $use_phpdoc_methods_without_call = false;
 
     /**
      * @var string[]
@@ -272,6 +277,7 @@ class Config
      * @throws ConfigException if a config path is not found
      *
      * @return Config
+     * @psalm-suppress MixedArgument
      */
     public static function getConfigForPath($path, $base_dir, $output_format)
     {
@@ -290,7 +296,7 @@ class Config
         do {
             $maybe_path = $dir_path . DIRECTORY_SEPARATOR . Config::DEFAULT_FILE_NAME;
 
-            if (file_exists($maybe_path)) {
+            if (file_exists($maybe_path) || file_exists($maybe_path .= '.dist')) {
                 $config = self::loadFromXMLFile($maybe_path, $base_dir);
 
                 break;
@@ -329,7 +335,15 @@ class Config
             throw new \InvalidArgumentException('Cannot open ' . $file_path);
         }
 
-        return self::loadFromXML($base_dir, $file_contents);
+        try {
+            $config = self::loadFromXML($base_dir, $file_contents);
+        } catch (ConfigException $e) {
+            throw new ConfigException(
+                'Problem parsing ' . $file_path . ":\n" . '  ' . $e->getMessage()
+            );
+        }
+
+        return $config;
     }
 
     /**
@@ -361,6 +375,25 @@ class Config
         $dom_document = new \DOMDocument();
         $dom_document->loadXML($file_contents);
 
+        $psalm_nodes = $dom_document->getElementsByTagName('psalm');
+
+        /** @var \DomElement|null */
+        $psalm_node = $psalm_nodes->item(0);
+
+        if (!$psalm_node) {
+            throw new ConfigException(
+                'Missing psalm node'
+            );
+        }
+
+        if (!$psalm_node->hasAttribute('xmlns')) {
+            $psalm_node->setAttribute('xmlns', 'https://getpsalm.org/schema/config');
+
+            $old_dom_document = $dom_document;
+            $dom_document = new \DOMDocument();
+            $dom_document->loadXML($old_dom_document->saveXml());
+        }
+
         // Enable user error handling
         libxml_use_internal_errors(true);
 
@@ -369,7 +402,7 @@ class Config
             foreach ($errors as $error) {
                 if ($error->level === LIBXML_ERR_FATAL || $error->level === LIBXML_ERR_ERROR) {
                     throw new ConfigException(
-                        'Error parsing file ' . $error->file . ' on line ' . $error->line . ': ' . $error->message
+                        'Error on line ' . $error->line . ":\n" . '    ' . $error->message
                     );
                 }
             }
@@ -469,6 +502,11 @@ class Config
             $config->allow_string_standin_for_class = $attribute_text === 'true' || $attribute_text === '1';
         }
 
+        if (isset($config_xml['usePhpDocMethodsWithoutMagicCall'])) {
+            $attribute_text = (string) $config_xml['usePhpDocMethodsWithoutMagicCall'];
+            $config->use_phpdoc_methods_without_call = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
         }
@@ -522,14 +560,26 @@ class Config
         }
 
         if ($config->autoloader) {
-            /** @psalm-suppress UnresolvableInclude */
-            require_once($base_dir . DIRECTORY_SEPARATOR . $config->autoloader);
+            // do this in a separate method so scope does not leak
+            $config->requireAutoloader($base_dir . DIRECTORY_SEPARATOR . $config->autoloader);
         }
 
         $config->collectPredefinedConstants();
         $config->collectPredefinedFunctions();
 
         return $config;
+    }
+
+    /**
+     * @param  string $autoloader_path
+     *
+     * @return void
+     *
+     * @psalm-suppress UnresolvableInclude
+     */
+    private function requireAutoloader($autoloader_path)
+    {
+        require_once($autoloader_path);
     }
 
     /**

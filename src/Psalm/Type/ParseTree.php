@@ -119,12 +119,14 @@ class ParseTree
                     break;
 
                 case ')':
-                    do {
-                        if ($current_leaf->parent === null) {
-                            if (!$current_leaf instanceof ParseTree\CallableTree) {
-                                throw new TypeParseTreeException('Cannot parse generic type');
-                            }
+                    if ($last_token === '(' && $current_leaf instanceof ParseTree\CallableTree) {
+                        break;
+                    }
 
+                    do {
+                        if ($current_leaf->parent === null
+                            || $current_leaf->parent instanceof ParseTree\CallableWithReturnTypeTree
+                        ) {
                             break;
                         }
 
@@ -273,6 +275,11 @@ class ParseTree
 
                 case '|':
                     $current_parent = $current_leaf->parent;
+
+                    if ($current_parent instanceof ParseTree\CallableWithReturnTypeTree) {
+                        $current_leaf = $current_parent;
+                        $current_parent = $current_parent->parent;
+                    }
 
                     if ($current_leaf instanceof ParseTree\UnionTree) {
                         throw new TypeParseTreeException('Unexpected token ' . $type_token);

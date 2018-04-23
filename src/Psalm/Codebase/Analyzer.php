@@ -104,7 +104,7 @@ class Analyzer
         }
 
         if ($this->debug_output) {
-            echo 'Getting ' . $file_path . PHP_EOL;
+            echo 'Getting ' . $file_path . "\n";
         }
 
         return $file_checker;
@@ -140,7 +140,7 @@ class Analyzer
                 $file_checker = $this->getFileChecker($project_checker, $file_path, $filetype_checkers);
 
                 if ($this->debug_output) {
-                    echo 'Analyzing ' . $file_checker->getFilePath() . PHP_EOL;
+                    echo 'Analyzing ' . $file_checker->getFilePath() . "\n";
                 }
 
                 $file_checker->analyze(null);
@@ -213,6 +213,31 @@ class Analyzer
                 $this->updateFile($file_path, $project_checker->dry_run, true);
             }
         }
+    }
+
+    /**
+     * @param  string $file_path
+     *
+     * @return array{0:int, 1:int}
+     */
+    public function getMixedCountsForFile($file_path)
+    {
+        if (!isset($this->mixed_counts[$file_path])) {
+            $this->mixed_counts[$file_path] = [0, 0];
+        }
+
+        return $this->mixed_counts[$file_path];
+    }
+
+    /**
+     * @param  string $file_path
+     * @param  array{0:int, 1:int} $mixed_counts
+     *
+     * @return void
+     */
+    public function setMixedCountsForFile($file_path, array $mixed_counts)
+    {
+        $this->mixed_counts[$file_path] = $mixed_counts;
     }
 
     /**
@@ -296,7 +321,7 @@ class Analyzer
                 list($path_mixed_count, $path_nonmixed_count) = $this->mixed_counts[$file_path];
                 $stats .= number_format(100 * $path_nonmixed_count / ($path_mixed_count + $path_nonmixed_count), 0)
                     . '% ' . $this->config->shortenFileName($file_path)
-                    . ' (' . $path_mixed_count . ' mixed)' . PHP_EOL;
+                    . ' (' . $path_mixed_count . ' mixed)' . "\n";
             }
         }
 
@@ -365,7 +390,7 @@ class Analyzer
 
         if ($docblock_update_count) {
             if ($dry_run) {
-                echo $file_path . ':' . PHP_EOL;
+                echo $file_path . ':' . "\n";
 
                 $differ = new \PhpCsFixer\Diff\v2_0\Differ(
                     new \PhpCsFixer\Diff\GeckoPackages\DiffOutputBuilder\UnifiedDiffOutputBuilder([
@@ -380,7 +405,7 @@ class Analyzer
             }
 
             if ($output_changes) {
-                echo 'Altering ' . $file_path . PHP_EOL;
+                echo 'Altering ' . $file_path . "\n";
             }
 
             $this->file_provider->setContents($file_path, $existing_contents);

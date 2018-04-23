@@ -45,11 +45,20 @@ class Context
     public $inside_isset = false;
 
     /**
-     * Whether or not we're inside an unset call, where we don't care about possibly undefined variables
+     * Whether or not we're inside an unset call, where
+     * we don't care about possibly undefined variables
      *
      * @var bool
      */
     public $inside_unset = false;
+
+    /**
+     * Whether or not we're inside an class_exists call, where
+     * we don't care about possibly undefined classes
+     *
+     * @var bool
+     */
+    public $inside_class_exists = false;
 
     /**
      * @var null|CodeLocation
@@ -588,10 +597,6 @@ class Context
         }
 
         $this->clauses = $clauses_to_keep;
-
-        if ($this->parent_context) {
-            $this->parent_context->removeAllObjectVars();
-        }
     }
 
     /**

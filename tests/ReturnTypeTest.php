@@ -754,7 +754,7 @@ class ReturnTypeTest extends TestCase
                             return [new A, new A];
                         }
                     }',
-                'error_message' => 'MoreSpecificImplementedReturnType',
+                'error_message' => 'LessSpecificImplementedReturnType',
             ],
             'returnTypehintRequiresExplicitReturn' => [
                 '<?php

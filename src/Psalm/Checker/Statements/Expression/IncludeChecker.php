@@ -35,13 +35,19 @@ class IncludeChecker
         }
 
         if ($stmt->expr instanceof PhpParser\Node\Scalar\String_) {
-            $path_to_file = $stmt->expr->value;
+            $path_to_file = str_replace('/', DIRECTORY_SEPARATOR, $stmt->expr->value);
 
             // attempts to resolve using get_include_path dirs
             $include_path = self::resolveIncludePath($path_to_file, dirname($statements_checker->getCheckedFileName()));
             $path_to_file = $include_path ? $include_path : $path_to_file;
 
-            if ($path_to_file[0] !== DIRECTORY_SEPARATOR) {
+            if (DIRECTORY_SEPARATOR === '/') {
+                $is_path_relative = $path_to_file[0] !== DIRECTORY_SEPARATOR;
+            } else {
+                $is_path_relative = !preg_match('~^[A-Z]:\\\\~i', $path_to_file);
+            }
+
+            if ($is_path_relative) {
                 $path_to_file = getcwd() . DIRECTORY_SEPARATOR . $path_to_file;
             }
         } else {
@@ -49,14 +55,15 @@ class IncludeChecker
         }
 
         if ($path_to_file) {
-            $reduce_pattern = '/\/[^\/]+\/\.\.\//';
+            $slash = preg_quote(DIRECTORY_SEPARATOR, '/');
+            $reduce_pattern = '/' . $slash . '[^' . $slash . ']+' . $slash . '\.\.' . $slash . '/';
 
             while (preg_match($reduce_pattern, $path_to_file)) {
                 $path_to_file = preg_replace($reduce_pattern, DIRECTORY_SEPARATOR, $path_to_file);
             }
 
             // if the file is already included, we can't check much more
-            if (in_array($path_to_file, get_included_files(), true)) {
+            if (in_array(realpath($path_to_file), get_included_files(), true)) {
                 return null;
             }
 
@@ -118,7 +125,13 @@ class IncludeChecker
      */
     public static function getPathTo(PhpParser\Node\Expr $stmt, $file_name)
     {
-        if ($file_name[0] !== DIRECTORY_SEPARATOR) {
+        if (DIRECTORY_SEPARATOR === '/') {
+            $is_path_relative = $file_name[0] !== DIRECTORY_SEPARATOR;
+        } else {
+            $is_path_relative = !preg_match('~^[A-Z]:\\\\~i', $file_name);
+        }
+
+        if ($is_path_relative) {
             $file_name = getcwd() . DIRECTORY_SEPARATOR . $file_name;
         }
 

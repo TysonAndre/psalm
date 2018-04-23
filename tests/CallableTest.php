@@ -287,10 +287,10 @@ class CallableTest extends TestCase
             'arrayMapVariadicClosureArg' => [
                 '<?php
                     $a = array_map(
-                      function(int $type, string ...$args):string {
-                        return "hello";
-                      },
-                      [1, 2, 3]
+                        function(int $type, string ...$args):string {
+                            return "hello";
+                        },
+                        [1, 2, 3]
                     );',
             ],
             'returnsTypedClosure' => [
@@ -412,6 +412,78 @@ class CallableTest extends TestCase
                 'assertions' => [
                     '$a' => 'A',
                 ],
+            ],
+            'inferClosureTypeWithTypehint' => [
+                '<?php
+                    $adder1 = function(int $i) : callable {
+                      return function(int $j) use ($i) : int {
+                        return $i + $j;
+                      };
+                    };
+                    $adder2 = function(int $i) {
+                      return function(int $j) use ($i) : int {
+                        return $i + $j;
+                      };
+                    };',
+                'assertions' => [
+                    '$adder1' => 'Closure(int):Closure(int):int',
+                    '$adder2' => 'Closure(int):Closure(int):int',
+                ],
+                'error_levels' => ['MissingClosureReturnType'],
+            ],
+            'inferArrayMapReturnTypeWithoutTypehints' => [
+                '<?php
+                    /**
+                     * @param array{0:string,1:string}[] $ret
+                     * @return array{0:string,1:int}[]
+                     */
+                    function f(array $ret) : array
+                    {
+                        return array_map(
+                            /**
+                             * @param array{0:string,1:string} $row
+                             */
+                            function (array $row) {
+                                return [
+                                    strval($row[0]),
+                                    intval($row[1]),
+                                ];
+                            },
+                            $ret
+                        );
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MissingClosureReturnType'],
+            ],
+            'inferArrayMapReturnTypeWithTypehints' => [
+                '<?php
+                    /**
+                     * @param array{0:string,1:string}[] $ret
+                     * @return array{0:string,1:int}[]
+                     */
+                    function f(array $ret): array
+                    {
+                        return array_map(
+                            /**
+                             * @param array{0:string,1:string} $row
+                             */
+                            function (array $row): array {
+                                return [
+                                    strval($row[0]),
+                                    intval($row[1]),
+                                ];
+                            },
+                            $ret
+                        );
+                    }',
+            ],
+            'allowVoidCallable' => [
+                '<?php
+                    /**
+                     * @param callable():void $p
+                     */
+                    function doSomething($p): void {}
+                    doSomething(function(): bool { return false; });',
             ],
         ];
     }

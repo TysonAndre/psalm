@@ -176,12 +176,19 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             $overridden_method_ids = $codebase->methods->getOverriddenMethodIds($method_id);
 
-            if ($this->function->name === '__construct') {
+            if ($this->function->name->name === '__construct') {
                 $context->inside_constructor = true;
             }
 
+            $codeLocation = new CodeLocation(
+                $this,
+                $this->function,
+                null,
+                true
+            );
+
             if ($overridden_method_ids
-                && $this->function->name !== '__construct'
+                && $this->function->name->name !== '__construct'
                 && !$context->collect_initializations
                 && !$context->collect_mutations
             ) {
@@ -198,12 +205,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                         $parent_storage,
                         $storage,
                         $parent_method_storage,
-                        new CodeLocation(
-                            $this,
-                            $this->function,
-                            null,
-                            true
-                        ),
+                        $codeLocation,
                         $storage->suppressed_issues
                     );
 
@@ -214,6 +216,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     }
                 }
             }
+
+            MethodChecker::checkMethodSignatureMustOmitReturnType($storage, $codeLocation);
         } elseif ($this->function instanceof Function_) {
             $file_storage = $file_storage_provider->get($this->source->getFilePath());
 
@@ -486,20 +490,32 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 $storage->return_type_location
             );
 
-            if (!$storage->return_type || $storage->return_type->isMixed()) {
-                $closure_yield_types = [];
-                $closure_return_types = EffectsAnalyser::getReturnTypes(
-                    $this->function->stmts,
-                    $closure_yield_types,
-                    $ignore_nullable_issues,
-                    $ignore_falsable_issues,
-                    true
-                );
+            $closure_yield_types = [];
 
-                if ($closure_return_types && $this->function->inferredType) {
-                    /** @var Type\Atomic\Fn */
-                    $closure_atomic = $this->function->inferredType->getTypes()['Closure'];
-                    $closure_atomic->return_type = new Type\Union($closure_return_types);
+            $closure_return_types = EffectsAnalyser::getReturnTypes(
+                $this->function->stmts,
+                $closure_yield_types,
+                $ignore_nullable_issues,
+                $ignore_falsable_issues,
+                true
+            );
+
+            if ($closure_return_types) {
+                $closure_return_type = new Type\Union($closure_return_types);
+
+                if (!$storage->return_type
+                    || $storage->return_type->isMixed()
+                    || TypeChecker::isContainedBy(
+                        $project_checker->codebase,
+                        $closure_return_type,
+                        $storage->return_type
+                    )
+                ) {
+                    if ($this->function->inferredType) {
+                        /** @var Type\Atomic\Fn */
+                        $closure_atomic = $this->function->inferredType->getTypes()['Closure'];
+                        $closure_atomic->return_type = $closure_return_type;
+                    }
                 }
             }
         }
@@ -749,7 +765,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         if ($this->function instanceof Function_) {
             $namespace = $this->source->getNamespace();
 
-            return ($namespace ? strtolower($namespace) . '\\' : '') . strtolower($this->function->name);
+            return ($namespace ? strtolower($namespace) . '\\' : '') . strtolower($this->function->name->name);
         }
 
         return $this->getFilePath() . ':' . $this->function->getLine() . ':-:closure';

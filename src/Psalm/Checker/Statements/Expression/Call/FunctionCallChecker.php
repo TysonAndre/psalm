@@ -19,6 +19,7 @@ use Psalm\Issue\PossiblyNullFunctionCall;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
@@ -108,9 +109,9 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
 
                         $function_exists = true;
                         $has_valid_function_call_type = true;
-                    } elseif ($var_type_part instanceof TMixed) {
+                    } elseif ($var_type_part instanceof TMixed || $var_type_part instanceof TGenericParam) {
                         $has_valid_function_call_type = true;
-                    // @todo maybe emit issue here
+                        // @todo maybe emit issue here
                     } elseif (($var_type_part instanceof TNamedObject && $var_type_part->value === 'Closure')) {
                         // this is fine
                         $has_valid_function_call_type = true;
@@ -272,16 +273,16 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
             // do this here to allow closure param checks
             if ($function_params !== null
                 && self::checkFunctionLikeArgumentsMatch(
-                $statements_checker,
-                $stmt->args,
-                $function_id,
-                $function_params,
-                $function_storage,
-                null,
-                $generic_params,
-                $code_location,
-                $context
-            ) === false) {
+                    $statements_checker,
+                    $stmt->args,
+                    $function_id,
+                    $function_params,
+                    $function_storage,
+                    null,
+                    $generic_params,
+                    $code_location,
+                    $context
+                ) === false) {
                 // fall through
             }
 
@@ -382,7 +383,10 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
             }
         }
 
-        if (!$config->remember_property_assignments_after_call && !$context->collect_initializations) {
+        if (!$config->remember_property_assignments_after_call
+            && !$in_call_map
+            && !$context->collect_initializations
+        ) {
             $context->removeAllObjectVars();
         }
 

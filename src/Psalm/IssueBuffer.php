@@ -240,7 +240,7 @@ class IssueBuffer
         }
 
         $issue_string .= ': ' . $issue_data['type'] . ' - ' . $issue_data['file_name'] . ':' .
-            $issue_data['line_from'] . ':' . $issue_data['column_from'] . ' - ' . $issue_data['message'] . PHP_EOL;
+            $issue_data['line_from'] . ':' . $issue_data['column_from'] . ' - ' . $issue_data['message'] . "\n";
 
         $snippet = $issue_data['snippet'];
 
@@ -252,7 +252,7 @@ class IssueBuffer
 
             $issue_string .= substr($snippet, 0, $selection_start) .
                 ($is_error ? "\e[97;41m" : "\e[30;47m") . substr($snippet, $selection_start, $selection_length) .
-                "\e[0m" . substr($snippet, $selection_length + $selection_start) . PHP_EOL;
+                "\e[0m" . substr($snippet, $selection_length + $selection_start) . "\n";
         }
 
         return $issue_string;
@@ -297,7 +297,9 @@ class IssueBuffer
         $scanned_files = $project_checker->codebase->scanner->getScannedFiles();
         Provider\FileReferenceProvider::updateReferenceCache($project_checker, $scanned_files);
 
-        echo PHP_EOL;
+        if ($project_checker->output_format === ProjectChecker::TYPE_CONSOLE) {
+            echo "\n";
+        }
 
         $error_count = 0;
         $info_count = 0;
@@ -341,42 +343,46 @@ class IssueBuffer
             );
         }
 
-        echo str_repeat('-', 30) . PHP_EOL;
+        if ($project_checker->output_format === ProjectChecker::TYPE_CONSOLE) {
+            echo str_repeat('-', 30) . "\n";
 
-        if ($error_count) {
-            echo ($project_checker->use_color
-                ? "\e[0;31m" . $error_count . " errors\e[0m"
-                : $error_count . ' errors'
-            ) . ' found' . PHP_EOL;
-        } else {
-            echo 'No errors found!' . PHP_EOL;
-        }
-
-        if ($info_count) {
-            echo str_repeat('-', 30) . PHP_EOL;
-
-            echo $info_count . ' other issues found.' . PHP_EOL
-                . 'You can hide them with ' .
-                ($project_checker->use_color ? "\e[30;48;5;195m--show-info=false\e[0m" : '--show-info=false') . PHP_EOL;
-        }
-
-        echo str_repeat('-', 30) . PHP_EOL . PHP_EOL;
-
-        if ($start_time) {
-            echo 'Checks took ' . number_format((float)microtime(true) - $start_time, 2) . ' seconds';
-            echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB of memory' . PHP_EOL;
-
-            $nonmixed_percentage = $project_checker->codebase->analyzer->getNonMixedPercentage();
-
-            if ($is_full) {
-                echo 'Psalm was able to infer types for ' . number_format($nonmixed_percentage, 3) . '%'
-                    . ' of the codebase' . PHP_EOL;
+            if ($error_count) {
+                echo ($project_checker->use_color
+                    ? "\e[0;31m" . $error_count . " errors\e[0m"
+                    : $error_count . ' errors'
+                ) . ' found' . "\n";
+            } else {
+                echo 'No errors found!' . "\n";
             }
 
-            if ($add_stats) {
-                echo '-----------------' . PHP_EOL;
-                echo $project_checker->codebase->analyzer->getNonMixedStats();
-                echo PHP_EOL;
+            if ($info_count) {
+                echo str_repeat('-', 30) . "\n";
+
+                echo $info_count . ' other issues found.' . "\n"
+                    . 'You can hide them with ' .
+                    ($project_checker->use_color
+                        ? "\e[30;48;5;195m--show-info=false\e[0m"
+                        : '--show-info=false') . "\n";
+            }
+
+            echo str_repeat('-', 30) . "\n" . "\n";
+
+            if ($start_time) {
+                echo 'Checks took ' . number_format((float)microtime(true) - $start_time, 2) . ' seconds';
+                echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB of memory' . "\n";
+
+                $nonmixed_percentage = $project_checker->codebase->analyzer->getNonMixedPercentage();
+
+                if ($is_full) {
+                    echo 'Psalm was able to infer types for ' . number_format($nonmixed_percentage, 3) . '%'
+                        . ' of the codebase' . "\n";
+                }
+
+                if ($add_stats) {
+                    echo '-----------------' . "\n";
+                    echo $project_checker->codebase->analyzer->getNonMixedStats();
+                    echo "\n";
+                }
             }
         }
 
@@ -398,18 +404,18 @@ class IssueBuffer
     public static function getOutput($format, $useColor)
     {
         if ($format === ProjectChecker::TYPE_JSON) {
-            return json_encode(self::$issues_data) . PHP_EOL;
+            return json_encode(self::$issues_data) . "\n";
         } elseif ($format === ProjectChecker::TYPE_XML) {
             $xml = Array2XML::createXML('report', ['item' => self::$issues_data]);
 
             return $xml->saveXML();
         } elseif ($format === ProjectChecker::TYPE_EMACS) {
-            $output = [];
+            $output = '';
             foreach (self::$issues_data as $issue_data) {
-                $output[] = self::getEmacsOutput($issue_data) . PHP_EOL;
+                $output .= self::getEmacsOutput($issue_data) . PHP_EOL;
             }
 
-            return implode('', $output);
+            return $output;
         } elseif ($format === ProjectChecker::TYPE_PYLINT) {
             $output = '';
             foreach (self::$issues_data as $issue_data) {
@@ -419,12 +425,12 @@ class IssueBuffer
             return $output;
         }
 
-        $output = [];
+        $output = '';
         foreach (self::$issues_data as $issue_data) {
-            $output[] = self::getConsoleOutput($issue_data, $useColor) . PHP_EOL . PHP_EOL;
+            $output .= self::getConsoleOutput($issue_data, $useColor) . "\n" . "\n";
         }
 
-        return implode('', $output);
+        return $output;
     }
 
     /**

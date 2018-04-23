@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+<xs:schema
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns="https://getpsalm.org/schema/config"
+    targetNamespace="https://getpsalm.org/schema/config"
+    elementFormDefault="qualified"
+>
     <xs:element name="psalm" type="PsalmType" />
 
     <xs:complexType name="PsalmType">
@@ -13,7 +18,6 @@
         </xs:choice>
 
         <xs:attribute name="name" type="xs:string" />
-        <xs:attribute name="stopOnFirstError" type="xs:string" />
         <xs:attribute name="useDocblockTypes" type="xs:string" />
         <xs:attribute name="useDocblockPropertyTypes" type="xs:string" />
         <xs:attribute name="throwExceptionOnError" type="xs:string" />
@@ -31,6 +35,7 @@
         <xs:attribute name="allowPhpStormGenerics" type="xs:string" />
         <xs:attribute name="allowCoercionFromStringToClassConst" type="xs:string" />
         <xs:attribute name="allowStringToStandInForClass" type="xs:string" />
+        <xs:attribute name="usePhpDocMethodsWithoutMagicCall" type="xs:string" />
     </xs:complexType>
 
     <xs:complexType name="ProjectFilesType">
@@ -143,10 +148,12 @@
             <xs:element name="InvalidStringClass" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidThrow" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidToString" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="LessSpecificImplementedReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="LessSpecificReturnStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="LessSpecificReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="LoopInvalidation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MethodSignatureMismatch" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="MethodSignatureMustOmitReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MisplacedRequiredParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MismatchingDocblockParamType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MismatchingDocblockReturnType" type="IssueHandlerType" minOccurs="0" />
@@ -174,7 +181,6 @@
             <xs:element name="MixedTypeCoercion" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MoreSpecificReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MoreSpecificImplementedParamType" type="IssueHandlerType" minOccurs="0" />
-            <xs:element name="MoreSpecificImplementedReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NoInterfaceProperties" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NonStaticSelfCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NullableReturnStatement" type="IssueHandlerType" minOccurs="0" />
@@ -220,6 +226,7 @@
             <xs:element name="PossiblyNullPropertyAssignmentValue" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyNullPropertyFetch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyNullReference" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyUndefinedArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedMethod" type="MethodIssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedGlobalVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedVariable" type="IssueHandlerType" minOccurs="0" />
@@ -248,7 +255,6 @@
             <xs:element name="UndefinedTrait" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedGlobalVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedVariable" type="IssueHandlerType" minOccurs="0" />
-            <xs:element name="UntypedParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnimplementedAbstractMethod" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnimplementedInterfaceMethod" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnrecognizedExpression" type="IssueHandlerType" minOccurs="0" />

@@ -19,12 +19,12 @@ class LoopChecker
     /**
      * Checks an array of statements in a loop
      *
-     * @param  array<PhpParser\Node\Stmt|PhpParser\Node\Expr>   $stmts
-     * @param  PhpParser\Node\Expr[]                            $pre_conditions
-     * @param  PhpParser\Node\Expr[]                            $post_expressions
-     * @param  Context                                          $loop_scope->loop_context
-     * @param  Context                                          $loop_scope->loop_parent_context
-     * @param  bool                                             $is_do
+     * @param  array<PhpParser\Node\Stmt>   $stmts
+     * @param  PhpParser\Node\Expr[]        $pre_conditions
+     * @param  PhpParser\Node\Expr[]        $post_expressions
+     * @param  Context                      loop_scope->loop_context
+     * @param  Context                      $loop_scope->loop_parent_context
+     * @param  bool                         $is_do
      *
      * @return false|null
      */
@@ -122,6 +122,10 @@ class LoopChecker
             );
         } else {
             $pre_outer_context = clone $loop_scope->loop_parent_context;
+
+            $analyzer = $statements_checker->getFileChecker()->project_checker->codebase->analyzer;
+
+            $original_mixed_counts = $analyzer->getMixedCountsForFile($statements_checker->getFilePath());
 
             IssueBuffer::startRecording();
 
@@ -240,6 +244,7 @@ class LoopChecker
                     unset($inner_context->vars_in_scope[$var_id]);
                 }
 
+                $analyzer->setMixedCountsForFile($statements_checker->getFilePath(), $original_mixed_counts);
                 IssueBuffer::startRecording();
 
                 foreach ($pre_conditions as $pre_condition) {

@@ -42,6 +42,7 @@ use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TFloat;
+use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
@@ -275,18 +276,23 @@ class ExpressionChecker
             }
 
             foreach ($stmt->uses as $use) {
-                // insert the ref into the current context if passed by ref, as whatever we're passing
-                // the closure to could execute it straight away.
-                if (!$context->hasVariable('$' . $use->var, $statements_checker) && $use->byRef) {
-                    $context->vars_in_scope['$' . $use->var] = Type::getMixed();
+                if (!is_string($use->var->name)) {
+                    continue;
                 }
 
-                $use_context->vars_in_scope['$' . $use->var] =
-                    $context->hasVariable('$' . $use->var, $statements_checker) && !$use->byRef
-                    ? clone $context->vars_in_scope['$' . $use->var]
+                $use_var_id = '$' . $use->var->name;
+                // insert the ref into the current context if passed by ref, as whatever we're passing
+                // the closure to could execute it straight away.
+                if (!$context->hasVariable($use_var_id, $statements_checker) && $use->byRef) {
+                    $context->vars_in_scope[$use_var_id] = Type::getMixed();
+                }
+
+                $use_context->vars_in_scope[$use_var_id] =
+                    $context->hasVariable($use_var_id, $statements_checker) && !$use->byRef
+                    ? clone $context->vars_in_scope[$use_var_id]
                     : Type::getMixed();
 
-                $use_context->vars_possibly_in_scope['$' . $use->var] = true;
+                $use_context->vars_possibly_in_scope[$use_var_id] = true;
             }
 
             $closure_checker->analyze($use_context, $context);
@@ -589,7 +595,7 @@ class ExpressionChecker
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\StaticPropertyFetch
-            && is_string($stmt->name)
+            && $stmt->name instanceof PhpParser\Node\Identifier
             && $stmt->class instanceof PhpParser\Node\Name
         ) {
             if (count($stmt->class->parts) === 1
@@ -609,17 +615,17 @@ class ExpressionChecker
                     : implode('\\', $stmt->class->parts);
             }
 
-            return $fq_class_name . '::$' . $stmt->name;
+            return $fq_class_name . '::$' . $stmt->name->name;
         }
 
-        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && is_string($stmt->name)) {
+        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && $stmt->name instanceof PhpParser\Node\Identifier) {
             $object_id = self::getVarId($stmt->var, $this_class_name, $source);
 
             if (!$object_id) {
                 return null;
             }
 
-            return $object_id . '->' . $stmt->name;
+            return $object_id . '->' . $stmt->name->name;
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\ArrayDimFetch && $nesting !== null) {
@@ -649,11 +655,11 @@ class ExpressionChecker
             return self::getVarId($stmt, $this_class_name, $source);
         }
 
-        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && is_string($stmt->name)) {
+        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && $stmt->name instanceof PhpParser\Node\Identifier) {
             $property_root = self::getRootVarId($stmt->var, $this_class_name, $source);
 
             if ($property_root) {
-                return $property_root . '->' . $stmt->name;
+                return $property_root . '->' . $stmt->name->name;
             }
         }
 
@@ -702,7 +708,7 @@ class ExpressionChecker
             }
         }
 
-        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && is_string($stmt->name)) {
+        if ($stmt instanceof PhpParser\Node\Expr\PropertyFetch && $stmt->name instanceof PhpParser\Node\Identifier) {
             $object_id = self::getArrayVarId($stmt->var, $this_class_name, $source);
 
             if (!$object_id) {
@@ -823,10 +829,13 @@ class ExpressionChecker
         Context $context
     ) {
         foreach ($stmt->uses as $use) {
-            $use_var_id = '$' . $use->var;
-            if (!$context->hasVariable($use_var_id, $statements_checker)
-                && (!$context->is_global || !in_array($use_var_id, ['$argv', '$argc'], true))
-            ) {
+            if (!$use->var->name instanceof PhpParser\Node\Identifier) {
+                continue;
+            }
+
+            $use_var_id = '$' . $use->var->name;
+
+            if (!$context->hasVariable($use_var_id, $statements_checker)) {
                 if ($use->byRef) {
                     $context->vars_in_scope[$use_var_id] = Type::getMixed();
                     $context->vars_possibly_in_scope[$use_var_id] = true;
@@ -834,7 +843,7 @@ class ExpressionChecker
                     if (!$statements_checker->hasVariable($use_var_id)) {
                         $statements_checker->registerVariable(
                             $use_var_id,
-                            new CodeLocation($statements_checker, $use),
+                            new CodeLocation($statements_checker, $use->var),
                             null
                         );
                     }
@@ -847,7 +856,7 @@ class ExpressionChecker
                         if (IssueBuffer::accepts(
                             new UndefinedVariable(
                                 'Cannot find referenced variable ' . $use_var_id,
-                                new CodeLocation($statements_checker->getSource(), $use)
+                                new CodeLocation($statements_checker->getSource(), $use->var)
                             ),
                             $statements_checker->getSuppressedIssues()
                         )) {
@@ -865,7 +874,7 @@ class ExpressionChecker
                         new PossiblyUndefinedVariable(
                             'Possibly undefined variable ' . $use_var_id . ', first seen on line ' .
                                 $first_appearance->getLineNumber(),
-                            new CodeLocation($statements_checker->getSource(), $use)
+                            new CodeLocation($statements_checker->getSource(), $use->var)
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
@@ -879,7 +888,7 @@ class ExpressionChecker
                     if (IssueBuffer::accepts(
                         new UndefinedVariable(
                             'Cannot find referenced variable ' . $use_var_id,
-                            new CodeLocation($statements_checker->getSource(), $use)
+                            new CodeLocation($statements_checker->getSource(), $use->var)
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
@@ -1083,12 +1092,12 @@ class ExpressionChecker
         Context $context
     ) {
         foreach ($stmt->vars as $isset_var) {
-            if ($isset_var instanceof PhpParser\Node\Expr\PropertyFetch &&
-                $isset_var->var instanceof PhpParser\Node\Expr\Variable &&
-                $isset_var->var->name === 'this' &&
-                is_string($isset_var->name)
+            if ($isset_var instanceof PhpParser\Node\Expr\PropertyFetch
+                && $isset_var->var instanceof PhpParser\Node\Expr\Variable
+                && $isset_var->var->name === 'this'
+                && $isset_var->name instanceof PhpParser\Node\Identifier
             ) {
-                $var_id = '$this->' . $isset_var->name;
+                $var_id = '$this->' . $isset_var->name->name;
 
                 if (!isset($context->vars_in_scope[$var_id])) {
                     $context->vars_in_scope[$var_id] = Type::getMixed();
@@ -1141,9 +1150,10 @@ class ExpressionChecker
 
         if (isset($stmt->expr->inferredType)) {
             foreach ($stmt->expr->inferredType->getTypes() as $clone_type_part) {
-                if (!$clone_type_part instanceof TNamedObject &&
-                    !$clone_type_part instanceof TObject &&
-                    !$clone_type_part instanceof TMixed
+                if (!$clone_type_part instanceof TNamedObject
+                    && !$clone_type_part instanceof TObject
+                    && !$clone_type_part instanceof TMixed
+                    && !$clone_type_part instanceof TGenericParam
                 ) {
                     if (IssueBuffer::accepts(
                         new InvalidClone(

@@ -612,6 +612,25 @@ class A {
 }
 ```
 
+### LessSpecificImplementedReturnType
+
+Emitted when a class implements an interface method but its return type is less specific than the interface method return type
+
+```php
+class A {}
+class B extends A {}
+interface I {
+    /** @return B[] */
+    public function foo();
+}
+class D implements I {
+    /** @return A[] */
+    public function foo() {
+        return [new A, new A];
+    }
+}
+```
+
 ### LessSpecificReturnStatement
 
 Emitted when a return statement is more general than the return type given for the function
@@ -655,6 +674,16 @@ class A {
 }
 class B extends A {
     public function foo(string $s) : void {}
+}
+```
+
+### MethodSignatureMustOmitReturnType
+
+Emmitted when a `__clone`, `__construct`, or `__destruct` method is defined with a return type.
+
+```php
+class A {
+    public function __clone() : void {}
 }
 ```
 
@@ -962,25 +991,6 @@ class E extends D {
     /** @param B|C $a */
     public function foo(A $a): void {
         $a->bar();
-    }
-}
-```
-
-### MoreSpecificImplementedReturnType
-
-Emitted when a class implements an interface method but its return type is less specific than the interface method return type
-
-```php
-class A {}
-class B extends A {}
-interface I {
-    /** @return B[] */
-    public function foo();
-}
-class D implements I {
-    /** @return A[] */
-    public function foo() {
-        return [new A, new A];
     }
 }
 ```
@@ -1502,6 +1512,21 @@ function foo(?A $a) : void {
 }
 ```
 
+### PossiblyUndefinedArrayOffset
+
+Emitted when trying to access a possibly undefined array offset
+
+```php
+if (rand(0, 1)) {
+    $arr = ["a" => 1, "b" => 2];
+} else {
+    $arr = ["a" => 3];
+}
+
+echo $arr["b"];
+
+```
+
 ### PossiblyUndefinedGlobalVariable
 
 Emitted when trying to access a variable in the global scope that may not be defined
@@ -1621,9 +1646,9 @@ Emitted when conditional is redundant given previous assertions
 
 ```php
 class A {}
-function foo(?A $a) : ?A {
+function foo(A $a) : ?A {
     if ($a) return $a;
-    if ($a) echo "cannot happen";
+    return null;
 }
 ```
 
@@ -1935,4 +1960,3 @@ function foo() : void {
     echo $b;
 }
 ```
-

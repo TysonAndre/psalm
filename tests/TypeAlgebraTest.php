@@ -571,6 +571,33 @@ class TypeAlgebraTest extends TestCase
                         }
                     }',
             ],
+            'getClassComparison' => [
+                '<?php
+                    class Foo {
+                        public function bar() : void {}
+                    }
+                    class Bar extends Foo{
+                        public function bar() : void {}
+                    }
+
+                    class Baz {
+                        public function test(Foo $foo) : void {
+                            if (get_class($foo) !== Foo::class) {
+                                // do nothing
+                            } else {
+                                $foo->bar();
+                            }
+                        }
+                    }',
+            ],
+            'noParadoxAfterConditionalAssignment' => [
+                '<?php
+                    if ($a = rand(0, 5)) {
+                        echo $a;
+                    } elseif ($a = rand(0, 5)) {
+                        echo $a;
+                    }',
+            ],
         ];
     }
 
@@ -778,6 +805,13 @@ class TypeAlgebraTest extends TestCase
                         }
                     }',
                 'error_message' => 'ParadoxicalCondition',
+            ],
+            'typeDoesntEqualType' => [
+                '<?php
+                    $a = "hello";
+                    $b = 5;
+                    if ($a !== $b) {}',
+                'error_message' => 'RedundantCondition',
             ],
         ];
     }

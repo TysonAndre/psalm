@@ -26,6 +26,7 @@ use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
+use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNull;
@@ -397,11 +398,27 @@ class BinaryOpChecker
 
         // let's do some fun type assignment
         if (isset($stmt->left->inferredType) && isset($stmt->right->inferredType)) {
-            if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Plus ||
-                $stmt instanceof PhpParser\Node\Expr\BinaryOp\Minus ||
-                $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mod ||
-                $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mul ||
-                $stmt instanceof PhpParser\Node\Expr\BinaryOp\Pow
+            if ($stmt->left->inferredType->hasString()
+                && $stmt->right->inferredType->hasString()
+                && ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr
+                    || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor
+                    || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd
+                )
+            ) {
+                $stmt->inferredType = Type::getString();
+            } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Plus
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Minus
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mod
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mul
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Pow
+                || (($stmt->left->inferredType->hasInt() || $stmt->right->inferredType->hasInt())
+                    && ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr
+                        || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor
+                        || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd
+                        || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftLeft
+                        || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftRight
+                    )
+                )
             ) {
                 self::analyzeNonDivArithmenticOp(
                     $statements_checker,
@@ -633,12 +650,16 @@ class BinaryOpChecker
                         continue;
                     }
 
-                    if ($left_type_part instanceof TMixed || $right_type_part instanceof TMixed) {
+                    if ($left_type_part instanceof TMixed
+                        || $right_type_part instanceof TMixed
+                        || $left_type_part instanceof TGenericParam
+                        || $right_type_part instanceof TGenericParam
+                    ) {
                         if ($statements_source && $codebase) {
                             $codebase->analyzer->incrementMixedCount($statements_source->getCheckedFilePath());
                         }
 
-                        if ($left_type_part instanceof TMixed) {
+                        if ($left_type_part instanceof TMixed || $left_type_part instanceof TGenericParam) {
                             if ($statements_source && IssueBuffer::accepts(
                                 new MixedOperand(
                                     'Left operand cannot be mixed',
@@ -1080,6 +1101,20 @@ class BinaryOpChecker
             $has_valid_right_operand = false;
 
             foreach ($left_type->getTypes() as $left_type_part) {
+                if ($left_type_part instanceof Type\Atomic\TGenericParam) {
+                    if (IssueBuffer::accepts(
+                        new MixedOperand(
+                            'Left operand cannot be mixed',
+                            new CodeLocation($statements_checker->getSource(), $left)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+
+                    return;
+                }
+
                 if ($left_type_part instanceof Type\Atomic\TNull || $left_type_part instanceof Type\Atomic\TFalse) {
                     continue;
                 }
@@ -1113,6 +1148,20 @@ class BinaryOpChecker
             }
 
             foreach ($right_type->getTypes() as $right_type_part) {
+                if ($right_type_part instanceof Type\Atomic\TGenericParam) {
+                    if (IssueBuffer::accepts(
+                        new MixedOperand(
+                            'Right operand cannot be a template param',
+                            new CodeLocation($statements_checker->getSource(), $right)
+                        ),
+                        $statements_checker->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+
+                    return;
+                }
+
                 if ($right_type_part instanceof Type\Atomic\TNull || $right_type_part instanceof Type\Atomic\TFalse) {
                     continue;
                 }

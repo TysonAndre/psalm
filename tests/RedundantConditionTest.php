@@ -104,7 +104,7 @@ class RedundantConditionTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['RedundantConditionGivenDocblockType'],
+                'error_levels' => ['DocblockTypeContradiction'],
             ],
             'noRedundantConditionTypeReplacementWithDocblock' => [
                 '<?php
@@ -301,7 +301,7 @@ class RedundantConditionTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['RedundantConditionGivenDocblockType'],
+                'error_levels' => ['RedundantConditionGivenDocblockType', 'DocblockTypeContradiction'],
             ],
             'nullToMixedWithNullCheckNoContinue' => [
                 '<?php
@@ -358,13 +358,13 @@ class RedundantConditionTest extends TestCase
                 '<?php
                     $y = false:
                     if ($y) {}',
-                'error_message' => 'RedundantCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'ifNotTrue' => [
                 '<?php
                     $y = true:
                     if (!$y) {}',
-                'error_message' => 'RedundantCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'ifTrue' => [
                 '<?php
@@ -471,7 +471,7 @@ class RedundantConditionTest extends TestCase
                             $one->fooFoo();
                         }
                     }',
-                'error_message' => 'RedundantCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'SKIPPED-twoVarLogicNotNestedWithElseifNegatedInIf' => [
                 '<?php
@@ -505,7 +505,7 @@ class RedundantConditionTest extends TestCase
                     /** @psalm-suppress PossiblyNullArgument */
                     takesA($a);
                     if ($a instanceof A) {}',
-                'error_message' => 'RedundantCondition - src/somefile.php:15',
+                'error_message' => 'RedundantCondition - src' . DIRECTORY_SEPARATOR . 'somefile.php:15',
             ],
             'replaceFalseType' => [
                 '<?php
@@ -527,7 +527,7 @@ class RedundantConditionTest extends TestCase
 
                       if ($b) {}
                     }',
-                'error_message' => 'RedundantCondition',
+                'error_message' => 'TypeDoesNotContainType - src' . DIRECTORY_SEPARATOR . 'somefile.php:7',
             ],
         ];
     }

@@ -508,6 +508,7 @@ class FunctionCallTest extends TestCase
                 'assertions' => [],
                 'error_levels' => [
                     'MissingClosureParamType',
+                    'MixedTypeCoercion',
                 ],
             ],
             'arrayFilterGoodArgs' => [
@@ -607,6 +608,17 @@ class FunctionCallTest extends TestCase
                     '$c' => 'int',
                 ],
             ],
+            'explodeWithPossiblyFalse' => [
+                '<?php
+                    /** @return array<int, string> */
+                    function exploder(string $s) : array {
+                        return explode(" ", $s);
+                    }',
+            ],
+            'allowPossiblyUndefinedClassInClassExists' => [
+                '<?php
+                    if (class_exists(Foo::class)) {}'
+            ],
         ];
     }
 
@@ -658,7 +670,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     function fooFoo(int $a): void {}
                     fooFoo(5, "dfd");',
-                'error_message' => 'TooManyArguments - src/somefile.php:3 - Too many arguments for method fooFoo '
+                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Too many arguments for method fooFoo '
                     . '- expecting 1 but saw 2',
             ],
             'tooManyArgumentsForConstructor' => [
@@ -838,6 +850,13 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $a = var_export(["a"]);',
                 'error_message' => 'AssignmentToVoid',
+            ],
+            'explodeWithEmptyString' => [
+                '<?php
+                    function exploder(string $s) : array {
+                        return explode("", $s);
+                    }',
+                'error_message' => 'FalsableReturnStatement',
             ],
         ];
     }

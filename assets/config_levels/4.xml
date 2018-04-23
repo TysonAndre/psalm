@@ -2,7 +2,8 @@
 <psalm
     totallyTyped="false"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="vendor/vimeo/psalm/config.xsd"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
 >
     <projectFiles>
         <directory name="src" />
@@ -16,6 +17,7 @@
         <DeprecatedMethod errorLevel="info" />
         <DeprecatedProperty errorLevel="info" />
         <DeprecatedClass errorLevel="info" />
+        <DeprecatedInterface errorLevel="info" />
 
         <MissingClosureReturnType errorLevel="info" />
         <MissingReturnType errorLevel="info" />
@@ -71,6 +73,7 @@
         <PossiblyNullReference errorLevel="info" />
         <PossiblyUndefinedGlobalVariable errorLevel="info" />
         <PossiblyUndefinedVariable errorLevel="info" />
+        <PossiblyUndefinedArrayOffset errorLevel="info" />
         <PossiblyUndefinedMethod errorLevel="info" />
     </issueHandlers>
 </psalm>

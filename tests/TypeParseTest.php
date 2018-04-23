@@ -10,7 +10,7 @@ class TypeParseTest extends TestCase
      */
     public function setUp()
     {
-        //parent::setUp();
+        //pae::setUp();
     }
 
     /**
@@ -346,6 +346,28 @@ class TypeParseTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testCallableThatReturnsACallable()
+    {
+        $this->assertSame(
+            'callable():callable():string',
+            (string)Type::parseString('callable() : callable() : string')
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testCallableOrInt()
+    {
+        $this->assertSame(
+            'callable(string):void|int',
+            (string)Type::parseString('callable(string):void|int')
+        );
+    }
+
+    /**
      * @expectedException \Psalm\Exception\TypeParseTreeException
      *
      * @return void
@@ -353,6 +375,16 @@ class TypeParseTest extends TestCase
     public function testCallableWithBadVariadic()
     {
         Type::parseString('callable(int, ...string) : void');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testCallableWithTrailingColon()
+    {
+        Type::parseString('callable(int):');
     }
 
     /**
@@ -435,5 +467,69 @@ class TypeParseTest extends TestCase
             'callable(int, string)',
             (string)Type::parseString('callable(int, string)')
         );
+    }
+
+    /**
+     * @return void
+     */
+    public function testVeryLargeType()
+    {
+        $very_large_type = 'array{a:Closure():(array<mixed, mixed>|null), b?:Closure():array<mixed, mixed>, c?:Closure():array<mixed, mixed>, d?:Closure():array<mixed, mixed>, e?:Closure():(array{f:null|string, g:null|string, h:null|string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), p?:Closure():(array{f:null|string, g:null|string, h:null|string, q:string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), r?:Closure():(array<mixed, mixed>|null), s:array<mixed, mixed>}|null';
+
+        $this->assertSame(
+            $very_large_type,
+            (string) Type::parseString($very_large_type)
+        );
+    }
+
+    /**
+     * @dataProvider providerTestValidCallMapType
+     *
+     * @param string $return_type
+     * @param string $param_type_1
+     * @param string $param_type_2
+     * @param string $param_type_3
+     * @param string $param_type_4
+     *
+     * @return void
+     */
+    public function testValidCallMapType(
+        $return_type,
+        $param_type_1 = '',
+        $param_type_2 = '',
+        $param_type_3 = '',
+        $param_type_4 = ''
+    ) {
+        if ($return_type && $return_type !== 'void') {
+            \Psalm\Type::parseString($return_type);
+        }
+
+        if ($param_type_1 && $param_type_1 !== 'mixed') {
+            if (strpos($param_type_1, 'oci-') !== false) {
+                return;
+            }
+
+            \Psalm\Type::parseString($param_type_1);
+        }
+
+        if ($param_type_2 && $param_type_2 !== 'mixed') {
+            \Psalm\Type::parseString($param_type_2);
+        }
+
+        if ($param_type_3 && $param_type_3 !== 'mixed') {
+            \Psalm\Type::parseString($param_type_3);
+        }
+
+        if ($param_type_4 && $param_type_4 !== 'mixed') {
+            \Psalm\Type::parseString($param_type_4);
+        }
+    }
+
+    /**
+     * @return array<string, array<int|string, string>>
+     */
+    public function providerTestValidCallMapType()
+    {
+        return \Psalm\Codebase\CallMap::getCallMap();
     }
 }

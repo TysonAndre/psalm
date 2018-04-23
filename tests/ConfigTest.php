@@ -260,7 +260,7 @@ class ConfigTest extends TestCase
                  * @return string
                  */
                 function ($issue_name) {
-                    return '<' . $issue_name . ' errorLevel="suppress" />' . PHP_EOL;
+                    return '<' . $issue_name . ' errorLevel="suppress" />' . "\n";
                 },
                 self::getAllIssues()
             )
@@ -697,7 +697,7 @@ class ConfigTest extends TestCase
      */
     public function testTemplatedFiles()
     {
-        foreach (['1.xml', '2.xml', '3.xml', '4.xml', '5.xml'] as $file_name) {
+        foreach (['1.xml', '2.xml', '3.xml', '4.xml', '5.xml', '6.xml', '7.xml', '8.xml'] as $file_name) {
             Config::loadFromXMLFile(
                 realpath(dirname(__DIR__) . '/assets/config_levels/' . $file_name),
                 dirname(__DIR__)

@@ -143,6 +143,24 @@ class IfChecker
             $more_cond_assigned_var_ids
         );
 
+        $newish_var_ids = array_map(
+            /**
+             * @param Type\Union $_
+             *
+             * @return true
+             */
+            function (Type\Union $_) {
+                return true;
+            },
+            array_diff_key(
+                $if_context->vars_in_scope,
+                $pre_condition_vars_in_scope,
+                $cond_referenced_var_ids,
+                $cond_assigned_var_ids
+            )
+        );
+
+
         // get all the var ids that were referened in the conditional, but not assigned in it
         $cond_referenced_var_ids = array_diff_key($cond_referenced_var_ids, $cond_assigned_var_ids);
 
@@ -159,6 +177,8 @@ class IfChecker
             },
             ARRAY_FILTER_USE_KEY
         );
+
+        $cond_referenced_var_ids = array_merge($newish_var_ids, $cond_referenced_var_ids);
 
         $if_context->inside_conditional = false;
 
@@ -234,7 +254,12 @@ class IfChecker
                     $changed_var_ids,
                     $cond_referenced_var_ids,
                     $statements_checker,
-                    new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
+                    $context->check_variables
+                        ? new CodeLocation(
+                            $statements_checker->getSource(),
+                            $stmt->cond,
+                            $context->include_location
+                        ) : null,
                     $statements_checker->getSuppressedIssues()
                 );
 
@@ -273,7 +298,12 @@ class IfChecker
                 $changed_var_ids,
                 $stmt->else || $stmt->elseifs ? $cond_referenced_var_ids : [],
                 $statements_checker,
-                new CodeLocation($statements_checker->getSource(), $stmt->cond, $context->include_location),
+                $context->check_variables
+                    ? new CodeLocation(
+                        $statements_checker->getSource(),
+                        $stmt->cond,
+                        $context->include_location
+                    ) : null,
                 $statements_checker->getSuppressedIssues()
             );
 
@@ -769,7 +799,11 @@ class IfChecker
             $elseif_context->referenced_var_ids
         );
 
-        $new_assigned_var_ids = array_diff_key($elseif_context->assigned_var_ids, $pre_assigned_var_ids);
+        $conditional_assigned_var_ids = $elseif_context->assigned_var_ids;
+
+        $elseif_context->assigned_var_ids = array_merge($pre_assigned_var_ids, $conditional_assigned_var_ids);
+
+        $new_assigned_var_ids = array_diff_key($conditional_assigned_var_ids, $pre_assigned_var_ids);
 
         $new_referenced_var_ids = array_diff_key($new_referenced_var_ids, $new_assigned_var_ids);
 
@@ -789,29 +823,45 @@ class IfChecker
             $statements_checker
         );
 
-        $elseif_clauses = array_values(
-            array_filter(
-                $elseif_clauses,
-                /** @return bool */
-                function (Clause $c) use ($mixed_var_ids) {
-                    $keys = array_keys($c->possibilities);
+        $elseif_clauses = array_map(
+            /**
+             * @return Clause
+             */
+            function (Clause $c) use ($mixed_var_ids) {
+                $keys = array_keys($c->possibilities);
 
-                    foreach ($keys as $key) {
-                        foreach ($mixed_var_ids as $mixed_var_id) {
-                            if (preg_match('/^' . preg_quote($mixed_var_id) . '(\[|-)/', $key)) {
-                                return false;
-                            }
+                foreach ($keys as $key) {
+                    foreach ($mixed_var_ids as $mixed_var_id) {
+                        if (preg_match('/^' . preg_quote($mixed_var_id, '/') . '(\[|-)/', $key)) {
+                            return new Clause([], true);
                         }
                     }
-
-                    return true;
                 }
-            )
+
+                return $c;
+            },
+            $elseif_clauses
         );
 
-        if (!$elseif_clauses) {
-            $elseif_clauses = [new Clause([], true)];
-        }
+        $entry_clauses = array_map(
+            /**
+             * @return Clause
+             */
+            function (Clause $c) use ($conditional_assigned_var_ids) {
+                $keys = array_keys($c->possibilities);
+
+                foreach ($keys as $key) {
+                    foreach ($conditional_assigned_var_ids as $conditional_assigned_var_id => $_) {
+                        if (preg_match('/^' . preg_quote($conditional_assigned_var_id, '/') . '(\[|-|$)/', $key)) {
+                            return new Clause([], true);
+                        }
+                    }
+                }
+
+                return $c;
+            },
+            $entry_clauses
+        );
 
         // this will see whether any of the clauses in set A conflict with the clauses in set B
         AlgebraChecker::checkForParadox(

@@ -9,8 +9,9 @@ use Psalm\Issue\ImplementedReturnTypeMismatch;
 use Psalm\Issue\InaccessibleMethod;
 use Psalm\Issue\InvalidStaticInvocation;
 use Psalm\Issue\MethodSignatureMismatch;
+use Psalm\Issue\MethodSignatureMustOmitReturnType;
 use Psalm\Issue\MoreSpecificImplementedParamType;
-use Psalm\Issue\MoreSpecificImplementedReturnType;
+use Psalm\Issue\LessSpecificImplementedReturnType;
 use Psalm\Issue\NonStaticSelfCall;
 use Psalm\Issue\OverriddenMethodAccess;
 use Psalm\Issue\UndefinedMethod;
@@ -490,12 +491,12 @@ class MethodChecker extends FunctionLikeChecker
                 // is the declared return type more specific than the inferred one?
                 if ($type_coerced) {
                     if (IssueBuffer::accepts(
-                        new MoreSpecificImplementedReturnType(
+                        new LessSpecificImplementedReturnType(
                             'The return type \'' . $guide_method_storage->return_type
                             . '\' for ' . $cased_guide_method_id . ' is more specific than the implemented '
                             . 'return type for ' . $implementer_declaring_method_id . ' \''
                             . $implementer_method_storage->return_type . '\'',
-                            $implementer_method_storage->location ?: $code_location
+                            $implementer_method_storage->return_type_location ?: $code_location
                         ),
                         $suppressed_issues
                     )) {
@@ -508,7 +509,7 @@ class MethodChecker extends FunctionLikeChecker
                             . '\' for ' . $cased_guide_method_id . ' is different to the implemented '
                             . 'return type for ' . $implementer_declaring_method_id . ' \''
                             . $implementer_method_storage->return_type . '\'',
-                            $implementer_method_storage->location ?: $code_location
+                            $implementer_method_storage->return_type_location ?: $code_location
                         ),
                         $suppressed_issues
                     )) {
@@ -661,5 +662,37 @@ class MethodChecker extends FunctionLikeChecker
 
             return null;
         }
+    }
+
+    /**
+     * Check that __clone, __construct, and __destruct do not have a return type
+     * hint in their signature.
+     *
+     * @param  MethodStorage $method_storage
+     * @param  CodeLocation  $code_location
+     * @return false|null
+     */
+    public static function checkMethodSignatureMustOmitReturnType(
+        MethodStorage $method_storage,
+        CodeLocation $code_location
+    ) {
+        if ($method_storage->signature_return_type === null) {
+            return null;
+        }
+
+        $cased_method_name = $method_storage->cased_name;
+        $methodsOfInterest = ['__clone', '__construct', '__destruct'];
+        if (in_array($cased_method_name, $methodsOfInterest)) {
+            if (IssueBuffer::accepts(
+                new MethodSignatureMustOmitReturnType(
+                    'Method ' . $cased_method_name . ' must not declare a return type',
+                    $code_location
+                )
+            )) {
+                return false;
+            }
+        }
+
+        return null;
     }
 }

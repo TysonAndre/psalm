@@ -208,6 +208,102 @@ class AnnotationTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testPhpDocMethodWhenUndefined()
+    {
+        Config::getInstance()->use_phpdoc_methods_without_call = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @method string getString()
+                 * @method  void setInteger(int $integer)
+                 * @method setString(int $integer)
+                 * @method  getBool(string $foo) : bool
+                 * @method (string|int)[] getArray() : array
+                 * @method (callable() : string) getCallable() : callable
+                 */
+                class Child {}
+
+                $child = new Child();
+
+                $a = $child->getString();
+                $child->setInteger(4);
+                /** @psalm-suppress MixedAssignment */
+                $b = $child->setString(5);
+                $c = $child->getBool("hello");
+                $d = $child->getArray();
+                $e = $child->getCallable();'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testCannotOverrideParentRetunTypeWhenIgnoringPhpDocMethod()
+    {
+        Config::getInstance()->use_phpdoc_methods_without_call = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class Parent {
+                    public static function getMe() : self {
+                        return new self();
+                    }
+                }
+
+                /**
+                 * @method getMe() : Child
+                 */
+                class Child extends Parent {}
+
+                $child = Child::getMe();'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+
+        $this->assertSame('Parent', (string) $context->vars_in_scope['$child']);
+    }
+
+    /**
+     * @return void
+     */
+    public function testOverrideParentRetunType()
+    {
+        Config::getInstance()->use_phpdoc_methods_without_call = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class Parent {
+                    public static function getMe() : self {
+                        return new self();
+                    }
+                }
+
+                /**
+                 * @method getMe() : Child
+                 */
+                class Child extends Parent {}
+
+                $child = Child::getMe();'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+
+        $this->assertSame('Child', (string) $context->vars_in_scope['$child']);
+    }
+
+    /**
      * @return array
      */
     public function providerFileCheckerValidCodeParse()
@@ -759,6 +855,87 @@ class AnnotationTest extends TestCase
                      */
                     function example(string $x) : void {}',
             ],
+            'megaClosureAnnotationWithoutSpacing' => [
+                '<?php
+                    /** @var array{a:Closure():(array<mixed, mixed>|null), b?:Closure():array<mixed, mixed>, c?:Closure():array<mixed, mixed>, d?:Closure():array<mixed, mixed>, e?:Closure():(array{f:null|string, g:null|string, h:null|string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), p?:Closure():(array{f:null|string, g:null|string, h:null|string, q:string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), r?:Closure():(array<mixed, mixed>|null), s:array<mixed, mixed>} */
+                    $arr = [];
+
+                    $arr["a"]()',
+            ],
+            'megaClosureAnnotationWithSpacing' => [
+                '<?php
+                    /** @var array{
+                      a: Closure() : (array<mixed, mixed>|null),
+                      b?: Closure() : array<mixed, mixed>,
+                      c?: Closure() : array<mixed, mixed>,
+                      d?: Closure() : array<mixed, mixed>,
+                      e?: Closure() : (array{
+                        f: null|string,
+                        g: null|string,
+                        h: null|string,
+                        i: string,
+                        j: mixed,
+                        k: mixed,
+                        l: mixed,
+                        m: mixed,
+                        n: bool,
+                        o?: array{0:string}
+                      }|null),
+                      p?: Closure() : (array{
+                        f: null|string,
+                        g: null|string,
+                        h: null|string,
+                        q: string,
+                        i: string,
+                        j: mixed,
+                        k: mixed,
+                        l: mixed,
+                        m: mixed,
+                        n: bool,
+                        o?: array{0:string}
+                      }|null),
+                      r?: Closure() : (array<mixed, mixed>|null),
+                      s: array<mixed, mixed>
+                    } */
+                    $arr = [];
+
+                    $arr["a"]()',
+            ],
+            'magicMethodAnnotation' => [
+                '<?php
+                    class Parent {
+                        public function __call() {}
+                    }
+
+                    /**
+                     * @method string getString()
+                     * @method  void setInteger(int $integer)
+                     * @method setString(int $integer)
+                     * @method  getBool(string $foo)  :   bool
+                     * @method (string|int)[] getArray() : array with some text
+                     * @method void setArray(array $arr = array(), int $foo = 5) with some more text
+                     * @method (callable() : string) getCallable() : callable
+                     */
+                    class Child extends Parent {}
+
+                    $child = new Child();
+
+                    $a = $child->getString();
+                    $child->setInteger(4);
+                    $b = $child->setString(5);
+                    $c = $child->getBool("hello");
+                    $d = $child->getArray();
+                    $child->setArray(["boo"])
+                    $e = $child->getCallable();',
+                'assertions' => [
+                    '$a' => 'string',
+                    '$b' => 'mixed',
+                    '$c' => 'bool',
+                    '$d' => 'array<mixed, string|int>',
+                    '$e' => 'callable():string',
+                ],
+                'error_levels' => ['MixedAssignment'],
+            ],
         ];
     }
 
@@ -918,7 +1095,7 @@ class AnnotationTest extends TestCase
                     }
 
                     fooBar("hello");',
-                'error_message' => 'TooManyArguments - src/somefile.php:8 - Too many arguments for method fooBar '
+                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:8 - Too many arguments for method fooBar '
                     . '- expecting 0 but saw 1',
             ],
             'missingParamVar' => [
@@ -928,7 +1105,7 @@ class AnnotationTest extends TestCase
                      */
                     function fooBar(): void {
                     }',
-                'error_message' => 'InvalidDocblock - src/somefile.php:5 - Badly-formatted @param',
+                'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:5 - Badly-formatted @param',
             ],
             'invalidDocblockReturn' => [
                 '<?php
@@ -989,7 +1166,7 @@ class AnnotationTest extends TestCase
 
                     $a = new A();
                     $a->foo = new SomeOtherPropertyType();',
-                'error_message' => 'InvalidPropertyAssignmentValue - src/somefile.php:27 - $a->foo with declared type'
+                'error_message' => 'InvalidPropertyAssignmentValue - src' . DIRECTORY_SEPARATOR . 'somefile.php:27 - $a->foo with declared type'
                     . ' \'Bar\PropertyType\' cannot',
             ],
             'propertyWriteDocblockInvalidAssignment' => [
@@ -1146,7 +1323,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo substr($a, 4, 2);
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be string',
                 'error_levels' => ['MixedArgument'],
             ],
@@ -1155,7 +1332,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo $a . "foo";
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be string',
                 'error_levels' => ['MixedOperand'],
             ],
@@ -1164,7 +1341,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo $a + 5;
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be int|float',
                 'error_levels' => ['MixedOperand', 'MixedArgument'],
             ],
@@ -1173,7 +1350,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo $a / 5;
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be int|float',
                 'error_levels' => ['MixedOperand', 'MixedArgument'],
             ],
@@ -1182,7 +1359,7 @@ class AnnotationTest extends TestCase
                     function fooFoo($a): void {
                         echo "$a";
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be string',
                 'error_levels' => ['MixedOperand'],
             ],
@@ -1195,7 +1372,7 @@ class AnnotationTest extends TestCase
                             echo substr("hello", $a, 2);
                         }
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:2 - Parameter $a has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:2 - Parameter $a has no provided type,'
                     . ' should be int|string',
                 'error_levels' => ['MixedArgument'],
             ],
@@ -1218,7 +1395,7 @@ class AnnotationTest extends TestCase
                     function shouldTakeString($s): void {
                       if (is_string($s)) takesString($s);
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:4 - Parameter $s has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:4 - Parameter $s has no provided type,'
                     . ' could not infer',
                 'error_levels' => ['MixedArgument'],
             ],
@@ -1233,7 +1410,7 @@ class AnnotationTest extends TestCase
                       $s = returnsMixed();
                       takesString($s);
                     }',
-                'error_message' => 'MissingParamType - src/somefile.php:7 - Parameter $s has no provided type,'
+                'error_message' => 'MissingParamType - src' . DIRECTORY_SEPARATOR . 'somefile.php:7 - Parameter $s has no provided type,'
                     . ' could not infer',
                 'error_levels' => ['MixedArgument', 'InvalidReturnType', 'MixedAssignment'],
             ],
@@ -1515,6 +1692,83 @@ class AnnotationTest extends TestCase
                     /** @var string; */
                     $a = "hello";',
                 'error_message' => 'InvalidDocblock',
+            ],
+            'badCallableVar' => [
+                '<?php
+                    /** @return Closure(int): */
+                    function foo() : callable {
+                        return function () : void {}
+                    }',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'magicMethodAnnotationWithoutCall' => [
+                '<?php
+                    /**
+                     * @method string getString()
+                     */
+                    class Child {}
+
+                    $child = new Child();
+
+                    $a = $child->getString();',
+                'error_message' => 'UndefinedMethod',
+            ],
+            'magicMethodAnnotationWithBadDocblock' => [
+                '<?php
+                    class Parent {
+                        public function __call() {}
+                    }
+
+                    /**
+                     * @method string getString(\)
+                     */
+                    class Child extends Parent {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'magicMethodAnnotationWithUnionTypeInDocblock' => [
+                '<?php
+                    class Parent {
+                        public function __call() {}
+                    }
+
+                    /**
+                     * @method string getString(string|int $x)
+                     */
+                    class Child extends Parent {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'magicMethodAnnotationWithSealed' => [
+                '<?php
+                    class Parent {
+                        public function __call() {}
+                    }
+
+                    /**
+                     * @method string getString()
+                     * @psalm-seal-methods
+                     */
+                    class Child extends Parent {}
+
+                    $child = new Child();
+                    $child->getString();
+                    $child->foo();',
+                'error_message' => 'UndefinedMethod - src/somefile.php:14 - Method Child::foo does not exist',
+            ],
+            'magicMethodAnnotationInvalidArg' => [
+                '<?php
+                    class Parent {
+                        public function __call() {}
+                    }
+
+                    /**
+                     * @method setString(int $integer)
+                     */
+                    class Child extends Parent {}
+
+                    $child = new Child();
+
+                    $child->setString("five");',
+                'error_message' => 'InvalidScalarArgument',
             ],
         ];
     }

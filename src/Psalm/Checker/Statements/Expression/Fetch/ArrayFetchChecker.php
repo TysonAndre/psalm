@@ -23,13 +23,13 @@ use Psalm\Issue\PossiblyInvalidArrayOffset;
 use Psalm\Issue\PossiblyNullArrayAccess;
 use Psalm\Issue\PossiblyNullArrayAssignment;
 use Psalm\Issue\PossiblyNullArrayOffset;
-use Psalm\Issue\PossiblyUndefinedGlobalVariable;
-use Psalm\Issue\PossiblyUndefinedVariable;
+use Psalm\Issue\PossiblyUndefinedArrayOffset;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TEmpty;
+use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
@@ -84,7 +84,7 @@ class ArrayFetchChecker
         }
 
         if ($keyed_array_var_id
-            && isset($context->vars_in_scope[$keyed_array_var_id])
+            && $context->hasVariable($keyed_array_var_id)
             && !$context->vars_in_scope[$keyed_array_var_id]->possibly_undefined
         ) {
             $stmt->inferredType = clone $context->vars_in_scope[$keyed_array_var_id];
@@ -137,28 +137,24 @@ class ArrayFetchChecker
             $stmt->inferredType = Type::getMixed();
         } else {
             if ($stmt->inferredType->possibly_undefined && !$context->inside_isset && !$context->inside_unset) {
-                if ($context->is_global) {
-                    if (IssueBuffer::accepts(
-                        new PossiblyUndefinedGlobalVariable(
-                            'Possibly undefined array key ' . $keyed_array_var_id,
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
-                } else {
-                    if (IssueBuffer::accepts(
-                        new PossiblyUndefinedVariable(
-                            'Possibly undefined array key ' . $keyed_array_var_id,
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
+                if (IssueBuffer::accepts(
+                    new PossiblyUndefinedArrayOffset(
+                        'Possibly undefined array key ' . $keyed_array_var_id,
+                        new CodeLocation($statements_checker->getSource(), $stmt)
+                    ),
+                    $statements_checker->getSuppressedIssues()
+                )) {
+                    return false;
                 }
             }
+        }
+
+        if ($keyed_array_var_id && !$context->inside_isset) {
+            $context->vars_in_scope[$keyed_array_var_id] = $stmt->inferredType;
+            $context->vars_possibly_in_scope[$keyed_array_var_id] = true;
+
+            // reference the variable too
+            $context->hasVariable($keyed_array_var_id, $statements_checker);
         }
 
         return null;
@@ -489,7 +485,7 @@ class ArrayFetchChecker
                 continue;
             }
 
-            if ($type instanceof TMixed || $type instanceof TEmpty) {
+            if ($type instanceof TMixed || $type instanceof TGenericParam ||  $type instanceof TEmpty) {
                 $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
 
                 if ($in_assignment) {
@@ -519,6 +515,10 @@ class ArrayFetchChecker
             }
 
             $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+
+            if ($type instanceof Type\Atomic\TFalse && $array_type->ignore_falsable_issues) {
+                continue;
+            }
 
             if ($type instanceof TNamedObject) {
                 if (strtolower($type->value) !== 'simplexmlelement'

@@ -43,7 +43,8 @@ if (isset($options['config'])) {
 }
 
 if (isset($options['c']) && is_array($options['c'])) {
-    die('Too many config files provided' . PHP_EOL);
+    echo 'Too many config files provided' . PHP_EOL;
+    exit(1);
 }
 
 if (array_key_exists('h', $options)) {
@@ -60,7 +61,7 @@ Options:
 
     -i, --init [source_dir=src] [level=3]
         Create a psalm config file in the current directory that points to [source_dir]
-        at the required level, from 1, most strict, to 6, most permissive.
+        at the required level, from 1, most strict, to 8, most permissive.
 
     --debug
         Debug information
@@ -124,7 +125,8 @@ HELP;
 }
 
 if (getcwd() === false) {
-    die('Cannot get current working directory');
+    echo 'Cannot get current working directory' . PHP_EOL;
+    exit(1);
 }
 
 if (isset($options['root'])) {
@@ -137,7 +139,8 @@ if (isset($options['r']) && is_string($options['r'])) {
     $root_path = realpath($options['r']);
 
     if (!$root_path) {
-        die('Could not locate root directory ' . $current_dir . DIRECTORY_SEPARATOR . $options['r'] . PHP_EOL);
+        echo 'Could not locate root directory ' . $current_dir . DIRECTORY_SEPARATOR . $options['r'] . PHP_EOL;
+        exit(1);
     }
 
     $current_dir = $root_path . DIRECTORY_SEPARATOR;
@@ -188,8 +191,8 @@ if (isset($options['i'])) {
         }
 
         if (isset($args[1])) {
-            if (!preg_match('/^[1-6]$/', $args[1])) {
-                die('Config strictness must be a number between 1 and 6 inclusive' . PHP_EOL);
+            if (!preg_match('/^[1-8]$/', $args[1])) {
+                die('Config strictness must be a number between 1 and 8 inclusive' . PHP_EOL);
             }
 
             $level = (int)$args[1];
@@ -225,7 +228,7 @@ if (isset($options['i'])) {
     if (!\Phar::running(false)) {
         $template = str_replace(
             'vendor/vimeo/psalm/config.xsd',
-            __DIR__ . DIRECTORY_SEPARATOR . 'config.xsd',
+            'file://' . realpath(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'config.xsd'),
             $template
         );
     }
@@ -257,7 +260,8 @@ $path_to_config = isset($options['c']) && is_string($options['c']) ? realpath($o
 
 if ($path_to_config === false) {
     /** @psalm-suppress InvalidCast */
-    die('Could not resolve path to config ' . (string)$options['c'] . PHP_EOL);
+    echo 'Could not resolve path to config ' . (string)$options['c'] . PHP_EOL;
+    exit(1);
 }
 
 $show_info = isset($options['show-info'])
@@ -279,10 +283,15 @@ $cache_provider = isset($options['no-cache'])
     : new Psalm\Provider\ParserCacheProvider();
 
 // initialise custom config, if passed
-if ($path_to_config) {
-    $config = Config::loadFromXMLFile($path_to_config, $current_dir);
-} else {
-    $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
+try {
+    if ($path_to_config) {
+        $config = Config::loadFromXMLFile($path_to_config, $current_dir);
+    } else {
+        $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
+    }
+} catch (Psalm\Exception\ConfigException $e) {
+    echo $e->getMessage();
+    exit(1);
 }
 
 $config->setComposerClassLoader($first_autoloader);

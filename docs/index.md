@@ -1,6 +1,6 @@
 # About Psalm
 
-<abbr title="PHP Static Analysis Linting Machine">Psalm</abbr> is a static analysis tool that attempts to dig into your program and find as many type-related bugs as possible.
+[Psalm](https://getpsalm.org) is a static analysis tool that attempts to dig into your program and find as many type-related bugs as possible.
 
 - [Introduction](#introduction)
 - [Installation](installation.md)

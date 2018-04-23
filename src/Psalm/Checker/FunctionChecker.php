@@ -110,8 +110,19 @@ class FunctionChecker extends FunctionLikeChecker
                 }
             }
 
-            if ($call_map_key === 'explode' || $call_map_key === 'preg_split') {
-                return Type::parseString('array<int, string>');
+            if ($call_map_key === 'explode'
+                && $call_args[0]->value instanceof PhpParser\Node\Scalar\String_
+            ) {
+                if ($call_args[0]->value->value === '') {
+                    return Type::getFalse();
+                }
+
+                return new Type\Union([
+                    new Type\Atomic\TArray([
+                        Type::getInt(),
+                        Type::getString()
+                    ])
+                ]);
             }
 
             if ($call_map_key === 'abs'
@@ -628,23 +639,22 @@ class FunctionChecker extends FunctionLikeChecker
                     return Type::getArray();
                 }
 
-                if (count($function_call_arg->value->stmts) === 1
-                    && count($function_call_arg->value->params)
-                ) {
+                if (count($function_call_arg->value->stmts) === 1 && count($function_call_arg->value->params)) {
                     $first_param = $function_call_arg->value->params[0];
                     $stmt = $function_call_arg->value->stmts[0];
 
                     if ($first_param->variadic === false
+                        && is_string($first_param->var->name)
                         && $stmt instanceof PhpParser\Node\Stmt\Return_
                         && $stmt->expr
                     ) {
                         $assertions = AssertionFinder::getAssertions($stmt->expr, null, $statements_checker);
 
-                        if (isset($assertions['$' . $first_param->name])) {
+                        if (isset($assertions['$' . $first_param->var->name])) {
                             $changed_var_ids = [];
 
                             $reconciled_types = Reconciler::reconcileKeyedTypes(
-                                ['$inner_type' => $assertions['$' . $first_param->name]],
+                                ['$inner_type' => $assertions['$' . $first_param->var->name]],
                                 ['$inner_type' => $inner_type],
                                 $changed_var_ids,
                                 ['$inner_type' => true],
@@ -660,6 +670,13 @@ class FunctionChecker extends FunctionLikeChecker
                     }
                 }
             }
+
+            return new Type\Union([
+                new Type\Atomic\TArray([
+                    $key_type,
+                    $inner_type,
+                ]),
+            ]);
         }
 
         return new Type\Union([

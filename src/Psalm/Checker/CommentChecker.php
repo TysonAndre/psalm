@@ -15,7 +15,7 @@ use function strlen;
 
 class CommentChecker
 {
-    const TYPE_REGEX = '(\??\\\?[A-Za-z][\(\)A-Za-z0-9_&\<\.=,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_]+)';
+    const TYPE_REGEX = '(\??\\\?[\(\)A-Za-z0-9_&\<\.=,\>\[\]\-\{\}:|?\\\\]*|\$[a-zA-Z_0-9_]+)';
 
     /**
      * @param  string           $comment
@@ -97,7 +97,7 @@ class CommentChecker
                 }
 
                 try {
-                    $defined_type = Type::parseString($var_type_string);
+                    $defined_type = Type::parseString($var_type_string, false, $template_types ?: []);
                 } catch (TypeParseTreeException $e) {
                     if (is_int($came_from_line_number)) {
                         throw new DocblockParseException(
@@ -335,10 +335,53 @@ class CommentChecker
             $info->sealed_properties = true;
         }
 
+        if (isset($comments['specials']['psalm-seal-methods'])) {
+            $info->sealed_methods = true;
+        }
+
         if (isset($comments['specials']['psalm-suppress'])) {
             /** @var string $suppress_entry */
             foreach ($comments['specials']['psalm-suppress'] as $suppress_entry) {
                 $info->suppressed_issues[] = preg_split('/[\s]+/', $suppress_entry)[0];
+            }
+        }
+
+        if (isset($comments['specials']['method'])) {
+            /** @var string $method_entry */
+            foreach ($comments['specials']['method'] as $method_entry) {
+                $method_entry = preg_replace('/[ \t]+/', ' ', trim($method_entry));
+
+                $return_docblock = '';
+
+                if (!preg_match('/^([a-z_A-Z][a-z_0-9A-Z]+) *\(/', $method_entry, $matches)) {
+                    $doc_line_parts = self::splitDocLine($method_entry);
+
+                    $return_docblock = '/** @return ' . array_shift($doc_line_parts) . ' */';
+
+                    $method_entry = implode(' ', $doc_line_parts);
+                }
+
+                $method_entry = trim(preg_replace('/\/\/.*/', '', $method_entry));
+
+                $end_of_method_regex = '/(?<!array\()\) ?(\: ?(\??[\\\\a-zA-Z0-9_]+))?/';
+
+                if (preg_match($end_of_method_regex, $method_entry, $matches, PREG_OFFSET_CAPTURE)) {
+                    $method_entry = substr($method_entry, 0, (int) $matches[0][1] + strlen((string) $matches[0][0]));
+                }
+
+                $php_string = '<?php ' . $return_docblock . ' function ' . $method_entry . '{}';
+
+                try {
+                    $statements = \Psalm\Provider\StatementsProvider::parseStatements($php_string);
+                } catch (\Exception $e) {
+                    throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
+                }
+
+                if (!$statements[0] instanceof \PhpParser\Node\Stmt\Function_) {
+                    throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
+                }
+
+                $info->methods[] = $statements[0];
             }
         }
 
@@ -590,22 +633,22 @@ class CommentChecker
      */
     public static function renderDocComment(array $parsed_doc_comment, $left_padding)
     {
-        $doc_comment_text = '/**' . PHP_EOL;
+        $doc_comment_text = '/**' . "\n";
 
         $description_lines = null;
 
         $trimmed_description = trim($parsed_doc_comment['description']);
 
         if (!empty($trimmed_description)) {
-            $description_lines = explode(PHP_EOL, $parsed_doc_comment['description']);
+            $description_lines = explode("\n", $parsed_doc_comment['description']);
 
             foreach ($description_lines as $line) {
-                $doc_comment_text .= $left_padding . ' *' . (trim($line) ? ' ' . $line : '') . PHP_EOL;
+                $doc_comment_text .= $left_padding . ' *' . (trim($line) ? ' ' . $line : '') . "\n";
             }
         }
 
         if ($description_lines && $parsed_doc_comment['specials']) {
-            $doc_comment_text .= $left_padding . ' *' . PHP_EOL;
+            $doc_comment_text .= $left_padding . ' *' . "\n";
         }
 
         if ($parsed_doc_comment['specials']) {
@@ -613,19 +656,19 @@ class CommentChecker
 
             foreach ($parsed_doc_comment['specials'] as $type => $lines) {
                 if ($last_type !== null && ($last_type !== 'return' || $last_type !== 'psalm-return')) {
-                    $doc_comment_text .= $left_padding . ' *' . PHP_EOL;
+                    $doc_comment_text .= $left_padding . ' *' . "\n";
                 }
 
                 foreach ($lines as $line) {
                     $doc_comment_text .= $left_padding . ' * @' . $type . ' '
-                        . str_replace("\n", "\n" . $left_padding . ' *', $line) . PHP_EOL;
+                        . str_replace("\n", "\n" . $left_padding . ' *', $line) . "\n";
                 }
 
                 $last_type = $type;
             }
         }
 
-        $doc_comment_text .= $left_padding . ' */' . PHP_EOL . $left_padding;
+        $doc_comment_text .= $left_padding . ' */' . "\n" . $left_padding;
 
         return $doc_comment_text;
     }

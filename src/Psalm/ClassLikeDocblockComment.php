@@ -21,9 +21,19 @@ class ClassLikeDocblockComment
     public $properties = [];
 
     /**
+     * @var array<int, \PhpParser\Node\Stmt\Function_>
+     */
+    public $methods = [];
+
+    /**
      * @var bool
      */
     public $sealed_properties = false;
+
+    /**
+     * @var bool
+     */
+    public $sealed_methods = false;
 
     /**
      * @var array<int, string>

@@ -286,21 +286,49 @@ class CallChecker
                         return false;
                     }
 
-                    $by_ref_type = Type::combineUnionTypes(
-                        $by_ref_type,
-                        new Type\Union(
-                            [
-                                new TArray(
+                    if (!isset($arg->value->inferredType) || $arg->value->inferredType->isMixed()) {
+                        $by_ref_type = Type::combineUnionTypes(
+                            $by_ref_type,
+                            new Type\Union([new TArray([Type::getInt(), Type::getMixed()])])
+                        );
+                    } elseif ($arg->unpack) {
+                        if ($arg->value->inferredType->hasArray()) {
+                            /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                            $array_atomic_type = $arg->value->inferredType->getTypes()['array'];
+
+                            if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                                $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                            }
+
+                            $by_ref_type = Type::combineUnionTypes(
+                                $by_ref_type,
+                                new Type\Union(
                                     [
-                                        Type::getInt(),
-                                        isset($arg->value->inferredType)
-                                            ? clone $arg->value->inferredType
-                                            : Type::getMixed(),
+                                        new TArray(
+                                            [
+                                                Type::getInt(),
+                                                clone $array_atomic_type->type_params[1]
+                                            ]
+                                        ),
+                                    ]
+                                )
+                            );
+                        }
+                    } else {
+                        $by_ref_type = Type::combineUnionTypes(
+                            $by_ref_type,
+                            new Type\Union(
+                                [
+                                    new TArray(
+                                        [
+                                            Type::getInt(),
+                                            clone $arg->value->inferredType
                                         ]
-                                ),
-                            ]
-                        )
-                    );
+                                    ),
+                                ]
+                            )
+                        );
+                    }
                 }
 
                 ExpressionChecker::assignByRefParam(
@@ -420,13 +448,29 @@ class CallChecker
                         }
                     }
                 } else {
+                    $toggled_class_exists = false;
+
+                    if ($method_id === 'class_exists'
+                        && $argument_offset === 0
+                        && !$context->inside_class_exists
+                    ) {
+                        $context->inside_class_exists = true;
+                        $toggled_class_exists = true;
+                    }
+
                     if (ExpressionChecker::analyze($statements_checker, $arg->value, $context) === false) {
                         return false;
                     }
+
+                    if ($toggled_class_exists) {
+                        $context->inside_class_exists = false;
+                    }
                 }
             } else {
-                if ($arg->value instanceof PhpParser\Node\Expr\PropertyFetch && is_string($arg->value->name)) {
-                    $var_id = '$' . $arg->value->name;
+                if ($arg->value instanceof PhpParser\Node\Expr\PropertyFetch
+                    && $arg->value->name instanceof PhpParser\Node\Identifier
+                ) {
+                    $var_id = '$' . $arg->value->name->name;
                 } else {
                     $var_id = ExpressionChecker::getVarId(
                         $arg->value,
@@ -675,10 +719,10 @@ class CallChecker
 
                             $offset_value_type = null;
 
-                            if ($arg->value instanceof PhpParser\Node\Expr\ClassConstFetch &&
-                                $arg->value->class instanceof PhpParser\Node\Name &&
-                                is_string($arg->value->name) &&
-                                strtolower($arg->value->name) === 'class'
+                            if ($arg->value instanceof PhpParser\Node\Expr\ClassConstFetch
+                                && $arg->value->class instanceof PhpParser\Node\Name
+                                && $arg->value->name instanceof PhpParser\Node\Identifier
+                                && strtolower($arg->value->name->name) === 'class'
                             ) {
                                 $offset_value_type = Type::parseString(
                                     ClassLikeChecker::getFQCLNFromNameObject(
@@ -735,8 +779,7 @@ class CallChecker
                         }
                     }
 
-                    // for now stop when we encounter a packed argument
-                    if ($arg->unpack) {
+                    if (!$context->check_variables) {
                         break;
                     }
 
@@ -747,20 +790,69 @@ class CallChecker
                         $fq_class_name
                     );
 
-                    if ($context->check_variables) {
-                        if (self::checkFunctionArgumentType(
-                            $statements_checker,
-                            $arg->value->inferredType,
-                            $fleshed_out_type,
-                            $cased_method_id,
-                            $argument_offset,
-                            new CodeLocation($statements_checker->getSource(), $arg->value),
-                            $arg->value,
-                            $context,
-                            $function_param->by_ref
-                        ) === false) {
-                            return false;
+                    if ($arg->unpack) {
+                        if ($arg->value->inferredType->hasArray()) {
+                            /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                            $array_atomic_type = $arg->value->inferredType->getTypes()['array'];
+
+                            if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                                $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                            }
+
+                            if (self::checkFunctionArgumentType(
+                                $statements_checker,
+                                $array_atomic_type->type_params[1],
+                                $fleshed_out_type,
+                                $cased_method_id,
+                                $argument_offset,
+                                new CodeLocation($statements_checker->getSource(), $arg->value),
+                                $arg->value,
+                                $context,
+                                $function_param->by_ref
+                            ) === false) {
+                                return false;
+                            }
+                        } elseif ($arg->value->inferredType->isMixed()) {
+                            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+
+                            if (IssueBuffer::accepts(
+                                new MixedArgument(
+                                    'Argument ' . ($argument_offset + 1) . $cased_method_id
+                                        . ' cannot be mixed, expecting array',
+                                    $code_location
+                                ),
+                                $statements_checker->getSuppressedIssues()
+                            )) {
+                                return false;
+                            }
+                        } else {
+                            if (IssueBuffer::accepts(
+                                new InvalidArgument(
+                                    'Argument ' . ($argument_offset + 1) . $cased_method_id
+                                        . ' expects array, ' . $arg->value->inferredType . ' provided',
+                                    $code_location
+                                ),
+                                $statements_checker->getSuppressedIssues()
+                            )) {
+                                return false;
+                            }
                         }
+
+                        break;
+                    }
+
+                    if (self::checkFunctionArgumentType(
+                        $statements_checker,
+                        $arg->value->inferredType,
+                        $fleshed_out_type,
+                        $cased_method_id,
+                        $argument_offset,
+                        new CodeLocation($statements_checker->getSource(), $arg->value),
+                        $arg->value,
+                        $context,
+                        $function_param->by_ref
+                    ) === false) {
+                        return false;
                     }
                 }
             } elseif ($function_param) {
@@ -1655,8 +1747,8 @@ class CallChecker
         }
 
         if ($class_arg instanceof PhpParser\Node\Expr\ClassConstFetch
-            && is_string($class_arg->name)
-            && strtolower($class_arg->name) === 'class'
+            && $class_arg->name instanceof PhpParser\Node\Identifier
+            && strtolower($class_arg->name->name) === 'class'
             && $class_arg->class instanceof PhpParser\Node\Name
         ) {
             $fq_class_name = ClassLikeChecker::getFQCLNFromNameObject(

@@ -53,6 +53,11 @@ class ClassLikeStorage
     public $sealed_properties = false;
 
     /**
+     * @var bool
+     */
+    public $sealed_methods = false;
+
+    /**
      * @var array<int, string>
      */
     public $suppressed_issues = [];
@@ -129,6 +134,11 @@ class ClassLikeStorage
      * @var array<string, MethodStorage>
      */
     public $methods = [];
+
+    /**
+     * @var array<string, FunctionLikeStorage>
+     */
+    public $pseudo_methods = [];
 
     /**
      * @var array<string, string>
