@@ -112,7 +112,7 @@ return [
     // Thus, both first-party and third-party code being used by
     // your application should be included in this list.
     'directory_list' => [
-        'vendor/composer/composer/src/Composer',
+        'vendor/composer/xdebug-handler/src',
         'vendor/friendsofphp/php-cs-fixer/src',
         'vendor/muglug/package-versions-56/src/PackageVersions',
         'vendor/nikic/php-parser/lib/PhpParser',

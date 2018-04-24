@@ -70,7 +70,7 @@ class APIFilterPlugin extends \Psalm\Plugin
                 continue;
             }
             foreach ($stmt->consts as $const_stmt) {
-                if ($const_stmt->name === self::METHOD_FILTERS_CONST_NAME) {
+                if ($const_stmt->name->name === self::METHOD_FILTERS_CONST_NAME) {
                     return $const_stmt->value;
                 }
             }
@@ -169,12 +169,14 @@ class APIFilterPlugin extends \Psalm\Plugin
              * @suppress RedundantConditionGivenDocblockType
              */
             function($union_type_string) : Union {
-            if (!is_string($union_type_string)) {
-                // TODO: warn
-                return new Union([new TMixed()]);
-            }
-            return Type::parseString($union_type_string);
-        }, $filters_for_method);
+                if (!is_string($union_type_string)) {
+                    // TODO: warn
+                    return new Union([new TMixed()]);
+                }
+                return Type::parseString($union_type_string);
+            },
+            $filters_for_method
+        );
         return new Union([new ObjectLike($union_type_properties)]);
     }
 }

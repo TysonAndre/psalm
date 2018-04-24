@@ -185,6 +185,9 @@ class CommentChecker
                 throw $e;
             }
             $line_parts[0] = self::getRenamedType($line_parts[0]);
+            if ($line_parts[0] === '') {
+                throw new IncorrectDocblockException('Empty type after renaming original');
+            }
 
             if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
                 && !preg_match('/\[[^\]]+\]/', $line_parts[0])
