@@ -101,7 +101,7 @@ abstract class Type
         if (count($type_tokens) === 1) {
             $only_token = $type_tokens[0];
             // Note: valid identifiers can include class names or $this
-            if (!preg_match('@^(\$this$|[a-zA-Z_\x80-\xff])@', $only_token)) {
+            if (!preg_match('@^(\$this$|[a-zA-Z_\x7f-\xff])@', $only_token)) {
                 throw new TypeParseTreeException("Invalid type '$only_token'");
             }
             $only_token = self::fixScalarTerms($only_token, $php_compatible);
