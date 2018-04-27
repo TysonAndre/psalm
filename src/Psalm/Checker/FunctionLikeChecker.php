@@ -102,6 +102,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         $function_stmts = $this->function->getStmts() ?: [];
 
         $hash = null;
+        $real_method_id = null;
 
         $cased_method_id = null;
 
@@ -134,8 +135,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             if ($add_mutations) {
                 $hash = $real_method_id . json_encode([
                     $context->vars_in_scope,
-                        $context->vars_possibly_in_scope,
-                    ]);
+                    $context->vars_possibly_in_scope,
+                ]);
 
                 // if we know that the function has no effects on vars, we don't bother rechecking
                 if (isset(self::$no_effects_hashes[$hash])) {
@@ -633,11 +634,18 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                 }
             }
 
-            if ($hash && $this instanceof MethodChecker) {
-                self::$no_effects_hashes[$hash] = [
+            if ($hash && $real_method_id && $this instanceof MethodChecker) {
+                $new_hash = $real_method_id . json_encode([
                     $context->vars_in_scope,
                     $context->vars_possibly_in_scope,
-                ];
+                ]);
+
+                if ($new_hash === $hash) {
+                    self::$no_effects_hashes[$hash] = [
+                        $context->vars_in_scope,
+                        $context->vars_possibly_in_scope,
+                    ];
+                }
             }
         }
 

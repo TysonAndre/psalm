@@ -22,6 +22,15 @@ class TestCase extends BaseTestCase
     public static function setUpBeforeClass()
     {
         ini_set('memory_limit', '-1');
+
+        if (!defined('PSALM_VERSION')) {
+            define('PSALM_VERSION', '2.0.0');
+        }
+
+        if (!defined('PHP_PARSER_VERSION')) {
+            define('PHP_PARSER_VERSION', '4.0.0');
+        }
+
         parent::setUpBeforeClass();
         self::$src_dir_path = getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR;
     }

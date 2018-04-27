@@ -100,10 +100,12 @@ abstract class Type
 
         if (count($type_tokens) === 1) {
             $only_token = $type_tokens[0];
+
             // Note: valid identifiers can include class names or $this
             if (!preg_match('@^(\$this$|[a-zA-Z_\x7f-\xff])@', $only_token)) {
                 throw new TypeParseTreeException("Invalid type '$only_token'");
             }
+
             $only_token = self::fixScalarTerms($only_token, $php_compatible);
 
             return new Union([Atomic::create($only_token, $php_compatible, $template_types)]);
@@ -548,13 +550,16 @@ abstract class Type
     }
 
     /**
+     * @param bool $from_calculation
+     *
      * @return Type\Union
      */
-    public static function getInt()
+    public static function getInt($from_calculation = false)
     {
-        $type = new TInt;
+        $union = new Union([new TInt]);
+        $union->from_calculation = $from_calculation;
 
-        return new Union([$type]);
+        return $union;
     }
 
     /**
@@ -757,6 +762,10 @@ abstract class Type
 
             if ($type_1->from_docblock || $type_2->from_docblock) {
                 $combined_type->from_docblock = true;
+            }
+
+            if ($type_1->from_calculation || $type_2->from_calculation) {
+                $combined_type->from_calculation = true;
             }
 
             if ($type_1->ignore_nullable_issues || $type_2->ignore_nullable_issues) {
