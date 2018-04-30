@@ -342,7 +342,7 @@ class CommentChecker
             $info->sealed_properties = true;
         }
 
-        if (isset($comments['specials']['psalm-seal-methods'])) {
+        if (isset($comments['specials']['psalm-seal-methods']) || isset($comments['specials']['phan-forbid-undeclared-magic-methods'])) {
             $info->sealed_methods = true;
         }
 
