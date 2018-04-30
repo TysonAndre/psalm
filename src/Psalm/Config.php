@@ -205,6 +205,11 @@ class Config
     public $use_phpdoc_methods_without_call = false;
 
     /**
+     * @var bool
+     */
+    public $memoize_method_calls = false;
+
+    /**
      * @var string[]
      */
     private $plugin_paths = [];
@@ -505,6 +510,11 @@ class Config
         if (isset($config_xml['usePhpDocMethodsWithoutMagicCall'])) {
             $attribute_text = (string) $config_xml['usePhpDocMethodsWithoutMagicCall'];
             $config->use_phpdoc_methods_without_call = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
+        if (isset($config_xml['memoizeMethodCallResults'])) {
+            $attribute_text = (string) $config_xml['memoizeMethodCallResults'];
+            $config->memoize_method_calls = $attribute_text === 'true' || $attribute_text === '1';
         }
 
         if (isset($config_xml->projectFiles)) {

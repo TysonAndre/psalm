@@ -342,6 +342,7 @@ class ExpressionChecker
 
             if (isset($stmt->expr->inferredType)
                 && !$stmt->expr->inferredType->isMixed()
+                && !isset($stmt->expr->inferredType->getTypes()['resource'])
                 && !TypeChecker::isContainedBy(
                     $statements_checker->getFileChecker()->project_checker->codebase,
                     $stmt->expr->inferredType,
@@ -723,6 +724,27 @@ class ExpressionChecker
             }
 
             return $object_id . '->' . $stmt->name;
+        }
+
+        if ($stmt instanceof PhpParser\Node\Expr\MethodCall
+            && $stmt->name instanceof PhpParser\Node\Identifier
+            && !$stmt->args
+        ) {
+            $config = \Psalm\Config::getInstance();
+
+            if ($config->memoize_method_calls) {
+                $lhs_var_name = self::getArrayVarId(
+                    $stmt->var,
+                    $this_class_name,
+                    $source
+                );
+
+                if (!$lhs_var_name) {
+                    return null;
+                }
+
+                return $lhs_var_name . '->' . strtolower($stmt->name->name) . '()';
+            }
         }
 
         return self::getVarId($stmt, $this_class_name, $source);

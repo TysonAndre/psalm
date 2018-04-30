@@ -19,6 +19,14 @@ class ConfigTest extends TestCase
     public static function setUpBeforeClass()
     {
         self::$config = new TestConfig();
+
+        if (!defined('PSALM_VERSION')) {
+            define('PSALM_VERSION', '2.0.0');
+        }
+
+        if (!defined('PHP_PARSER_VERSION')) {
+            define('PHP_PARSER_VERSION', '4.0.0');
+        }
     }
 
     /**
@@ -440,6 +448,38 @@ class ConfigTest extends TestCase
     /**
      * @return void
      */
+    public function testPolyfilledFunction()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+
+                    <stubs>
+                        <file name="tests/stubs/polyfill.php" />
+                    </stubs>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                $a = random_bytes(16);'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
     public function testStubFunctionWithFunctionExists()
     {
         $this->project_checker = $this->getProjectCheckerWithConfig(
@@ -687,6 +727,47 @@ class ConfigTest extends TestCase
             $file_path,
             '<?php
                 function foo() {}'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testMethodCallMemoize()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm memoizeMethodCallResults="true">
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                class A {
+                    function getFoo() : ?Foo {
+                        return rand(0, 1) ? new Foo : null;
+                    }
+                }
+                class Foo {
+                    public function bar() : void {}
+                };
+
+                $a = new A();
+
+                if ($a->getFoo()) {
+                    $a->getFoo()->bar();
+                }'
         );
 
         $this->analyzeFile($file_path, new Context());

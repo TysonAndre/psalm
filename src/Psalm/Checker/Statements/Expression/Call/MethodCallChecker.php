@@ -602,6 +602,18 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
+                if (!$stmt->args && $var_id) {
+                    if ($config->memoize_method_calls) {
+                        $method_var_id = $var_id . '->' . $method_name_lc . '()';
+
+                        if (isset($context->vars_in_scope[$method_var_id])) {
+                            $return_type_candidate = clone $context->vars_in_scope[$method_var_id];
+                        } elseif ($return_type_candidate) {
+                            $context->vars_in_scope[$method_var_id] = $return_type_candidate;
+                        }
+                    }
+                }
+
                 if ($config->after_method_checks) {
                     $file_manipulations = [];
 
@@ -614,8 +626,10 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $method_id,
                             $appearing_method_id,
                             $declaring_method_id,
+                            $var_id,
                             $stmt->args,
                             $code_location,
+                            $context,
                             $file_manipulations,
                             $return_type_candidate
                         );
