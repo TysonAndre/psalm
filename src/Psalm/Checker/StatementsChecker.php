@@ -142,8 +142,8 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             /*
-            if (isset($context->vars_in_scope['$cumulative']) && !$stmt instanceof PhpParser\Node\Stmt\Nop) {
-                var_dump($stmt->getLine() . ' ' . $context->vars_in_scope['$cumulative']);
+            if (isset($context->vars_in_scope['$array']) && !$stmt instanceof PhpParser\Node\Stmt\Nop) {
+                var_dump($stmt->getLine(), $context->vars_in_scope['$array']);
             }
             */
 
@@ -212,6 +212,42 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
                     if ($var_id) {
                         $context->remove($var_id);
+
+                        if ($var instanceof PhpParser\Node\Expr\ArrayDimFetch
+                            && $var->dim
+                            && ($var->dim instanceof PhpParser\Node\Scalar\String_
+                                || $var->dim instanceof PhpParser\Node\Scalar\LNumber
+                            )
+                        ) {
+                            $root_var_id = ExpressionChecker::getArrayVarId(
+                                $var->var,
+                                $this->getFQCLN(),
+                                $this
+                            );
+
+                            if ($root_var_id && isset($context->vars_in_scope[$root_var_id])) {
+                                $root_type = clone $context->vars_in_scope[$root_var_id];
+
+                                foreach ($root_type->getTypes() as $atomic_root_type) {
+                                    if ($atomic_root_type instanceof Type\Atomic\ObjectLike) {
+                                        if (isset($atomic_root_type->properties[$var->dim->value])) {
+                                            unset($atomic_root_type->properties[$var->dim->value]);
+                                        }
+
+                                        if (!$atomic_root_type->properties) {
+                                            $root_type->addType(
+                                                new Type\Atomic\TArray([
+                                                    new Type\Union([new Type\Atomic\TEmpty]),
+                                                    new Type\Union([new Type\Atomic\TEmpty]),
+                                                ])
+                                            );
+                                        }
+                                    }
+                                }
+
+                                $context->vars_in_scope[$root_var_id] = $root_type;
+                            }
+                        }
                     }
                 }
 
@@ -736,7 +772,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 && $stmt->name instanceof PhpParser\Node\Identifier
                 && isset($existing_class_constants[$stmt->name->name])
             ) {
-                return $existing_class_constants[$stmt->name->name];
+                return clone $existing_class_constants[$stmt->name->name];
             }
 
             if ($stmt->name instanceof PhpParser\Node\Identifier && strtolower($stmt->name->name) === 'class') {
@@ -747,15 +783,15 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\String_) {
-            return Type::getString();
+            return Type::getString(strlen($stmt->value) < 30 ? [$stmt->value => true] : null);
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\LNumber) {
-            return Type::getInt();
+            return Type::getInt(false, [$stmt->value => true]);
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\DNumber) {
-            return Type::getFloat();
+            return Type::getFloat([(string)$stmt->value => true]);
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\Array_) {

@@ -337,6 +337,7 @@ class ReturnTypeChecker
                 $type_coerced,
                 $type_coerced_from_mixed,
                 $ignored_to_string_cast,
+                $ignored_incompatible_values,
                 $has_partial_match
             )) {
                 // is the declared return type more specific than the inferred one?

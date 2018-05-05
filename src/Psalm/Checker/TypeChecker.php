@@ -39,6 +39,7 @@ class TypeChecker
      * @param  bool         &$type_coerced    whether or not there was type coercion involved
      * @param  bool         &$type_coerced_from_mixed
      * @param  bool         &$to_string_cast
+     * @param  bool         &$incompatible_values
      * @param  bool         &$has_partial_match
      *
      * @return bool
@@ -53,6 +54,7 @@ class TypeChecker
         &$type_coerced = null,
         &$type_coerced_from_mixed = null,
         &$to_string_cast = null,
+        &$incompatible_values = null,
         &$has_partial_match = null
     ) {
         if ($container_type->isMixed()) {
@@ -63,7 +65,6 @@ class TypeChecker
             return false;
         }
 
-        // TODO: can scalar/partial be removed?
         $has_scalar_match = true;
         $has_partial_match = false;
         $has_overall_match = true;
@@ -90,7 +91,8 @@ class TypeChecker
                     $scalar_type_match_found,
                     $type_coerced,
                     $type_coerced_from_mixed,
-                    $atomic_to_string_cast
+                    $atomic_to_string_cast,
+                    $incompatible_values
                 );
 
                 if ($is_atomic_contained_by) {
@@ -202,7 +204,6 @@ class TypeChecker
                 continue;
             }
 
-            $type_match_found = false;
             $scalar_type_match_found = false;
             $atomic_to_string_cast = false;
 
@@ -218,16 +219,12 @@ class TypeChecker
                 );
 
                 if ($is_atomic_contained_by) {
-                    $type_match_found = true;
+                    return true;
                 }
-            }
-
-            if (!$type_match_found) {
-                return false;
             }
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -350,6 +347,7 @@ class TypeChecker
      * @param  bool         &$type_coerced    whether or not there was type coercion involved
      * @param  bool         &$type_coerced_from_mixed
      * @param  bool         &$to_string_cast
+     * @param  bool         &$incompatible_values
      *
      * @return bool
      */
@@ -360,7 +358,8 @@ class TypeChecker
         &$has_scalar_match = null,
         &$type_coerced = null,
         &$type_coerced_from_mixed = null,
-        &$to_string_cast = null
+        &$to_string_cast = null,
+        &$incompatible_values = null
     ) {
         if ($container_type_part instanceof TMixed || $container_type_part instanceof TGenericParam) {
             return true;
@@ -387,7 +386,8 @@ class TypeChecker
                 $has_scalar_match,
                 $type_coerced,
                 $type_coerced_from_mixed,
-                $to_string_cast
+                $to_string_cast,
+                $incompatible_values
             );
         }
 
@@ -512,7 +512,13 @@ class TypeChecker
                 $all_types_contain = true;
 
                 foreach ($input_type_part->type_params as $i => $input_param) {
-                    $container_param = $container_type_part->type_params[$i];
+                    $container_param_offset = $i - (2 - count($container_type_part->type_params));
+
+                    if ($container_param_offset === -1) {
+                        continue;
+                    }
+
+                    $container_param = $container_type_part->type_params[$container_param_offset];
 
                     if ($i === 0
                         && $input_param->isMixed()
@@ -682,6 +688,8 @@ class TypeChecker
      * @param  bool        &$type_coerced
      * @param  bool        &$type_coerced_from_mixed
      * @param  bool        &$to_string_cast
+     * @param  bool         &$incompatible_values
+     *
      * @return bool
      */
     private static function isMatchingTypeContainedBy(
@@ -691,7 +699,8 @@ class TypeChecker
         &$has_scalar_match,
         &$type_coerced,
         &$type_coerced_from_mixed,
-        &$to_string_cast
+        &$to_string_cast,
+        &$incompatible_values
     ) {
         $all_types_contain = true;
 
@@ -813,6 +822,20 @@ class TypeChecker
                 ) {
                     $all_types_contain = false;
                 }
+            }
+        }
+
+        if (($input_type_part instanceof TString && $container_type_part instanceof TString)
+            || ($input_type_part instanceof TInt && $container_type_part instanceof TInt)
+            || ($input_type_part instanceof TFloat && $container_type_part instanceof TFloat)
+        ) {
+            /**
+             * @psalm-suppress UndefinedPropertyFetch
+             * @psalm-suppress MixedArgument
+             */
+            if ($input_type_part->values !== null && $container_type_part->values !== null) {
+                $all_types_contain = !array_diff_key($input_type_part->values, $container_type_part->values);
+                $incompatible_values = !$all_types_contain;
             }
         }
 

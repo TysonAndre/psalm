@@ -351,7 +351,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 if ($a === 4) {
@@ -376,7 +376,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 switch ($a) {
@@ -406,7 +406,7 @@ class TypeTest extends TestCase
                          * @return void
                          */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 switch ($a) {
@@ -433,7 +433,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 switch ($a) {
@@ -459,7 +459,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 if ($a === 4) {
@@ -485,7 +485,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 if ($a === 4) {
@@ -511,7 +511,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 if ($a === 4) {
@@ -984,6 +984,26 @@ class TypeTest extends TestCase
                     function takesI(I $i): void {}
                     function takesA(A $i): void {}',
             ],
+            'intersectionInNamespace' => [
+                '<?php
+                    namespace NS;
+                    use Countable;
+
+                    class Item {}
+                    /**
+                     * @var iterable<Item>&Countable $collection
+                     */
+                    $collection = [];
+                    count($collection);
+
+                    /**
+                     * @param iterable<Item>&Countable $collection
+                     */
+                    function mycount($collection): int {
+                        return count($collection);
+                    }
+                    mycount($collection);',
+            ],
         ];
     }
 
@@ -1143,7 +1163,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null, Two $two = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 if ($a === 4) {
@@ -1219,7 +1239,7 @@ class TypeTest extends TestCase
                     class B {
                         /** @return void */
                         public function barBar(One $one = null) {
-                            $a = 4;
+                            $a = rand(0, 4);
 
                             if ($one === null) {
                                 if ($a === 4) {

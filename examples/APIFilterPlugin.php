@@ -166,7 +166,7 @@ class APIFilterPlugin extends \Psalm\Plugin
         $union_type_properties = array_map(
             /**
              * @param string $union_type_string
-             * @suppress RedundantConditionGivenDocblockType
+             * @psalm-suppress RedundantConditionGivenDocblockType
              */
             function($union_type_string) : Union {
                 if (!is_string($union_type_string)) {
@@ -236,9 +236,7 @@ class APIFilterRecord {
                 $correspondingValue = $this->convertNodeToPHPLiteral($item->value);
                 // printf("result of convertNode: %s\n", json_encode([$resolvedKey, $correspondingValue]));
                 if ($resolvedKey !== null) {
-                    if (is_scalar($resolvedKey)) {
-                        $result[$resolvedKey] = $correspondingValue;
-                    }
+                    $result[$resolvedKey] = $correspondingValue;
                 } else {
                     $result[] = $correspondingValue;
                 }
@@ -251,7 +249,9 @@ class APIFilterRecord {
     }
 
     /**
-     * @return array<string, array<string,string>> hopefully
+     * @return array<string, array<string,string> hopefully
+     * @psalm-suppress LessSpecificReturnStatement
+     * @psalm-suppress MoreSpecificReturnType
      */
     public function extractMethodFilterDefinitions() {
         $result = $this->convertNodeToPHPLiteral($this->node);
