@@ -28,11 +28,13 @@ use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TInt;
+use Psalm\Type\Atomic\TLiteralString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Reconciler;
+use Psalm\Type\Union;
 
 class BinaryOpChecker
 {
@@ -1309,6 +1311,14 @@ class BinaryOpChecker
                         // fall through
                     }
                 }
+            }
+        }
+        // When concatenating two known string literals (with only one possibility), produce the concatenation as $result_type
+        if ($left_type && $right_type && $left_type->isSingleStringLiteral() && $right_type->isSingleStringLiteral()) {
+            $literal = $left_type->getSingleStringLiteral() . $right_type->getSingleStringLiteral();
+            if (strlen($literal) <= 10000) {
+                // Limit these to 10000 bytes to avoid extremely large union types from repeated concatenations, etc
+                $result_type = new Union([new TLiteralString([$literal => true])]);
             }
         }
     }

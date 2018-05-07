@@ -655,6 +655,13 @@ class TypeAlgebraTest extends TestCase
                         return null;
                     }',
             ],
+            'stringConcatenationTrackedValid' => [
+                '<?php
+                    $x = "a";
+                    $x = "_" . $x;
+                    $array = [$x => 2];
+                    echo $array["_a"];',
+            ],
         ];
     }
 
@@ -869,6 +876,14 @@ class TypeAlgebraTest extends TestCase
                     $b = 5;
                     if ($a !== $b) {}',
                 'error_message' => 'RedundantCondition',
+            ],
+            'stringConcatenationTrackedInvalid' => [
+                '<?php
+                    $x = "a";
+                    $x = "_" . $x;
+                    $array = [$x => 2];
+                    echo $array["other"];',
+                'error_message' => 'InvalidArrayOffset',
             ],
         ];
     }
