@@ -598,6 +598,63 @@ class TypeAlgebraTest extends TestCase
                         echo $a;
                     }',
             ],
+            'callWithNonNullInTernary' => [
+                '<?php
+                    function sayHello(?int $a, ?int $b): void {
+                        if ($a === null && $b === null) {
+                            throw new \LogicException();
+                        }
+
+                        takesInt($a !== null ? $a : $b);
+                    }
+
+                    function takesInt(int $c) : void {}',
+            ],
+            'callWithNonNullInIf' => [
+                '<?php
+                    function sayHello(?int $a, ?int $b): void {
+                        if ($a === null && $b === null) {
+                            throw new \LogicException();
+                        }
+
+                        if ($a !== null) {
+                            takesInt($a);
+                        } else {
+                            takesInt($b);
+                        }
+                    }
+
+                    function takesInt(int $c) : void {}',
+            ],
+            'callWithNonNullInIfWithCallInElseif' => [
+                '<?php
+                    function sayHello(?int $a, ?int $b): void {
+                        if ($a === null && $b === null) {
+                            throw new \LogicException();
+                        }
+
+                        if ($a !== null) {
+                            takesInt($a);
+                        } elseif (rand(0, 1)) {
+                            takesInt($b);
+                        }
+                    }
+
+                    function takesInt(int $c) : void {}',
+            ],
+            'typeSimplification' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    function foo(A $a, A $b) : ?B {
+                        if (($a instanceof B || !$b instanceof B) && $a instanceof B && $b instanceof B) {
+                            return $a;
+                        }
+
+                        return null;
+                    }',
+            ],
         ];
     }
 

@@ -14,12 +14,7 @@ class TArray extends \Psalm\Type\Atomic
     public $value = 'array';
 
     /**
-     * @var array<int, \Psalm\Type\Union>
-     */
-    public $type_params;
-
-    /**
-     * @var TInt|null
+     * @var TLiteralInt|null
      */
     public $count;
 
