@@ -408,7 +408,17 @@ class Union
     /**
      * @return bool
      */
-    public function hasNumericType()
+    public function hasDefinitelyNumericType()
+    {
+        return isset($this->types['int'])
+            || isset($this->types['float'])
+            || isset($this->types['numeric-string']);
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasPossiblyNumericType()
     {
         return isset($this->types['int'])
             || isset($this->types['float'])

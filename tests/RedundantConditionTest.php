@@ -510,6 +510,19 @@ class RedundantConditionTest extends TestCase
                     if ($a && $b && $a) {}',
                 'error_message' => 'RedundantCondition',
             ],
+            'typeResolutionRepeatingOredConditionWithSingleVar' => [
+                '<?php
+                    $a = rand(0, 10) > 5;
+                    if ($a || $a) {}',
+                'error_message' => 'ParadoxicalCondition',
+            ],
+            'typeResolutionRepeatingOredConditionWithVarInMiddle' => [
+                '<?php
+                    $a = rand(0, 10) > 5;
+                    $b = rand(0, 10) > 5;
+                    if ($a || $b || $a) {}',
+                'error_message' => 'ParadoxicalCondition',
+            ],
             'typeResolutionIsIntAndIsNumeric' => [
                 '<?php
                     $c = rand(0, 10) > 5 ? "hello" : 3;
@@ -541,7 +554,7 @@ class RedundantConditionTest extends TestCase
                     }',
                 'error_message' => 'TypeDoesNotContainType',
             ],
-            'SKIPPED-twoVarLogicNotNestedWithElseifNegatedInIf' => [
+            'twoVarLogicNotNestedWithElseifNegatedInIf' => [
                 '<?php
                     function foo(?string $a, ?string $b): ?string {
                         if ($a) {

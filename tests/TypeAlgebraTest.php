@@ -126,7 +126,25 @@ class TypeAlgebraTest extends TestCase
                         return $a;
                     }',
             ],
-            'threeVarLogicNotNestedWithNoRedefinitions' => [
+            'threeVarLogicNotNestedWithNoRedefinitionsWithClasses' => [
+                '<?php
+                    function foo(?stdClass $a, ?stdClass $b, ?stdClass $c): stdClass {
+                        if ($a) {
+                            // do nothing
+                        } elseif ($b) {
+                            // do nothing here
+                        } elseif ($c) {
+                            // do nothing here
+                        } else {
+                            return new stdClass;
+                        }
+
+                        if (!$a && !$b) return $c;
+                        if (!$a) return $b;
+                        return $a;
+                    }',
+            ],
+            'threeVarLogicNotNestedWithNoRedefinitionsWithStrings' => [
                 '<?php
                     function foo(?string $a, ?string $b, ?string $c): string {
                         if ($a) {
@@ -291,6 +309,20 @@ class TypeAlgebraTest extends TestCase
                             }
 
                             $a = "hello";
+                        }
+                    }',
+            ],
+            'SKIPPED-issetArrayCreation' => [
+                '<?php
+                    $arr = [];
+
+                    foreach ([0, 1, 2, 3] as $i) {
+                        $a = rand(0, 1) ? 5 : "010";
+
+                        if (!isset($arr[(int) $a])) {
+                            $arr[(int) $a] = 5;
+                        } else {
+                            $arr[(int) $a] += 4;
                         }
                     }',
             ],
@@ -522,8 +554,7 @@ class TypeAlgebraTest extends TestCase
                         }
                     } catch (Exception $e) {}',
             ],
-            // because we only support expressions in CNF atm
-            'SKIPPED-instanceofInOr' => [
+            'instanceofInOr' => [
                 '<?php
                     class A {}
                     class B extends A {}
@@ -538,6 +569,73 @@ class TypeAlgebraTest extends TestCase
                             takesA($a);
                         }
                     }',
+            ],
+            'instanceofInOrNegated' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+
+                    function takesA(A $a): void {}
+
+                    function foo(?A $a, ?A $b, ?A $c): void {
+                        if (!$a || ($b && $c)) {
+                            return;
+                        }
+
+                        takesA($a);
+                    }',
+            ],
+            'instanceofInBothOrs' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+
+                    function takesA(A $a): void {}
+
+                    function foo(?A $a): void {
+                        if (($a instanceof B && rand(0, 1))
+                            || ($a instanceof C && rand(0, 1))
+                        ) {
+                            takesA($a);
+                        }
+                    }',
+            ],
+            'instanceofInBothOrsWithSecondVar' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+
+                    function takesA(A $a): void {}
+
+                    function foo(?A $a, ?A $b): void {
+                        if (($a instanceof B && $b instanceof B)
+                            || ($a instanceof C && $b instanceof C)
+                        ) {
+                            takesA($a);
+                            takesA($b);
+                        }
+                    }',
+            ],
+            'explosionOfCNF' => [
+                '<?php
+                    class A {
+                        /** @var ?string */
+                        public $foo;
+
+                        /** @var ?string */
+                        public $bar;
+                    }
+
+                    $a1 = rand(0, 1) ? new A() : null;
+                    $a4 = rand(0, 1) ? new A() : null;
+                    $a5 = rand(0, 1) ? new A() : null;
+                    $a7 = rand(0, 1) ? new A() : null;
+                    $a8 = rand(0, 1) ? new A() : null;
+
+                    if ($a1 || (($a4 && $a5) || ($a7 && $a8))) {}',
             ],
             'instanceofInCNFOr' => [
                 '<?php
@@ -662,6 +760,24 @@ class TypeAlgebraTest extends TestCase
                     $array = [$x => 2];
                     echo $array["_a"];',
             ],
+            'instanceofNoRedundant' => [
+                '<?php
+                    function logic(Bar $a, ?Bar $b) : void {
+                        if ((!$a instanceof Foo || !$b instanceof Foo)
+                            && (!$a instanceof Foo || !$b instanceof Bar)
+                            && (!$a instanceof Bar || !$b instanceof Foo)
+                            && (!$a instanceof Bar || !$b instanceof Bar)
+                        ) {
+
+                        } else {
+                            if ($b instanceof Foo) {}
+                        }
+                    }
+
+                    class Foo {}
+                    class Bar extends Foo {}
+                    class Bat extends Foo {}',
+            ],
         ];
     }
 
@@ -778,7 +894,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'NullableReturnStatement',
+                'error_message' => 'ParadoxicalCondition',
             ],
             'twoVarLogicNotNestedWithElseifNegatedInIf' => [
                 '<?php
@@ -794,7 +910,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'NullableReturnStatement',
+                'error_message' => 'RedundantCondition',
             ],
             'twoVarLogicNotNestedWithElseifIncorrectlyReinforcedInIf' => [
                 '<?php
@@ -810,7 +926,7 @@ class TypeAlgebraTest extends TestCase
                         if (!$a) return $b;
                         return $a;
                     }',
-                'error_message' => 'NullableReturnStatement',
+                'error_message' => 'RedundantCondition',
             ],
             'repeatedIfStatements' => [
                 '<?php
@@ -824,7 +940,7 @@ class TypeAlgebraTest extends TestCase
 
                         }
                     }',
-                'error_message' => 'ParadoxicalCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'repeatedConditionals' => [
                 '<?php
@@ -835,7 +951,7 @@ class TypeAlgebraTest extends TestCase
                             // can never get here
                         }
                     }',
-                'error_message' => 'ParadoxicalCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'repeatedAndConditional' => [
                 '<?php
@@ -857,7 +973,7 @@ class TypeAlgebraTest extends TestCase
                             echo "b";
                         }
                     }',
-                'error_message' => 'ParadoxicalCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'repeatedVarFromOrConditional' => [
                 '<?php
@@ -868,7 +984,7 @@ class TypeAlgebraTest extends TestCase
                             echo "b";
                         }
                     }',
-                'error_message' => 'ParadoxicalCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'typeDoesntEqualType' => [
                 '<?php
