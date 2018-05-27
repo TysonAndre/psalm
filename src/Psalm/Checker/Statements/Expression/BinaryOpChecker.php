@@ -35,6 +35,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Reconciler;
+use Psalm\Type\TypeCombination;
 use Psalm\Type\Union;
 
 class BinaryOpChecker
@@ -868,7 +869,7 @@ class BinaryOpChecker
 
                 $result_type_member = new Type\Union([new ObjectLike($properties)]);
             } else {
-                $result_type_member = Type::combineTypes([$left_type_part, $right_type_part]);
+                $result_type_member = TypeCombination::combineTypes([$left_type_part, $right_type_part]);
             }
 
             if (!$result_type) {
@@ -1366,12 +1367,13 @@ class BinaryOpChecker
                 }
             }
         }
-        // When concatenating two known string literals (with only one possibility), produce the concatenation as $result_type
+        // When concatenating two known string literals (with only one possibility),
+        // put the concatenated string into $result_type
         if ($left_type && $right_type && $left_type->isSingleStringLiteral() && $right_type->isSingleStringLiteral()) {
             $literal = $left_type->getSingleStringLiteral() . $right_type->getSingleStringLiteral();
             if (strlen($literal) <= 10000) {
                 // Limit these to 10000 bytes to avoid extremely large union types from repeated concatenations, etc
-                $result_type = new Union([new TLiteralString([$literal => true])]);
+                $result_type = new Union([new TLiteralString($literal)]);
             }
         }
     }

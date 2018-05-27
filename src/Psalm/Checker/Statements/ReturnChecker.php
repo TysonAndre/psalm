@@ -177,9 +177,10 @@ class ReturnChecker
                         $has_scalar_match,
                         $type_coerced,
                         $type_coerced_from_mixed,
-                        $ignored_to_string_cast,
+                        $to_string_cast,
                         $ignored_incompatible_values,
-                        $has_partial_match
+                        $has_partial_match,
+                        $type_coerced_from_scalar
                     )
                     ) {
                         // is the declared return type more specific than the inferred one?
@@ -209,19 +210,22 @@ class ReturnChecker
                                         return false;
                                     }
                                 } elseif ($local_type_part instanceof Type\Atomic\TArray
-                                    && isset($local_type_part->type_params[1]->getTypes()['class-string'])
                                     && $stmt->expr instanceof PhpParser\Node\Expr\Array_
                                 ) {
-                                    foreach ($stmt->expr->items as $item) {
-                                        if ($item && $item->value instanceof PhpParser\Node\Scalar\String_) {
-                                            if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
-                                                $statements_checker,
-                                                $item->value->value,
-                                                new CodeLocation($source, $item->value),
-                                                $statements_checker->getSuppressedIssues()
-                                            ) === false
-                                            ) {
-                                                return false;
+                                    foreach ($local_type_part->type_params[1]->getTypes() as $local_array_type_part) {
+                                        if ($local_array_type_part instanceof Type\Atomic\TClassString) {
+                                            foreach ($stmt->expr->items as $item) {
+                                                if ($item && $item->value instanceof PhpParser\Node\Scalar\String_) {
+                                                    if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
+                                                        $statements_checker,
+                                                        $item->value->value,
+                                                        new CodeLocation($source, $item->value),
+                                                        $statements_checker->getSuppressedIssues()
+                                                    ) === false
+                                                    ) {
+                                                        return false;
+                                                    }
+                                                }
                                             }
                                         }
                                     }

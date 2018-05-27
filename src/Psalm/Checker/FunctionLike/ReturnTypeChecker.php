@@ -14,7 +14,6 @@ use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
 use Psalm\Context;
-use Psalm\EffectsAnalyser;
 use Psalm\FileManipulation\FunctionDocblockManipulator;
 use Psalm\Issue\InvalidFalsableReturnType;
 use Psalm\Issue\InvalidNullableReturnType;
@@ -31,6 +30,7 @@ use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Type;
+use Psalm\Type\TypeCombination;
 
 class ReturnTypeChecker
 {
@@ -89,7 +89,7 @@ class ReturnTypeChecker
         /** @var PhpParser\Node\Stmt[] */
         $function_stmts = $function->getStmts();
 
-        $inferred_return_type_parts = EffectsAnalyser::getReturnTypes(
+        $inferred_return_type_parts = ReturnTypeCollector::getReturnTypes(
             $function_stmts,
             $inferred_yield_types,
             $ignore_nullable_issues,
@@ -133,9 +133,9 @@ class ReturnTypeChecker
         }
 
         $inferred_return_type = $inferred_return_type_parts
-            ? Type::combineTypes($inferred_return_type_parts)
+            ? TypeCombination::combineTypes($inferred_return_type_parts)
             : Type::getVoid();
-        $inferred_yield_type = $inferred_yield_types ? Type::combineTypes($inferred_yield_types) : null;
+        $inferred_yield_type = $inferred_yield_types ? TypeCombination::combineTypes($inferred_yield_types) : null;
 
         if ($inferred_yield_type) {
             $inferred_return_type = $inferred_yield_type;

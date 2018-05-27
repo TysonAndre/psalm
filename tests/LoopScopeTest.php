@@ -443,8 +443,8 @@ class LoopScopeTest extends TestCase
                 '<?php
                     $a = ["b", "c", "d"];
                     while ($a) {
-                      $letter = array_pop($a);
-                      if (!$a) {}
+                        $letter = array_pop($a);
+                        if (!$a) {}
                     }',
             ],
             'loopWithIfElseNoParadox' => [
@@ -471,7 +471,7 @@ class LoopScopeTest extends TestCase
                     foreach (["a", "b", "c"] as $tag) {
                     }',
                 'assignments' => [
-                    '$tag' => 'null|string',
+                    '$tag' => 'string|null',
                 ],
             ],
             'bleedVarIntoOuterContextWithRedefinedAsNull' => [
@@ -546,7 +546,7 @@ class LoopScopeTest extends TestCase
                       }
                     }',
                 'assignments' => [
-                    '$tag' => 'string|null|int',
+                    '$tag' => 'string|int|null',
                 ],
             ],
             'bleedVarIntoOuterContextWithRedefineAndBreak' => [

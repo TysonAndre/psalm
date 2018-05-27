@@ -47,6 +47,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
         PhpParser\Node\Expr\MethodCall $stmt,
         Context $context
     ) {
+        $stmt->inferredType = null;
+
         if (ExpressionChecker::analyze($statements_checker, $stmt->var, $context) === false) {
             return false;
         }
@@ -175,12 +177,13 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         case Type\Atomic\TBool::class:
                         case Type\Atomic\TTrue::class:
                         case Type\Atomic\TArray::class:
-                        case Type\Atomic\TArray::class:
                         case Type\Atomic\ObjectLike::class:
                         case Type\Atomic\TString::class:
                         case Type\Atomic\TLiteralString::class:
+                        case Type\Atomic\TLiteralClassString::class:
                         case Type\Atomic\TNumericString::class:
                         case Type\Atomic\TClassString::class:
+                        case Type\Atomic\TEmptyMixed::class:
                             $invalid_method_call_types[] = (string)$class_type_part;
                             break;
 
@@ -197,6 +200,16 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                                 $statements_checker->getSuppressedIssues()
                             )) {
                                 // fall through
+                            }
+
+                            if (self::checkFunctionArguments(
+                                $statements_checker,
+                                $stmt->args,
+                                null,
+                                null,
+                                $context
+                            ) === false) {
+                                return false;
                             }
 
                             $return_type = Type::getMixed();
@@ -378,8 +391,6 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
-                $cased_method_id = $fq_class_name . '::' . $stmt->name->name;
-
                 if (!$codebase->methodExists($method_id, $code_location)) {
                     if ($config->use_phpdoc_methods_without_call) {
                         $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
@@ -496,9 +507,13 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         continue;
                 }
 
+                $call_map_id = strtolower(
+                    $codebase->methods->getDeclaringMethodId($method_id) ?: $method_id
+                );
+
                 if ($method_name_lc === '__tostring') {
                     $return_type_candidate = Type::getString();
-                } elseif (CallMap::inCallMap($cased_method_id)) {
+                } elseif ($call_map_id && CallMap::inCallMap($call_map_id)) {
                     if ($class_template_params
                         && isset($class_storage->methods[$method_name_lc])
                         && ($method_storage = $class_storage->methods[$method_name_lc])
@@ -510,7 +525,14 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $class_template_params
                         );
                     } else {
-                        $return_type_candidate = CallMap::getReturnTypeFromCallMap($method_id);
+                        if ($call_map_id === 'domnode::appendchild'
+                            && isset($stmt->args[0]->value->inferredType)
+                            && $stmt->args[0]->value->inferredType->hasObjectType()
+                        ) {
+                            $return_type_candidate = clone $stmt->args[0]->value->inferredType;
+                        } else {
+                            $return_type_candidate = CallMap::getReturnTypeFromCallMap($call_map_id);
+                        }
                     }
 
                     $return_type_candidate = ExpressionChecker::fleshOutType(
@@ -552,8 +574,13 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
 
                     $return_type_candidate = $codebase->methods->getMethodReturnType(
                         $method_id,
-                        $self_fq_class_name
+                        $self_fq_class_name,
+                        $stmt->args
                     );
+
+                    if (isset($stmt->inferredType)) {
+                        $return_type_candidate = $stmt->inferredType;
+                    }
 
                     if ($return_type_candidate) {
                         $return_type_candidate = clone $return_type_candidate;
@@ -816,7 +843,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     && IssueBuffer::accepts(
                         new UndefinedThisPropertyAssignment(
                             'Instance property ' . $property_id . ' is not defined',
-                            new CodeLocation($statements_checker->getSource(), $stmt)
+                            new CodeLocation($statements_checker->getSource(), $stmt),
+                            $property_id
                         ),
                         $statements_checker->getSuppressedIssues()
                     )
@@ -887,7 +915,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                                     $prop_name . ' with declared type \''
                                     . $pseudo_set_type
                                     . '\' cannot be assigned possibly different type \'' . $second_arg_type . '\'',
-                                    new CodeLocation($statements_checker->getSource(), $stmt)
+                                    new CodeLocation($statements_checker->getSource(), $stmt),
+                                    $property_id
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
@@ -899,7 +928,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                                     $prop_name . ' with declared type \''
                                     . $pseudo_set_type
                                     . '\' cannot be assigned type \'' . $second_arg_type . '\'',
-                                    new CodeLocation($statements_checker->getSource(), $stmt)
+                                    new CodeLocation($statements_checker->getSource(), $stmt),
+                                    $property_id
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
@@ -918,13 +948,19 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     && IssueBuffer::accepts(
                         new UndefinedThisPropertyFetch(
                             'Instance property ' . $property_id . ' is not defined',
-                            new CodeLocation($statements_checker->getSource(), $stmt)
+                            new CodeLocation($statements_checker->getSource(), $stmt),
+                            $property_id
                         ),
                         $statements_checker->getSuppressedIssues()
                     )
                 ) {
                     return false;
                 }
+
+                if (isset($class_storage->pseudo_property_get_types['$' . $prop_name])) {
+                    $stmt->inferredType = clone $class_storage->pseudo_property_get_types['$' . $prop_name];
+                }
+
                 break;
         }
 

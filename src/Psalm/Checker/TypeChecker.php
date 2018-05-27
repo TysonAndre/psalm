@@ -4,18 +4,22 @@ namespace Psalm\Checker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Codebase;
 use Psalm\Type;
-use Psalm\Type\Atomic\LiteralType;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TEmptyMixed;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TInt;
+use Psalm\Type\Atomic\TLiteralClassString;
+use Psalm\Type\Atomic\TLiteralFloat;
+use Psalm\Type\Atomic\TLiteralInt;
+use Psalm\Type\Atomic\TLiteralString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
@@ -42,6 +46,7 @@ class TypeChecker
      * @param  bool         &$to_string_cast
      * @param  bool         &$incompatible_values
      * @param  bool         &$has_partial_match
+     * @param  bool         &$type_coerced_from_scalar
      *
      * @return bool
      */
@@ -56,9 +61,12 @@ class TypeChecker
         &$type_coerced_from_mixed = null,
         &$to_string_cast = null,
         &$incompatible_values = null,
-        &$has_partial_match = null
+        &$has_partial_match = null,
+        &$type_coerced_from_scalar = null
     ) {
-        if ($container_type->isMixed()) {
+        $has_scalar_match = true;
+
+        if ($container_type->isMixed() && !$container_type->isEmptyMixed()) {
             return true;
         }
 
@@ -93,7 +101,7 @@ class TypeChecker
                     $type_coerced,
                     $type_coerced_from_mixed,
                     $atomic_to_string_cast,
-                    $incompatible_values
+                    $type_coerced_from_scalar
                 );
 
                 if ($is_atomic_contained_by) {
@@ -348,7 +356,7 @@ class TypeChecker
      * @param  bool         &$type_coerced    whether or not there was type coercion involved
      * @param  bool         &$type_coerced_from_mixed
      * @param  bool         &$to_string_cast
-     * @param  bool         &$incompatible_values
+     * @param  bool         &$type_coerced_from_scalar
      *
      * @return bool
      */
@@ -360,9 +368,18 @@ class TypeChecker
         &$type_coerced = null,
         &$type_coerced_from_mixed = null,
         &$to_string_cast = null,
-        &$incompatible_values = null
+        &$type_coerced_from_scalar = null
     ) {
         if ($container_type_part instanceof TMixed || $container_type_part instanceof TGenericParam) {
+            if (get_class($container_type_part) === TEmptyMixed::class
+                && get_class($input_type_part) === TMixed::class
+            ) {
+                $type_coerced = true;
+                $type_coerced_from_mixed = true;
+
+                return false;
+            }
+
             return true;
         }
 
@@ -387,8 +404,7 @@ class TypeChecker
                 $has_scalar_match,
                 $type_coerced,
                 $type_coerced_from_mixed,
-                $to_string_cast,
-                $incompatible_values
+                $to_string_cast
             );
         }
 
@@ -469,8 +485,8 @@ class TypeChecker
 
                 $input_property_type = $input_type_part->properties[$key];
 
-                if (!$input_property_type->isEmpty() &&
-                    !self::isContainedBy(
+                if (!$input_property_type->isEmpty()
+                    && !self::isContainedBy(
                         $codebase,
                         $input_property_type,
                         $container_property_type,
@@ -478,10 +494,26 @@ class TypeChecker
                         $input_property_type->ignore_falsable_issues,
                         $property_has_scalar_match,
                         $property_type_coerced,
-                        $property_type_coerced_from_mixed
+                        $property_type_coerced_from_mixed,
+                        $property_type_to_string_cast,
+                        $property_type_coerced_from_scalar
                     )
+                    && !$property_type_coerced_from_scalar
                 ) {
-                    if (self::isContainedBy($codebase, $container_property_type, $input_property_type)) {
+                    if (self::isContainedBy(
+                        $codebase,
+                        $container_property_type,
+                        $input_property_type,
+                        false,
+                        false,
+                        $inverse_property_has_scalar_match,
+                        $inverse_property_type_coerced,
+                        $inverse_property_type_coerced_from_mixed,
+                        $inverse_property_type_to_string_cast,
+                        $inverse_property_type_coerced_from_scalar
+                    )
+                    || $inverse_property_type_coerced_from_scalar
+                    ) {
                         $type_coerced = true;
                     }
 
@@ -529,17 +561,20 @@ class TypeChecker
                         continue;
                     }
 
-                    if (!$input_param->isEmpty() &&
-                        !self::isContainedBy(
+                    if (!$input_param->isEmpty()
+                        && !self::isContainedBy(
                             $codebase,
                             $input_param,
                             $container_param,
                             $input_param->ignore_nullable_issues,
                             $input_param->ignore_falsable_issues,
-                            $has_scalar_match,
-                            $type_coerced,
-                            $type_coerced_from_mixed
+                            $array_has_scalar_match,
+                            $array_type_coerced,
+                            $type_coerced_from_mixed,
+                            $array_to_string_cast,
+                            $array_type_coerced_from_scalar
                         )
+                        && !$array_type_coerced_from_scalar
                     ) {
                         $all_types_contain = false;
                     }
@@ -573,7 +608,62 @@ class TypeChecker
             return true;
         }
 
-        if ($container_type_part instanceof TString && $input_type_part instanceof TClassString) {
+        if (get_class($container_type_part) === TInt::class && $input_type_part instanceof TLiteralInt) {
+            return true;
+        }
+
+        if (get_class($container_type_part) === TFloat::class && $input_type_part instanceof TLiteralFloat) {
+            return true;
+        }
+
+        if (get_class($container_type_part) === TString::class && $input_type_part instanceof TLiteralString) {
+            return true;
+        }
+
+        if (get_class($input_type_part) === TInt::class && $container_type_part instanceof TLiteralInt) {
+            $type_coerced = true;
+            $type_coerced_from_scalar = true;
+
+            return false;
+        }
+
+        if (get_class($input_type_part) === TFloat::class && $container_type_part instanceof TLiteralFloat) {
+            $type_coerced = true;
+            $type_coerced_from_scalar = true;
+
+            return false;
+        }
+
+        if (get_class($input_type_part) === TString::class && $container_type_part instanceof TLiteralString) {
+            $type_coerced = true;
+            $type_coerced_from_scalar = true;
+
+            return false;
+        }
+
+        if (($container_type_part instanceof TClassString || $container_type_part instanceof TLiteralClassString)
+            && ($input_type_part instanceof TClassString || $input_type_part instanceof TLiteralClassString)
+        ) {
+            if ($container_type_part instanceof TClassString) {
+                return true;
+            }
+
+            if ($input_type_part instanceof TClassString) {
+                $type_coerced = true;
+
+                return false;
+            }
+
+            $fake_container_object = new TNamedObject($container_type_part->value);
+            $fake_input_object = new TNamedObject($input_type_part->value);
+
+            return self::isObjectContainedByObject($codebase, $fake_input_object, $fake_container_object);
+        }
+
+        if (($input_type_part instanceof TClassString || $input_type_part instanceof TLiteralClassString)
+            && (get_class($container_type_part) === TString::class
+                || get_class($container_type_part) === Type\Atomic\GetClassT::class)
+        ) {
             return true;
         }
 
@@ -587,7 +677,9 @@ class TypeChecker
             return false;
         }
 
-        if ($container_type_part instanceof TClassString && $input_type_part instanceof TString) {
+        if (($container_type_part instanceof TClassString || $container_type_part instanceof TLiteralClassString)
+            && $input_type_part instanceof TString
+        ) {
             if (\Psalm\Config::getInstance()->allow_coercion_from_string_to_class_const) {
                 $type_coerced = true;
             }
@@ -644,7 +736,11 @@ class TypeChecker
         }
 
         if ($input_type_part instanceof Scalar) {
-            if ($container_type_part instanceof Scalar) {
+            if ($container_type_part instanceof Scalar
+                && !$container_type_part instanceof TLiteralInt
+                && !$container_type_part instanceof TLiteralString
+                && !$container_type_part instanceof TLiteralFloat
+            ) {
                 $has_scalar_match = true;
             }
         } elseif ($container_type_part instanceof TObject &&
@@ -689,7 +785,6 @@ class TypeChecker
      * @param  bool        &$type_coerced
      * @param  bool        &$type_coerced_from_mixed
      * @param  bool        &$to_string_cast
-     * @param  bool         &$incompatible_values
      *
      * @return bool
      */
@@ -700,8 +795,7 @@ class TypeChecker
         &$has_scalar_match,
         &$type_coerced,
         &$type_coerced_from_mixed,
-        &$to_string_cast,
-        &$incompatible_values
+        &$to_string_cast
     ) {
         $all_types_contain = true;
 
@@ -823,16 +917,6 @@ class TypeChecker
                 ) {
                     $all_types_contain = false;
                 }
-            }
-        }
-
-        if (($input_type_part instanceof TString && $container_type_part instanceof TString)
-            || ($input_type_part instanceof TInt && $container_type_part instanceof TInt)
-            || ($input_type_part instanceof TFloat && $container_type_part instanceof TFloat)
-        ) {
-            if ($input_type_part instanceof LiteralType && $container_type_part instanceof LiteralType) {
-                $all_types_contain = !array_diff_key($input_type_part->getValues(), $container_type_part->getValues());
-                $incompatible_values = !$all_types_contain;
             }
         }
 

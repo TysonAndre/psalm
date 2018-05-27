@@ -184,7 +184,11 @@ class AssertionFinder
                 );
 
                 if ($var_name) {
-                    $if_types[$var_name] = '!falsy';
+                    if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical) {
+                        $if_types[$var_name] = 'true';
+                    } else {
+                        $if_types[$var_name] = '!falsy';
+                    }
                 } else {
                     return self::getAssertions($base_conditional, $this_class_name, $source);
                 }
@@ -346,7 +350,7 @@ class AssertionFinder
                     // fall through
                 } else {
                     if ($var_name && $var_type) {
-                        $if_types[$var_name] = 'getclass-' . $var_type;
+                        $if_types[$var_name] = '^getclass-' . $var_type;
                     }
                 }
 
@@ -379,7 +383,19 @@ class AssertionFinder
                 }
 
                 if ($var_name && $var_type) {
-                    $if_types[$var_name] = '^' . $var_type->getId();
+                    $identical = $conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
+                        || ($other_type
+                            && (($var_type->isString() && $other_type->isString())
+                                || ($var_type->isInt() && $other_type->isInt())
+                                || ($var_type->isFloat() && $other_type->isFloat())
+                            )
+                        );
+
+                    if ($identical) {
+                        $if_types[$var_name] = '^' . $var_type->getId();
+                    } else {
+                        $if_types[$var_name] = '~' . $var_type->getId();
+                    }
                 }
 
                 if ($other_type
@@ -388,34 +404,18 @@ class AssertionFinder
                     && $source instanceof StatementsSource
                     && $project_checker
                 ) {
-                    $incompatible_values = false;
-                    $has_scalar_match = null;
-                    $type_coerced = null;
-                    $type_coerced_from_mixed = null;
-                    $to_string_cast = null;
-
                     if (!TypeChecker::isContainedBy(
                         $project_checker->codebase,
                         $var_type,
                         $other_type,
                         true,
-                        true,
-                        $has_scalar_match,
-                        $type_coerced,
-                        $type_coerced_from_mixed,
-                        $to_string_cast,
-                        $incompatible_values
+                        true
                     ) && !TypeChecker::isContainedBy(
                         $project_checker->codebase,
                         $other_type,
                         $var_type,
                         true,
-                        true,
-                        $has_scalar_match,
-                        $type_coerced,
-                        $type_coerced_from_mixed,
-                        $to_string_cast,
-                        $incompatible_values
+                        true
                     )) {
                         if ($var_type->from_docblock || $other_type->from_docblock) {
                             if (IssueBuffer::accepts(
@@ -428,27 +428,14 @@ class AssertionFinder
                                 // fall through
                             }
                         } else {
-                            if ($incompatible_values) {
-                                if (IssueBuffer::accepts(
-                                    new TypeDoesNotContainType(
-                                        'Values ' . $var_type->getId() . ' and '
-                                             . $other_type->getId() . ' can never be identical',
-                                        new CodeLocation($source, $conditional)
-                                    ),
-                                    $source->getSuppressedIssues()
-                                )) {
-                                    // fall through
-                                }
-                            } else {
-                                if (IssueBuffer::accepts(
-                                    new TypeDoesNotContainType(
-                                        $var_type . ' does not contain ' . $other_type,
-                                        new CodeLocation($source, $conditional)
-                                    ),
-                                    $source->getSuppressedIssues()
-                                )) {
-                                    // fall through
-                                }
+                            if (IssueBuffer::accepts(
+                                new TypeDoesNotContainType(
+                                    $var_type->getId() . ' does not contain ' . $other_type->getId(),
+                                    new CodeLocation($source, $conditional)
+                                ),
+                                $source->getSuppressedIssues()
+                            )) {
+                                // fall through
                             }
                         }
                     }
@@ -663,7 +650,7 @@ class AssertionFinder
                     // fall through
                 } else {
                     if ($var_name && $var_type) {
-                        $if_types[$var_name] = '!getclass-' . $var_type;
+                        $if_types[$var_name] = '!^getclass-' . $var_type;
                     }
                 }
 
@@ -697,7 +684,19 @@ class AssertionFinder
 
                 if ($var_type) {
                     if ($var_name) {
-                        $if_types[$var_name] = '!^' . $var_type->getId();
+                        $not_identical = $conditional instanceof PhpParser\Node\Expr\BinaryOp\NotIdentical
+                            || ($other_type
+                                && (($var_type->isString() && $other_type->isString())
+                                    || ($var_type->isInt() && $other_type->isInt())
+                                    || ($var_type->isFloat() && $other_type->isFloat())
+                                )
+                            );
+
+                        if ($not_identical) {
+                            $if_types[$var_name] = '!^' . $var_type->getId();
+                        } else {
+                            $if_types[$var_name] = '!~' . $var_type->getId();
+                        }
                     }
 
                     if ($other_type
@@ -705,34 +704,18 @@ class AssertionFinder
                         && $source instanceof StatementsSource
                         && $project_checker
                     ) {
-                        $incompatible_values = false;
-                        $has_scalar_match = null;
-                        $type_coerced = null;
-                        $type_coerced_from_mixed = null;
-                        $to_string_cast = null;
-
                         if (!TypeChecker::isContainedBy(
                             $project_checker->codebase,
                             $var_type,
                             $other_type,
                             true,
-                            true,
-                            $has_scalar_match,
-                            $type_coerced,
-                            $type_coerced_from_mixed,
-                            $to_string_cast,
-                            $incompatible_values
+                            true
                         ) && !TypeChecker::isContainedBy(
                             $project_checker->codebase,
                             $other_type,
                             $var_type,
                             true,
-                            true,
-                            $has_scalar_match,
-                            $type_coerced,
-                            $type_coerced_from_mixed,
-                            $to_string_cast,
-                            $incompatible_values
+                            true
                         )) {
                             if ($var_type->from_docblock || $other_type->from_docblock) {
                                 if (IssueBuffer::accepts(
@@ -745,27 +728,14 @@ class AssertionFinder
                                     // fall through
                                 }
                             } else {
-                                if ($incompatible_values) {
-                                    if (IssueBuffer::accepts(
-                                        new RedundantCondition(
-                                            'Values ' . $var_type->getId() . ' and '
-                                                . $other_type->getId() . ' can never be identical',
-                                            new CodeLocation($source, $conditional)
-                                        ),
-                                        $source->getSuppressedIssues()
-                                    )) {
-                                        // fall through
-                                    }
-                                } else {
-                                    if (IssueBuffer::accepts(
-                                        new RedundantCondition(
-                                            $var_type . ' can never contain ' . $other_type,
-                                            new CodeLocation($source, $conditional)
-                                        ),
-                                        $source->getSuppressedIssues()
-                                    )) {
-                                        // fall through
-                                    }
+                                if (IssueBuffer::accepts(
+                                    new RedundantCondition(
+                                        $var_type->getId() . ' can never contain ' . $other_type->getId(),
+                                        new CodeLocation($source, $conditional)
+                                    ),
+                                    $source->getSuppressedIssues()
+                                )) {
+                                    // fall through
                                 }
                             }
                         }
@@ -1239,10 +1209,6 @@ class AssertionFinder
      */
     protected static function hasTypedValueComparison(PhpParser\Node\Expr\BinaryOp $conditional)
     {
-        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Equal) {
-            return false;
-        }
-
         if (isset($conditional->right->inferredType)
             && count($conditional->right->inferredType->getTypes()) === 1
         ) {

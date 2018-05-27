@@ -27,6 +27,7 @@ use Psalm\Type\Atomic\TNumericString;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
+use Psalm\Type\Atomic\TScalarClassConstant;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
@@ -109,6 +110,9 @@ abstract class Atomic
 
             case 'class-string':
                 return new TClassString();
+
+            case 'numeric-string':
+                return new TNumericString();
 
             case '$this':
                 return new TNamedObject('static');
@@ -204,6 +208,19 @@ abstract class Atomic
             }
         }
 
+        if ($this instanceof TScalarClassConstant) {
+            if (ClassLikeChecker::checkFullyQualifiedClassLikeName(
+                $source,
+                $this->fq_classlike_name,
+                $code_location,
+                $suppressed_issues,
+                $inferred
+            ) === false
+            ) {
+                return false;
+            }
+        }
+
         if ($this instanceof TResource && !$this->from_docblock) {
             if (IssueBuffer::accepts(
                 new ReservedWord(
@@ -248,6 +265,18 @@ abstract class Atomic
             }
 
             return;
+        }
+
+        if ($this instanceof TScalarClassConstant) {
+            $codebase->scanner->queueClassLikeForScanning(
+                $this->fq_classlike_name,
+                $file_storage ? $file_storage->file_path : null,
+                false,
+                !$this->from_docblock
+            );
+            if ($file_storage) {
+                $file_storage->referenced_classlikes[] = $this->fq_classlike_name;
+            }
         }
 
         if ($this instanceof Type\Atomic\TArray || $this instanceof Type\Atomic\TGenericObject) {
@@ -351,5 +380,17 @@ abstract class Atomic
     public function replaceTemplateTypesWithArgTypes(array $template_types)
     {
         // do nothing
+    }
+
+    /**
+     * @return bool
+     */
+    public function equals(Atomic $other_type)
+    {
+        if (get_class($other_type) !== get_class($this)) {
+            return false;
+        }
+
+        return true;
     }
 }

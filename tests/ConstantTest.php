@@ -108,6 +108,89 @@ class ConstantTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment'],
             ],
+            'hardToDefineClassConstant' => [
+                '<?php
+                    class A {
+                        const C = [
+                            self::B => 4,
+                            "name" => 3
+                        ];
+
+                        const B = 4;
+                    }
+
+                    echo A::C[4];',
+            ],
+            'sameNamedConstInOtherClass' => [
+                '<?php
+                    class B {
+                        const B = 4;
+                    }
+                    class A {
+                        const B = "four";
+                        const C = [
+                            B::B => "one",
+                        ];
+                    }
+
+                    echo A::C[4];',
+            ],
+            'onlyMatchingConstantOffset' => [
+                '<?php
+                    class A {
+                        const KEYS = ["one", "two", "three"];
+                        const ARR = [
+                            "one" => 1,
+                            "two" => 2
+                        ];
+                    }
+
+                    foreach (A::KEYS as $key) {
+                        if (isset(A::ARR[$key])) {
+                            echo A::ARR[$key];
+                        }
+                    }',
+            ],
+            'noExceptionsOnMixedArrayKey' => [
+                '<?php
+                    function finder(string $id) : ?object {
+                      if (rand(0, 1)) {
+                        return new A();
+                      }
+
+                      if (rand(0, 1)) {
+                        return new B();
+                      }
+
+                      return null;
+                    }
+                    class A {}
+                    class B {}
+                    class Foo
+                    {
+                        private const TYPES = [
+                            "type1" => A::class,
+                            "type2" => B::class,
+                        ];
+
+                        public function bar(array $data): void
+                        {
+                            if (!isset(self::TYPES[$data["type"]])) {
+                                throw new \InvalidArgumentException("Unknown type");
+                            }
+
+                            $class = self::TYPES[$data["type"]];
+
+                            $ret = finder($data["id"]);
+
+                            if (!$ret || !$ret instanceof $class) {
+                                throw new \InvalidArgumentException;
+                            }
+                        }
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedArgument', 'MixedArrayOffset', 'MixedAssignment'],
+            ],
         ];
     }
 
@@ -135,6 +218,43 @@ class ConstantTest extends TestCase
                         public function doSomething(int $howManyTimes = self::DEFAULT_TIMES): void {}
                     }',
                 'error_message' => 'UndefinedConstant',
+            ],
+            'nonMatchingConstantOffset' => [
+                '<?php
+                    class A {
+                        const KEYS = ["one", "two", "three", "four"];
+                        const ARR = [
+                            "one" => 1,
+                            "two" => 2
+                        ];
+
+                        const ARR2 = [
+                            "three" => 3,
+                            "four" => 4
+                        ];
+                    }
+
+                    foreach (A::KEYS as $key) {
+                        if (isset(A::ARR[$key])) {
+                            echo A::ARR2[$key];
+                        }
+                    }',
+                'error_message' => 'InvalidArrayOffset',
+            ],
+            'objectLikeConstArrays' => [
+                '<?php
+                    class C {
+                        const A = 0;
+                        const B = 1;
+
+                        const ARR = [
+                            self::A => "zero",
+                            self::B => "two",
+                        ];
+                    }
+
+                    if (C::ARR[C::A] === "two") {}',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

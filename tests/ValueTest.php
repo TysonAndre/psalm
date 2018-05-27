@@ -205,6 +205,124 @@ class ValueTest extends TestCase
                         return "hello";
                     }',
             ],
+            'incrementAndCheck' => [
+                '<?php
+                    $i = 0;
+                    if (rand(0, 1)) $i++;
+                    if ($i === 1) {}'
+            ],
+            'incrementInClosureAndCheck' => [
+                '<?php
+                    $i = 0;
+                    $a = function() use (&$i) : void {
+                      if (rand(0, 1)) $i++;
+                    };
+                    $a();
+                    if ($i === 0) {}',
+            ],
+            'incrementMixedCall' => [
+                '<?php
+                    function foo($f) : void {
+                        $i = 0;
+                        $f->add(function() use (&$i) : void {
+                            if (rand(0, 1)) $i++;
+                        });
+                        if ($i === 0) {}
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MissingParamType', 'MixedMethodCall'],
+            ],
+            'regularValueReconciliation' => [
+                '<?php
+                    $s = rand(0, 1) ? "a" : "b";
+                    if (rand(0, 1)) {
+                        $s = "c";
+                    }
+
+                    if ($s === "a" || $s === "b") {
+                        if ($s === "a") {}
+                    }'
+            ],
+            'moreValueReconciliation' => [
+                '<?php
+                    $a = rand(0, 1) ? "a" : "b";
+                    $b = rand(0, 1) ? "a" : "b";
+
+                    $s = rand(0, 1) ? $a : $b;
+                    if (rand(0, 1)) $s = "c";
+
+                    if ($s === $a) {
+                    } elseif ($s === $b) {}',
+            ],
+            'negativeInts' => [
+                '<?php
+                    class C {
+                        const A = 1;
+                        const B = -1;
+                    }
+
+                    const A = 1;
+                    const B = -1;
+
+                    $i = rand(0, 1) ? A : B;
+                    if (rand(0, 1)) {
+                        $i = 0;
+                    }
+
+                    if ($i === A) {
+                        echo "here";
+                    } elseif ($i === B) {
+                        echo "here";
+                    }
+
+                    $i = rand(0, 1) ? C::A : C::B;
+
+                    if (rand(0, 1)) {
+                        $i = 0;
+                    }
+
+                    if ($i === C::A) {
+                        echo "here";
+                    } elseif ($i === C::B) {
+                        echo "here";
+                    }',
+            ],
+            'falsyReconciliation' => [
+                '<?php
+                    $s = rand(0, 1) ? 200 : null;
+                    if (!$s) {}'
+            ],
+            'redefinedIntInIfAndPossibleComparison' => [
+                '<?php
+                    $s = rand(0, 1) ? 0 : 1;
+
+                    if ($s && rand(0, 1)) {
+                        if (rand(0, 1)) {
+                            $s = 2;
+                        }
+                    }
+
+                    if ($s == 2) {}',
+            ],
+            'noEmpties' => [
+                '<?php
+                    $context = \'a\';
+                    while ( true ) {
+                        if (rand(0, 1)) {
+                            if (rand(0, 1)) {
+                                exit;
+                            }
+
+                            $context = \'b\';
+                        } elseif (rand(0, 1)) {
+                            if ($context !== \'c\' && $context !== \'b\') {
+                                exit;
+                            }
+
+                            $context = \'c\';
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -244,9 +362,9 @@ class ValueTest extends TestCase
                     if ($a !== 4) {
                         // do something
                     }',
-                'error_message' => 'RedundantCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
-            'phpstanPostedArrayTest' => [
+            'SKIPPED-phpstanPostedArrayTest' => [
                 '<?php
                     $array = [1, 2, 3];
                     if (rand(1, 10) === 1) {
@@ -319,6 +437,32 @@ class ValueTest extends TestCase
 
                     echo $foo[$a];',
                 'error_message' => 'InvalidArrayOffset',
+            ],
+            'noChangeToVariable' => [
+                '<?php
+                    $i = 0;
+
+                    $a = function() use ($i) : void {
+                        $i++;
+                    };
+
+                    $a();
+
+                    if ($i === 0) {}',
+                'error_message' => 'RedundantCondition',
+            ],
+            'redefinedIntInIfAndImpossbleComparison' => [
+                '<?php
+                    $s = rand(0, 1) ? 0 : 1;
+
+                    if ($s && rand(0, 1)) {
+                        if (rand(0, 1)) {
+                            $s = 2;
+                        }
+                    }
+
+                    if ($s == 3) {}',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

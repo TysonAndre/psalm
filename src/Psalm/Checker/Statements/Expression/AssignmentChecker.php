@@ -239,6 +239,7 @@ class AssignmentChecker
             $context->vars_in_scope[$var_id] = $assign_value_type;
             $context->vars_possibly_in_scope[$var_id] = true;
             $context->assigned_var_ids[$var_id] = true;
+            $context->possibly_assigned_var_ids[$var_id] = true;
 
             $location = new CodeLocation($statements_checker, $assign_var);
 
@@ -403,20 +404,32 @@ class AssignmentChecker
                 $assign_value_type
             );
         } elseif ($assign_var instanceof PhpParser\Node\Expr\PropertyFetch) {
+            if (!$assign_var->name instanceof PhpParser\Node\Identifier) {
+                if (ExpressionChecker::analyze($statements_checker, $assign_var->name, $context) === false) {
+                    return false;
+                }
+            }
+
             if ($assign_var->name instanceof PhpParser\Node\Identifier) {
+                $prop_name = $assign_var->name->name;
+            } elseif (isset($assign_var->name->inferredType)
+                && $assign_var->name->inferredType->isSingleStringLiteral()
+            ) {
+                $prop_name = $assign_var->name->inferredType->getSingleStringLiteral();
+            } else {
+                $prop_name = null;
+            }
+
+            if ($prop_name) {
                 PropertyAssignmentChecker::analyzeInstance(
                     $statements_checker,
                     $assign_var,
-                    $assign_var->name->name,
+                    $prop_name,
                     $assign_value,
                     $assign_value_type,
                     $context
                 );
             } else {
-                if (ExpressionChecker::analyze($statements_checker, $assign_var->name, $context) === false) {
-                    return false;
-                }
-
                 if (ExpressionChecker::analyze($statements_checker, $assign_var->var, $context) === false) {
                     return false;
                 }
@@ -515,7 +528,7 @@ class AssignmentChecker
                     $statements_checker,
                     $stmt->var,
                     $context,
-                    $result_type ?: Type::getMixed()
+                    $result_type ?: Type::getMixed(true)
                 );
             } elseif ($result_type && $array_var_id) {
                 $context->vars_in_scope[$array_var_id] = $result_type;

@@ -471,6 +471,109 @@ class TemplateTest extends TestCase
                 ],
                 'error_levels' => ['MixedAssignment', 'MixedArgument'],
             ],
+            'intersectionTemplatedTypes' => [
+                '<?php
+                    namespace NS;
+                    use Countable;
+
+                    /** @template T */
+                    class Collection
+                    {
+                        /** @psalm-var iterable<T> */
+                        private $data;
+
+                        /** @psalm-param iterable<T> $data */
+                        public function __construct(iterable $data) {
+                            $this->data = $data;
+                        }
+                    }
+
+                    class Item {}
+                    /** @psalm-param Collection<Item> $c */
+                    function takesCollectionOfItems(Collection $c): void {}
+
+                    /** @psalm-var iterable<Item> $data2 */
+                    $data2 = [];
+                    takesCollectionOfItems(new Collection($data2));
+
+                    /** @psalm-var iterable<Item>&Countable $data */
+                    $data = [];
+                    takesCollectionOfItems(new Collection($data));',
+            ],
+            'templateCallableReturnType' => [
+                '<?php
+                    namespace NS;
+
+                    /**
+                     * @template T
+                     * @psalm-param callable():T $action
+                     * @psalm-return T
+                     */
+                    function retry(int $maxRetries, callable $action) {
+                        return $action();
+                    }
+
+                    function takesInt(int $p): void{};
+
+                    takesInt(retry(1, function(): int { return 1; }));',
+            ],
+            'templateClosureReturnType' => [
+                '<?php
+                    namespace NS;
+
+                    /**
+                     * @template T
+                     * @psalm-param \Closure():T $action
+                     * @psalm-return T
+                     */
+                    function retry(int $maxRetries, callable $action) {
+                        return $action();
+                    }
+
+                    function takesInt(int $p): void{};
+
+                    takesInt(retry(1, function(): int { return 1; }));',
+            ],
+            'repeatedCall' => [
+                '<?php
+                    namespace NS;
+
+                    use Closure;
+
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class ArrayCollection {
+                        /** @var array<TKey,TValue> */
+                        private $data;
+
+                        /** @param array<TKey,TValue> $data */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @template T
+                         * @param Closure(TValue):T $func
+                         * @return ArrayCollection<TKey,T>
+                         */
+                        public function map(Closure $func) {
+                          return new static(array_map($func, $this->data));
+                        }
+                    }
+
+                    class Item {}
+                    /**
+                     * @param ArrayCollection<mixed,Item> $i
+                     */
+                    function takesCollectionOfItems(ArrayCollection $i): void {}
+
+                    $c = new ArrayCollection([ new Item ]);
+                    takesCollectionOfItems($c);
+                    takesCollectionOfItems($c->map(function(Item $i): Item { return $i;}));
+                    takesCollectionOfItems($c->map(function(Item $i): Item { return $i;}));'
+            ],
         ];
     }
 

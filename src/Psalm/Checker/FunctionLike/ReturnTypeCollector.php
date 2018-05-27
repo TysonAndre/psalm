@@ -1,13 +1,14 @@
 <?php
-namespace Psalm;
+namespace Psalm\Checker\FunctionLike;
 
 use PhpParser;
+use Psalm\Type;
 use Psalm\Type\Atomic;
 
 /**
  * A class for analysing a given method call's effects in relation to $this/self and also looking at return types
  */
-class EffectsAnalyser
+class ReturnTypeCollector
 {
     /**
      * Gets the return types from a list of statements
@@ -51,6 +52,13 @@ class EffectsAnalyser
                         $return_types[] = new Atomic\TMixed();
                     }
                 }
+
+                break;
+            } elseif ($stmt instanceof PhpParser\Node\Stmt\Throw_
+                || $stmt instanceof PhpParser\Node\Stmt\Break_
+                || $stmt instanceof PhpParser\Node\Stmt\Continue_
+            ) {
+                break;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Expression
                 && ($stmt->expr instanceof PhpParser\Node\Expr\Yield_
                     || $stmt->expr instanceof PhpParser\Node\Expr\YieldFrom)

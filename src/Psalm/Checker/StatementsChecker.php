@@ -138,7 +138,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             if ($project_checker->debug_lines) {
-                echo $this->getFilePath() . ':' . $stmt->getLine() . "\n";
+                echo $this->getCheckedFilePath() . ':' . $stmt->getLine();
             }
 
             /*
@@ -399,7 +399,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Expression) {
-                if (ExpressionChecker::analyze($this, $stmt->expr, $context) === false) {
+                if (ExpressionChecker::analyze($this, $stmt->expr, $context, false, $global_context) === false) {
                     return false;
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\InlineHTML) {
@@ -419,7 +419,17 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
                 foreach ($stmt->vars as $var) {
                     if ($var instanceof PhpParser\Node\Expr\Variable) {
-                        if ($global_context && VariableFetchChecker::analyze($this, $var, $global_context) === false) {
+                        if ($global_context
+                            && VariableFetchChecker::analyze(
+                                $this,
+                                $var,
+                                $global_context,
+                                false,
+                                null,
+                                false,
+                                true
+                            ) === false
+                        ) {
                             return false;
                         }
 
@@ -673,13 +683,15 @@ class StatementsChecker extends SourceChecker implements StatementsSource
     /**
      * @param   PhpParser\Node\Expr $stmt
      * @param   array<string, Type\Union> $existing_class_constants
+     * @param   string $fq_classlike_name
      *
      * @return  Type\Union|null
      */
     public static function getSimpleType(
         PhpParser\Node\Expr $stmt,
-        StatementsSource $statements_source = null,
-        array $existing_class_constants = []
+        \Psalm\FileSource $file_source,
+        array $existing_class_constants = [],
+        $fq_classlike_name = null
     ) {
         if ($stmt instanceof PhpParser\Node\Expr\BinaryOp) {
             if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
@@ -712,13 +724,15 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
             $stmt->left->inferredType = self::getSimpleType(
                 $stmt->left,
-                $statements_source,
-                $existing_class_constants
+                $file_source,
+                $existing_class_constants,
+                $fq_classlike_name
             );
             $stmt->right->inferredType = self::getSimpleType(
                 $stmt->right,
-                $statements_source,
-                $existing_class_constants
+                $file_source,
+                $existing_class_constants,
+                $fq_classlike_name
             );
 
             if (!$stmt->left->inferredType || !$stmt->right->inferredType) {
@@ -732,7 +746,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $stmt instanceof PhpParser\Node\Expr\BinaryOp\Pow
             ) {
                 BinaryOpChecker::analyzeNonDivArithmenticOp(
-                    $statements_source,
+                    $file_source instanceof StatementsSource ? $file_source : null,
                     $stmt->left,
                     $stmt->right,
                     $stmt,
@@ -768,30 +782,43 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
         if ($stmt instanceof PhpParser\Node\Expr\ClassConstFetch) {
             if ($stmt->class instanceof PhpParser\Node\Name
-                && $stmt->class->parts !== ['static']
                 && $stmt->name instanceof PhpParser\Node\Identifier
                 && isset($existing_class_constants[$stmt->name->name])
+                && $fq_classlike_name
+                && $stmt->class->parts !== ['static']
+                && $stmt->class->parts !== ['parent']
             ) {
-                return clone $existing_class_constants[$stmt->name->name];
+                if ($stmt->class->parts === ['self']) {
+                    return clone $existing_class_constants[$stmt->name->name];
+                }
+
+                $const_fq_class_name = ClassLikeChecker::getFQCLNFromNameObject(
+                    $stmt->class,
+                    $file_source->getAliases()
+                );
+
+                if (strtolower($const_fq_class_name) === strtolower($fq_classlike_name)) {
+                    return clone $existing_class_constants[$stmt->name->name];
+                }
             }
 
             if ($stmt->name instanceof PhpParser\Node\Identifier && strtolower($stmt->name->name) === 'class') {
                 return Type::getClassString();
             }
 
-            return null;
+            return Type::getMixed();
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\String_) {
-            return Type::getString(strlen($stmt->value) < 30 ? [$stmt->value => true] : null);
+            return Type::getString(strlen($stmt->value) < 30 ? $stmt->value : null);
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\LNumber) {
-            return Type::getInt(false, [$stmt->value => true]);
+            return Type::getInt(false, $stmt->value);
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\DNumber) {
-            return Type::getFloat([(string)$stmt->value => true]);
+            return Type::getFloat($stmt->value);
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\Array_) {
@@ -814,8 +841,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 if ($item->key) {
                     $single_item_key_type = self::getSimpleType(
                         $item->key,
-                        $statements_source,
-                        $existing_class_constants
+                        $file_source,
+                        $existing_class_constants,
+                        $fq_classlike_name
                     );
 
                     if ($single_item_key_type) {
@@ -835,8 +863,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
                 $single_item_value_type = self::getSimpleType(
                     $item->value,
-                    $statements_source,
-                    $existing_class_constants
+                    $file_source,
+                    $existing_class_constants,
+                    $fq_classlike_name
                 );
 
                 if ($single_item_value_type) {
@@ -846,7 +875,32 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                     ) {
                         $property_types[$item->key ? $item->key->value : $int_offset] = $single_item_value_type;
                     } else {
-                        $can_create_objectlike = false;
+                        $dim_type = self::getSimpleType(
+                            $item->key,
+                            $file_source,
+                            $existing_class_constants,
+                            $fq_classlike_name
+                        );
+
+                        if ($dim_type) {
+                            $dim_atomic_types = $dim_type->getTypes();
+
+                            if (count($dim_atomic_types) > 1 || $dim_type->isMixed()) {
+                                $can_create_objectlike = false;
+                            } else {
+                                $atomic_type = array_shift($dim_atomic_types);
+
+                                if ($atomic_type instanceof Type\Atomic\TLiteralInt
+                                    || $atomic_type instanceof Type\Atomic\TLiteralString
+                                ) {
+                                    $property_types[$atomic_type->value] = $single_item_value_type;
+                                } else {
+                                    $can_create_objectlike = false;
+                                }
+                            }
+                        } else {
+                            $can_create_objectlike = false;
+                        }
                     }
 
                     if ($item_value_type) {
@@ -910,7 +964,30 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\UnaryMinus || $stmt instanceof PhpParser\Node\Expr\UnaryPlus) {
-            return self::getSimpleType($stmt->expr, $statements_source, $existing_class_constants);
+            $type_to_invert = self::getSimpleType(
+                $stmt->expr,
+                $file_source,
+                $existing_class_constants,
+                $fq_classlike_name
+            );
+
+            if (!$type_to_invert) {
+                return null;
+            }
+
+            foreach ($type_to_invert->getTypes() as $type_part) {
+                if ($type_part instanceof Type\Atomic\TLiteralInt
+                    && $stmt instanceof PhpParser\Node\Expr\UnaryMinus
+                ) {
+                    $type_part->value = -$type_part->value;
+                } elseif ($type_part instanceof Type\Atomic\TLiteralFloat
+                    && $stmt instanceof PhpParser\Node\Expr\UnaryMinus
+                ) {
+                    $type_part->value = -$type_part->value;
+                }
+            }
+
+            return $type_to_invert;
         }
 
         return null;

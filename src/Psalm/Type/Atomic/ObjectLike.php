@@ -2,6 +2,8 @@
 namespace Psalm\Type\Atomic;
 
 use Psalm\Type;
+use Psalm\Type\Atomic;
+use Psalm\Type\TypeCombination;
 use Psalm\Type\Union;
 
 /**
@@ -153,13 +155,13 @@ class ObjectLike extends \Psalm\Type\Atomic
 
         foreach ($this->properties as $key => $_) {
             if (is_int($key)) {
-                $key_types[] = new Type\Atomic\TLiteralInt([$key => true]);
+                $key_types[] = new Type\Atomic\TLiteralInt($key);
             } else {
-                $key_types[] = new Type\Atomic\TLiteralString([$key => true]);
+                $key_types[] = new Type\Atomic\TLiteralString($key);
             }
         }
 
-        return Type::combineTypes($key_types);
+        return TypeCombination::combineTypes($key_types);
     }
 
     /**
@@ -196,9 +198,9 @@ class ObjectLike extends \Psalm\Type\Atomic
 
         foreach ($this->properties as $key => $property) {
             if (is_int($key)) {
-                $key_types[] = new Type\Atomic\TLiteralInt([$key => true]);
+                $key_types[] = new Type\Atomic\TLiteralInt($key);
             } else {
-                $key_types[] = new Type\Atomic\TLiteralString([$key => true]);
+                $key_types[] = new Type\Atomic\TLiteralString($key);
             }
 
             if ($value_type === null) {
@@ -216,8 +218,11 @@ class ObjectLike extends \Psalm\Type\Atomic
 
         $value_type->possibly_undefined = false;
 
-        $array_type = new TArray([Type::combineTypes($key_types), $value_type]);
-        $array_type->count = new TLiteralInt([count($this->properties) => true]);
+        $array_type = new TArray([TypeCombination::combineTypes($key_types), $value_type]);
+
+        if ($this->sealed) {
+            $array_type->count = count($this->properties);
+        }
 
         return $array_type;
     }
@@ -244,5 +249,35 @@ class ObjectLike extends \Psalm\Type\Atomic
         foreach ($this->properties as $property_type) {
             $property_type->setFromDocblock();
         }
+    }
+
+    /**
+     * @return bool
+     */
+    public function equals(Atomic $other_type)
+    {
+        if (!$other_type instanceof self) {
+            return false;
+        }
+
+        if (count($this->properties) !== count($other_type->properties)) {
+            return false;
+        }
+
+        if ($this->sealed !== $other_type->sealed) {
+            return false;
+        }
+
+        foreach ($this->properties as $property_name => $property_type) {
+            if (!isset($other_type->properties[$property_name])) {
+                return false;
+            }
+
+            if (!$property_type->equals($other_type->properties[$property_name])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

@@ -207,14 +207,14 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
             return;
         }
 
-        $project_checker = $statements_source->getFileChecker()->project_checker;
-        $codebase = $project_checker->codebase;
-
         $fq_class_name = preg_replace('/^\\\/', '', $fq_class_name);
 
-        if (in_array($fq_class_name, ['callable', 'iterable'], true)) {
+        if (in_array($fq_class_name, ['callable', 'iterable', 'self', 'static', 'parent'], true)) {
             return true;
         }
+
+        $project_checker = $statements_source->getFileChecker()->project_checker;
+        $codebase = $project_checker->codebase;
 
         if (preg_match(
             '/(^|\\\)(int|float|bool|string|void|null|false|true|resource|object|numeric|mixed)$/i',
@@ -242,15 +242,17 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
         $interface_exists = $codebase->interfaceExists($fq_class_name);
 
         if (!$class_exists && !$interface_exists) {
-            if (IssueBuffer::accepts(
-                new UndefinedClass(
-                    'Class or interface ' . $fq_class_name . ' does not exist',
-                    $code_location,
-                    $fq_class_name
-                ),
-                $suppressed_issues
-            )) {
-                return false;
+            if (!$codebase->classlikes->traitExists($fq_class_name)) {
+                if (IssueBuffer::accepts(
+                    new UndefinedClass(
+                        'Class or interface ' . $fq_class_name . ' does not exist',
+                        $code_location,
+                        $fq_class_name
+                    ),
+                    $suppressed_issues
+                )) {
+                    return false;
+                }
             }
 
             return null;

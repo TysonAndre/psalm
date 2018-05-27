@@ -6,13 +6,12 @@ use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Function_;
 use Psalm\Checker\FunctionLike\ReturnTypeChecker;
+use Psalm\Checker\FunctionLike\ReturnTypeCollector;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Codebase\CallMap;
 use Psalm\CodeLocation;
 use Psalm\Context;
-use Psalm\EffectsAnalyser;
 use Psalm\FileManipulation\FunctionDocblockManipulator;
-use Psalm\FunctionLikeParameter;
 use Psalm\Issue\InvalidParamDefault;
 use Psalm\Issue\InvalidReturnType;
 use Psalm\Issue\InvalidToString;
@@ -26,6 +25,7 @@ use Psalm\Issue\ReservedWord;
 use Psalm\Issue\UnusedParam;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
+use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
@@ -220,7 +220,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             MethodChecker::checkMethodSignatureMustOmitReturnType($storage, $codeLocation);
         } elseif ($this->function instanceof Function_) {
-            $file_storage = $file_storage_provider->get($this->source->getFilePath());
+            $file_storage = $file_storage_provider->get($this->source->getCheckedFilePath());
 
             $storage = $file_storage->functions[(string)$this->getMethodId()];
 
@@ -272,6 +272,16 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $signature_type = $function_param->signature_type;
 
             if ($function_param->type) {
+                if ($function_param->type_location) {
+                    $function_param->type->check(
+                        $this,
+                        $function_param->type_location,
+                        $storage->suppressed_issues,
+                        [],
+                        false
+                    );
+                }
+
                 $param_type = clone $function_param->type;
 
                 $param_type = ExpressionChecker::fleshOutType(
@@ -493,7 +503,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
             $closure_yield_types = [];
 
-            $closure_return_types = EffectsAnalyser::getReturnTypes(
+            $closure_return_types = ReturnTypeCollector::getReturnTypes(
                 $this->function->stmts,
                 $closure_yield_types,
                 $ignore_nullable_issues,
@@ -776,7 +786,10 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             return ($namespace ? strtolower($namespace) . '\\' : '') . strtolower($this->function->name->name);
         }
 
-        return $this->getFilePath() . ':' . $this->function->getLine() . ':-:closure';
+        return $this->getFilePath()
+            . ':' . $this->function->getLine()
+            . ':' . (int)$this->function->getAttribute('startFilePos')
+            . ':-:closure';
     }
 
     /**
@@ -798,7 +811,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             return ($namespace ? $namespace . '\\' : '') . $this->function->name;
         }
 
-        return $this->getFilePath() . ':' . $this->function->getLine() . ':-:closure';
+        return $this->getMethodId();
     }
 
     /**

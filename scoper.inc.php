@@ -1,34 +1,6 @@
 <?php
 
-use Isolated\Symfony\Component\Finder\Finder;
-
 return [
-    'finders' => [
-        Finder::create()->files()->in('src'),
-        Finder::create()->files()->in('assets'),
-        Finder::create()
-            ->files()
-            ->ignoreVCS(true)
-            ->notName('/LICENSE|.*\\.md|.*\\.dist|Makefile|composer\\.json|composer\\.lock/')
-            ->exclude([
-                'doc',
-                'test',
-                'test_old',
-                'tests',
-                'Tests',
-                'vendor-bin',
-            ])
-            ->in('vendor'),
-        Finder::create()->append([
-            'composer.json',
-            'composer.lock',
-            'config.xsd',
-            'psalm'
-        ]),
-    ],
-    'whitelist' => [
-
-    ],
     'patchers' => [
         function ($filePath, $prefix, $contents) {
             //
@@ -45,6 +17,13 @@ return [
             }
 
             return $contents;
+        },
+        function ($filePath, $prefix, $contents) {
+            return str_replace(
+                '\\'.$prefix.'\Composer\Autoload\ClassLoader',
+                '\Composer\Autoload\ClassLoader',
+                $contents
+            );
         },
         function ($filePath, $prefix, $contents) {
             if ($filePath === realpath(__DIR__ . '/src/Psalm/Config.php')) {
@@ -136,4 +115,7 @@ return [
             return $contents;
         },
     ],
+    'whitelist' => [
+        \Composer\Autoload\ClassLoader::class,
+    ]
 ];

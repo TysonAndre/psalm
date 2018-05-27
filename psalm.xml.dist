@@ -5,7 +5,7 @@
     totallyTyped="true"
     strictBinaryOperands="false"
     rememberPropertyAssignmentsAfterCall="true"
-    throwExceptionOnError="1"
+    throwExceptionOnError="0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns="https://getpsalm.org/schema/config"
     xsi:schemaLocation="https://getpsalm.org/schema/config config.xsd"
@@ -26,11 +26,11 @@
         <PossiblyNullOperand errorLevel="suppress" />
         <MissingConstructor>
             <errorLevel type="suppress">
-                <file name="src/Psalm/FunctionDocblockComment.php" />
+                <file name="src/Psalm/Scanner/FunctionDocblockComment.php" />
                 <file name="src/Psalm/Storage/FunctionLikeStorage.php" />
                 <file name="src/Psalm/Storage/MethodStorage.php" />
                 <file name="src/Psalm/Storage/PropertyStorage.php" />
-                <file name="src/Psalm/VarDocblockComment.php" />
+                <file name="src/Psalm/Scanner/VarDocblockComment.php" />
             </errorLevel>
         </MissingConstructor>
         <DeprecatedProperty errorLevel="suppress" />

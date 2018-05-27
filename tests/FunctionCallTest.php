@@ -23,7 +23,7 @@ class FunctionCallTest extends TestCase
                     );',
                 'assertions' => [
                     '$d' => 'array<string, int>',
-                    '$e' => 'array<string, null|int>',
+                    '$e' => 'array<string, int|null>',
                 ],
             ],
             'arrayFilterAdvanced' => [
@@ -51,8 +51,8 @@ class FunctionCallTest extends TestCase
                         ARRAY_FILTER_USE_KEY
                     );',
                 'assertions' => [
-                    '$f' => 'array<string, null|int>',
-                    '$g' => 'array<string, null|int>',
+                    '$f' => 'array<string, int|null>',
+                    '$g' => 'array<string, int|null>',
                 ],
             ],
             'typedArrayWithDefault' => [
@@ -162,14 +162,14 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $d = array_reverse(["a", "b", 1]);',
                 'assertions' => [
-                    '$d' => 'array<int, int|string>',
+                    '$d' => 'array<int, string|int>',
                 ],
             ],
             'arrayReversePreserveKey' => [
                 '<?php
                     $d = array_reverse(["a", "b", 1], true);',
                 'assertions' => [
-                    '$d' => 'array<int, int|string>',
+                    '$d' => 'array<int, string|int>',
                 ],
             ],
             'arrayDiff' => [
@@ -619,6 +619,30 @@ class FunctionCallTest extends TestCase
                 '<?php
                     if (class_exists(Foo::class)) {}'
             ],
+            'next' => [
+                '<?php
+                    $arr = ["one", "two", "three"];
+                    $n = next($arr);',
+                'assertions' => [
+                    '$n' => 'false|string',
+                ],
+            ],
+            'iteratorToArray' => [
+                '<?php
+                    /**
+                     * @return Generator<stdClass>
+                     */
+                    function generator(): Generator {
+                        yield new stdClass;
+                    }
+
+                    /**
+                     * @return array<stdClass>
+                     */
+                    function foo(callable $filter): array {
+                        return array_filter(iterator_to_array(generator()), $filter);
+                    }'
+            ],
         ];
     }
 
@@ -880,6 +904,12 @@ class FunctionCallTest extends TestCase
                     function takesIterableOfA(iterable $p): void {}
 
                     takesIterableOfA([new B]); // should complain',
+                'error_message' => 'InvalidArgument',
+            ],
+            'putInvalidTypeMessagesFirst' => [
+                '<?php
+                    $q = rand(0,1) ? new stdClass : false;
+                    strlen($q);',
                 'error_message' => 'InvalidArgument',
             ],
         ];

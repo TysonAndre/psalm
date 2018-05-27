@@ -680,6 +680,8 @@ class Config
      * @psalm-suppress MixedArrayAccess
      * @psalm-suppress MixedAssignment
      * @psalm-suppress MixedOperand
+     * @psalm-suppress MixedArrayOffset
+     * @psalm-suppress MixedTypeCoercion
      */
     public function initializePlugins(ProjectChecker $project_checker)
     {
@@ -871,6 +873,21 @@ class Config
     }
 
     /**
+     * @param   string $issue_type
+     * @param   string $property_id
+     *
+     * @return  string
+     */
+    public function getReportingLevelForProperty($issue_type, $property_id)
+    {
+        if (isset($this->issue_handlers[$issue_type])) {
+            return $this->issue_handlers[$issue_type]->getReportingLevelForProperty($property_id);
+        }
+
+        return self::REPORT_ERROR;
+    }
+
+    /**
      * @return array<string>
      */
     public function getProjectDirectories()
@@ -880,6 +897,18 @@ class Config
         }
 
         return $this->project_files->getDirectories();
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getProjectFiles()
+    {
+        if (!$this->project_files) {
+            return [];
+        }
+
+        return $this->project_files->getFiles();
     }
 
     /**

@@ -167,6 +167,7 @@ class PropertyTypeTest extends TestCase
                 'error_levels' => [
                     'UndefinedThisPropertyFetch',
                     'MixedAssignment',
+                    'MixedArgument',
                     'MixedMethodCall',
                     'MixedPropertyFetch',
                 ],
@@ -204,6 +205,9 @@ class PropertyTypeTest extends TestCase
                     }
 
                     $a = rand(0, 10) ? new A(): new B();
+                    if (rand(0, 1)) {
+                        $a = null;
+                    }
                     $b = null;
 
                     if (rand(0, 10) === 4) {
@@ -883,6 +887,33 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
             ],
+            'suppressUndefinedThisPropertyFetch' => [
+                '<?php
+                    class A {
+                        public function __construct() {
+                            /** @psalm-suppress UndefinedThisPropertyAssignment */
+                            $this->bar = rand(0, 1) ? "hello" : null;
+                        }
+
+                        /** @psalm-suppress UndefinedThisPropertyFetch */
+                        public function foo() : void {
+                            if ($this->bar === null && rand(0, 1)) {}
+                        }
+                    }',
+            ],
+            'suppressUndefinedPropertyFetch' => [
+                '<?php
+                    class A {
+                        public function __construct() {
+                            /** @psalm-suppress UndefinedThisPropertyAssignment */
+                            $this->bar = rand(0, 1) ? "hello" : null;
+                        }
+                    }
+
+                    $a = new A();
+                    /** @psalm-suppress UndefinedPropertyFetch */
+                    if ($a->bar === null && rand(0, 1)) {}',
+            ],
         ];
     }
 
@@ -936,7 +967,7 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Property A::$foo does not have a ' .
-                    'declared type - consider null|int',
+                    'declared type - consider int|null',
             ],
             'missingPropertyTypeWithConstructorInit' => [
                 '<?php
@@ -964,7 +995,7 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Property A::$foo does not have a ' .
-                    'declared type - consider null|int',
+                    'declared type - consider int|null',
             ],
             'missingPropertyTypeWithConstructorInitAndNullDefault' => [
                 '<?php

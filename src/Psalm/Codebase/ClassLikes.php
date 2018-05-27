@@ -454,6 +454,10 @@ class ClassLikes
             return true;
         }
 
+        if ($interface_id === 'arrayaccess' && $fq_class_name === 'domnodelist') {
+            return true;
+        }
+
         if (isset(ClassLikeChecker::$SPECIAL_TYPES[$interface_id])
             || isset(ClassLikeChecker::$SPECIAL_TYPES[$fq_class_name])
         ) {
@@ -506,6 +510,16 @@ class ClassLikes
         $storage = $this->classlike_storage_provider->get($fq_interface_name);
 
         return $storage->parent_interfaces;
+    }
+
+    /**
+     * @param  string         $fq_trait_name
+     *
+     * @return bool
+     */
+    public function traitExists($fq_trait_name)
+    {
+        return $this->hasFullyQualifiedTraitName($fq_trait_name);
     }
 
     /**

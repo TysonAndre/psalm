@@ -1,17 +1,27 @@
 <?php
 namespace Psalm\Type\Atomic;
 
-class TLiteralFloat extends TFloat implements LiteralType
+use Psalm\Type\Atomic;
+
+class TLiteralFloat extends TFloat
 {
-    /** @var array<string, bool> */
-    public $values;
+    /** @var float */
+    public $value;
 
     /**
-     * @param array<string, bool> $values
+     * @param float $value
      */
-    public function __construct(array $values)
+    public function __construct($value)
     {
-        $this->values = $values;
+        $this->value = $value;
+    }
+
+    /**
+     * @return string
+     */
+    public function getKey()
+    {
+        return 'float(' . $this->value . ')';
     }
 
     /**
@@ -19,14 +29,6 @@ class TLiteralFloat extends TFloat implements LiteralType
      */
     public function getId()
     {
-        return $this->values ? 'float(' . implode(',', array_keys($this->values)) . ')' : 'float';
-    }
-
-    /**
-     * @return array<string, bool>
-     */
-    public function getValues()
-    {
-        return $this->values;
+        return 'float(' . $this->value . ')';
     }
 }

@@ -21,6 +21,7 @@ use Psalm\Issue\UnimplementedInterfaceMethod;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Storage\ClassLikeStorage;
+use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type;
 
 class ClassChecker extends ClassLikeChecker
@@ -58,7 +59,8 @@ class ClassChecker extends ClassLikeChecker
      */
     public static function getAnonymousClassName(PhpParser\Node\Stmt\Class_ $class, $file_path)
     {
-        return preg_replace('/[^A-Za-z0-9]/', '_', $file_path . ':' . $class->getLine());
+        return preg_replace('/[^A-Za-z0-9]/', '_', $file_path)
+            . ':' . $class->getLine() . ':' . (int)$class->getAttribute('startFilePos');
     }
 
     /**
@@ -531,12 +533,14 @@ class ClassChecker extends ClassLikeChecker
                     $constructor_class_storage = $classlike_storage_provider->get($construct_fqcln);
 
                     // ignore oldstyle constructors and classes without any declared properties
-                    if (isset($constructor_class_storage->methods['__construct'])) {
+                    if ($constructor_class_storage->user_defined
+                        && isset($constructor_class_storage->methods['__construct'])
+                    ) {
                         $constructor_storage = $constructor_class_storage->methods['__construct'];
 
                         $fake_constructor_params = array_map(
                             /** @return PhpParser\Node\Param */
-                            function (\Psalm\FunctionLikeParameter $param) {
+                            function (FunctionLikeParameter $param) {
                                 $fake_param = (new PhpParser\Builder\Param($param->name));
                                 if ($param->signature_type) {
                                     $fake_param->setTypehint((string)$param->signature_type);
@@ -549,7 +553,7 @@ class ClassChecker extends ClassLikeChecker
 
                         $fake_constructor_stmt_args = array_map(
                             /** @return PhpParser\Node\Arg */
-                            function (\Psalm\FunctionLikeParameter $param) {
+                            function (FunctionLikeParameter $param) {
                                 return new PhpParser\Node\Arg(new PhpParser\Node\Expr\Variable($param->name));
                             },
                             $constructor_storage->params

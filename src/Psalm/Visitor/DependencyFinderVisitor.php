@@ -19,7 +19,6 @@ use Psalm\Exception\FileIncludeException;
 use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\FileSource;
-use Psalm\FunctionLikeParameter;
 use Psalm\Issue\DuplicateClass;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
@@ -29,6 +28,7 @@ use Psalm\IssueBuffer;
 use Psalm\Scanner\FileScanner;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
+use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Storage\PropertyStorage;
@@ -245,12 +245,12 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
                     if ($docblock_info->properties) {
                         foreach ($docblock_info->properties as $property) {
-                            $pseudo_property_type_string = Type::fixUpLocalType(
+                            $pseudo_property_type_tokens = Type::fixUpLocalType(
                                 $property['type'],
                                 $this->aliases
                             );
 
-                            $pseudo_property_type = Type::parseString($pseudo_property_type_string);
+                            $pseudo_property_type = Type::parseTokens($pseudo_property_type_tokens);
                             $pseudo_property_type->setFromDocblock();
 
                             if ($property['tag'] !== 'property-read') {
@@ -324,13 +324,13 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             foreach ($node->stmts as $node_stmt) {
                 if ($node_stmt instanceof PhpParser\Node\Stmt\ClassConst) {
-                    $this->visitClassConstDeclaration($node_stmt, $storage);
+                    $this->visitClassConstDeclaration($node_stmt, $storage, $fq_classlike_name);
                 }
             }
 
             foreach ($node->stmts as $node_stmt) {
                 if ($node_stmt instanceof PhpParser\Node\Stmt\Property) {
-                    $this->visitPropertyDeclaration($node_stmt, $this->config, $storage);
+                    $this->visitPropertyDeclaration($node_stmt, $this->config, $storage, $fq_classlike_name);
                 }
             }
         } elseif (($node instanceof PhpParser\Node\Expr\New_
@@ -343,7 +343,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $fq_classlike_name = ClassLikeChecker::getFQCLNFromNameObject($node->class, $this->aliases);
 
             if (!in_array(strtolower($fq_classlike_name), ['self', 'static', 'parent'], true)) {
-                $this->codebase->scanner->queueClassLikeForScanning($fq_classlike_name, $this->file_path);
+                $this->codebase->scanner->queueClassLikeForScanning(
+                    $fq_classlike_name,
+                    $this->file_path,
+                    false,
+                    !($node instanceof PhpParser\Node\Expr\ClassConstFetch)
+                        || !($node->name instanceof PhpParser\Node\Identifier)
+                        || strtolower($node->name->name) !== 'class'
+                );
                 $this->file_storage->referenced_classlikes[strtolower($fq_classlike_name)] = $fq_classlike_name;
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\TryCatch) {
@@ -393,7 +400,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
                     $second_arg_value = isset($node->args[1]) ? $node->args[1]->value : null;
                     if ($first_arg_value instanceof PhpParser\Node\Scalar\String_ && $second_arg_value) {
-                        $const_type = StatementsChecker::getSimpleType($second_arg_value) ?: Type::getMixed();
+                        $const_type = StatementsChecker::getSimpleType($second_arg_value, $this->file_scanner)
+                            ?: Type::getMixed();
                         $const_name = $first_arg_value->value;
 
                         if ($this->functionlike_storages) {
@@ -507,7 +515,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\Const_) {
             foreach ($node->consts as $const) {
-                $const_type = StatementsChecker::getSimpleType($const->value) ?: Type::getMixed();
+                $const_type = StatementsChecker::getSimpleType($const->value, $this->file_scanner)
+                    ?: Type::getMixed();
 
                 if ($this->codebase->register_global_functions) {
                     $this->codebase->addStubbedConstantType($const->name->name, $const_type);
@@ -709,7 +718,9 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 $storage->visibility = ClassLikeChecker::VISIBILITY_PUBLIC;
             }
         } else {
-            $function_id = $cased_function_id = $this->file_path . ':' . $stmt->getLine() . ':-:closure';
+            $function_id = $cased_function_id = $this->file_path
+                . ':' . $stmt->getLine()
+                . ':' . (int) $stmt->getAttribute('startFilePos') . ':-:closure';
 
             $storage = $this->file_storage->functions[$function_id] = new FunctionLikeStorage();
         }
@@ -802,8 +813,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     $rules = \Psalm\Type\Algebra::getTruthsFromFormula($negated_formula);
 
                     foreach ($rules as $var_id => $rule) {
-                        if (strpos($rule, '|') !== false) {
-                            continue;
+                        foreach ($rule as $rule_part) {
+                            if (count($rule_part) > 1) {
+                                continue 2;
+                            }
                         }
 
                         if (isset($existing_params[$var_id])) {
@@ -1019,14 +1032,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
                 if ($docblock_return_type) {
                     try {
-                        $fixed_type_string = Type::fixUpLocalType(
+                        $fixed_type_tokens = Type::fixUpLocalType(
                             $docblock_return_type,
                             $this->aliases,
                             $this->function_template_types + $this->class_template_types
                         );
 
-                        $storage->return_type = Type::parseString(
-                            $fixed_type_string,
+                        $storage->return_type = Type::parseTokens(
+                            $fixed_type_tokens,
                             false,
                             $this->function_template_types + $this->class_template_types
                         );
@@ -1228,7 +1241,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             $code_location->setCommentLine($docblock_param['line_number']);
 
             try {
-                $new_param_type = Type::parseString(
+                $new_param_type = Type::parseTokens(
                     Type::fixUpLocalType(
                         $docblock_param['type'],
                         $this->aliases,
@@ -1319,13 +1332,15 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /**
      * @param   PhpParser\Node\Stmt\Property    $stmt
      * @param   Config                          $config
+     * @param   string                          $fq_classlike_name
      *
      * @return  void
      */
     private function visitPropertyDeclaration(
         PhpParser\Node\Stmt\Property $stmt,
         Config $config,
-        ClassLikeStorage $storage
+        ClassLikeStorage $storage,
+        $fq_classlike_name
     ) {
         if (!$this->fq_classlike_names) {
             throw new \LogicException('$this->fq_classlike_names should not be empty');
@@ -1390,7 +1405,12 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             if (!$property_group_type) {
                 if ($property->default) {
-                    $default_type = StatementsChecker::getSimpleType($property->default, null, $existing_constants);
+                    $default_type = StatementsChecker::getSimpleType(
+                        $property->default,
+                        $this->file_scanner,
+                        $existing_constants,
+                        $fq_classlike_name
+                    );
                 }
 
                 $property_type = false;
@@ -1446,11 +1466,15 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
     /**
      * @param   PhpParser\Node\Stmt\ClassConst  $stmt
+     * @param   string $fq_classlike_name
      *
      * @return  void
      */
-    private function visitClassConstDeclaration(PhpParser\Node\Stmt\ClassConst $stmt, ClassLikeStorage $storage)
-    {
+    private function visitClassConstDeclaration(
+        PhpParser\Node\Stmt\ClassConst $stmt,
+        ClassLikeStorage $storage,
+        $fq_classlike_name
+    ) {
         $existing_constants = $storage->protected_class_constants
             + $storage->private_class_constants
             + $storage->public_class_constants;
@@ -1458,8 +1482,9 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         foreach ($stmt->consts as $const) {
             $const_type = StatementsChecker::getSimpleType(
                 $const->value,
-                null,
-                $existing_constants
+                $this->file_scanner,
+                $existing_constants,
+                $fq_classlike_name
             ) ?: Type::getMixed();
 
             $existing_constants[$const->name->name] = $const_type;
@@ -1515,7 +1540,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
 
             if ($this->codebase->fileExists($path_to_file)) {
-                $this->codebase->scanner->queueFileForScanning($path_to_file);
+                if ($this->scan_deep) {
+                    $this->codebase->scanner->addFileToDeepScan($path_to_file);
+                } else {
+                    $this->codebase->scanner->addFileToShallowScan($path_to_file);
+                }
 
                 $this->file_storage->included_file_paths[strtolower($path_to_file)] = $path_to_file;
 

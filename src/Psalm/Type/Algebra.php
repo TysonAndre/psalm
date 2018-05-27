@@ -42,13 +42,7 @@ class Algebra
             return $type;
         }
 
-        $type_parts = explode('&', (string)$type);
-
-        foreach ($type_parts as &$type_part) {
-            $type_part = $type_part[0] === '!' ? substr($type_part, 1) : '!' . $type_part;
-        }
-
-        return implode('&', $type_parts);
+        return $type[0] === '!' ? substr($type, 1) : '!' . $type;
     }
 
     /**
@@ -155,7 +149,9 @@ class Algebra
                         [$var => [$type]],
                         false,
                         true,
-                        $type[0] === '^' || (strlen($type) > 1 && $type[1] === '^')
+                        $type[0] === '^'
+                            || $type[0] === '~'
+                            || (strlen($type) > 1 && ($type[1] === '^' || $type[1] === '~'))
                     );
                 }
             }
@@ -248,7 +244,7 @@ class Algebra
              * @return bool
              */
             function (Clause $clause) {
-                return (bool)count($clause->possibilities);
+                return count($clause->possibilities) || $clause->wedge;
             }
         );
 
@@ -258,7 +254,11 @@ class Algebra
             $is_redundant = false;
 
             foreach ($deduped_clauses as $clause_b) {
-                if ($clause_a === $clause_b || !$clause_b->reconcilable || $clause_b->wedge) {
+                if ($clause_a === $clause_b
+                    || !$clause_b->reconcilable
+                    || $clause_b->wedge
+                    || $clause_a->wedge
+                ) {
                     continue;
                 }
 
@@ -280,11 +280,14 @@ class Algebra
      * Look for clauses with only one possible value
      *
      * @param  array<int, Clause>  $clauses
+     * @param  array<string, bool> $cond_referenced_var_ids
      *
-     * @return array<string, string>
+     * @return array<string, array<int, array<int, string>>>
      */
-    public static function getTruthsFromFormula(array $clauses)
-    {
+    public static function getTruthsFromFormula(
+        array $clauses,
+        array &$cond_referenced_var_ids = []
+    ) {
         $truths = [];
 
         if (empty($clauses)) {
@@ -300,13 +303,11 @@ class Algebra
                 // if there's only one possible type, return it
                 if (count($clause->possibilities) === 1 && count($possible_types) === 1) {
                     if (isset($truths[$var])) {
-                        $truths[$var] .= '&' . array_pop($possible_types);
+                        $truths[$var][] = [array_pop($possible_types)];
                     } else {
-                        $truths[$var] = array_pop($possible_types);
+                        $truths[$var] = [[array_pop($possible_types)]];
                     }
                 } elseif (count($clause->possibilities) === 1) {
-                    $with_brackets = 0;
-
                     // if there's only one active clause, return all the non-negation clause members ORed together
                     $things_that_can_be_said = array_filter(
                         $possible_types,
@@ -317,8 +318,7 @@ class Algebra
                          *
                          * @psalm-suppress MixedOperand
                          */
-                        function ($possible_type) use (&$with_brackets) {
-                            $with_brackets += (int) (strpos($possible_type, '(') > 0);
+                        function ($possible_type) {
                             return $possible_type[0] !== '!';
                         }
                     );
@@ -326,34 +326,12 @@ class Algebra
                     if ($things_that_can_be_said && count($things_that_can_be_said) === count($possible_types)) {
                         $things_that_can_be_said = array_unique($things_that_can_be_said);
 
-                        if ($with_brackets > 1) {
-                            $bracket_groups = [];
-
-                            $removed = 0;
-
-                            foreach ($things_that_can_be_said as $i => $t) {
-                                if (preg_match('/^\^(int|string|float)\(/', $t, $matches)) {
-                                    $options = substr($t, strlen((string) $matches[0]), -1);
-
-                                    $type = (string) $matches[1];
-
-                                    if (!isset($bracket_groups[$type])) {
-                                        $bracket_groups[$type] = $options;
-                                    } else {
-                                        $bracket_groups[$type] .= ',' . $options;
-                                    }
-
-                                    array_splice($things_that_can_be_said, $i - $removed, 1);
-                                    $removed++;
-                                }
-                            }
-
-                            foreach ($bracket_groups as $type => $options) {
-                                $things_that_can_be_said[] = '^' . $type . '(' . $options . ')';
-                            }
+                        if ($clause->generated && count($possible_types) > 1) {
+                            unset($cond_referenced_var_ids[$var]);
                         }
 
-                        $truths[$var] = implode('|', $things_that_can_be_said);
+                        /** @var array<int, string> $things_that_can_be_said */
+                        $truths[$var] = [$things_that_can_be_said];
                     }
                 }
             }
@@ -433,14 +411,29 @@ class Algebra
         $clauses = [];
 
         $all_wedges = true;
+        $has_wedge = false;
 
         foreach ($left_clauses as $left_clause) {
             foreach ($right_clauses as $right_clause) {
+                $all_wedges = $all_wedges && ($left_clause->wedge && $right_clause->wedge);
+                $has_wedge = $has_wedge || ($left_clause->wedge && $right_clause->wedge);
+            }
+        }
+
+        if ($all_wedges) {
+            return [new Clause([], true)];
+        }
+
+        foreach ($left_clauses as $left_clause) {
+            foreach ($right_clauses as $right_clause) {
+                if ($left_clause->wedge && $right_clause->wedge) {
+                    // handled below
+                    continue;
+                }
+
                 $possibilities = [];
 
                 $can_reconcile = true;
-
-                $all_wedges = $all_wedges && $left_clause->wedge && $right_clause->wedge;
 
                 if ($left_clause->wedge ||
                     $right_clause->wedge ||
@@ -484,8 +477,8 @@ class Algebra
             }
         }
 
-        if ($all_wedges) {
-            return [new Clause([], true)];
+        if ($has_wedge) {
+            $clauses[] = new Clause([], true);
         }
 
         return $clauses;
@@ -537,7 +530,11 @@ class Algebra
             $impossibility = [];
 
             foreach ($possiblity as $type) {
-                if ($type[0] !== '^' && (!isset($type[1]) || $type[1] !== '^')) {
+                if (($type[0] !== '^' && $type[0] !== '~'
+                        && (!isset($type[1]) || ($type[1] !== '^' && $type[1] !== '~')))
+                    || strpos($type, '(')
+                    || strpos($type, 'getclass-')
+                ) {
                     $impossibility[] = self::negateType($type);
                 }
             }

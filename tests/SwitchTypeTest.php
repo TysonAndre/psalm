@@ -258,6 +258,228 @@ class SwitchTypeTest extends TestCase
                       }
                     }',
             ],
+            'dontResolveTypesBadly' => [
+                '<?php
+                    $a = new A;
+
+                    switch (rand(0,1)) {
+                        case 0:
+                        case 1:
+                            $dt = $a->maybeReturnsDT();
+                            if (!is_null($dt)) {
+                                $dt = $dt->format(\DateTime::ISO8601);
+                            }
+                            break;
+                    }
+
+                    class A {
+                        public function maybeReturnsDT(): ?\DateTimeInterface {
+                            return rand(0,1) ? new \DateTime("now") : null;
+                        }
+                    }',
+            ],
+            'issetInFallthrough' => [
+                '<?php
+                    function foo() : void {
+                        switch(rand() % 4) {
+                            case 0:
+                                echo "here";
+                                break;
+                            case 1:
+                                $x = rand() % 4;
+                            case 2:
+                                if (isset($x) && $x > 2) {
+                                    echo "$x is large";
+                                }
+                                break;
+                        }
+                    }',
+            ],
+            'switchManyGetClass' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+                    class D extends A {}
+
+                    function foo(A $a) : void {
+                        switch(get_class($a)) {
+                            case B::class:
+                            case C::class:
+                            case D::class:
+                                echo "goodbye";
+                        }
+                    }',
+            ],
+            'switchManyStrings' => [
+                '<?php
+                    function foo(string $s) : void {
+                        switch($s) {
+                            case "a":
+                            case "b":
+                            case "c":
+                                echo "goodbye";
+                        }
+                    }',
+            ],
+            'allSwitchesMet' => [
+                '<?php
+                    $a = rand(0, 1) ? "a" : "b";
+
+                    switch ($a) {
+                        case "a":
+                            $foo = "hello";
+                            break;
+
+                        case "b":
+                            $foo = "goodbye";
+                            break;
+                    }
+
+                    echo $foo;',
+            ],
+            'impossibleCaseDefaultWithThrow' => [
+                '<?php
+                    $a = rand(0, 1) ? "a" : "b";
+
+                    switch ($a) {
+                        case "a":
+                            break;
+
+                        case "b":
+                            break;
+
+                        default:
+                            throw new \Exception("should never happen");
+                    }',
+            ],
+            'switchOnUnknownInts' => [
+                '<?php
+                    function foo(int $a, int $b, int $c) : void {
+                        switch ($a) {
+                            case $b:
+                                break;
+                            case $c:
+                                break;
+                        }
+                    }',
+            ],
+            'switchNullable1' => [
+                '<?php
+                    function foo(?string $s) : void {
+                        switch ($s) {
+                            case "hello":
+                            case "goodbye":
+                                echo "cool";
+                                break;
+                            case "hello again":
+                                echo "cool";
+                                break;
+                        }
+                    }',
+            ],
+            'switchNullable2' => [
+                '<?php
+                    function foo(?string $s) : void {
+                        switch ($s) {
+                            case "hello":
+                                echo "cool";
+                            case "goodbye":
+                                echo "cooler";
+                                break;
+                            case "hello again":
+                                echo "cool";
+                                break;
+                        }
+                    }',
+            ],
+            'switchNullable3' => [
+                '<?php
+                    function foo(?string $s) : void {
+                        switch ($s) {
+                            case "hello":
+                                echo "cool";
+                                break;
+                            case "goodbye":
+                                echo "cool";
+                                break;
+                            case "hello again":
+                                echo "cool";
+                                break;
+                        }
+                    }',
+            ],
+            'switchNullable4' => [
+                '<?php
+                    function foo(?string $s, string $a, string $b) : void {
+                        switch ($s) {
+                            case $a:
+                            case $b:
+                                break;
+                        }
+                    }',
+            ],
+            'removeChangedVarsFromReasonableClauses' => [
+                '<?php
+                    function r() : bool {
+                        return (bool)rand(0, 1);
+                    }
+
+                    function foo(string $s) : void {
+                        if (($s === "a" || $s === "b")
+                            && ($s === "a" || r())
+                            && ($s === "b" || r())
+                            && (r() || r())
+                        ) {
+                            // do something
+                        } else {
+                            return;
+                        }
+
+                        switch ($s) {
+                            case "a":
+                                break;
+                            case "b":
+                                break;
+                        }
+                    }'
+            ],
+            'preventBadClausesFromBleeding' => [
+                '<?php
+                    function foo (string $s) : void {
+                        if ($s === "a" && rand(0, 1)) {
+
+                        } elseif ($s === "b" && rand(0, 1)) {
+
+                        } else {
+                            return;
+                        }
+
+                        switch ($s) {
+                            case "a":
+                                echo "hello";
+                                break;
+                            case "b":
+                                echo "goodbye";
+                                break;
+                        }
+                    }',
+            ],
+            'alwaysReturns' => [
+                '<?php
+                    /**
+                     * @param "a"|"b" $s
+                     */
+                    function foo(string $s) : string {
+                        switch ($s) {
+                            case "a":
+                                return "hello";
+
+                            case "b":
+                            return "goodbye";
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -418,6 +640,70 @@ class SwitchTypeTest extends TestCase
                       }
                     }',
                 'error_message' => 'InvalidReturnType',
+            ],
+            'SKIPPED-switchManyGetClassWithRepetitionWithProperLineNumber' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+                    class C extends A {}
+                    class D extends A {}
+
+                    function foo(A $a) : void {
+                        switch(get_class($a)) {
+                            case B::class:
+                            case C::class:
+                            case B::class:
+                            case C::class:
+                            case D::class:
+                                echo "goodbye";
+                        }
+                    }',
+                'error_message' => 'RedundantCondition - src/somefile.php:10',
+                'error_levels' => ['ParadoxicalCondition'],
+            ],
+            'repeatedCaseValue' => [
+                '<?php
+                    $a = rand(0, 1);
+                    switch ($a) {
+                        case 0:
+                            break;
+
+                        case 0:
+                            echo "I never get here";
+                    }',
+                'error_message' => 'ParadoxicalCondition - src/somefile.php:7',
+            ],
+            'impossibleCaseValue' => [
+                '<?php
+                    $a = rand(0, 1) ? "a" : "b";
+
+                    switch ($a) {
+                        case "a":
+                            break;
+
+                        case "b":
+                            break;
+
+                        case "c":
+                            echo "impossible";
+                    }',
+                'error_message' => 'TypeDoesNotContainType - src/somefile.php:11',
+            ],
+            'impossibleCaseDefault' => [
+                '<?php
+                    $a = rand(0, 1) ? "a" : "b";
+
+                    switch ($a) {
+                        case "a":
+                            break;
+
+                        case "b":
+                            break;
+
+                        default:
+                            echo "impossible";
+                    }',
+                'error_message' => 'ParadoxicalCondition - src/somefile.php:11',
             ],
         ];
     }

@@ -312,7 +312,7 @@ class TypeAlgebraTest extends TestCase
                         }
                     }',
             ],
-            'SKIPPED-issetArrayCreation' => [
+            'issetArrayCreation' => [
                 '<?php
                     $arr = [];
 
@@ -325,6 +325,46 @@ class TypeAlgebraTest extends TestCase
                             $arr[(int) $a] += 4;
                         }
                     }',
+            ],
+            'moreConvolutedArrayCreation' => [
+                '<?php
+                    function fetchRow() : array {
+                        return ["c" => "UK"];
+                    }
+
+                    $arr = [];
+
+                    foreach ([1, 2, 3] as $i) {
+                        $row = fetchRow();
+
+                        if (!isset($arr[$row["c"]])) {
+                            $arr[$row["c"]] = 0;
+                        }
+
+                        $arr[$row["c"]] = 1;
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedArrayOffset'],
+            ],
+            'moreConvolutedNestedArrayCreation' => [
+                '<?php
+                    function fetchRow() : array {
+                        return ["c" => "UK"];
+                    }
+
+                    $arr = [];
+
+                    foreach ([1, 2, 3] as $i) {
+                        $row = fetchRow();
+
+                        if (!isset($arr[$row["c"]]["foo"])) {
+                            $arr[$row["c"]]["foo"] = 0;
+                        }
+
+                        $arr[$row["c"]]["foo"] = 1;
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedArrayOffset'],
             ],
             'noParadoxInLoop' => [
                 '<?php
@@ -762,21 +802,48 @@ class TypeAlgebraTest extends TestCase
             ],
             'instanceofNoRedundant' => [
                 '<?php
-                    function logic(Bar $a, ?Bar $b) : void {
-                        if ((!$a instanceof Foo || !$b instanceof Foo)
-                            && (!$a instanceof Foo || !$b instanceof Bar)
-                            && (!$a instanceof Bar || !$b instanceof Foo)
+                    function logic(Foo $a, Foo $b) : void {
+                        if ((!$a instanceof Bat || !$b instanceof Bat)
+                            && (!$a instanceof Bat || !$b instanceof Bar)
+                            && (!$a instanceof Bar || !$b instanceof Bat)
                             && (!$a instanceof Bar || !$b instanceof Bar)
                         ) {
 
                         } else {
-                            if ($b instanceof Foo) {}
+                            if ($b instanceof Bat) {}
                         }
                     }
 
                     class Foo {}
                     class Bar extends Foo {}
                     class Bat extends Foo {}',
+            ],
+            'explicitValuesInOr' => [
+                '<?php
+                    $s = rand(0, 1) ? "a" : "b";
+
+                    if (($s === "a" && rand(0, 1)) || ($s === "b" && rand(0, 1))) {}
+
+                    $a = (($s === "a" && rand(0, 1)) || ($s === "b" && rand(0, 1))) ? 1 : 0;',
+            ],
+            'boolComparison' => [
+                '<?php
+                    $a = (bool) rand(0, 1);
+
+                    if (rand(0, 1)) {
+                        $a = null;
+                    }
+
+                    if ($a !== (bool) rand(0, 1)) {
+                        echo $a === false ? "a" : "b";
+                    }',
+            ],
+            'stringConcatenationTrackedValid' => [
+                '<?php
+                    $x = "a";
+                    $x = "_" . $x;
+                    $array = [$x => 2];
+                    echo $array["_a"];',
             ],
         ];
     }
