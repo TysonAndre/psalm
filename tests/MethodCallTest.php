@@ -121,6 +121,31 @@ class MethodCallTest extends TestCase
                     $newnode = $doc->appendChild($node);
                     $newnode->setAttribute("bar", "baz");',
             ],
+            'nonStaticSelfCall' => [
+                '<?php
+                    class A11 {
+                        public function call() : self {
+                            $result = self::method();
+                            return $result;
+                        }
+
+                        public function method() : self {
+                            return $this;
+                        }
+                    }
+                    $x = new A11();
+                    var_export($x->call());',
+            ],
+            'simpleXml' => [
+                '<?php
+                    $xml = new SimpleXMLElement("<a><b></b></a>");
+                    $a = $xml->asXML();
+                    $b = $xml->asXML("foo.xml");',
+                'assertions' => [
+                    '$a' => 'string|false',
+                    '$b' => 'string|bool',
+                ],
+            ],
         ];
     }
 
@@ -195,7 +220,7 @@ class MethodCallTest extends TestCase
                     class A {
                         public function fooFoo(): void {}
 
-                        public function barBar(): void {
+                        public static function barBar(): void {
                             self::fooFoo();
                         }
                     }',

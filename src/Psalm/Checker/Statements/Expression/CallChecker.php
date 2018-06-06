@@ -536,7 +536,7 @@ class CallChecker
                             $statements_checker
                         );
 
-                        foreach ($context->vars_in_scope[$var_id]->getTypes() as $key => &$type) {
+                        foreach ($context->vars_in_scope[$var_id]->getTypes() as $type) {
                             if ($type instanceof TArray && $type->type_params[1]->isEmpty()) {
                                 $context->vars_in_scope[$var_id]->removeType('array');
                                 $context->vars_in_scope[$var_id]->addType(
@@ -594,7 +594,7 @@ class CallChecker
                 $is_variadic = $codebase->functions->isVariadic(
                     $project_checker,
                     strtolower($method_id),
-                    $statements_checker->getFilePath()
+                    $statements_checker->getRootFilePath()
                 );
             } else {
                 $fq_class_name = explode('::', $method_id)[0];
@@ -803,6 +803,7 @@ class CallChecker
                             $param_type->replaceTemplateTypesWithStandins(
                                 $template_types,
                                 $generic_params,
+                                $codebase,
                                 $arg->value->inferredType
                             );
                         }
@@ -842,7 +843,7 @@ class CallChecker
                                 return false;
                             }
                         } elseif ($arg->value->inferredType->isMixed()) {
-                            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+                            $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
                             if (IssueBuffer::accepts(
                                 new MixedArgument(
@@ -885,7 +886,7 @@ class CallChecker
                     }
                 }
             } elseif ($function_param) {
-                $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+                $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
                 if ($function_param->type && !$function_param->type->isMixed()) {
                     if (IssueBuffer::accepts(
@@ -1421,7 +1422,7 @@ class CallChecker
         }
 
         if ($input_type->isMixed()) {
-            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+            $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
             if (IssueBuffer::accepts(
                 new MixedArgument(
@@ -1437,7 +1438,7 @@ class CallChecker
             return null;
         }
 
-        $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+        $codebase->analyzer->incrementNonMixedCount($statements_checker->getFilePath());
 
         $param_type = TypeChecker::simplifyUnionType(
             $project_checker->codebase,

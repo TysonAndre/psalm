@@ -283,6 +283,42 @@ class BinaryOpChecker
                 $statements_checker
             );
 
+            $mixed_var_ids = ['$_GET', '$_POST', '$_SERVER'];
+
+            foreach ($context->vars_in_scope as $var_id => $type) {
+                if ($type->isMixed()) {
+                    $mixed_var_ids[] = $var_id;
+                }
+            }
+
+            foreach ($context->vars_possibly_in_scope as $var_id => $_) {
+                if (!isset($context->vars_in_scope[$var_id])) {
+                    $mixed_var_ids[] = $var_id;
+                }
+            }
+
+            $if_clauses = array_values(
+                array_map(
+                    /**
+                     * @return \Psalm\Clause
+                     */
+                    function (\Psalm\Clause $c) use ($mixed_var_ids) {
+                        $keys = array_keys($c->possibilities);
+
+                        foreach ($keys as $key) {
+                            foreach ($mixed_var_ids as $mixed_var_id) {
+                                if (preg_match('/^' . preg_quote($mixed_var_id, '/') . '(\[|-)/', $key)) {
+                                    return new \Psalm\Clause([], true);
+                                }
+                            }
+                        }
+
+                        return $c;
+                    },
+                    $if_clauses
+                )
+            );
+
             $ternary_clauses = Algebra::simplifyCNF(array_merge($context->clauses, $if_clauses));
 
             $negated_clauses = Algebra::negateFormula($if_clauses);
@@ -304,10 +340,13 @@ class BinaryOpChecker
             );
 
             $t_if_context->vars_in_scope = $t_if_vars_in_scope_reconciled;
+            $t_if_context->inside_isset = true;
 
             if (ExpressionChecker::analyze($statements_checker, $stmt->left, $t_if_context) === false) {
                 return false;
             }
+
+            $t_if_context->inside_isset = false;
 
             foreach ($t_if_context->vars_in_scope as $var_id => $type) {
                 if (isset($context->vars_in_scope[$var_id])) {
@@ -439,6 +478,14 @@ class BinaryOpChecker
                 if ($result_type) {
                     $stmt->inferredType = $result_type;
                 }
+            } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor
+                && ($stmt->left->inferredType->hasBool() || $stmt->right->inferredType->hasBool())
+            ) {
+                $stmt->inferredType = Type::getInt();
+            } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\LogicalXor
+                && ($stmt->left->inferredType->hasBool() || $stmt->right->inferredType->hasBool())
+            ) {
+                $stmt->inferredType = Type::getBool();
             } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Div) {
                 $project_checker = $statements_checker->getFileChecker()->project_checker;
 
@@ -783,7 +830,7 @@ class BinaryOpChecker
             || $right_type_part instanceof TGenericParam
         ) {
             if ($statements_source && $codebase) {
-                $codebase->analyzer->incrementMixedCount($statements_source->getCheckedFilePath());
+                $codebase->analyzer->incrementMixedCount($statements_source->getFilePath());
             }
 
             if ($left_type_part instanceof TMixed || $left_type_part instanceof TGenericParam) {
@@ -833,7 +880,7 @@ class BinaryOpChecker
         }
 
         if ($statements_source && $codebase) {
-            $codebase->analyzer->incrementNonMixedCount($statements_source->getCheckedFilePath());
+            $codebase->analyzer->incrementNonMixedCount($statements_source->getFilePath());
         }
 
         if ($left_type_part instanceof TArray
@@ -1081,7 +1128,7 @@ class BinaryOpChecker
             $result_type = Type::getString();
 
             if ($left_type->isMixed() || $right_type->isMixed()) {
-                $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+                $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
                 if ($left_type->isMixed()) {
                     if (IssueBuffer::accepts(
@@ -1108,7 +1155,7 @@ class BinaryOpChecker
                 return;
             }
 
-            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getFilePath());
 
             if ($left_type->isNull()) {
                 if (IssueBuffer::accepts(

@@ -111,6 +111,34 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         $project_checker = $this->getFileChecker()->project_checker;
         $codebase = $project_checker->codebase;
 
+        if ($codebase->config->hoist_constants) {
+            foreach ($stmts as $stmt) {
+                if ($stmt instanceof PhpParser\Node\Stmt\Const_) {
+                    foreach ($stmt->consts as $const) {
+                        $this->setConstType(
+                            $const->name->name,
+                            self::getSimpleType($const->value, $this) ?: Type::getMixed(),
+                            $context
+                        );
+                    }
+                } elseif ($stmt instanceof PhpParser\Node\Stmt\Expression
+                    && $stmt->expr instanceof PhpParser\Node\Expr\FuncCall
+                    && $stmt->expr->name instanceof PhpParser\Node\Name
+                    && $stmt->expr->name->parts === ['define']
+                    && isset($stmt->expr->args[1])
+                    && $stmt->expr->args[0]->value instanceof PhpParser\Node\Scalar\String_
+                ) {
+                    $const_name = $stmt->expr->args[0]->value->value;
+
+                    $this->setConstType(
+                        $const_name,
+                        self::getSimpleType($stmt->expr->args[1]->value, $this) ?: Type::getMixed(),
+                        $context
+                    );
+                }
+            }
+        }
+
         $original_context = null;
 
         if ($loop_scope) {
@@ -138,7 +166,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             if ($project_checker->debug_lines) {
-                echo $this->getCheckedFilePath() . ':' . $stmt->getLine();
+                echo $this->getFilePath() . ':' . $stmt->getLine();
             }
 
             /*
@@ -419,29 +447,28 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
                 foreach ($stmt->vars as $var) {
                     if ($var instanceof PhpParser\Node\Expr\Variable) {
-                        if ($global_context
-                            && VariableFetchChecker::analyze(
-                                $this,
-                                $var,
-                                $global_context,
-                                false,
-                                null,
-                                false,
-                                true
-                            ) === false
-                        ) {
-                            return false;
-                        }
-
                         if (is_string($var->name)) {
                             $var_id = '$' . $var->name;
 
-                            $context->vars_in_scope[$var_id] =
-                                $global_context && $global_context->hasVariable($var_id, $this)
-                                    ? clone $global_context->vars_in_scope[$var_id]
-                                    : Type::getMixed();
+                            if ($var->name === 'argv' || $var->name === 'argc') {
+                                if ($var->name === 'argv') {
+                                    $context->vars_in_scope[$var_id] = new Type\Union([
+                                        new Type\Atomic\TArray([
+                                            Type::getInt(),
+                                            Type::getString(),
+                                        ]),
+                                    ]);
+                                } else {
+                                    $context->vars_in_scope[$var_id] = Type::getInt();
+                                }
+                            } else {
+                                $context->vars_in_scope[$var_id] =
+                                    $global_context && $global_context->hasVariable($var_id, $this)
+                                        ? clone $global_context->vars_in_scope[$var_id]
+                                        : Type::getMixed();
 
-                            $context->vars_possibly_in_scope[$var_id] = true;
+                                $context->vars_possibly_in_scope[$var_id] = true;
+                            }
                         }
                     }
                 }
@@ -1055,7 +1082,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             return $context->vars_in_scope[$const_name];
         }
 
-        $file_path = $statements_checker->getFilePath();
+        $file_path = $statements_checker->getRootFilePath();
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
         $file_storage_provider = $project_checker->file_storage_provider;
@@ -1071,7 +1098,8 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         $predefined_constants = Config::getInstance()->getPredefinedConstants();
 
         if (isset($predefined_constants[$fq_const_name ?: $const_name])) {
-            return ClassLikeChecker::getTypeFromValue($predefined_constants[$fq_const_name ?: $const_name]);
+            $type = ClassLikeChecker::getTypeFromValue($predefined_constants[$fq_const_name ?: $const_name]);
+            return $type;
         }
 
         $stubbed_const_type = $project_checker->codebase->getStubbedConstantType(

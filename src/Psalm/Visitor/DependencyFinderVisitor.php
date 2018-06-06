@@ -185,7 +185,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                             new CodeLocation($this->file_scanner, $node, null, true)
                         )
                     )) {
-                        // fall through
+                        $this->file_storage->has_visitor_issues = true;
                     }
 
                     return PhpParser\NodeTraverser::STOP_TRAVERSAL;
@@ -216,12 +216,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         $doc_comment->getLine()
                     );
                 } catch (DocblockParseException $e) {
-                    IssueBuffer::accepts(
+                    if (IssueBuffer::accepts(
                         new InvalidDocblock(
                             $e->getMessage() . ' in docblock for ' . implode('.', $this->fq_classlike_names),
                             new CodeLocation($this->file_scanner, $node, null, true)
                         )
-                    );
+                    )) {
+                        $storage->has_visitor_issues = true;
+                    }
                 }
 
                 if ($docblock_info) {
@@ -241,6 +243,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         }
 
                         $this->class_template_types = $storage->template_types;
+
+                        if ($docblock_info->template_parents) {
+                            $storage->template_parents = [];
+
+                            foreach ($docblock_info->template_parents as $template_parent) {
+                                $storage->template_parents[$template_parent] = $template_parent;
+                            }
+                        }
                     }
 
                     if ($docblock_info->properties) {
@@ -370,6 +380,20 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             if (!$this->scan_deep) {
                 return PhpParser\NodeTraverser::DONT_TRAVERSE_CHILDREN;
             }
+        } elseif ($node instanceof PhpParser\Node\Stmt\Global_) {
+            $function_like_storage = end($this->functionlike_storages);
+
+            if ($function_like_storage) {
+                foreach ($node->vars as $var) {
+                    if ($var instanceof PhpParser\Node\Expr\Variable) {
+                        if (is_string($var->name) && $var->name !== 'argv' && $var->name !== 'argc') {
+                            $var_id = '$' . $var->name;
+
+                            $function_like_storage->global_variables[$var_id] = true;
+                        }
+                    }
+                }
+            }
         } elseif ($node instanceof PhpParser\Node\Expr\FuncCall && $node->name instanceof PhpParser\Node\Name) {
             $function_id = implode('\\', $node->name->parts);
             if (CallMap::inCallMap($function_id)) {
@@ -404,7 +428,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                             ?: Type::getMixed();
                         $const_name = $first_arg_value->value;
 
-                        if ($this->functionlike_storages) {
+                        if ($this->functionlike_storages && !$this->config->hoist_constants) {
                             $functionlike_storage =
                                 $this->functionlike_storages[count($this->functionlike_storages) - 1];
                             $functionlike_storage->defined_constants[$const_name] = $const_type;
@@ -594,6 +618,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             $classlike_storage = array_pop($this->classlike_storages);
 
+            if ($classlike_storage->has_visitor_issues) {
+                $this->file_storage->has_visitor_issues = true;
+            }
+
             $this->class_template_types = [];
 
             if ($this->after_classlike_check_plugins) {
@@ -611,7 +639,9 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 // TODO: use $file_manipulations?
             }
 
-            $this->codebase->cacheClassLikeStorage($classlike_storage, $this->file_path);
+            if (!$this->file_storage->has_visitor_issues) {
+                $this->codebase->cacheClassLikeStorage($classlike_storage, $this->file_path);
+            }
         } elseif ($node instanceof PhpParser\Node\Stmt\Function_
             || $node instanceof PhpParser\Node\Stmt\ClassMethod
         ) {
@@ -619,7 +649,11 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             $this->function_template_types = [];
         } elseif ($node instanceof PhpParser\Node\FunctionLike) {
-            array_pop($this->functionlike_storages);
+            $functionlike_storage = array_pop($this->functionlike_storages);
+
+            if ($functionlike_storage->has_visitor_issues) {
+                $this->file_storage->has_visitor_issues = true;
+            }
         }
 
         return null;
@@ -741,6 +775,21 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
         /** @var PhpParser\Node\Param $param */
         foreach ($stmt->getParams() as $param) {
+            if ($param->var instanceof PhpParser\Node\Expr\Error) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        'Param' . ((int) $i + 1) . ' of ' . $cased_function_id . ' has invalid syntax',
+                        new CodeLocation($this->file_scanner, $param, null, true)
+                    )
+                )) {
+                    $storage->has_visitor_issues = true;
+                }
+
+                ++$i;
+
+                continue;
+            }
+
             $param_array = $this->getTranslatedFunctionParam($param);
 
             if (isset($existing_params['$' . $param_array->name])) {
@@ -750,6 +799,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         new CodeLocation($this->file_scanner, $param, null, true)
                     )
                 )) {
+                    $storage->has_visitor_issues = true;
+
+                    ++$i;
+
                     continue;
                 }
             }
@@ -761,7 +814,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             if (!$param_array->is_optional) {
                 $required_param_count = $i + 1;
 
-                if (!$param->variadic && $has_optional_param && is_string($param->var->name)) {
+                if (!$param->variadic
+                    && $has_optional_param
+                    && is_string($param->var->name)
+                ) {
                     if (IssueBuffer::accepts(
                         new MisplacedRequiredParam(
                             'Required param $' . $param->var->name . ' should come before any optional params in ' .
@@ -769,7 +825,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                             new CodeLocation($this->file_scanner, $param, null, true)
                         )
                     )) {
-                        // fall through
+                        $storage->has_visitor_issues = true;
                     }
                 }
             } else {
@@ -931,7 +987,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     new CodeLocation($this->file_scanner, $stmt, null, true)
                 )
             )) {
-                // fall through
+                $storage->has_visitor_issues = true;
             }
 
             $docblock_info = null;
@@ -942,7 +998,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     new CodeLocation($this->file_scanner, $stmt, null, true)
                 )
             )) {
-                // fall through
+                $storage->has_visitor_issues = true;
             }
 
             $docblock_info = null;
@@ -1006,6 +1062,69 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
         }
 
+        if ($docblock_info->assertions) {
+            $storage->assertions = [];
+
+            foreach ($docblock_info->assertions as $assertion) {
+                foreach ($storage->params as $i => $param) {
+                    if ($param->name === $assertion['param_name']) {
+                        $storage->assertions[] = new \Psalm\Storage\Assertion(
+                            $i,
+                            [[$assertion['type']]]
+                        );
+                        continue 2;
+                    }
+                }
+
+                $storage->assertions[] = new \Psalm\Storage\Assertion(
+                    $assertion['param_name'],
+                    [[$assertion['type']]]
+                );
+            }
+        }
+
+        if ($docblock_info->if_true_assertions) {
+            $storage->assertions = [];
+
+            foreach ($docblock_info->if_true_assertions as $assertion) {
+                foreach ($storage->params as $i => $param) {
+                    if ($param->name === $assertion['param_name']) {
+                        $storage->if_true_assertions[] = new \Psalm\Storage\Assertion(
+                            $i,
+                            [[$assertion['type']]]
+                        );
+                        continue 2;
+                    }
+                }
+
+                $storage->if_true_assertions[] = new \Psalm\Storage\Assertion(
+                    $assertion['param_name'],
+                    [[$assertion['type']]]
+                );
+            }
+        }
+
+        if ($docblock_info->if_false_assertions) {
+            $storage->assertions = [];
+
+            foreach ($docblock_info->if_false_assertions as $assertion) {
+                foreach ($storage->params as $i => $param) {
+                    if ($param->name === $assertion['param_name']) {
+                        $storage->if_false_assertions[] = new \Psalm\Storage\Assertion(
+                            $i,
+                            [[$assertion['type']]]
+                        );
+                        continue 2;
+                    }
+                }
+
+                $storage->if_false_assertions[] = new \Psalm\Storage\Assertion(
+                    $assertion['param_name'],
+                    [[$assertion['type']]]
+                );
+            }
+        }
+
         if ($docblock_info->return_type) {
             if (!$storage->return_type || $docblock_info->return_type !== $storage->return_type->getId()) {
                 $storage->has_template_return_type =
@@ -1060,6 +1179,12 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                             if ($all_typehint_types_match) {
                                 $storage->return_type->from_docblock = false;
                             }
+
+                            if ($storage->signature_return_type->isNullable()
+                                && !$storage->return_type->isNullable()
+                            ) {
+                                $storage->return_type->addType(new Type\Atomic\TNull());
+                            }
                         }
 
                         $storage->return_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
@@ -1070,7 +1195,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                                 new CodeLocation($this->file_scanner, $stmt, null, true)
                             )
                         )) {
-                            // fall through
+                            $storage->has_visitor_issues = true;
                         }
                     }
                 }
@@ -1143,6 +1268,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
 
             if ($param_type_string) {
+                $param_type_string = str_replace('__UNIONOR__', '|', $param_type_string);
                 if ($is_nullable) {
                     $param_type_string .= '|null';
                 }
@@ -1169,7 +1295,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
 
         $is_optional = $param->default !== null;
 
-        if (!is_string($param->var->name)) {
+        if ($param->var instanceof PhpParser\Node\Expr\Error || !is_string($param->var->name)) {
             throw new \UnexpectedValueException('Not expecting param name to be non-string');
         }
 
@@ -1257,7 +1383,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         $code_location
                     )
                 )) {
-                    // fall through
+                    $storage->has_visitor_issues = true;
                 }
 
                 continue;
@@ -1378,7 +1504,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         new CodeLocation($this->file_scanner, $stmt, null, true)
                     )
                 )) {
-                    // fall through
+                    $storage->has_visitor_issues = true;
                 }
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
@@ -1387,7 +1513,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         new CodeLocation($this->file_scanner, $stmt, null, true)
                     )
                 )) {
-                    // fall through
+                    $storage->has_visitor_issues = true;
                 }
             }
         }
@@ -1546,7 +1672,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     $this->codebase->scanner->addFileToShallowScan($path_to_file);
                 }
 
-                $this->file_storage->included_file_paths[strtolower($path_to_file)] = $path_to_file;
+                $this->file_storage->required_file_paths[strtolower($path_to_file)] = $path_to_file;
 
                 return;
             }
@@ -1574,17 +1700,17 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
     /**
      * @return string
      */
-    public function getCheckedFilePath()
+    public function getRootFilePath()
     {
-        return $this->file_scanner->getCheckedFilePath();
+        return $this->file_scanner->getRootFilePath();
     }
 
     /**
      * @return string
      */
-    public function getCheckedFileName()
+    public function getRootFileName()
     {
-        return $this->file_scanner->getCheckedFileName();
+        return $this->file_scanner->getRootFileName();
     }
 
     /**

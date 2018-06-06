@@ -206,6 +206,11 @@ class ClassLikeStorage
     public $template_types;
 
     /**
+     * @var array<string, string>|null
+     */
+    public $template_parents;
+
+    /**
      * @var array<string, array<int, CodeLocation>>|null
      */
     public $referencing_locations;
@@ -226,6 +231,11 @@ class ClassLikeStorage
      * @var string
      */
     public $hash = '';
+
+    /**
+     * @var bool
+     */
+    public $has_visitor_issues = false;
 
     /**
      * @param string $name

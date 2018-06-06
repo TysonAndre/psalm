@@ -275,6 +275,18 @@ class IssetTest extends TestCase
                         return $arr;
                     }',
             ],
+            'arrayAccessAfterOneIsset' => [
+                '<?php
+                    $arr = [];
+
+                    foreach ([1, 2, 3] as $foo) {
+                        if (!isset($arr["bar"])) {
+                            $arr["bar"] = 0;
+                        }
+
+                        echo $arr["bar"];
+                    }',
+            ],
             'arrayAccessAfterTwoIssets' => [
                 '<?php
                     $arr = [];
@@ -320,6 +332,37 @@ class IssetTest extends TestCase
                         }
 
                         if ($arr[$k][0]) {}
+                    }',
+            ],
+            'mixedArrayIsset' => [
+                '<?php
+                    $a = isset($_GET["a"]) ? $_GET["a"] : "";
+                    if ($a) {}',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment', 'MixedArrayAccess'],
+            ],
+            'nestedArrayAccessInLoopAfterIsset' => [
+                '<?php
+                    $arr = [];
+                    while (rand(0, 1)) {
+                        if (rand(0, 1)) {
+                            if (!isset($arr["a"]["b"])) {
+                                $arr["a"]["b"] = "foo";
+                            }
+                            echo $arr["a"]["b"];
+                        } else {
+                            $arr["c"] = "foo";
+                        }
+                    }'
+            ],
+            'issetVarInLoopBeforeAssignment' => [
+                '<?php
+                    function foo() : void {
+                        while (rand(0, 1)) {
+                            if (!isset($foo)) {
+                                $foo = 1;
+                            }
+                        }
                     }',
             ],
         ];

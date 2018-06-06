@@ -752,6 +752,7 @@ class AnnotationTest extends TestCase
                      * @method  void setInteger(int $integer)
                      * @method setString(int $integer)
                      * @method  getBool(string $foo)  :   bool
+                     * @method setBool(string $foo, string|bool $bar)  :   bool
                      * @method (string|int)[] getArray() : array with some text
                      * @method void setArray(array $arr = array(), int $foo = 5) with some more text
                      * @method (callable() : string) getCallable() : callable
@@ -765,6 +766,8 @@ class AnnotationTest extends TestCase
                     /** @psalm-suppress MixedAssignment */
                     $b = $child->setString(5);
                     $c = $child->getBool("hello");
+                    $c = $child->setBool("hello", true);
+                    $c = $child->setBool("hello", "true");
                     $d = $child->getArray();
                     $child->setArray(["boo"])
                     $e = $child->getCallable();',
@@ -786,6 +789,28 @@ class AnnotationTest extends TestCase
 
                     foo(null);
                     foo(new \stdClass);',
+            ],
+            'generatorReturnType' => [
+                '<?php
+                    /** @return Generator<int, stdClass> */
+                    function g():Generator { yield new stdClass; }
+
+                    $g = g();',
+                'assertions' => [
+                    '$g' => 'Generator<int, stdClass>',
+                ],
+            ],
+            'returnTypeShouldBeNullable' => [
+                '<?php
+                    /**
+                     * @return stdClass
+                     */
+                    function foo() : ?stdClass {
+                        return rand(0, 1) ? new stdClass : null;
+                    }
+
+                    $f = foo();
+                    if ($f) {}'
             ],
         ];
     }
@@ -1268,18 +1293,6 @@ class AnnotationTest extends TestCase
 
                     /**
                      * @method string getString(\)
-                     */
-                    class Child extends Parent {}',
-                'error_message' => 'InvalidDocblock',
-            ],
-            'magicMethodAnnotationWithUnionTypeInDocblock' => [
-                '<?php
-                    class Parent {
-                        public function __call() {}
-                    }
-
-                    /**
-                     * @method string getString(string|int $x)
                      */
                     class Child extends Parent {}',
                 'error_message' => 'InvalidDocblock',

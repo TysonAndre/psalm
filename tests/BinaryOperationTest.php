@@ -107,6 +107,24 @@ class BinaryOperationTest extends TestCase
                     '$t' => 'GMP',
                 ],
             ],
+            'booleanXor' => [
+                '<?php
+                    $a = true ^ false;
+                    $b = false ^ false;
+                    $c = (true xor false);
+                    $d = (false xor false);',
+                'assertions' => [
+                    '$a' => 'int',
+                    '$b' => 'int',
+                    '$c' => 'bool',
+                    '$d' => 'bool',
+                ],
+            ],
+            'ternaryAssignment' => [
+                '<?php
+                    rand(0, 1) ? $a = 1 : $a = 2;
+                    echo $a;',
+            ],
         ];
     }
 

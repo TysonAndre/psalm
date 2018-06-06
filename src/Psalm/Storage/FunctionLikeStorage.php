@@ -77,6 +77,11 @@ class FunctionLikeStorage
     public $defined_constants = [];
 
     /**
+     * @var array<string, bool>
+     */
+    public $global_variables = [];
+
+    /**
      * @var array<string, string>|null
      */
     public $template_types;
@@ -96,6 +101,23 @@ class FunctionLikeStorage
      */
     public $referencing_locations;
 
-    /** @var array<int, Assertion> */
+    /**
+     * @var array<int, Assertion>
+     */
     public $assertions = [];
+
+    /**
+     * @var array<int, Assertion>
+     */
+    public $if_true_assertions = [];
+
+    /**
+     * @var array<int, Assertion>
+     */
+    public $if_false_assertions = [];
+
+    /**
+     * @var bool
+     */
+    public $has_visitor_issues = false;
 }

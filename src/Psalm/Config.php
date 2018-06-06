@@ -210,6 +210,11 @@ class Config
     public $memoize_method_calls = false;
 
     /**
+     * @var bool
+     */
+    public $hoist_constants = false;
+
+    /**
      * @var string[]
      */
     private $plugin_paths = [];
@@ -220,6 +225,13 @@ class Config
      * @var string[]
      */
     public $after_method_checks = [];
+
+    /**
+     * Static methods to be called after function checks have completed
+     *
+     * @var string[]
+     */
+    public $after_function_checks = [];
 
     /**
      * Static methods to be called after expression checks have completed
@@ -517,6 +529,11 @@ class Config
             $config->memoize_method_calls = $attribute_text === 'true' || $attribute_text === '1';
         }
 
+        if (isset($config_xml['hoistConstants'])) {
+            $attribute_text = (string) $config_xml['hoistConstants'];
+            $config->hoist_constants = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
         }
@@ -715,6 +732,10 @@ class Config
                 $this->after_method_checks[$fq_class_name] = $fq_class_name;
             }
 
+            if ($codebase->methods->methodExists($fq_class_name . '::afterFunctionCallCheck')) {
+                $this->after_function_checks[$fq_class_name] = $fq_class_name;
+            }
+
             if ($codebase->methods->methodExists($fq_class_name . '::afterExpressionCheck')) {
                 $this->after_expression_checks[$fq_class_name] = $fq_class_name;
             }
@@ -803,9 +824,33 @@ class Config
         }
 
         if ($this->hide_external_errors) {
+            if ($this->mustBeIgnored($file_path)) {
+                return false;
+            }
+
             $codebase = ProjectChecker::getInstance()->codebase;
 
-            if (!$codebase->analyzer->canReportIssues($file_path)) {
+            $dependent_files = [strtolower($file_path) => $file_path];
+
+            try {
+                $file_storage = $codebase->file_storage_provider->get($file_path);
+                $dependent_files += $file_storage->required_by_file_paths;
+            } catch (\InvalidArgumentException $e) {
+                // do nothing
+            }
+
+            $any_file_path_matched = false;
+
+            foreach ($dependent_files as $dependent_file_path) {
+                if ($codebase->analyzer->canReportIssues($dependent_file_path)
+                    && !$this->mustBeIgnored($dependent_file_path)
+                ) {
+                    $any_file_path_matched = true;
+                    break;
+                }
+            }
+
+            if (!$any_file_path_matched) {
                 return false;
             }
         }
@@ -825,6 +870,16 @@ class Config
     public function isInProjectDirs($file_path)
     {
         return $this->project_files && $this->project_files->allows($file_path);
+    }
+
+    /**
+     * @param   string $file_path
+     *
+     * @return  bool
+     */
+    public function mustBeIgnored($file_path)
+    {
+        return $this->project_files && $this->project_files->forbids($file_path);
     }
 
     /**

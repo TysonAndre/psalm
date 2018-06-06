@@ -230,11 +230,12 @@ class IssueBuffer
      * @param  array{severity: string, line_from: int, line_to: int, type: string, message: string,
      *  file_name: string, file_path: string, snippet: string, from: int, to: int,
      *  snippet_from: int, snippet_to: int, column_from: int, column_to: int} $issue_data
+     * @param  bool  $include_snippet
      * @param  bool  $use_color
      *
      * @return string
      */
-    protected static function getConsoleOutput(array $issue_data, $use_color)
+    protected static function getConsoleOutput(array $issue_data, $use_color, $include_snippet = true)
     {
         $issue_string = '';
 
@@ -249,17 +250,19 @@ class IssueBuffer
         $issue_string .= ': ' . $issue_data['type'] . ' - ' . $issue_data['file_name'] . ':' .
             $issue_data['line_from'] . ':' . $issue_data['column_from'] . ' - ' . $issue_data['message'] . "\n";
 
-        $snippet = $issue_data['snippet'];
+        if ($include_snippet) {
+            $snippet = $issue_data['snippet'];
 
-        if (!$use_color) {
-            $issue_string .= $snippet;
-        } else {
-            $selection_start = $issue_data['from'] - $issue_data['snippet_from'];
-            $selection_length = $issue_data['to'] - $issue_data['from'];
+            if (!$use_color) {
+                $issue_string .= $snippet;
+            } else {
+                $selection_start = $issue_data['from'] - $issue_data['snippet_from'];
+                $selection_length = $issue_data['to'] - $issue_data['from'];
 
-            $issue_string .= substr($snippet, 0, $selection_start) .
-                ($is_error ? "\e[97;41m" : "\e[30;47m") . substr($snippet, $selection_start, $selection_length) .
-                "\e[0m" . substr($snippet, $selection_length + $selection_start) . "\n";
+                $issue_string .= substr($snippet, 0, $selection_start)
+                    . ($is_error ? "\e[97;41m" : "\e[30;47m") . substr($snippet, $selection_start, $selection_length)
+                    . "\e[0m" . substr($snippet, $selection_length + $selection_start) . "\n";
+            }
         }
 
         return $issue_string;
@@ -340,7 +343,11 @@ class IssueBuffer
                 }
             }
 
-            echo self::getOutput($project_checker->output_format, $project_checker->use_color);
+            echo self::getOutput(
+                $project_checker->output_format,
+                $project_checker->use_color,
+                $project_checker->show_snippet
+            );
         }
 
         foreach ($project_checker->reports as $format => $path) {
@@ -378,11 +385,9 @@ class IssueBuffer
                 echo 'Checks took ' . number_format((float)microtime(true) - $start_time, 2) . ' seconds';
                 echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB of memory' . "\n";
 
-                $nonmixed_percentage = $project_checker->codebase->analyzer->getNonMixedPercentage();
-
                 if ($is_full) {
-                    echo 'Psalm was able to infer types for ' . number_format($nonmixed_percentage, 3) . '%'
-                        . ' of the codebase' . "\n";
+                    $analysis_summary = $project_checker->codebase->analyzer->getTypeInferenceSummary();
+                    echo $analysis_summary . "\n";
                 }
 
                 if ($add_stats) {
@@ -404,11 +409,12 @@ class IssueBuffer
 
     /**
      * @param string $format
-     * @param bool   $useColor
+     * @param bool   $use_color
+     * @param bool   $show_snippet
      *
      * @return string
      */
-    public static function getOutput($format, $useColor)
+    public static function getOutput($format, $use_color, $show_snippet = true)
     {
         if ($format === ProjectChecker::TYPE_JSON) {
             return json_encode(self::$issues_data) . "\n";
@@ -434,7 +440,7 @@ class IssueBuffer
 
         $output = '';
         foreach (self::$issues_data as $issue_data) {
-            $output .= self::getConsoleOutput($issue_data, $useColor) . "\n" . "\n";
+            $output .= self::getConsoleOutput($issue_data, $use_color, $show_snippet) . "\n" . "\n";
         }
 
         return $output;

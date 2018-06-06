@@ -18,7 +18,7 @@ $options = getopt(
         'help', 'debug', 'debug-by-line', 'config:', 'monochrome', 'show-info:', 'diff',
         'output-format:', 'report:', 'find-dead-code', 'init',
         'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache', 'no-class-cache',
-        'version', 'plugin:', 'no-vendor-autoloader', 'stats',
+        'version', 'plugin:', 'no-vendor-autoloader', 'stats', 'show-snippet:',
     ]
 );
 
@@ -80,6 +80,9 @@ Options:
 
     --show-info[=BOOLEAN]
         Show non-exception parser findings
+
+    --show-snippet[=true]
+        Show code snippets with errors. Options are 'true' or 'false'
 
     --diff
         Runs Psalm in diff mode, only checking files that have changed (and their dependents)
@@ -325,7 +328,8 @@ $project_checker = new ProjectChecker(
     $output_format,
     $threads,
     array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options),
-    isset($options['report']) && is_string($options['report']) ? $options['report'] : null
+    isset($options['report']) && is_string($options['report']) ? $options['report'] : null,
+    !isset($options['show-snippet']) || $options['show-snippet'] !== "false"
 );
 
 $config->visitComposerAutoloadFiles($project_checker);

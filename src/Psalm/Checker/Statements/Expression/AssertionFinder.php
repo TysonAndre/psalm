@@ -3,6 +3,7 @@ namespace Psalm\Checker\Statements\Expression;
 
 use PhpParser;
 use Psalm\Checker\ClassLikeChecker;
+use Psalm\Checker\StatementsChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\TypeChecker;
 use Psalm\CodeLocation;
@@ -936,7 +937,7 @@ class AssertionFinder
             }
         } elseif (self::hasIsACheck($expr)) {
             if ($first_var_name) {
-                $first_arg = $expr->args[1]->value;
+                $second_arg = $expr->args[1]->value;
 
                 $is_a_prefix = '';
 
@@ -952,24 +953,36 @@ class AssertionFinder
                     $is_a_prefix = strtolower($third_arg->name->parts[0]) === 'true' ? 'isa-' : '';
                 }
 
-                if ($first_arg instanceof PhpParser\Node\Scalar\String_) {
-                    $if_types[$first_var_name] = $prefix . $is_a_prefix . $first_arg->value;
-                } elseif ($first_arg instanceof PhpParser\Node\Expr\ClassConstFetch
-                    && $first_arg->class instanceof PhpParser\Node\Name
-                    && $first_arg->name instanceof PhpParser\Node\Identifier
-                    && strtolower($first_arg->name->name) === 'class'
+                if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
+                    $if_types[$first_var_name] = $prefix . $is_a_prefix . $second_arg->value;
+                } elseif ($second_arg instanceof PhpParser\Node\Expr\ClassConstFetch
+                    && $second_arg->class instanceof PhpParser\Node\Name
+                    && $second_arg->name instanceof PhpParser\Node\Identifier
+                    && strtolower($second_arg->name->name) === 'class'
                 ) {
-                    $class_node = $first_arg->class;
+                    $first_arg = $expr->args[0]->value;
 
-                    if ($class_node->parts === ['static'] || $class_node->parts === ['self']) {
-                        $if_types[$first_var_name] = $prefix . $is_a_prefix . $this_class_name;
-                    } elseif ($class_node->parts === ['parent']) {
+                    if (isset($first_arg->inferredType)
+                        && $first_arg->inferredType->isSingleStringLiteral()
+                        && $source instanceof StatementsChecker
+                        && $source->getSource()->getSource() instanceof \Psalm\Checker\TraitChecker
+                        && $first_arg->inferredType->getSingleStringLiteral() === $this_class_name
+                    ) {
                         // do nothing
                     } else {
-                        $if_types[$first_var_name] = $prefix . $is_a_prefix . ClassLikeChecker::getFQCLNFromNameObject(
-                            $class_node,
-                            $source->getAliases()
-                        );
+                        $class_node = $second_arg->class;
+
+                        if ($class_node->parts === ['static'] || $class_node->parts === ['self']) {
+                            $if_types[$first_var_name] = $prefix . $is_a_prefix . $this_class_name;
+                        } elseif ($class_node->parts === ['parent']) {
+                            // do nothing
+                        } else {
+                            $if_types[$first_var_name] = $prefix . $is_a_prefix
+                                . ClassLikeChecker::getFQCLNFromNameObject(
+                                    $class_node,
+                                    $source->getAliases()
+                                );
+                        }
                     }
                 }
             }
@@ -1038,6 +1051,64 @@ class AssertionFinder
                 && !strpos($first_var_name, '[')
             ) {
                 $if_types[$array_root . '[' . $first_var_name . ']'] = $prefix . 'array-key-exists';
+            }
+        } elseif ($source instanceof StatementsChecker
+            && $expr->name instanceof PhpParser\Node\Name
+            && isset($expr->conditionalAssertion)
+        ) {
+            $codebase = $source->getFileChecker()->project_checker->codebase;
+
+            $function_id = ClassLikeChecker::getFQCLNFromNameObject($expr->name, $source->getAliases());
+
+            $function_storage = $codebase->functions->getStorage(
+                $source,
+                strtolower($function_id)
+            );
+
+            foreach ($function_storage->if_true_assertions as $assertion) {
+                if (is_int($assertion->var_id) && isset($expr->args[$assertion->var_id])) {
+                    if ($assertion->var_id === 0) {
+                        $var_name = $first_var_name;
+                    } else {
+                        $var_name = ExpressionChecker::getArrayVarId(
+                            $expr->args[$assertion->var_id]->value,
+                            $this_class_name,
+                            $source
+                        );
+                    }
+
+                    if ($var_name) {
+                        if ($prefix === $assertion->rule[0][0][0]) {
+                            $if_types[$var_name] = substr($assertion->rule[0][0], 1);
+                        } else {
+                            $if_types[$var_name] = $prefix . $assertion->rule[0][0];
+                        }
+                    }
+                }
+            }
+
+            $negated_prefix = !$negate ? '!' : '';
+
+            foreach ($function_storage->if_false_assertions as $assertion) {
+                if (is_int($assertion->var_id) && isset($expr->args[$assertion->var_id])) {
+                    if ($assertion->var_id === 0) {
+                        $var_name = $first_var_name;
+                    } else {
+                        $var_name = ExpressionChecker::getArrayVarId(
+                            $expr->args[$assertion->var_id]->value,
+                            $this_class_name,
+                            $source
+                        );
+                    }
+
+                    if ($var_name) {
+                        if ($negated_prefix === $assertion->rule[0][0][0]) {
+                            $if_types[$var_name] = substr($assertion->rule[0][0], 1);
+                        } else {
+                            $if_types[$var_name] = $negated_prefix . $assertion->rule[0][0];
+                        }
+                    }
+                }
             }
         }
 

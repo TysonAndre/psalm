@@ -222,7 +222,9 @@ class Scanner
             if ($this->files_to_scan) {
                 $file_path = array_shift($this->files_to_scan);
 
-                if (!isset($this->scanned_files[$file_path])) {
+                if (!isset($this->scanned_files[$file_path])
+                    || (isset($this->files_to_deep_scan[$file_path]) && !$this->scanned_files[$file_path])
+                ) {
                     $this->scanFile(
                         $file_path,
                         $filetype_scanners,
@@ -288,7 +290,9 @@ class Scanner
     ) {
         $file_scanner = $this->getScannerForPath($file_path, $filetype_scanners, $will_analyze);
 
-        if (isset($this->scanned_files[$file_path])) {
+        if (isset($this->scanned_files[$file_path])
+            && (!$will_analyze || $this->scanned_files[$file_path])
+        ) {
             throw new \UnexpectedValueException('Should not be rescanning ' . $file_path);
         }
 
@@ -300,7 +304,7 @@ class Scanner
             $this->file_storage_provider->create($file_path);
         }
 
-        $this->scanned_files[$file_path] = true;
+        $this->scanned_files[$file_path] = $will_analyze;
 
         $file_storage = $this->file_storage_provider->get($file_path);
 
@@ -312,10 +316,16 @@ class Scanner
         );
 
         if (!$from_cache) {
-            $this->file_storage_provider->cache->writeToCache($file_storage, $file_contents);
+            if (!$file_storage->has_visitor_issues) {
+                $this->file_storage_provider->cache->writeToCache($file_storage, $file_contents);
+            }
         } else {
-            foreach ($file_storage->included_file_paths as $include_file_path) {
-                $this->addFileToShallowScan($include_file_path);
+            foreach ($file_storage->required_file_paths as $required_file_path) {
+                if ($will_analyze) {
+                    $this->addFileToDeepScan($required_file_path);
+                } else {
+                    $this->addFileToShallowScan($required_file_path);
+                }
             }
 
             foreach ($file_storage->classlikes_in_file as $fq_classlike_name) {

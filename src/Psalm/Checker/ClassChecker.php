@@ -2,6 +2,7 @@
 namespace Psalm\Checker;
 
 use PhpParser;
+use Psalm\Aliases;
 use Psalm\Checker\FunctionLike\ReturnTypeChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\CodeLocation;
@@ -60,7 +61,7 @@ class ClassChecker extends ClassLikeChecker
     public static function getAnonymousClassName(PhpParser\Node\Stmt\Class_ $class, $file_path)
     {
         return preg_replace('/[^A-Za-z0-9]/', '_', $file_path)
-            . ':' . $class->getLine() . ':' . (int)$class->getAttribute('startFilePos');
+            . '_' . $class->getLine() . '_' . (int)$class->getAttribute('startFilePos');
     }
 
     /**
@@ -286,7 +287,7 @@ class ClassChecker extends ClassLikeChecker
         }
 
         if (!$storage->abstract) {
-            foreach ($storage->declaring_method_ids as $method_name => $declaring_method_id) {
+            foreach ($storage->declaring_method_ids as $declaring_method_id) {
                 $method_storage = $codebase->methods->getStorage($declaring_method_id);
 
                 list($declaring_class_name, $method_name) = explode('::', $declaring_method_id);
@@ -399,69 +400,17 @@ class ClassChecker extends ClassLikeChecker
                     $constructor_checker = $method_checker;
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\TraitUse) {
-                $previous_context_include_location = $class_context->include_location;
-                foreach ($stmt->traits as $trait) {
-                    $class_context->include_location = new CodeLocation($this, $trait, null, true);
-
-                    $fq_trait_name = self::getFQCLNFromNameObject(
-                        $trait,
-                        $this->source->getAliases()
-                    );
-
-                    if (!$codebase->classlikes->hasFullyQualifiedTraitName($fq_trait_name)) {
-                        if (IssueBuffer::accepts(
-                            new UndefinedTrait(
-                                'Trait ' . $fq_trait_name . ' does not exist',
-                                new CodeLocation($this, $trait)
-                            ),
-                            array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
-                        )) {
-                            return false;
-                        }
-                    } else {
-                        if (!$codebase->traitHasCorrectCase($fq_trait_name)) {
-                            if (IssueBuffer::accepts(
-                                new UndefinedTrait(
-                                    'Trait ' . $fq_trait_name . ' has wrong casing',
-                                    new CodeLocation($this, $trait)
-                                ),
-                                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
-                            )) {
-                                return false;
-                            }
-
-                            continue;
-                        }
-
-                        $trait_file_checker = $project_checker->getFileCheckerForClassLike($fq_trait_name);
-                        $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name);
-                        $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name);
-                        $trait_checker = new TraitChecker(
-                            $trait_node,
-                            $trait_file_checker,
-                            $fq_trait_name,
-                            $trait_aliases
-                        );
-
-                        foreach ($trait_node->stmts as $trait_stmt) {
-                            if ($trait_stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
-                                $trait_method_checker = $this->analyzeClassMethod(
-                                    $trait_stmt,
-                                    $storage,
-                                    $trait_checker,
-                                    $class_context,
-                                    $global_context
-                                );
-
-                                if ($trait_stmt->name->name === '__construct') {
-                                    $constructor_checker = $trait_method_checker;
-                                }
-                            }
-                        }
-                    }
+                if ($this->analyzeTraitUse(
+                    $this->source->getAliases(),
+                    $stmt,
+                    $project_checker,
+                    $storage,
+                    $class_context,
+                    $global_context,
+                    $constructor_checker
+                ) === false) {
+                    return false;
                 }
-
-                $class_context->include_location = $previous_context_include_location;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Property) {
                 foreach ($stmt->props as $prop) {
                     if ($prop->default) {
@@ -692,6 +641,98 @@ class ClassChecker extends ClassLikeChecker
                 }
             }
         }
+    }
+
+    /**
+     * @return false|null
+     */
+    private function analyzeTraitUse(
+        Aliases $aliases,
+        PhpParser\Node\Stmt\TraitUse $stmt,
+        ProjectChecker $project_checker,
+        ClassLikeStorage $storage,
+        Context $class_context,
+        Context $global_context = null,
+        MethodChecker &$constructor_checker = null
+    ) {
+        $codebase = $project_checker->codebase;
+
+        $previous_context_include_location = $class_context->include_location;
+
+        foreach ($stmt->traits as $trait_name) {
+            $class_context->include_location = new CodeLocation($this, $trait_name, null, true);
+
+            $fq_trait_name = self::getFQCLNFromNameObject(
+                $trait_name,
+                $aliases
+            );
+
+            if (!$codebase->classlikes->hasFullyQualifiedTraitName($fq_trait_name)) {
+                if (IssueBuffer::accepts(
+                    new UndefinedTrait(
+                        'Trait ' . $fq_trait_name . ' does not exist',
+                        new CodeLocation($this, $trait_name)
+                    ),
+                    array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                )) {
+                    return false;
+                }
+            } else {
+                if (!$codebase->traitHasCorrectCase($fq_trait_name)) {
+                    if (IssueBuffer::accepts(
+                        new UndefinedTrait(
+                            'Trait ' . $fq_trait_name . ' has wrong casing',
+                            new CodeLocation($this, $trait_name)
+                        ),
+                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                    )) {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                $trait_file_checker = $project_checker->getFileCheckerForClassLike($fq_trait_name);
+                $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name);
+                $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name);
+                $trait_checker = new TraitChecker(
+                    $trait_node,
+                    $trait_file_checker,
+                    $fq_trait_name,
+                    $trait_aliases
+                );
+
+                foreach ($trait_node->stmts as $trait_stmt) {
+                    if ($trait_stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
+                        $trait_method_checker = $this->analyzeClassMethod(
+                            $trait_stmt,
+                            $storage,
+                            $trait_checker,
+                            $class_context,
+                            $global_context
+                        );
+
+                        if ($trait_stmt->name->name === '__construct') {
+                            $constructor_checker = $trait_method_checker;
+                        }
+                    } elseif ($trait_stmt instanceof PhpParser\Node\Stmt\TraitUse) {
+                        if ($this->analyzeTraitUse(
+                            $trait_aliases,
+                            $trait_stmt,
+                            $project_checker,
+                            $storage,
+                            $class_context,
+                            $global_context,
+                            $constructor_checker
+                        ) === false) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        $class_context->include_location = $previous_context_include_location;
     }
 
     /**

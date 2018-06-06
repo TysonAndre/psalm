@@ -190,7 +190,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         case Type\Atomic\TMixed::class:
                         case Type\Atomic\TGenericParam::class:
                         case Type\Atomic\TObject::class:
-                            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+                            $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
                             if (IssueBuffer::accepts(
                                 new MixedMethodCall(
@@ -219,7 +219,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     continue;
                 }
 
-                $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+                $codebase->analyzer->incrementNonMixedCount($statements_checker->getFilePath());
 
                 $has_valid_method_call_type = true;
 
@@ -530,6 +530,8 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             && $stmt->args[0]->value->inferredType->hasObjectType()
                         ) {
                             $return_type_candidate = clone $stmt->args[0]->value->inferredType;
+                        } elseif ($call_map_id === 'simplexmlelement::asxml' && !count($stmt->args)) {
+                            $return_type_candidate = Type::parseString('string|false');
                         } else {
                             $return_type_candidate = CallMap::getReturnTypeFromCallMap($call_map_id);
                         }

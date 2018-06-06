@@ -104,7 +104,7 @@ class CommentChecker
                             implode('', $var_type_tokens) .
                             ' is not a valid type' .
                             ' (from ' .
-                            $source->getCheckedFilePath() .
+                            $source->getFilePath() .
                             ':' .
                             $came_from_line_number .
                             ')'
@@ -261,14 +261,12 @@ class CommentChecker
         }
 
         if (isset($comments['specials']['psalm-suppress'])) {
-            /** @var string $suppress_entry */
             foreach ($comments['specials']['psalm-suppress'] as $suppress_entry) {
                 $info->suppress[] = preg_split('/[\s]+/', $suppress_entry)[0];
             }
         }
 
         if (isset($comments['specials']['template'])) {
-            /** @var string $suppress_entry */
             foreach ($comments['specials']['template'] as $template_line) {
                 $template_type = preg_split('/[\s]+/', $template_line);
 
@@ -281,7 +279,6 @@ class CommentChecker
         }
 
         if (isset($comments['specials']['template-typeof'])) {
-            /** @var string $suppress_entry */
             foreach ($comments['specials']['template-typeof'] as $template_typeof) {
                 $typeof_parts = preg_split('/[\s]+/', $template_typeof);
 
@@ -292,6 +289,51 @@ class CommentChecker
                 $info->template_typeofs[] = [
                     'template_type' => $typeof_parts[0],
                     'param_name' => substr($typeof_parts[1], 1),
+                ];
+            }
+        }
+
+        if (isset($comments['specials']['psalm-assert'])) {
+            foreach ($comments['specials']['psalm-assert'] as $assertion) {
+                $assertion_parts = preg_split('/[\s]+/', $assertion);
+
+                if (count($assertion_parts) < 2 || $assertion_parts[1][0] !== '$') {
+                    throw new IncorrectDocblockException('Misplaced variable');
+                }
+
+                $info->assertions[] = [
+                    'type' => $assertion_parts[0],
+                    'param_name' => substr($assertion_parts[1], 1),
+                ];
+            }
+        }
+
+        if (isset($comments['specials']['psalm-assert-if-true'])) {
+            foreach ($comments['specials']['psalm-assert-if-true'] as $assertion) {
+                $assertion_parts = preg_split('/[\s]+/', $assertion);
+
+                if (count($assertion_parts) < 2 || $assertion_parts[1][0] !== '$') {
+                    throw new IncorrectDocblockException('Misplaced variable');
+                }
+
+                $info->if_true_assertions[] = [
+                    'type' => $assertion_parts[0],
+                    'param_name' => substr($assertion_parts[1], 1),
+                ];
+            }
+        }
+
+        if (isset($comments['specials']['psalm-assert-if-false'])) {
+            foreach ($comments['specials']['psalm-assert-if-false'] as $assertion) {
+                $assertion_parts = preg_split('/[\s]+/', $assertion);
+
+                if (count($assertion_parts) < 2 || $assertion_parts[1][0] !== '$') {
+                    throw new IncorrectDocblockException('Misplaced variable');
+                }
+
+                $info->if_false_assertions[] = [
+                    'type' => $assertion_parts[0],
+                    'param_name' => substr($assertion_parts[1], 1),
                 ];
             }
         }
@@ -319,7 +361,6 @@ class CommentChecker
         $info = new ClassLikeDocblockComment();
 
         if (isset($comments['specials']['template'])) {
-            /** @var string $suppress_entry */
             foreach ($comments['specials']['template'] as $template_line) {
                 $template_type = preg_split('/[\s]+/', $template_line);
 
@@ -328,6 +369,12 @@ class CommentChecker
                 } else {
                     $info->template_types[] = [$template_type[0]];
                 }
+            }
+        }
+
+        if (isset($comments['specials']['template-extends'])) {
+            foreach ($comments['specials']['template-extends'] as $template_line) {
+                $info->template_parents[] = $template_line;
             }
         }
 
@@ -344,14 +391,12 @@ class CommentChecker
         }
 
         if (isset($comments['specials']['psalm-suppress'])) {
-            /** @var string $suppress_entry */
             foreach ($comments['specials']['psalm-suppress'] as $suppress_entry) {
                 $info->suppressed_issues[] = preg_split('/[\s]+/', $suppress_entry)[0];
             }
         }
 
         if (isset($comments['specials']['method'])) {
-            /** @var string $method_entry */
             foreach ($comments['specials']['method'] as $method_entry) {
                 $method_entry = preg_replace('/[ \t]+/', ' ', trim($method_entry));
 
@@ -372,6 +417,8 @@ class CommentChecker
                 if (preg_match($end_of_method_regex, $method_entry, $matches, PREG_OFFSET_CAPTURE)) {
                     $method_entry = substr($method_entry, 0, (int) $matches[0][1] + strlen((string) $matches[0][0]));
                 }
+
+                $method_entry = str_replace('|', '__UNIONOR__', $method_entry);
 
                 $php_string = '<?php ' . $return_docblock . ' function ' . $method_entry . '{}';
 

@@ -557,7 +557,7 @@ class ArrayFetchChecker
             if ($type instanceof TString) {
                 if ($in_assignment && $replacement_type) {
                     if ($replacement_type->isMixed()) {
-                        $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+                        $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
                         if (IssueBuffer::accepts(
                             new MixedStringOffsetAssignment(
@@ -569,7 +569,7 @@ class ArrayFetchChecker
                             // fall through
                         }
                     } else {
-                        $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+                        $codebase->analyzer->incrementNonMixedCount($statements_checker->getFilePath());
                     }
                 }
 
@@ -597,27 +597,29 @@ class ArrayFetchChecker
             }
 
             if ($type instanceof TMixed || $type instanceof TGenericParam || $type instanceof TEmpty) {
-                $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+                $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
-                if ($in_assignment) {
-                    if (IssueBuffer::accepts(
-                        new MixedArrayAssignment(
-                            'Cannot access array value on mixed variable ' . $array_var_id,
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        // fall through
-                    }
-                } else {
-                    if (IssueBuffer::accepts(
-                        new MixedArrayAccess(
-                            'Cannot access array value on mixed variable ' . $array_var_id,
-                            new CodeLocation($statements_checker->getSource(), $stmt)
-                        ),
-                        $statements_checker->getSuppressedIssues()
-                    )) {
-                        // fall through
+                if (!$inside_isset) {
+                    if ($in_assignment) {
+                        if (IssueBuffer::accepts(
+                            new MixedArrayAssignment(
+                                'Cannot access array value on mixed variable ' . $array_var_id,
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new MixedArrayAccess(
+                                'Cannot access array value on mixed variable ' . $array_var_id,
+                                new CodeLocation($statements_checker->getSource(), $stmt)
+                            ),
+                            $statements_checker->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
                     }
                 }
 
@@ -625,7 +627,7 @@ class ArrayFetchChecker
                 break;
             }
 
-            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getFilePath());
 
             if ($type instanceof Type\Atomic\TFalse && $array_type->ignore_falsable_issues) {
                 continue;
@@ -702,7 +704,7 @@ class ArrayFetchChecker
         }
 
         if ($offset_type->isMixed()) {
-            $codebase->analyzer->incrementMixedCount($statements_checker->getCheckedFilePath());
+            $codebase->analyzer->incrementMixedCount($statements_checker->getFilePath());
 
             if (IssueBuffer::accepts(
                 new MixedArrayOffset(
@@ -714,7 +716,7 @@ class ArrayFetchChecker
                 // fall through
             }
         } else {
-            $codebase->analyzer->incrementNonMixedCount($statements_checker->getCheckedFilePath());
+            $codebase->analyzer->incrementNonMixedCount($statements_checker->getFilePath());
 
             if ($expected_offset_types) {
                 $invalid_offset_type = $expected_offset_types[0];

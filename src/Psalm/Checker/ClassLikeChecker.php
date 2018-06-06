@@ -107,9 +107,10 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
 
         if ($this->storage->location) {
             $storage_file_path = $this->storage->location->file_path;
-            $source_file_path = $this->source->getCheckedFilePath();
+            $source_file_path = $this->source->getFilePath();
 
             if (!Config::getInstance()->use_case_sensitive_file_names) {
+                // TODO: Use these variables
                 $storage_file_path = strtolower($storage_file_path);
                 $source_file_path = strtolower($source_file_path);
             }
@@ -415,16 +416,20 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
     {
         switch (gettype($value)) {
             case 'boolean':
-                return Type::getBool();
+                if ($value) {
+                    return Type::getTrue();
+                }
+
+                return Type::getFalse();
 
             case 'integer':
-                return Type::getInt();
+                return Type::getInt(false, $value);
 
             case 'double':
-                return Type::getFloat();
+                return Type::getFloat($value);
 
             case 'string':
-                return Type::getString();
+                return Type::getString($value);
 
             case 'array':
                 return Type::getArray();
