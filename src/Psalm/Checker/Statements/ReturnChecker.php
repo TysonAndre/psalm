@@ -105,7 +105,13 @@ class ReturnChecker
         ) {
             $source->addReturnTypes($stmt->expr ? (string) $stmt->inferredType : '', $context);
 
-            $storage = $source->getFunctionLikeStorage($statements_checker);
+            // TODO: Undo this after https://github.com/vimeo/psalm/issues/797 is fixed in upstream
+            try {
+                $storage = $source->getFunctionLikeStorage($statements_checker);
+            } catch (\UnexpectedValueException $e) {
+                // Give up early, psalm would otherwise crash trying to analyze this return statement
+                return null;
+            }
 
             $cased_method_id = $source->getCorrectlyCasedMethodId();
 
