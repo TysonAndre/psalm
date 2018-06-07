@@ -412,9 +412,6 @@ abstract class Type
      */
     public static function tokenize($string_type, $ignore_space = true)
     {
-        if ($ignore_space) {
-            $string_type = str_replace(' ', '', $string_type);
-        }
         // remove all unacceptable characters
         $string_type = preg_replace('/\?(?=[\\\\a-zA-Z])/', 'null|', $string_type);
 

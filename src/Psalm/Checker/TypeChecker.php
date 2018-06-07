@@ -496,6 +496,8 @@ class TypeChecker
                         $property_type_coerced,
                         $property_type_coerced_from_mixed,
                         $property_type_to_string_cast,
+                        $unused_incompatible_values,
+                        $unused_has_partial_match,
                         $property_type_coerced_from_scalar
                     )
                     && !$property_type_coerced_from_scalar
@@ -510,6 +512,8 @@ class TypeChecker
                         $inverse_property_type_coerced,
                         $inverse_property_type_coerced_from_mixed,
                         $inverse_property_type_to_string_cast,
+                        $unused_incompatible_values,
+                        $unused_has_partial_match,
                         $inverse_property_type_coerced_from_scalar
                     )
                     || $inverse_property_type_coerced_from_scalar
@@ -572,6 +576,8 @@ class TypeChecker
                             $array_type_coerced,
                             $type_coerced_from_mixed,
                             $array_to_string_cast,
+                            $unused_incompatible_values,
+                            $unused_has_partial_match,
                             $array_type_coerced_from_scalar
                         )
                         && !$array_type_coerced_from_scalar
