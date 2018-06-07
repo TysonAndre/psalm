@@ -249,7 +249,7 @@ class APIFilterRecord {
     }
 
     /**
-     * @return array<string, array<string,string> hopefully
+     * @return array<string, array<string,string>> hopefully
      * @psalm-suppress LessSpecificReturnStatement
      * @psalm-suppress MoreSpecificReturnType
      */
