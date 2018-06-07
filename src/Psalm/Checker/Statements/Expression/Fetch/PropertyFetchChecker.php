@@ -250,10 +250,7 @@ class PropertyFetchChecker
 
             $property_id = $lhs_type_part->value . '::$' . $prop_name;
 
-            if ($stmt_var_id !== '$this'
-                && $lhs_type_part->value !== $context->self
-                && $codebase->methodExists($lhs_type_part->value . '::__get')
-                && (!$context->self || !$codebase->classExtends($context->self, $lhs_type_part->value))
+            if ($codebase->methodExists($lhs_type_part->value . '::__get')
                 && (!$codebase->properties->propertyExists($property_id)
                     || ClassLikeChecker::checkPropertyVisibility(
                         $property_id,
