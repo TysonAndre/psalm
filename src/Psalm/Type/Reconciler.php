@@ -1293,7 +1293,7 @@ class Reconciler
 
             $failed_reconciliation = true;
 
-            return Type::getMixed();
+            return new Type\Union([new Type\Atomic\TEmptyMixed]);
         }
 
         return $existing_var_type;
@@ -1399,7 +1399,7 @@ class Reconciler
         } elseif ($scalar_type === 'float') {
             $value = (float) $value;
 
-            if ($existing_var_type->hasInt()) {
+            if ($existing_var_type->hasFloat()) {
                 $existing_float_types = $existing_var_type->getLiteralFloats();
 
                 if ($existing_float_types) {
@@ -1756,7 +1756,7 @@ class Reconciler
                         if ($existing_key_type_part instanceof Type\Atomic\TArray) {
                             $new_base_type_candidate = clone $existing_key_type_part->type_params[1];
                         } elseif (!$existing_key_type_part instanceof Type\Atomic\ObjectLike) {
-                            return null;
+                            return Type::getMixed();
                         } elseif ($array_key[0] === '$') {
                             $new_base_type_candidate = $existing_key_type_part->getGenericValueType();
                         } else {

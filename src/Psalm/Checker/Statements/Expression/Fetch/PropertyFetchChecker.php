@@ -3,6 +3,7 @@ namespace Psalm\Checker\Statements\Expression\Fetch;
 
 use PhpParser;
 use Psalm\Checker\ClassLikeChecker;
+use Psalm\Checker\FunctionLikeChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
 use Psalm\CodeLocation;
@@ -76,6 +77,7 @@ class PropertyFetchChecker
         );
 
         $stmt_var_type = null;
+        $stmt->inferredType = null;
 
         if ($var_id && $context->hasVariable($var_id, $statements_checker)) {
             // we don't need to check anything
@@ -252,14 +254,16 @@ class PropertyFetchChecker
 
             if ($codebase->methodExists($lhs_type_part->value . '::__get')
                 && (!$codebase->properties->propertyExists($property_id)
-                    || ClassLikeChecker::checkPropertyVisibility(
-                        $property_id,
-                        $context->self,
-                        $statements_checker->getSource(),
-                        new CodeLocation($statements_checker->getSource(), $stmt),
-                        $statements_checker->getSuppressedIssues(),
-                        false
-                    ) !== true
+                    || ($stmt_var_id !== '$this'
+                        && $lhs_type_part->value !== $context->self
+                        && ClassLikeChecker::checkPropertyVisibility(
+                            $property_id,
+                            $context->self,
+                            $statements_checker_source,
+                            new CodeLocation($statements_checker->getSource(), $stmt),
+                            $statements_checker->getSuppressedIssues(),
+                            false
+                        ) !== true)
                 )
             ) {
                 $class_storage = $project_checker->classlike_storage_provider->get((string)$lhs_type_part);

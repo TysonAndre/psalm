@@ -162,6 +162,14 @@ class CallableTest extends TestCase
                     '$f' => 'array{0:string, 1:string}',
                 ],
             ],
+            'arrayMapClosureVar' => [
+                '<?php
+                    $mirror = function(int $i) : int { return $i; };
+                    $a = array_map($mirror, [1, 2, 3]);',
+                'assertions' => [
+                    '$a' => 'array{0:int, 1:int, 2:int}',
+                ],
+            ],
             'arrayCallableMethod' => [
                 '<?php
                     class A {
@@ -550,6 +558,20 @@ class CallableTest extends TestCase
                     '$b' => 'string',
                 ],
             ],
+            'nullableReturnTypeShorthand' => [
+                '<?php
+                    /** @param callable(mixed):?A $a */
+                    function foo(callable $a): void {}',
+            ],
+            'voidReturningArrayMap' => [
+                '<?php
+                    array_map(
+                        function(int $i) : void {
+                            echo $i;
+                        },
+                        [1, 2, 3]
+                    );',
+            ],
         ];
     }
 
@@ -844,6 +866,20 @@ class CallableTest extends TestCase
                 '<?php
                     $a = function() use ($i) {};',
                 'error_message' => 'UndefinedVariable',
+            ],
+            'voidReturningArrayMap' => [
+                '<?php
+                    $arr = array_map(
+                        function(int $i) : void {
+                            echo $i;
+                        },
+                        [1, 2, 3]
+                    );
+
+                    foreach ($arr as $a) {
+                        if ($a) {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

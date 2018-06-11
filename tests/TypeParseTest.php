@@ -72,6 +72,14 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testNullableOrNullable()
+    {
+        $this->assertSame('string|int|null', (string) Type::parseString('?string|?int'));
+    }
+
+    /**
+     * @return void
+     */
     public function testArray()
     {
         $this->assertSame('array<int, int>', (string) Type::parseString('array<int, int>'));
@@ -443,6 +451,46 @@ class TypeParseTest extends TestCase
     public function testBadSemicolon()
     {
         Type::parseString('string;');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testBadAmpersand()
+    {
+        Type::parseString('&array');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testBadColon()
+    {
+        Type::parseString(':array');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testBadEquals()
+    {
+        Type::parseString('=array');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testBadBar()
+    {
+        Type::parseString('|array');
     }
 
     /**

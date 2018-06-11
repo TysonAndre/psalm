@@ -253,6 +253,11 @@ class BinaryOpChecker
                 $context->referenced_var_ids
             );
 
+            $context->assigned_var_ids = array_merge(
+                $context->assigned_var_ids,
+                $op_context->assigned_var_ids
+            );
+
             if ($context->collect_references) {
                 $context->unreferenced_vars = array_intersect_key(
                     $op_context->unreferenced_vars,
@@ -591,7 +596,7 @@ class BinaryOpChecker
             && $context
             && $left_type
             && $right_type
-            && ($left_type->isMixedNotFromIsset() || $right_type->isMixedNotFromIsset())
+            && ($left_type->isVanillaMixed() || $right_type->isVanillaMixed())
             && ($left_type->hasDefinitelyNumericType() || $right_type->hasDefinitelyNumericType())
         ) {
             $source_checker = $statements_source->getSource();

@@ -1218,6 +1218,29 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
         }
 
+        foreach ($docblock_info->globals as $global) {
+            try {
+                $storage->global_types[$global['name']] = Type::parseTokens(
+                    Type::fixUpLocalType(
+                        $global['type'],
+                        $this->aliases
+                    ),
+                    false
+                );
+            } catch (TypeParseTreeException $e) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        $e->getMessage() . ' in docblock for ' . $cased_function_id,
+                        new CodeLocation($this->file_scanner, $stmt, null, true)
+                    )
+                )) {
+                    $storage->has_visitor_issues = true;
+                }
+
+                continue;
+            }
+        }
+
         if ($docblock_info->params) {
             $this->improveParamsFromDocblock(
                 $storage,
@@ -1268,7 +1291,6 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             }
 
             if ($param_type_string) {
-                $param_type_string = str_replace('__UNIONOR__', '|', $param_type_string);
                 if ($is_nullable) {
                     $param_type_string .= '|null';
                 }
@@ -1309,7 +1331,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                 : null,
             $is_optional,
             $is_nullable,
-            $param->variadic
+            $param->variadic,
+            $param->default ? StatementsChecker::getSimpleType($param->default, $this) : null
         );
     }
 
@@ -1413,6 +1436,14 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             if (!$storage_param->type || $storage_param->type->isMixed() || $storage->template_types) {
                 if ($existing_param_type_nullable && !$new_param_type->isNullable()) {
                     $new_param_type->addType(new Type\Atomic\TNull());
+                }
+
+                if ($this->config->add_param_default_to_docblock_type
+                    && $storage_param->default_type
+                    && !$storage_param->default_type->isMixed()
+                    && (!$storage_param->type || !$storage_param->type->isMixed())
+                ) {
+                    $new_param_type = Type::combineUnionTypes($new_param_type, $storage_param->default_type);
                 }
 
                 $storage_param->type = $new_param_type;

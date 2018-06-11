@@ -131,9 +131,7 @@ class FunctionChecker extends FunctionLikeChecker
                 case 'array_map':
                     return self::getArrayMapReturnType(
                         $statements_checker,
-                        $call_args,
-                        $code_location,
-                        $suppressed_issues
+                        $call_args
                     );
 
                 case 'array_filter':
@@ -496,9 +494,7 @@ class FunctionChecker extends FunctionLikeChecker
      */
     private static function getArrayMapReturnType(
         StatementsChecker $statements_checker,
-        $call_args,
-        CodeLocation $code_location,
-        array $suppressed_issues
+        $call_args
     ) {
         $array_arg = isset($call_args[1]->value) ? $call_args[1]->value : null;
 
@@ -528,23 +524,17 @@ class FunctionChecker extends FunctionLikeChecker
                 $generic_key_type = Type::getInt();
             }
 
-            if ($function_call_arg->value instanceof PhpParser\Node\Expr\Closure
-                && isset($function_call_arg->value->inferredType)
-                && ($closure_atomic_type = $function_call_arg->value->inferredType->getTypes()['Closure'])
+            if (isset($function_call_arg->value->inferredType)
+                && ($first_arg_atomic_types = $function_call_arg->value->inferredType->getTypes())
+                && ($closure_atomic_type = isset($first_arg_atomic_types['Closure'])
+                    ? $first_arg_atomic_types['Closure']
+                    : null)
                 && $closure_atomic_type instanceof Type\Atomic\Fn
             ) {
                 $closure_return_type = $closure_atomic_type->return_type ?: Type::getMixed();
 
                 if ($closure_return_type->isVoid()) {
-                    IssueBuffer::accepts(
-                        new InvalidReturnType(
-                            'No return type could be found in the closure passed to array_map',
-                            $code_location
-                        ),
-                        $suppressed_issues
-                    );
-
-                    return Type::getArray();
+                    $closure_return_type = Type::getNull();
                 }
 
                 $inner_type = clone $closure_return_type;
@@ -781,7 +771,7 @@ class FunctionChecker extends FunctionLikeChecker
                             $changed_var_ids = [];
 
                             $reconciled_types = Reconciler::reconcileKeyedTypes(
-                                ['$inner_type' => [[$assertions['$' . $first_param->var->name]]]],
+                                ['$inner_type' => $assertions['$' . $first_param->var->name]],
                                 ['$inner_type' => $inner_type],
                                 $changed_var_ids,
                                 ['$inner_type' => true],

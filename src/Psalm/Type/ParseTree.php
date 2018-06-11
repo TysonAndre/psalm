@@ -74,6 +74,10 @@ class ParseTree
                     throw new TypeParseTreeException('Unexpected token ' . $type_token);
 
                 case '[':
+                    if ($current_leaf instanceof ParseTree\Root) {
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                    }
+
                     if ($next_token !== ']') {
                         throw new TypeParseTreeException('Unexpected token ' . $type_token);
                     }
@@ -163,6 +167,11 @@ class ParseTree
                     break;
 
                 case ',':
+                    if ($current_leaf instanceof ParseTree\Root) {
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                    }
+
+
                     if (!$current_leaf->parent) {
                         throw new TypeParseTreeException('Cannot parse comma without a parent node');
                     }
@@ -196,6 +205,10 @@ class ParseTree
 
                 case '...':
                 case '=':
+                    if ($last_token === '...' || $last_token === '=') {
+                        throw new TypeParseTreeException('Cannot have duplicate tokens');
+                    }
+
                     $current_parent = $current_leaf->parent;
 
                     while ($current_parent
@@ -229,6 +242,10 @@ class ParseTree
                     break;
 
                 case ':':
+                    if ($current_leaf instanceof ParseTree\Root) {
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                    }
+
                     $current_parent = $current_leaf->parent;
 
                     if ($current_leaf instanceof ParseTree\CallableTree) {
@@ -271,12 +288,42 @@ class ParseTree
                     break;
 
                 case '?':
+                    if ($next_token !== ':') {
+                        $new_parent = !$current_leaf instanceof ParseTree\Root ? $current_leaf : null;
+
+                        $new_leaf = new ParseTree\NullableTree(
+                            $new_parent
+                        );
+
+                        if ($current_leaf instanceof ParseTree\Root) {
+                            $current_leaf = $parse_tree = $new_leaf;
+                            break;
+                        }
+
+                        if ($new_leaf->parent) {
+                            $new_leaf->parent->children[] = $new_leaf;
+                        }
+
+                        $current_leaf = $new_leaf;
+                    }
+
                     break;
 
                 case '|':
+                    if ($current_leaf instanceof ParseTree\Root) {
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                    }
+
+                    $added_null = false;
+
                     $current_parent = $current_leaf->parent;
 
                     if ($current_parent instanceof ParseTree\CallableWithReturnTypeTree) {
+                        $current_leaf = $current_parent;
+                        $current_parent = $current_parent->parent;
+                    }
+
+                    if ($current_parent instanceof ParseTree\NullableTree) {
                         $current_leaf = $current_parent;
                         $current_parent = $current_parent->parent;
                     }
@@ -311,6 +358,12 @@ class ParseTree
                     break;
 
                 case '&':
+                    if ($current_leaf instanceof ParseTree\Root) {
+                        throw new TypeParseTreeException(
+                            'Unexpected &'
+                        );
+                    }
+
                     $current_parent = $current_leaf->parent;
 
                     if ($current_parent && $current_parent instanceof ParseTree\IntersectionTree) {

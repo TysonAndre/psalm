@@ -243,6 +243,72 @@ class MagicPropertyTest extends TestCase
                         }
                     }',
             ],
+            'undefinedThisPropertyFetchWithMagic' => [
+                '<?php
+                    /**
+                     * @property-read string $name
+                     * @property string $otherName
+                     */
+                    class A {
+                      public function __get(string $name): void {
+                      }
+
+                      public function goodGet(): void {
+                        echo $this->name;
+                      }
+                      public function goodGet2(): void {
+                        echo $this->otherName;
+                      }
+                    }
+                    $a = new A();
+                    echo $a->name;
+                    echo $a->otherName;',
+            ],
+            'directFetchForMagicProperty' => [
+                '<?php
+                    /**
+                     * @property string $test
+                     */
+                    class C {
+                        public function __get(string $name)
+                        {
+                        }
+
+                        /**
+                         * @param mixed $value
+                         */
+                        public function __set(string $name, $value)
+                        {
+                        }
+
+                        public function test(): string
+                        {
+                            return $this->test;
+                        }
+                    }',
+            ],
+            'magicPropertyFetchOnProtected' => [
+                '<?php
+                    class C {
+                        /** @var string */
+                        protected $foo = "foo";
+
+                        public function __get(string $name) {}
+
+                        /**
+                         * @param mixed $value
+                         */
+                        public function __set(string $name, $value)
+                        {
+                        }
+                    }
+
+                    $c = new C();
+                    $c->foo = "bar";
+                    echo $c->foo;',
+                'assertions' => [],
+                'error_level' => ['MixedArgument'],
+            ],
         ];
     }
 
@@ -524,30 +590,6 @@ class MagicPropertyTest extends TestCase
                             }
 
                             return null;
-                        }
-                    }',
-                'error_message' => 'UndefinedThisPropertyFetch',
-            ],
-            'directFetchForMagicProperty' => [
-                '<?php
-                    /**
-                     * @property string $test
-                     */
-                    class C {
-                        public function __get(string $name)
-                        {
-                        }
-
-                        /**
-                         * @param mixed $value
-                         */
-                        public function __set(string $name, $value)
-                        {
-                        }
-
-                        public function test(): string
-                        {
-                            return $this->test;
                         }
                     }',
                 'error_message' => 'UndefinedThisPropertyFetch',

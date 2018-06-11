@@ -323,6 +323,52 @@ class ValueTest extends TestCase
                         }
                     }',
             ],
+            'ifOrAssertionWithSwitch' => [
+                '<?php
+                    function foo(string $s) : void {
+                        switch ($s) {
+                            case "a":
+                            case "b":
+                            case "c":
+                                if ($s === "a" || $s === "b") {
+                                    throw new \InvalidArgumentException;
+                                }
+                                break;
+                        }
+                    }',
+            ],
+            'inArrayAssertionProperty' => [
+                '<?php
+                    class Foo
+                    {
+                        /**
+                         * @psalm-var "a"|"b"
+                         */
+                        private $s;
+
+                        public function __construct(string $s)
+                        {
+                            if (!in_array($s, ["a", "b"], true)) {
+                                throw new \InvalidArgumentException;
+                            }
+                            $this->s = $s;
+                        }
+                    }',
+            ],
+            'inArrayAssertionWithSwitch' => [
+                '<?php
+                    function foo(string $s) : void {
+                        switch ($s) {
+                            case "a":
+                            case "b":
+                            case "c":
+                                if (in_array($s, ["a", "b"], true)) {
+                                    throw new \InvalidArgumentException;
+                                }
+                                break;
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -360,6 +406,38 @@ class ValueTest extends TestCase
                 '<?php
                     $a = 4;
                     if ($a !== 4) {
+                        // do something
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'neverEqualsFloatType' => [
+                '<?php
+                    $a = 4.0;
+                    if ($a === 4.1) {
+                        // do something
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'alwaysIdenticalFloatType' => [
+                '<?php
+                    $a = 4.1;
+                    if ($a === 4.1) {
+                        // do something
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'alwaysNotIdenticalFloatType' => [
+                '<?php
+                    $a = 4.0;
+                    if ($a !== 4.1) {
+                        // do something
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'neverNotIdenticalFloatType' => [
+                '<?php
+                    $a = 4.1;
+                    if ($a !== 4.1) {
                         // do something
                     }',
                 'error_message' => 'TypeDoesNotContainType',
@@ -463,6 +541,22 @@ class ValueTest extends TestCase
 
                     if ($s == 3) {}',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'badIfOrAssertionWithSwitch' => [
+                '<?php
+                    function foo(string $s) : void {
+                        switch ($s) {
+                            case "a":
+                            case "b":
+                            case "c":
+                                if ($s === "a" || $s === "b") {
+                                    throw new \InvalidArgumentException;
+                                }
+
+                                if ($s === "c") {}
+                        }
+                    }',
+                'error_message' => 'RedundantCondition',
             ],
         ];
     }

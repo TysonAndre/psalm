@@ -208,6 +208,68 @@ class AnnotationTest extends TestCase
     }
 
     /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidParamDefault
+     *
+     * @return                   void
+     */
+    public function testInvalidParamDefault()
+    {
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @param array $arr
+                 * @return void
+                 */
+                function foo($arr = false) {}'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testInvalidParamDefaultButAllowedInConfig()
+    {
+        Config::getInstance()->add_param_default_to_docblock_type = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @param array $arr
+                 * @return void
+                 */
+                function foo($arr = false) {}
+                foo(false);
+                foo(["hello"]);'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidParamDefault
+     *
+     * @return                   void
+     */
+    public function testInvalidTypehintParamDefaultButAllowedInConfig()
+    {
+        Config::getInstance()->add_param_default_to_docblock_type = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function foo(array $arr = false) : void {}'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
      * @return void
      */
     public function testPhpDocMethodWhenUndefined()
@@ -779,6 +841,24 @@ class AnnotationTest extends TestCase
                     '$e' => 'callable():string',
                 ],
             ],
+            'namespacedMagicMethodValidAnnotations' => [
+                '<?php
+                    namespace Foo;
+
+                    class Parent {
+                        public function __call() {}
+                    }
+
+                    /**
+                     * @method setBool(string $foo, string|bool $bar)  :   bool
+                     */
+                    class Child extends Parent {}
+
+                    $child = new Child();
+
+                    $c = $child->setBool("hello", true);
+                    $c = $child->setBool("hello", "true");',
+            ],
             'slashAfter?' => [
                 '<?php
                     namespace ns;
@@ -811,6 +891,11 @@ class AnnotationTest extends TestCase
 
                     $f = foo();
                     if ($f) {}'
+            ],
+            'spreadOperatorArrayAnnotation' => [
+                '<?php
+                    /** @param string[] $s */
+                    function foo(string ...$s) : void {}',
             ],
         ];
     }
@@ -1337,6 +1422,14 @@ class AnnotationTest extends TestCase
                      */
                     function example() {
                         return "placeholder";
+                    }',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'badAmpersand' => [
+                '<?php
+                    /** @return &array */
+                    function foo() : array {
+                        return [];
                     }',
                 'error_message' => 'InvalidDocblock',
             ],
