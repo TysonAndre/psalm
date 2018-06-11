@@ -259,7 +259,7 @@ class PropertyFetchChecker
                         && ClassLikeChecker::checkPropertyVisibility(
                             $property_id,
                             $context->self,
-                            $statements_checker_source,
+                            $statements_checker->getSource(),
                             new CodeLocation($statements_checker->getSource(), $stmt),
                             $statements_checker->getSuppressedIssues(),
                             false
@@ -326,7 +326,7 @@ class PropertyFetchChecker
                     $context->vars_in_scope[$var_id] = $stmt->inferredType;
                 }
 
-                return;
+                return null;
             }
 
             if (ClassLikeChecker::checkPropertyVisibility(
@@ -451,6 +451,7 @@ class PropertyFetchChecker
         if ($var_id) {
             $context->vars_in_scope[$var_id] = isset($stmt->inferredType) ? $stmt->inferredType : Type::getMixed();
         }
+        return null;
     }
 
     /**
