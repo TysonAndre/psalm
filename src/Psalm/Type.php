@@ -125,6 +125,8 @@ abstract class Type
             $parsed_type = self::getTypeFromTree($parse_tree, $php_compatible, $template_types);
         } catch (TypeParseTreeException $e) {
             throw $e;
+        } catch (\InvalidArgumentException $e) {
+            throw new TypeParseTreeException($e->getMessage());
         }
 
         if (!($parsed_type instanceof Union)) {
