@@ -298,7 +298,9 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $context->vars_possibly_in_scope['$' . $function_param->name] = true;
 
             if ($context->collect_references && $function_param->location) {
-                $context->unreferenced_vars['$' . $function_param->name] = $function_param->location;
+                $context->unreferenced_vars['$' . $function_param->name] = [
+                    $function_param->location->getHash() => $function_param->location
+                ];
             }
 
             if (!$function_param->type_location || !$function_param->location) {
@@ -461,7 +463,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             return false;
         }
 
-        $statements_checker->analyze($function_stmts, $context, null, $global_context, true);
+        $statements_checker->analyze($function_stmts, $context, $global_context, true);
 
         foreach ($storage->params as $offset => $function_param) {
             // only complain if there's no type defined by a parent type
@@ -1019,7 +1021,13 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     continue;
                 }
 
-                if (TypeChecker::isContainedBy($project_checker->codebase, $arg->value->inferredType, $param_type)) {
+                if (TypeChecker::isContainedBy(
+                    $project_checker->codebase,
+                    $arg->value->inferredType,
+                    $param_type,
+                    $arg->value->inferredType->ignore_nullable_issues,
+                    $arg->value->inferredType->ignore_falsable_issues
+                )) {
                     continue;
                 }
 

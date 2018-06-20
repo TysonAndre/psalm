@@ -73,6 +73,11 @@ class StatementsChecker extends SourceChecker implements StatementsSource
     private $unused_var_locations = [];
 
     /**
+     * @var array<string, bool>
+     */
+    private $used_var_locations = [];
+
+    /**
      * @param StatementsSource $source
      */
     public function __construct(StatementsSource $source)
@@ -94,7 +99,6 @@ class StatementsChecker extends SourceChecker implements StatementsSource
     public function analyze(
         array $stmts,
         Context $context,
-        LoopScope $loop_scope = null,
         Context $global_context = null,
         $root_scope = false
     ) {
@@ -141,7 +145,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
 
         $original_context = null;
 
-        if ($loop_scope) {
+        if ($context->loop_scope) {
             $original_context = clone $context;
         }
 
@@ -203,11 +207,11 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             }
 
             if ($stmt instanceof PhpParser\Node\Stmt\If_) {
-                if (IfChecker::analyze($this, $stmt, $context, $loop_scope) === false) {
+                if (IfChecker::analyze($this, $stmt, $context) === false) {
                     return false;
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\TryCatch) {
-                if (TryChecker::analyze($this, $stmt, $context, $loop_scope) === false) {
+                if (TryChecker::analyze($this, $stmt, $context) === false) {
                     return false;
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\For_) {
@@ -287,8 +291,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $has_returned = true;
                 ThrowChecker::analyze($this, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Switch_) {
-                SwitchChecker::analyze($this, $stmt, $context, $loop_scope);
+                SwitchChecker::analyze($this, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Break_) {
+                $loop_scope = $context->loop_scope;
                 if ($loop_scope && $original_context) {
                     $loop_scope->final_actions[] = ScopeChecker::ACTION_BREAK;
 
@@ -310,10 +315,32 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                             }
                         }
                     }
+
+                    if ($context->collect_references && (!$context->switch_scope || $stmt->num)) {
+                        foreach ($context->unreferenced_vars as $var_id => $locations) {
+                            if (isset($loop_scope->unreferenced_vars[$var_id])) {
+                                $loop_scope->unreferenced_vars[$var_id] += $locations;
+                            } else {
+                                $loop_scope->unreferenced_vars[$var_id] = $locations;
+                            }
+                        }
+                    }
+                }
+
+                $switch_scope = $context->switch_scope;
+                if ($switch_scope && $context->collect_references) {
+                    foreach ($context->unreferenced_vars as $var_id => $locations) {
+                        if (isset($switch_scope->unreferenced_vars[$var_id])) {
+                            $switch_scope->unreferenced_vars[$var_id] += $locations;
+                        } else {
+                            $switch_scope->unreferenced_vars[$var_id] = $locations;
+                        }
+                    }
                 }
 
                 $has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Continue_) {
+                $loop_scope = $context->loop_scope;
                 if ($loop_scope === null) {
                     if (!$context->inside_case) {
                         if (IssueBuffer::accepts(
@@ -356,6 +383,27 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                             );
                         } else {
                             $loop_scope->possibly_redefined_loop_vars[$var] = $type;
+                        }
+                    }
+
+                    if ($context->collect_references && (!$context->switch_scope || $stmt->num)) {
+                        foreach ($context->unreferenced_vars as $var_id => $locations) {
+                            if (isset($loop_scope->possibly_unreferenced_vars[$var_id])) {
+                                $loop_scope->possibly_unreferenced_vars[$var_id] += $locations;
+                            } else {
+                                $loop_scope->possibly_unreferenced_vars[$var_id] = $locations;
+                            }
+                        }
+                    }
+                }
+
+                $switch_scope = $context->switch_scope;
+                if ($switch_scope && $context->collect_references) {
+                    foreach ($context->unreferenced_vars as $var_id => $locations) {
+                        if (isset($switch_scope->unreferenced_vars[$var_id])) {
+                            $switch_scope->unreferenced_vars[$var_id] += $locations;
+                        } else {
+                            $switch_scope->unreferenced_vars[$var_id] = $locations;
                         }
                     }
                 }
@@ -585,9 +633,9 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 }
             }
 
-            if ($loop_scope
-                && $loop_scope->final_actions
-                && !in_array(ScopeChecker::ACTION_NONE, $loop_scope->final_actions, true)
+            if ($context->loop_scope
+                && $context->loop_scope->final_actions
+                && !in_array(ScopeChecker::ACTION_NONE, $context->loop_scope->final_actions, true)
             ) {
                 //$has_returned = true;
             }
@@ -653,8 +701,8 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         $source = $this->getSource();
         $function_storage = $source instanceof FunctionLikeChecker ? $source->getFunctionLikeStorage($this) : null;
 
-        foreach ($this->unused_var_locations as list($var_id, $original_location)) {
-            if ($var_id === '$_') {
+        foreach ($this->unused_var_locations as $hash => list($var_id, $original_location)) {
+            if ($var_id === '$_' || isset($this->used_var_locations[$hash])) {
                 continue;
             }
 
@@ -701,7 +749,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 $location = new CodeLocation($this, $stmt);
 
                 if ($context->collect_references) {
-                    $context->unreferenced_vars[$var_id] = $location;
+                    $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
                 }
 
                 $this->registerVariable(
@@ -1174,15 +1222,19 @@ class StatementsChecker extends SourceChecker implements StatementsSource
      */
     public function registerVariableAssignment($var_id, CodeLocation $location)
     {
-        $this->unused_var_locations[spl_object_hash($location)] = [$var_id, $location];
+        $this->unused_var_locations[$location->getHash()] = [$var_id, $location];
     }
 
     /**
+     * @param array<string, CodeLocation> $locations
      * @return void
      */
-    public function registerVariableUse(CodeLocation $location)
+    public function registerVariableUses(array $locations)
     {
-        unset($this->unused_var_locations[spl_object_hash($location)]);
+        foreach ($locations as $hash => $_) {
+            unset($this->unused_var_locations[$hash]);
+            $this->used_var_locations[$hash] = true;
+        }
     }
 
     /**

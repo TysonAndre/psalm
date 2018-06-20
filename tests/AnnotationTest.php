@@ -897,6 +897,13 @@ class AnnotationTest extends TestCase
                     /** @param string[] $s */
                     function foo(string ...$s) : void {}',
             ],
+            'globalMethod' => [
+                '<?php
+                    /** @method void global() */
+                    class A {
+                        public function __call(string $s) {}
+                    }',
+            ],
         ];
     }
 

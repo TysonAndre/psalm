@@ -212,6 +212,20 @@ class ExpressionChecker
             }
 
             if (isset($stmt->var->inferredType)) {
+                $return_type = null;
+
+                $fake_right_expr = new PhpParser\Node\Scalar\LNumber(1, $stmt->getAttributes());
+                $fake_right_expr->inferredType = Type::getInt();
+
+                BinaryOpChecker::analyzeNonDivArithmenticOp(
+                    $statements_checker,
+                    $stmt->var,
+                    $fake_right_expr,
+                    $stmt,
+                    $return_type,
+                    $context
+                );
+
                 $stmt->inferredType = clone $stmt->var->inferredType;
                 $stmt->inferredType->from_calculation = true;
 
@@ -227,6 +241,17 @@ class ExpressionChecker
 
                 if ($var_id && isset($context->vars_in_scope[$var_id])) {
                     $context->vars_in_scope[$var_id] = $stmt->inferredType;
+
+                    if ($context->collect_references && $stmt->var instanceof PhpParser\Node\Expr\Variable) {
+                        $location = new CodeLocation($statements_checker, $stmt->var);
+                        $context->assigned_var_ids[$var_id] = true;
+                        $context->possibly_assigned_var_ids[$var_id] = true;
+                        $statements_checker->registerVariableAssignment(
+                            $var_id,
+                            $location
+                        );
+                        $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
+                    }
                 }
             } else {
                 $stmt->inferredType = Type::getMixed();
@@ -574,7 +599,7 @@ class ExpressionChecker
                     $statements_checker->registerVariable($var_id, $location, null);
 
                     if ($context->collect_references) {
-                        $context->unreferenced_vars[$var_id] = $location;
+                        $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
                     }
 
                     $context->hasVariable($var_id, $statements_checker);

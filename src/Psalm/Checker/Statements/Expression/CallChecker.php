@@ -484,6 +484,22 @@ class CallChecker
                         return false;
                     }
 
+                    if ($context->collect_references
+                        && ($arg->value instanceof PhpParser\Node\Expr\AssignOp
+                            || $arg->value instanceof PhpParser\Node\Expr\PreInc
+                            || $arg->value instanceof PhpParser\Node\Expr\PreDec)
+                    ) {
+                        $var_id = ExpressionChecker::getVarId(
+                            $arg->value->var,
+                            $statements_checker->getFQCLN(),
+                            $statements_checker
+                        );
+
+                        if ($var_id) {
+                            $context->hasVariable($var_id, $statements_checker);
+                        }
+                    }
+
                     if ($toggled_class_exists) {
                         $context->inside_class_exists = false;
                     }
@@ -527,7 +543,7 @@ class CallChecker
                                 null
                             );
 
-                            $statements_checker->registerVariableUse($location);
+                            $statements_checker->registerVariableUses([$location->getHash() => $location]);
                         }
                     } else {
                         $context->removeVarFromConflictingClauses(
@@ -646,19 +662,7 @@ class CallChecker
             }
         }
 
-        if ($generic_params) {
-            $existing_generic_params_to_strings = array_map(
-                /**
-                 * @return string
-                 */
-                function (Type\Union $type) {
-                    return (string) $type;
-                },
-                $generic_params
-            );
-        } else {
-            $existing_generic_params_to_strings = [];
-        }
+        $existing_generic_params_to_strings = $generic_params ?: [];
 
         foreach ($args as $argument_offset => $arg) {
             $function_param = count($function_params) > $argument_offset
@@ -812,6 +816,7 @@ class CallChecker
                         } else {
                             if ($existing_generic_params_to_strings) {
                                 $empty_generic_params = [];
+
                                 $param_type->replaceTemplateTypesWithStandins(
                                     $existing_generic_params_to_strings,
                                     $empty_generic_params,
@@ -825,11 +830,28 @@ class CallChecker
                                     $generic_params = [];
                                 }
 
+                                $arg_type = $arg->value->inferredType;
+
+                                if ($arg->unpack) {
+                                    if ($arg->value->inferredType->hasArray()) {
+                                        /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                                        $array_atomic_type = $arg->value->inferredType->getTypes()['array'];
+
+                                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                                            $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                                        }
+
+                                        $arg_type = $array_atomic_type->type_params[1];
+                                    } else {
+                                        $arg_type = Type::getMixed();
+                                    }
+                                }
+
                                 $param_type->replaceTemplateTypesWithStandins(
                                     $template_types,
                                     $generic_params,
                                     $codebase,
-                                    $arg->value->inferredType
+                                    $arg_type
                                 );
                             }
                         }

@@ -596,6 +596,118 @@ class TemplateTest extends TestCase
                     /** @param array<stdClass> $p */
                     function takesArrayOfStdClass(array $p): void {}',
             ],
+            'noRepeatedTypeException' => [
+                '<?php
+                    /** @template T */
+                    class Foo
+                    {
+                        /**
+                         * @psalm-var class-string
+                         */
+                        private $type;
+
+                        /** @var array<T> */
+                        private $items;
+
+                        /**
+                         * @param class-string $type
+                         * @template-typeof T $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            if (!in_array($type, [A::class, B::class], true)) {
+                                throw new \InvalidArgumentException;
+                            }
+                            $this->type = $type;
+                            $this->items = [];
+                        }
+
+                        /** @param T $item */
+                        public function add($item): void
+                        {
+                            $this->items[] = $item;
+                        }
+                    }
+
+                    class FooFacade
+                    {
+                        /**
+                         * @template T
+                         * @param  T $item
+                         */
+                        public function add($item): void
+                        {
+                            $foo = $this->ensureFoo([$item]);
+                            $foo->add($item);
+                        }
+
+                        /**
+                         * @template T
+                         * @param  array<mixed,T> $items
+                         * @return Foo<T>
+                         */
+                        private function ensureFoo(array $items): EntitySeries
+                        {
+                            $type = $items[0] instanceof A ? A::class : B::class;
+                            return new Foo($type);
+                        }
+                    }
+
+                    class A {}
+                    class B {}'
+            ],
+            'collectionOfClosure' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class Collection {
+                        /**
+                         * @param Closure(TValue):bool $p
+                         * @return Collection<TKey,TValue>
+                         */
+                        public function filter(Closure $p);
+                    }
+                    class I {}
+
+                    /** @var Collection<mixed,Collection<mixed,I>> $c */
+                    $c = new Collection;
+
+                    $c->filter(
+                      /** @param Collection<mixed,I> $elt */
+                      function(Collection $elt): bool { return (bool) rand(0,1); }
+                    );
+
+                    $c->filter(
+                      /** @param Collection<mixed,I> $elt */
+                      function(Collection $elt): bool { return true; }
+                    );',
+            ],
+            'splatTemplateParam' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     *
+                     * @param array<TKey, TValue> $arr
+                     * @param array $arr2
+                     * @return array<TKey, TValue>
+                     */
+                    function splat_proof(array $arr, array $arr2) {
+                        return $arr;
+                    }
+
+                    $foo = [
+                        [1, 2, 3],
+                        [1, 2],
+                    ];
+
+                    $a = splat_proof(... $foo);',
+                'assertions' => [
+                    '$a' => 'array<int, int>',
+                ],
+            ],
         ];
     }
 

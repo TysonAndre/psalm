@@ -26,8 +26,7 @@ class TryChecker
     public static function analyze(
         StatementsChecker $statements_checker,
         PhpParser\Node\Stmt\TryCatch $stmt,
-        Context $context,
-        LoopScope $loop_scope = null
+        Context $context
     ) {
         $catch_actions = [];
         $all_catches_leave = true;
@@ -58,7 +57,7 @@ class TryChecker
         $newly_unreferenced_vars = [];
         $reassigned_vars = [];
 
-        if ($statements_checker->analyze($stmt->stmts, $context, $loop_scope) === false) {
+        if ($statements_checker->analyze($stmt->stmts, $context) === false) {
             return false;
         }
 
@@ -99,19 +98,19 @@ class TryChecker
                     )
                 );
 
-                foreach ($context->unreferenced_vars as $var_id => $location) {
+                foreach ($context->unreferenced_vars as $var_id => $locations) {
                     if (isset($old_unreferenced_vars[$var_id])
-                        && $old_unreferenced_vars[$var_id] !== $location
+                        && $old_unreferenced_vars[$var_id] !== $locations
                     ) {
-                        $reassigned_vars[$var_id] = $location;
+                        $reassigned_vars[$var_id] = $locations;
                     }
                 }
             }
         }
 
-        $try_leaves_loop = $loop_scope
-            && $loop_scope->final_actions
-            && !in_array(ScopeChecker::ACTION_NONE, $loop_scope->final_actions, true);
+        $try_leaves_loop = $context->loop_scope
+            && $context->loop_scope->final_actions
+            && !in_array(ScopeChecker::ACTION_NONE, $context->loop_scope->final_actions, true);
 
         if (!$all_catches_leave) {
             foreach ($newly_assigned_var_ids as $assigned_var_id => $_) {
@@ -221,7 +220,7 @@ class TryChecker
                     $location,
                     $try_context->branch_point
                 );
-                $catch_context->unreferenced_vars[$catch_var_id] = $location;
+                $catch_context->unreferenced_vars[$catch_var_id] = [$location->getHash() => $location];
             }
 
             // this registers the variable to avoid unfair deadcode issues
@@ -233,7 +232,7 @@ class TryChecker
                 $statements_checker->addSuppressedIssues(['RedundantCondition']);
             }
 
-            $statements_checker->analyze($catch->stmts, $catch_context, $loop_scope);
+            $statements_checker->analyze($catch->stmts, $catch_context);
 
             if (!in_array('RedundantCondition', $suppressed_issues, true)) {
                 $statements_checker->removeSuppressedIssues(['RedundantCondition']);
@@ -244,7 +243,7 @@ class TryChecker
                 $context->referenced_var_ids
             );
 
-            if ($context->collect_references) {
+            if ($context->collect_references && $catch_actions[$i] !== [ScopeChecker::ACTION_END]) {
                 foreach ($context->unreferenced_vars as $var_id => $_) {
                     if (!isset($catch_context->unreferenced_vars[$var_id])) {
                         unset($context->unreferenced_vars[$var_id]);
@@ -259,16 +258,16 @@ class TryChecker
                     )
                 );
 
-                foreach ($catch_context->unreferenced_vars as $var_id => $location) {
+                foreach ($catch_context->unreferenced_vars as $var_id => $locations) {
                     if (!isset($old_unreferenced_vars[$var_id])
                         && (isset($context->unreferenced_vars[$var_id])
                             || isset($newly_assigned_var_ids[$var_id]))
                     ) {
-                        $statements_checker->registerVariableUse($location);
+                        $statements_checker->registerVariableUses($locations);
                     } elseif (isset($old_unreferenced_vars[$var_id])
-                        && $old_unreferenced_vars[$var_id] !== $location
+                        && $old_unreferenced_vars[$var_id] !== $locations
                     ) {
-                        $statements_checker->registerVariableUse($location);
+                        $statements_checker->registerVariableUses($locations);
                     }
                 }
             }
@@ -292,21 +291,23 @@ class TryChecker
             }
         }
 
-        if ($loop_scope
+        if ($context->loop_scope
             && !$try_leaves_loop
-            && !in_array(ScopeChecker::ACTION_NONE, $loop_scope->final_actions, true)
+            && !in_array(ScopeChecker::ACTION_NONE, $context->loop_scope->final_actions, true)
         ) {
-            $loop_scope->final_actions[] = ScopeChecker::ACTION_NONE;
+            $context->loop_scope->final_actions[] = ScopeChecker::ACTION_NONE;
         }
 
         if ($stmt->finally) {
-            $statements_checker->analyze($stmt->finally->stmts, $context, $loop_scope);
+            $statements_checker->analyze($stmt->finally->stmts, $context);
         }
 
         if ($context->collect_references) {
-            foreach ($old_unreferenced_vars as $var_id => $location) {
-                if (isset($context->unreferenced_vars[$var_id]) && $context->unreferenced_vars[$var_id] !== $location) {
-                    $statements_checker->registerVariableUse($location);
+            foreach ($old_unreferenced_vars as $var_id => $locations) {
+                if (isset($context->unreferenced_vars[$var_id])
+                    && $context->unreferenced_vars[$var_id] !== $locations
+                ) {
+                    $statements_checker->registerVariableUses($locations);
                 }
             }
         }

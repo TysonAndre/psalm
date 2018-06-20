@@ -82,13 +82,6 @@ class Config
     public $cache_directory;
 
     /**
-     * Whether or not to care about casing of file names
-     *
-     * @var bool
-     */
-    public $use_case_sensitive_file_names = false;
-
-    /**
      * Path to the autoader
      *
      * @var string|null

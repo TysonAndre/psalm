@@ -20,7 +20,7 @@ class CommentChecker
     /**
      * @param  string           $comment
      * @param  Aliases          $aliases
-     * @param  array<string, string>|null   $template_types
+     * @param  array<string, string>|null   $template_type_names
      * @param  int|null         $var_line_number
      * @param  int|null         $came_from_line_number what line number in $source that $comment came from
      *
@@ -33,7 +33,7 @@ class CommentChecker
         $comment,
         FileSource $source,
         Aliases $aliases,
-        array $template_types = null,
+        array $template_type_names = null,
         $var_line_number = null,
         $came_from_line_number = null
     ) {
@@ -77,7 +77,7 @@ class CommentChecker
                         $var_type_tokens = Type::fixUpLocalType(
                             $line_parts[0],
                             $aliases,
-                            $template_types
+                            $template_type_names
                         );
                     } catch (TypeParseTreeException $e) {
                         throw new DocblockParseException($line_parts[0] . ' is not a valid type');
@@ -97,7 +97,7 @@ class CommentChecker
                 }
 
                 try {
-                    $defined_type = Type::parseTokens($var_type_tokens, false, $template_types ?: []);
+                    $defined_type = Type::parseTokens($var_type_tokens, false, $template_type_names ?: []);
                 } catch (TypeParseTreeException $e) {
                     if (is_int($came_from_line_number)) {
                         throw new DocblockParseException(
@@ -310,9 +310,12 @@ class CommentChecker
                 $template_type = preg_split('/[\s]+/', $template_line);
 
                 if (count($template_type) > 2 && in_array(strtolower($template_type[1]), ['as', 'super'], true)) {
-                    $info->template_types[] = [$template_type[0], strtolower($template_type[1]), $template_type[2]];
+                    $info->template_type_names[] = [
+                        $template_type[0],
+                        strtolower($template_type[1]), $template_type[2]
+                    ];
                 } else {
-                    $info->template_types[] = [$template_type[0]];
+                    $info->template_type_names[] = [$template_type[0]];
                 }
             }
         }
@@ -404,9 +407,12 @@ class CommentChecker
                 $template_type = preg_split('/[\s]+/', $template_line);
 
                 if (count($template_type) > 2 && in_array(strtolower($template_type[1]), ['as', 'super'], true)) {
-                    $info->template_types[] = [$template_type[0], strtolower($template_type[1]), $template_type[2]];
+                    $info->template_type_names[] = [
+                        $template_type[0],
+                        strtolower($template_type[1]), $template_type[2]
+                    ];
                 } else {
-                    $info->template_types[] = [$template_type[0]];
+                    $info->template_type_names[] = [$template_type[0]];
                 }
             }
         }
@@ -459,7 +465,7 @@ class CommentChecker
 
                 $method_entry = preg_replace('/[a-zA-Z\\\\0-9_]+(\|[a-zA-Z\\\\0-9_]+)+ \$/', '$', $method_entry);
 
-                $php_string = '<?php ' . $return_docblock . ' function ' . $method_entry . '{}';
+                $php_string = '<?php class A { ' . $return_docblock . ' public function ' . $method_entry . '{} }';
 
                 try {
                     $statements = \Psalm\Provider\StatementsProvider::parseStatements($php_string);
@@ -467,11 +473,16 @@ class CommentChecker
                     throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
                 }
 
-                if (!$statements[0] instanceof \PhpParser\Node\Stmt\Function_) {
+                if (!$statements[0] instanceof \PhpParser\Node\Stmt\Class_
+                    || !isset($statements[0]->stmts[0])
+                    || !$statements[0]->stmts[0] instanceof \PhpParser\Node\Stmt\ClassMethod
+                ) {
                     throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
                 }
 
-                $info->methods[] = $statements[0];
+
+
+                $info->methods[] = $statements[0]->stmts[0];
             }
         }
 

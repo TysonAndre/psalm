@@ -13,7 +13,7 @@ class ClassLikeDocblockComment
     /**
      * @var array<int, array<int, string>>
      */
-    public $template_types = [];
+    public $template_type_names = [];
 
     /**
      * @var array<int, string>
@@ -26,7 +26,7 @@ class ClassLikeDocblockComment
     public $properties = [];
 
     /**
-     * @var array<int, \PhpParser\Node\Stmt\Function_>
+     * @var array<int, \PhpParser\Node\Stmt\ClassMethod>
      */
     public $methods = [];
 

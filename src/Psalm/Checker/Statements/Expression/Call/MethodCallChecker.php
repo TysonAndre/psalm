@@ -379,7 +379,11 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
-                if (!$codebase->methodExists($method_id, $code_location)) {
+                $source_method_id = $source instanceof FunctionLikeChecker
+                    ? $source->getMethodId()
+                    : null;
+
+                if (!$codebase->methodExists($method_id, $method_id !== $source_method_id ? $code_location : null)) {
                     if ($config->use_phpdoc_methods_without_call) {
                         $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
 
@@ -522,6 +526,9 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $return_type_candidate = Type::parseString('string|false');
                         } else {
                             $return_type_candidate = CallMap::getReturnTypeFromCallMap($call_map_id);
+                            if ($return_type_candidate->isFalsable()) {
+                                $return_type_candidate->ignore_falsable_issues = true;
+                            }
                         }
                     }
 
