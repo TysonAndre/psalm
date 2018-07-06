@@ -193,9 +193,7 @@ class CommentChecker
                 throw new IncorrectDocblockException('Empty type after renaming original');
             }
 
-            if (preg_match('/^' . self::TYPE_REGEX . '$/', $line_parts[0])
-                && !preg_match('/\[[^\]]+\]/', $line_parts[0])
-                && !strpos($line_parts[0], '::')
+            if (!preg_match('/\[[^\]]+\]/', $line_parts[0])
                 && $line_parts[0][0] !== '{'
             ) {
                 if ($line_parts[0][0] === '$' && !preg_match('/^\$this(\||$)/', $line_parts[0])) {
@@ -302,6 +300,12 @@ class CommentChecker
         if (isset($comments['specials']['psalm-suppress'])) {
             foreach ($comments['specials']['psalm-suppress'] as $suppress_entry) {
                 $info->suppress[] = preg_split('/[\s]+/', $suppress_entry)[0];
+            }
+        }
+
+        if (isset($comments['specials']['throws'])) {
+            foreach ($comments['specials']['throws'] as $throws_entry) {
+                $info->throws[] = preg_split('/[\s]+/', $throws_entry)[0];
             }
         }
 
@@ -463,7 +467,11 @@ class CommentChecker
                     $method_entry = substr($method_entry, 0, (int) $matches[0][1] + strlen((string) $matches[0][0]));
                 }
 
-                $method_entry = preg_replace('/[a-zA-Z\\\\0-9_]+(\|[a-zA-Z\\\\0-9_]+)+ \$/', '$', $method_entry);
+                // replace unions
+                $method_entry = preg_replace('/[a-zA-Z\\\\0-9_]+(\|[a-zA-Z\\\\0-9_]+)+ +\$/', '$', $method_entry);
+
+                // replace mixed
+                $method_entry = preg_replace('/mixed +\$/', '$', $method_entry);
 
                 $php_string = '<?php class A { ' . $return_docblock . ' public function ' . $method_entry . '{} }';
 

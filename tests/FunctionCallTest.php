@@ -713,6 +713,73 @@ class FunctionCallTest extends TestCase
                     '$bar' => 'array<int, int>',
                 ],
             ],
+            'arrayReduce' => [
+                '<?php
+                    $arr = [2, 3, 4, 5];
+
+                    function multiply (int $carry, int $item) : int {
+                        return $carry * $item;
+                    }
+
+                    $f2 = function (int $carry, int $item) : int {
+                        return $carry * $item;
+                    };
+
+                    $direct_closure_result = array_reduce(
+                        $arr,
+                        function (int $carry, int $item) : int {
+                            return $carry * $item;
+                        },
+                        1
+                    );
+
+                    $passed_closure_result = array_reduce(
+                        $arr,
+                        $f2,
+                        1
+                    );
+
+                    $function_call_result = array_reduce(
+                        $arr,
+                        "multiply",
+                        1
+                    );',
+                'assertions' => [
+                    '$direct_closure_result' => 'int',
+                    '$passed_closure_result' => 'int',
+                    '$function_call_result' => 'int',
+                ],
+            ],
+            'arrayReduceMixedReturn' => [
+                '<?php
+                    $arr = [2, 3, 4, 5];
+
+                    $direct_closure_result = array_reduce(
+                        $arr,
+                        function (int $carry, int $item) {
+                            return $_GET["boo"];
+                        },
+                        1
+                    );',
+                'assertions' => [],
+                'error_levels' => ['MissingClosureReturnType', 'MixedAssignment'],
+            ],
+            'versionCompare' => [
+                '<?php
+                    function getString() : string {
+                        return rand(0, 1) ? "===" : "==";
+                    }
+
+                    $a = version_compare("5.0.0", "7.0.0");
+                    $b = version_compare("5.0.0", "7.0.0", "==");
+                    $c = version_compare("5.0.0", "7.0.0", getString());
+                ',
+                'assertions' => [
+                    '$a' => 'int',
+                    '$b' => 'bool',
+                    '$c' => 'bool|null',
+                ],
+            ],
         ];
     }
 
@@ -980,6 +1047,61 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $q = rand(0,1) ? new stdClass : false;
                     strlen($q);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'arrayReduceInvalidClosureTooFewArgs' => [
+                '<?php
+                    $arr = [2, 3, 4, 5];
+
+                    $direct_closure_result = array_reduce(
+                        $arr,
+                        function (int $carry) : int {
+                            return 5;
+                        },
+                        1
+                    );',
+                'error_message' => 'InvalidArgument',
+                'error_levels' => ['MixedTypeCoercion'],
+            ],
+            'arrayReduceInvalidItemType' => [
+                '<?php
+                    $arr = [2, 3, 4, 5];
+
+                    $direct_closure_result = array_reduce(
+                        $arr,
+                        function (int $carry, stdClass $item) {
+                            return $_GET["boo"];
+                        },
+                        1
+                    );',
+                'error_message' => 'InvalidArgument',
+                'error_levels' => ['MissingClosureReturnType'],
+            ],
+            'arrayReduceInvalidCarryType' => [
+                '<?php
+                    $arr = [2, 3, 4, 5];
+
+                    $direct_closure_result = array_reduce(
+                        $arr,
+                        function (stdClass $carry, int $item) {
+                            return $_GET["boo"];
+                        },
+                        1
+                    );',
+                'error_message' => 'InvalidArgument',
+                'error_levels' => ['MissingClosureReturnType'],
+            ],
+            'arrayReduceInvalidCarryOutputType' => [
+                '<?php
+                    $arr = [2, 3, 4, 5];
+
+                    $direct_closure_result = array_reduce(
+                        $arr,
+                        function (int $carry, int $item) : stdClass {
+                            return new stdClass;
+                        },
+                        1
+                    );',
                 'error_message' => 'InvalidArgument',
             ],
         ];

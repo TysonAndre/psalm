@@ -807,6 +807,54 @@ class UnusedVariableTest extends TestCase
                     $a = 5;
                     foo(++$a);',
             ],
+            'afterMethodExistsCheck' => [
+                '<?php
+                    class A {
+                        /**
+                         * @param array<string, string> $options
+                         */
+                        public function __construct(array $options) {
+                            $this->setOptions($options);
+                        }
+
+                        /**
+                         * @param array<string, string> $options
+                         */
+                        protected function setOptions(array $options): void
+                        {
+                            foreach ($options as $key => $value) {
+                                $normalized = ucfirst($key);
+                                $method     = "set" . $normalized;
+
+                                if (method_exists($this, $method)) {
+                                    $this->$method($value);
+                                }
+                            }
+                        }
+                    }
+
+                    new A(["bar" => "bat"]);',
+            ],
+            'instanceofVarUse' => [
+                '<?php
+                    interface Foo { }
+
+                    function returnFoo(): Foo { return new class implements Foo { }; }
+
+                    $interface = Foo::class;
+
+                    if (returnFoo() instanceof $interface) {
+                        exit;
+                    }',
+            ],
+            'usedVariableInDoWhile' => [
+                '<?php
+                    $i = 5;
+                    do {
+                        echo "hello";
+                    } while (--$i > 0);
+                    echo $i;',
+            ],
         ];
     }
 

@@ -30,6 +30,7 @@ use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
+use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 
@@ -531,6 +532,9 @@ class Reconciler
                     $numeric_types[] = $type;
                 } elseif ($type->isNumericType()) {
                     $numeric_types[] = $type;
+                } elseif ($type instanceof TScalar) {
+                    $did_remove_type = true;
+                    $numeric_types[] = new TNumeric();
                 } else {
                     $did_remove_type = true;
                 }
@@ -682,22 +686,50 @@ class Reconciler
             return $new_type;
         }
 
-        $has_interface = false;
+        $new_type_has_interface = false;
 
         if ($new_type->hasObjectType()) {
             foreach ($new_type->getTypes() as $new_type_part) {
                 if ($new_type_part instanceof TNamedObject &&
                     $codebase->interfaceExists($new_type_part->value)
                 ) {
-                    $has_interface = true;
+                    $new_type_has_interface = true;
                     break;
                 }
             }
         }
 
-        if ($has_interface) {
-            $new_type_part = new TNamedObject($new_var_type);
+        $old_type_has_interface = false;
 
+        if ($existing_var_type->hasObjectType()) {
+            foreach ($existing_var_type->getTypes() as $existing_type_part) {
+                if ($existing_type_part instanceof TNamedObject &&
+                    $codebase->interfaceExists($existing_type_part->value)
+                ) {
+                    $old_type_has_interface = true;
+                    break;
+                }
+            }
+        }
+
+        $new_type_part = Atomic::create($new_var_type);
+
+        if ($new_type_part instanceof TNamedObject
+            && (($new_type_has_interface
+                    && !TypeChecker::isContainedBy(
+                        $codebase,
+                        $existing_var_type,
+                        $new_type
+                    )
+                )
+                || ($old_type_has_interface
+                    && !TypeChecker::isContainedBy(
+                        $codebase,
+                        $new_type,
+                        $existing_var_type
+                    )
+                ))
+        ) {
             $acceptable_atomic_types = [];
 
             foreach ($existing_var_type->getTypes() as $existing_var_type_part) {
@@ -762,6 +794,11 @@ class Reconciler
                         continue;
                     }
 
+                    $scalar_type_match_found = false;
+                    $type_coerced = false;
+                    $type_coerced_from_mixed = false;
+                    $atomic_to_string_cast = false;
+
                     if (TypeChecker::isAtomicContainedBy(
                         $project_checker->codebase,
                         $new_type_part,
@@ -776,10 +813,8 @@ class Reconciler
                         if ($type_coerced) {
                             $matching_atomic_types[] = $existing_var_type_part;
                         }
-                        break;
+                        continue;
                     }
-
-                    //echo ($new_type_part->getId() . ' ' . $existing_var_type_part->getId() . PHP_EOL);
 
                     if ($scalar_type_match_found) {
                         $any_scalar_type_match_found = true;
@@ -798,7 +833,7 @@ class Reconciler
                         )
                     ) {
                         $has_local_match = true;
-                        break;
+                        continue;
                     }
                 }
 
@@ -1271,7 +1306,30 @@ class Reconciler
         } elseif (substr($new_var_type, 0, 9) === 'getclass-') {
             $new_var_type = substr($new_var_type, 9);
         } elseif (!$is_equality) {
-            $existing_var_type->removeType($new_var_type);
+            $new_type_part = new TNamedObject($new_var_type);
+
+            $codebase = $statements_checker->getFileChecker()->project_checker->codebase;
+
+            // if there wasn't a direct hit, go deeper, eliminating subtypes
+            if (!$existing_var_type->removeType($new_var_type)) {
+                foreach ($existing_var_type->getTypes() as $part_name => $existing_var_type_part) {
+                    if (!$existing_var_type_part->isObjectType()) {
+                        continue;
+                    }
+
+                    if (TypeChecker::isAtomicContainedBy(
+                        $codebase,
+                        $existing_var_type_part,
+                        $new_type_part,
+                        $scalar_type_match_found,
+                        $type_coerced,
+                        $type_coerced_from_mixed,
+                        $atomic_to_string_cast
+                    )) {
+                        $existing_var_type->removeType($part_name);
+                    }
+                }
+            }
         }
 
         if (empty($existing_var_type->getTypes())) {

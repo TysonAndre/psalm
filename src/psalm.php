@@ -7,9 +7,6 @@ use Psalm\IssueBuffer;
 
 // show all errors
 error_reporting(-1);
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-ini_set('memory_limit', '4096M');
 
 // get options from command line
 $options = getopt(
@@ -18,9 +15,17 @@ $options = getopt(
         'help', 'debug', 'debug-by-line', 'config:', 'monochrome', 'show-info:', 'diff',
         'output-format:', 'report:', 'find-dead-code', 'init',
         'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache', 'no-class-cache',
-        'version', 'plugin:', 'no-vendor-autoloader', 'stats', 'show-snippet:',
+        'version', 'plugin:', 'no-vendor-autoloader', 'stats', 'show-snippet:', 'use-ini-defaults',
+        'find-references-to:', 'root:', 'threads:', 'clear-cache', 'no-cache',
+        'version', 'plugin:', 'stats', 'show-snippet:', 'use-ini-defaults',
     ]
 );
+
+if (!array_key_exists('use-ini-defaults', $options)) {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    ini_set('memory_limit', 4 * 1024 * 1024 * 1024);
+}
 
 if (array_key_exists('help', $options)) {
     $options['h'] = false;
@@ -121,6 +126,9 @@ Options:
 
     --stats
         Shows a breakdown of Psalm's ability to infer types in the codebase
+
+    --use-ini-defaults
+        Use PHP-provided ini defaults for memory and error display
 
 HELP;
 
@@ -317,6 +325,8 @@ if (isset($options['clear-cache'])) {
     exit;
 }
 
+$debug = array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options);
+
 $project_checker = new ProjectChecker(
     $config,
     new Psalm\Provider\FileProvider(),
@@ -327,12 +337,12 @@ $project_checker = new ProjectChecker(
     $show_info,
     $output_format,
     $threads,
-    array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options),
+    $debug,
     isset($options['report']) && is_string($options['report']) ? $options['report'] : null,
     !isset($options['show-snippet']) || $options['show-snippet'] !== "false"
 );
 
-$config->visitComposerAutoloadFiles($project_checker);
+$config->visitComposerAutoloadFiles($project_checker, $debug);
 
 if (array_key_exists('debug-by-line', $options)) {
     $project_checker->debug_lines = true;

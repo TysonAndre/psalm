@@ -8,6 +8,7 @@ use Psalm\Checker\CommentChecker;
 use Psalm\Checker\FunctionLikeChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\Statements\Expression\ArrayChecker;
+use Psalm\Checker\Statements\Expression\AssertionFinder;
 use Psalm\Checker\Statements\Expression\AssignmentChecker;
 use Psalm\Checker\Statements\Expression\BinaryOpChecker;
 use Psalm\Checker\Statements\Expression\Call\FunctionCallChecker;
@@ -459,8 +460,11 @@ class ExpressionChecker
                 return false;
             }
 
-            if ($stmt->class instanceof PhpParser\Node\Name &&
-                !in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)
+            if ($stmt->class instanceof PhpParser\Node\Expr) {
+                if (self::analyze($statements_checker, $stmt->class, $context) === false) {
+                    return false;
+                }
+            } elseif (!in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)
             ) {
                 if ($context->check_classes) {
                     $fq_class_name = ClassLikeChecker::getFQCLNFromNameObject(
@@ -532,6 +536,22 @@ class ExpressionChecker
             )) {
                 return false;
             }
+        }
+
+        if (!$context->inside_conditional
+            && ($stmt instanceof PhpParser\Node\Expr\BinaryOp
+                || $stmt instanceof PhpParser\Node\Expr\Instanceof_
+                || $stmt instanceof PhpParser\Node\Expr\Assign
+                || $stmt instanceof PhpParser\Node\Expr\BooleanNot
+                || $stmt instanceof PhpParser\Node\Expr\Empty_
+                || $stmt instanceof PhpParser\Node\Expr\Isset_
+                || $stmt instanceof PhpParser\Node\Expr\FuncCall)
+        ) {
+            AssertionFinder::scrapeAssertions(
+                $stmt,
+                $context->self,
+                $statements_checker
+            );
         }
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;

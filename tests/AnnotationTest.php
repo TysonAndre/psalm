@@ -366,6 +366,269 @@ class AnnotationTest extends TestCase
     }
 
     /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return                   void
+     */
+    public function testUndocumentedThrow()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testDocumentedThrow()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return                   void
+     */
+    public function testUndocumentedThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    foo($x, $y);
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return                   void
+     */
+    public function testDocumentedThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function bar(int $x, int $y) : void {
+                    foo($x, $y);
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCaughtThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    try {
+                        foo($x, $y);
+                    } catch (RangeException $e) {
+
+                    } catch (InvalidArgumentException $e) {}
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return                   void
+     */
+    public function testUncaughtThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    try {
+                        foo($x, $y);
+                    } catch (\RangeException $e) {
+
+                    }
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCaughtAllThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    try {
+                        foo($x, $y);
+                    } catch (Exception $e) {}
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
      * @return array
      */
     public function providerFileCheckerValidCodeParse()
@@ -813,6 +1076,7 @@ class AnnotationTest extends TestCase
                      * @method string getString()
                      * @method  void setInteger(int $integer)
                      * @method setString(int $integer)
+                     * @method setMixed(mixed $foo)
                      * @method  getBool(string $foo)  :   bool
                      * @method setBool(string $foo, string|bool $bar)  :   bool
                      * @method (string|int)[] getArray() : array with some text
@@ -832,7 +1096,9 @@ class AnnotationTest extends TestCase
                     $c = $child->setBool("hello", "true");
                     $d = $child->getArray();
                     $child->setArray(["boo"])
-                    $e = $child->getCallable();',
+                    $e = $child->getCallable();
+                    $child->setMixed("hello");
+                    $child->setMixed(4);',
                 'assertions' => [
                     '$a' => 'string',
                     '$b' => 'mixed',
@@ -903,6 +1169,22 @@ class AnnotationTest extends TestCase
                     class A {
                         public function __call(string $s) {}
                     }',
+            ],
+            'valueReturnType' => [
+                '<?php
+                    /**
+                     * @param "a"|"b" $_p
+                     */
+                    function acceptsLiteral($_p): void {}
+
+                    /**
+                     * @return "a"|"b"
+                     */
+                    function returnsLiteral(): string {
+                        return rand(0,1) ? "a" : "b";
+                    }
+
+                    acceptsLiteral(returnsLiteral());'
             ],
         ];
     }

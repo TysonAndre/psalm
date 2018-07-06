@@ -155,6 +155,17 @@ class MethodCallTest extends TestCase
                     function takesString(string $s) : void {}
                     takesString($formatted);'
             ],
+            'domElement' => [
+                '<?php
+                    function foo(DOMElement $e) : ?string {
+                        $a = $e->getElementsByTagName("bar");
+                        $b = $a->item(0);
+                        if (!$b) {
+                            return null;
+                        }
+                        return $b->getAttribute("bat");
+                    }',
+            ],
         ];
     }
 
@@ -346,6 +357,16 @@ class MethodCallTest extends TestCase
                     }
                     (new A)->__invoke(1);',
                 'error_message' => 'InvalidScalarArgument',
+            ],
+            'undefinedMethodPassedAsArg' => [
+                '<?php
+                    class A {
+                        public function __call(string $method, array $args) {}
+                    }
+
+                    $q = new A;
+                    $q->foo(bar());',
+                'error_message' => 'UndefinedFunction'
             ],
         ];
     }
