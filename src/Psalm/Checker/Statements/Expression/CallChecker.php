@@ -203,6 +203,10 @@ class CallChecker
             }
 
             $method_storage = $declaring_class_storage->methods[strtolower($declaring_method_name)];
+
+            if ($context->collect_exceptions) {
+                $context->possibly_thrown_exceptions += $method_storage->throws;
+            }
         }
 
         if (!$class_storage->user_defined) {
@@ -363,8 +367,8 @@ class CallChecker
 
                 if ($by_ref
                     && $by_ref_type
-                    && !(
-                        $arg->value instanceof PhpParser\Node\Expr\ConstFetch
+                    && !($arg->value instanceof PhpParser\Node\Expr\Closure
+                        || $arg->value instanceof PhpParser\Node\Expr\ConstFetch
                         || $arg->value instanceof PhpParser\Node\Expr\FuncCall
                         || $arg->value instanceof PhpParser\Node\Expr\MethodCall
                     )
@@ -484,13 +488,32 @@ class CallChecker
                         return false;
                     }
 
+                    if ($context->collect_references
+                        && ($arg->value instanceof PhpParser\Node\Expr\AssignOp
+                            || $arg->value instanceof PhpParser\Node\Expr\PreInc
+                            || $arg->value instanceof PhpParser\Node\Expr\PreDec)
+                    ) {
+                        $var_id = ExpressionChecker::getVarId(
+                            $arg->value->var,
+                            $statements_checker->getFQCLN(),
+                            $statements_checker
+                        );
+
+                        if ($var_id) {
+                            $context->hasVariable($var_id, $statements_checker);
+                        }
+                    }
+
                     if ($toggled_class_exists) {
                         $context->inside_class_exists = false;
                     }
                 }
             } else {
                 // if it's a closure, we want to evaluate it anyway
-                if ($arg->value instanceof PhpParser\Node\Expr\Closure) {
+                if ($arg->value instanceof PhpParser\Node\Expr\Closure
+                    || $arg->value instanceof PhpParser\Node\Expr\ConstFetch
+                    || $arg->value instanceof PhpParser\Node\Expr\FuncCall
+                    || $arg->value instanceof PhpParser\Node\Expr\MethodCall) {
                     if (ExpressionChecker::analyze($statements_checker, $arg->value, $context) === false) {
                         return false;
                     }
@@ -527,7 +550,7 @@ class CallChecker
                                 null
                             );
 
-                            $statements_checker->registerVariableUse($location);
+                            $statements_checker->registerVariableUses([$location->getHash() => $location]);
                         }
                     } else {
                         $context->removeVarFromConflictingClauses(
@@ -646,19 +669,7 @@ class CallChecker
             }
         }
 
-        if ($generic_params) {
-            $existing_generic_params_to_strings = array_map(
-                /**
-                 * @return string
-                 */
-                function (Type\Union $type) {
-                    return (string) $type;
-                },
-                $generic_params
-            );
-        } else {
-            $existing_generic_params_to_strings = [];
-        }
+        $existing_generic_params_to_strings = $generic_params ?: [];
 
         foreach ($args as $argument_offset => $arg) {
             $function_param = count($function_params) > $argument_offset
@@ -812,6 +823,7 @@ class CallChecker
                         } else {
                             if ($existing_generic_params_to_strings) {
                                 $empty_generic_params = [];
+
                                 $param_type->replaceTemplateTypesWithStandins(
                                     $existing_generic_params_to_strings,
                                     $empty_generic_params,
@@ -825,11 +837,28 @@ class CallChecker
                                     $generic_params = [];
                                 }
 
+                                $arg_type = $arg->value->inferredType;
+
+                                if ($arg->unpack) {
+                                    if ($arg->value->inferredType->hasArray()) {
+                                        /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                                        $array_atomic_type = $arg->value->inferredType->getTypes()['array'];
+
+                                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                                            $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                                        }
+
+                                        $arg_type = $array_atomic_type->type_params[1];
+                                    } else {
+                                        $arg_type = Type::getMixed();
+                                    }
+                                }
+
                                 $param_type->replaceTemplateTypesWithStandins(
                                     $template_types,
                                     $generic_params,
                                     $codebase,
-                                    $arg->value->inferredType
+                                    $arg_type
                                 );
                             }
                         }
@@ -864,7 +893,8 @@ class CallChecker
                                 new CodeLocation($statements_checker->getSource(), $arg->value),
                                 $arg->value,
                                 $context,
-                                $function_param->by_ref
+                                $function_param->by_ref,
+                                $function_param->is_variadic
                             ) === false) {
                                 return false;
                             }
@@ -873,24 +903,28 @@ class CallChecker
 
                             if (IssueBuffer::accepts(
                                 new MixedArgument(
-                                    'Argument ' . ($argument_offset + 1) . $cased_method_id
+                                    'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
                                         . ' cannot be mixed, expecting array',
                                     $code_location
                                 ),
                                 $statements_checker->getSuppressedIssues()
                             )) {
-                                return false;
+                                // fall through
                             }
                         } else {
-                            if (IssueBuffer::accepts(
-                                new InvalidArgument(
-                                    'Argument ' . ($argument_offset + 1) . $cased_method_id
-                                        . ' expects array, ' . $arg->value->inferredType . ' provided',
-                                    $code_location
-                                ),
-                                $statements_checker->getSuppressedIssues()
-                            )) {
-                                return false;
+                            foreach ($arg->value->inferredType->getTypes() as $atomic_type) {
+                                if (!$atomic_type->isIterable($codebase)) {
+                                    if (IssueBuffer::accepts(
+                                        new InvalidArgument(
+                                            'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
+                                                . ' expects array, ' . $atomic_type . ' provided',
+                                            $code_location
+                                        ),
+                                        $statements_checker->getSuppressedIssues()
+                                    )) {
+                                        return false;
+                                    }
+                                }
                             }
                         }
 
@@ -906,7 +940,8 @@ class CallChecker
                         new CodeLocation($statements_checker->getSource(), $arg->value),
                         $arg->value,
                         $context,
-                        $function_param->by_ref
+                        $function_param->by_ref,
+                        $function_param->is_variadic
                     ) === false) {
                         return false;
                     }
@@ -1412,6 +1447,7 @@ class CallChecker
      * @param   int                 $argument_offset
      * @param   CodeLocation        $code_location
      * @param   bool                $by_ref
+     * @param   bool                $variadic
      *
      * @return  null|false
      */
@@ -1424,7 +1460,8 @@ class CallChecker
         CodeLocation $code_location,
         PhpParser\Node\Expr $input_expr,
         Context $context,
-        $by_ref = false
+        $by_ref = false,
+        $variadic = false
     ) {
         if ($param_type->isMixed()) {
             return null;
@@ -1458,7 +1495,7 @@ class CallChecker
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
 
             return null;
@@ -1705,7 +1742,7 @@ class CallChecker
                 if (IssueBuffer::accepts(
                     new NullArgument(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be null, ' .
-                            'null value provided',
+                            'null value provided to parameter with type ' . $param_type,
                         $code_location
                     ),
                     $statements_checker->getSuppressedIssues()
@@ -1750,6 +1787,7 @@ class CallChecker
         if ($type_match_found
             && !$param_type->isMixed()
             && !$param_type->from_docblock
+            && !$variadic
             && !$by_ref
         ) {
             $var_id = ExpressionChecker::getVarId(

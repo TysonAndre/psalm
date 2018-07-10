@@ -399,6 +399,21 @@ class Union
             $this->id = null;
 
             return true;
+        } elseif ($type_string === 'string' && $this->literal_string_types) {
+            foreach ($this->literal_string_types as $literal_key => $_) {
+                unset($this->types[$literal_key]);
+            }
+            $this->literal_string_types = [];
+        } elseif ($type_string === 'int' && $this->literal_int_types) {
+            foreach ($this->literal_int_types as $literal_key => $_) {
+                unset($this->types[$literal_key]);
+            }
+            $this->literal_int_types = [];
+        } elseif ($type_string === 'float' && $this->literal_float_types) {
+            foreach ($this->literal_float_types as $literal_key => $_) {
+                unset($this->types[$literal_key]);
+            }
+            $this->literal_float_types = [];
         }
 
         return false;
@@ -712,9 +727,9 @@ class Union
     }
 
     /**
-     * @param  array<string, string>     $template_types
-     * @param  array<string, Type\Union> $generic_params
-     * @param  Type\Union|null           $input_type
+     * @param  array<string, Union> $template_types
+     * @param  array<string, Union> $generic_params
+     * @param  Type\Union|null      $input_type
      *
      * @return void
      */
@@ -728,12 +743,15 @@ class Union
 
         foreach ($this->types as $key => $atomic_type) {
             if (isset($template_types[$key])) {
-                $keys_to_unset[] = $key;
-                $this->types[$template_types[$key]] = Atomic::create($template_types[$key]);
+                if ($template_types[$key]->getId() !== $key) {
+                    $keys_to_unset[] = $key;
+                    $first_atomic_type = array_values($template_types[$key]->getTypes())[0];
+                    $this->types[$first_atomic_type->getKey()] = clone $first_atomic_type;
 
-                if ($input_type) {
-                    $generic_params[$key] = clone $input_type;
-                    $generic_params[$key]->setFromDocblock();
+                    if ($input_type) {
+                        $generic_params[$key] = clone $input_type;
+                        $generic_params[$key]->setFromDocblock();
+                    }
                 }
             } else {
                 $matching_atomic_type = null;

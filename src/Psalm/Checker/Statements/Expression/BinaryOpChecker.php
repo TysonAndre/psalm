@@ -611,17 +611,7 @@ class BinaryOpChecker
         }
 
         if ($left_type && $right_type) {
-            if ($left_type->isNullable() && !$left_type->ignore_nullable_issues) {
-                if ($statements_source && IssueBuffer::accepts(
-                    new PossiblyNullOperand(
-                        'Left operand cannot be nullable, got ' . $left_type,
-                        new CodeLocation($statements_source, $left)
-                    ),
-                    $statements_source->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-            } elseif ($left_type->isNull()) {
+            if ($left_type->isNull()) {
                 if ($statements_source && IssueBuffer::accepts(
                     new NullOperand(
                         'Left operand cannot be null',
@@ -635,7 +625,33 @@ class BinaryOpChecker
                 return;
             }
 
-            if ($right_type->isNullable() && $right_type->ignore_falsable_issues) {
+            if ($left_type->isNullable() && !$left_type->ignore_nullable_issues) {
+                if ($statements_source && IssueBuffer::accepts(
+                    new PossiblyNullOperand(
+                        'Left operand cannot be nullable, got ' . $left_type,
+                        new CodeLocation($statements_source, $left)
+                    ),
+                    $statements_source->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            }
+
+            if ($right_type->isNull()) {
+                if ($statements_source && IssueBuffer::accepts(
+                    new NullOperand(
+                        'Right operand cannot be null',
+                        new CodeLocation($statements_source, $right)
+                    ),
+                    $statements_source->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+
+                return;
+            }
+
+            if ($right_type->isNullable() && !$right_type->ignore_nullable_issues) {
                 if ($statements_source && IssueBuffer::accepts(
                     new PossiblyNullOperand(
                         'Right operand cannot be nullable, got ' . $right_type,
@@ -645,11 +661,13 @@ class BinaryOpChecker
                 )) {
                     // fall through
                 }
-            } elseif ($right_type->isNull()) {
+            }
+
+            if ($left_type->isFalse()) {
                 if ($statements_source && IssueBuffer::accepts(
-                    new NullOperand(
-                        'Right operand cannot be null',
-                        new CodeLocation($statements_source, $right)
+                    new FalseOperand(
+                        'Left operand cannot be null',
+                        new CodeLocation($statements_source, $left)
                     ),
                     $statements_source->getSuppressedIssues()
                 )) {
@@ -669,11 +687,13 @@ class BinaryOpChecker
                 )) {
                     // fall through
                 }
-            } elseif ($left_type->isFalse()) {
+            }
+
+            if ($right_type->isFalse()) {
                 if ($statements_source && IssueBuffer::accepts(
                     new FalseOperand(
-                        'Left operand cannot be null',
-                        new CodeLocation($statements_source, $left)
+                        'Right operand cannot be false',
+                        new CodeLocation($statements_source, $right)
                     ),
                     $statements_source->getSuppressedIssues()
                 )) {
@@ -693,18 +713,6 @@ class BinaryOpChecker
                 )) {
                     // fall through
                 }
-            } elseif ($right_type->isFalse()) {
-                if ($statements_source && IssueBuffer::accepts(
-                    new FalseOperand(
-                        'Right operand cannot be false',
-                        new CodeLocation($statements_source, $right)
-                    ),
-                    $statements_source->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-
-                return;
             }
 
             $invalid_left_messages = [];

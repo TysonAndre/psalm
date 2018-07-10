@@ -11,7 +11,7 @@ use Psalm\Context;
 use Psalm\Issue\ContinueOutsideLoop;
 use Psalm\Issue\ParadoxicalCondition;
 use Psalm\IssueBuffer;
-use Psalm\Scope\LoopScope;
+use Psalm\Scope\SwitchScope;
 use Psalm\Type;
 use Psalm\Type\Algebra;
 use Psalm\Type\Reconciler;
@@ -28,8 +28,7 @@ class SwitchChecker
     public static function analyze(
         StatementsChecker $statements_checker,
         PhpParser\Node\Stmt\Switch_ $stmt,
-        Context $context,
-        LoopScope $loop_scope = null
+        Context $context
     ) {
         if (ExpressionChecker::analyze($statements_checker, $stmt->cond, $context) === false) {
             return false;
@@ -70,7 +69,7 @@ class SwitchChecker
                     $last_case_exit_type = 'return_throw';
                 } elseif ($case_actions === [ScopeChecker::ACTION_CONTINUE]) {
                     $last_case_exit_type = 'continue';
-                } elseif (in_array(ScopeChecker::ACTION_BREAK, $case_actions, true)) {
+                } elseif (in_array(ScopeChecker::ACTION_LEAVE_SWITCH, $case_actions, true)) {
                     $last_case_exit_type = 'break';
                 }
             }
@@ -83,6 +82,10 @@ class SwitchChecker
         $negated_clauses = [];
 
         $project_checker = $statements_checker->getFileChecker()->project_checker;
+
+        $new_unreferenced_vars = [];
+        $new_assigned_var_ids = null;
+        $new_possibly_assigned_var_ids = [];
 
         for ($i = 0, $l = count($stmt->cases); $i < $l; $i++) {
             $case = $stmt->cases[$i];
@@ -102,6 +105,7 @@ class SwitchChecker
                 $case_context->branch_point = $case_context->branch_point ?: (int) $stmt->getAttribute('startFilePos');
             }
             $case_context->parent_context = $context;
+            $case_context->switch_scope = new SwitchScope();
 
             $case_equality_expr = null;
 
@@ -322,7 +326,22 @@ class SwitchChecker
                 );
             }
 
-            $statements_checker->analyze($case_stmts, $case_context, $loop_scope);
+            $pre_possibly_assigned_var_ids = $case_context->possibly_assigned_var_ids;
+            $case_context->possibly_assigned_var_ids = [];
+
+            $pre_assigned_var_ids = $case_context->assigned_var_ids;
+            $case_context->assigned_var_ids = [];
+
+            $statements_checker->analyze($case_stmts, $case_context);
+
+            /** @var array<string, bool> */
+            $new_case_assigned_var_ids = $case_context->assigned_var_ids;
+            $case_context->assigned_var_ids = $pre_assigned_var_ids + $new_case_assigned_var_ids;
+
+            /** @var array<string, bool> */
+            $new_case_possibly_assigned_var_ids = $case_context->possibly_assigned_var_ids;
+            $case_context->possibly_assigned_var_ids =
+                $pre_possibly_assigned_var_ids + $new_case_possibly_assigned_var_ids;
 
             $context->referenced_var_ids = array_merge(
                 $context->referenced_var_ids,
@@ -352,10 +371,10 @@ class SwitchChecker
 
                 // if we're leaving this block, add vars to outer for loop scope
                 if ($case_exit_type === 'continue') {
-                    if ($loop_scope) {
-                        $loop_scope->vars_possibly_in_scope = array_merge(
+                    if ($context->loop_scope) {
+                        $context->loop_scope->vars_possibly_in_scope = array_merge(
                             $vars,
-                            $loop_scope->vars_possibly_in_scope
+                            $context->loop_scope->vars_possibly_in_scope
                         );
                     } else {
                         if (IssueBuffer::accepts(
@@ -427,21 +446,67 @@ class SwitchChecker
                         );
                     }
                 }
-            }
 
-            if ($context->collect_references) {
-                foreach ($case_context->unreferenced_vars as $var_id => $location) {
-                    if (isset($context->unreferenced_vars[$var_id])
-                        && $context->unreferenced_vars[$var_id] !== $location
-                    ) {
-                        $context->hasVariable($var_id, $statements_checker);
-                    }
+                if ($context->collect_exceptions) {
+                    $context->possibly_thrown_exceptions += $case_context->possibly_thrown_exceptions;
                 }
 
-                $context->unreferenced_vars = array_merge(
-                    $context->unreferenced_vars,
-                    $case_context->unreferenced_vars
-                );
+                if ($context->collect_references) {
+                    $new_possibly_assigned_var_ids =
+                        $new_possibly_assigned_var_ids + $new_case_possibly_assigned_var_ids;
+
+                    if ($new_assigned_var_ids === null) {
+                        $new_assigned_var_ids = $new_case_assigned_var_ids;
+                    } else {
+                        $new_assigned_var_ids = array_intersect_key($new_assigned_var_ids, $new_case_assigned_var_ids);
+                    }
+
+                    foreach ($case_context->unreferenced_vars as $var_id => $locations) {
+                        if (!isset($original_context->unreferenced_vars[$var_id])) {
+                            if (isset($new_unreferenced_vars[$var_id])) {
+                                $new_unreferenced_vars[$var_id] += $locations;
+                            } else {
+                                $new_unreferenced_vars[$var_id] = $locations;
+                            }
+                        } else {
+                            $new_locations = array_diff_key(
+                                $locations,
+                                $original_context->unreferenced_vars[$var_id]
+                            );
+
+                            if ($new_locations) {
+                                if (isset($new_unreferenced_vars[$var_id])) {
+                                    $new_unreferenced_vars[$var_id] += $locations;
+                                } else {
+                                    $new_unreferenced_vars[$var_id] = $locations;
+                                }
+                            }
+                        }
+                    }
+
+                    foreach ($case_context->switch_scope->unreferenced_vars as $var_id => $locations) {
+                        if (!isset($original_context->unreferenced_vars[$var_id])) {
+                            if (isset($new_unreferenced_vars[$var_id])) {
+                                $new_unreferenced_vars[$var_id] += $locations;
+                            } else {
+                                $new_unreferenced_vars[$var_id] = $locations;
+                            }
+                        } else {
+                            $new_locations = array_diff_key(
+                                $locations,
+                                $original_context->unreferenced_vars[$var_id]
+                            );
+
+                            if ($new_locations) {
+                                if (isset($new_unreferenced_vars[$var_id])) {
+                                    $new_unreferenced_vars[$var_id] += $locations;
+                                } else {
+                                    $new_unreferenced_vars[$var_id] = $locations;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -498,6 +563,28 @@ class SwitchChecker
         } elseif ($possibly_redefined_vars) {
             foreach ($possibly_redefined_vars as $var_id => $type) {
                 $context->vars_in_scope[$var_id] = Type::combineUnionTypes($type, $context->vars_in_scope[$var_id]);
+            }
+        }
+
+        if ($new_assigned_var_ids) {
+            $context->assigned_var_ids += $new_assigned_var_ids;
+        }
+
+        if ($context->collect_references) {
+            foreach ($new_unreferenced_vars as $var_id => $locations) {
+                if (($all_options_matched && isset($new_assigned_var_ids[$var_id]))
+                    || !isset($context->vars_in_scope[$var_id])
+                ) {
+                    $context->unreferenced_vars[$var_id] = $locations;
+                } elseif (isset($new_possibly_assigned_var_ids[$var_id])) {
+                    if (!isset($context->unreferenced_vars[$var_id])) {
+                        $context->unreferenced_vars[$var_id] = $locations;
+                    } else {
+                        $context->unreferenced_vars[$var_id] += $locations;
+                    }
+                } else {
+                    $statements_checker->registerVariableUses($locations);
+                }
             }
         }
 

@@ -432,6 +432,42 @@ class RedundantConditionTest extends TestCase
                         }
                     }',
             ],
+            'noRedundantConditionStringNotFalse' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if ($s != false ) {}
+                    }',
+            ],
+            'noRedundantConditionStringNotTrue' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if ($s != true ) {}
+                    }',
+            ],
+            'noRedundantConditionBoolNotFalse' => [
+                '<?php
+                    function foo(bool $s) : void {
+                        if ($s !== false ) {}
+                    }',
+            ],
+            'noRedundantConditionBoolNotTrue' => [
+                '<?php
+                    function foo(bool $s) : void {
+                        if ($s !== true ) {}
+                    }',
+            ],
+            'noRedundantConditionNullableBoolIsFalseOrTrue' => [
+                '<?php
+                    function foo(?bool $s) : void {
+                        if ($s === false ) {} elseif ($s === true) {}
+                    }',
+            ],
+            'noRedundantConditionNullableBoolIsTrueOrFalse' => [
+                '<?php
+                    function foo(?bool $s) : void {
+                        if ($s === true ) {} elseif ($s === false) {}
+                    }',
+            ],
         ];
     }
 
@@ -660,6 +696,62 @@ class RedundantConditionTest extends TestCase
                     if ($x) {
                         var_export($x);
                     }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'redundantConditionStringNotFalse' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if ($s !== false ) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'redundantConditionStringNotTrue' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if ($s !== true ) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'redundantConditionAfterRemovingFalse' => [
+                '<?php
+                    $s = rand(0, 1) ? rand(0, 5) : false;
+
+                    if ($s !== false) {
+                        if (is_int($s)) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'redundantConditionAfterRemovingTrue' => [
+                '<?php
+                    $s = rand(0, 1) ? rand(0, 5) : true;
+
+                    if ($s !== true) {
+                        if (is_int($s)) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'impossibleNullEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i !== null;',
+                'error_message' => 'RedundantCondition',
+            ],
+            'impossibleTrueEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i !== true;',
+                'error_message' => 'RedundantCondition',
+            ],
+            'impossibleFalseEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i !== false;',
+                'error_message' => 'RedundantCondition',
+            ],
+            'impossibleNumberEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i !== 3;',
                 'error_message' => 'RedundantCondition',
             ],
         ];

@@ -390,6 +390,14 @@ class TypeChecker
             return false;
         }
 
+        if ($input_type_part instanceof TNull && $container_type_part instanceof TNull) {
+            return true;
+        }
+
+        if ($input_type_part instanceof TNull || $container_type_part instanceof TNull) {
+            return false;
+        }
+
         if ($input_type_part->shallowEquals($container_type_part) ||
             (
                 $input_type_part instanceof TNamedObject
@@ -595,17 +603,7 @@ class TypeChecker
                 return false;
             }
 
-            if ($input_type_part instanceof TNamedObject
-                && (strtolower($input_type_part->value) === 'traversable'
-                    || $codebase->classExtendsOrImplements(
-                        $input_type_part->value,
-                        'Traversable'
-                    ) || $codebase->interfaceExtends(
-                        $input_type_part->value,
-                        'Traversable'
-                    )
-                )
-            ) {
+            if ($input_type_part->isTraversable($codebase)) {
                 return true;
             }
         }

@@ -3,6 +3,7 @@ namespace Psalm\Checker\Statements\Expression\Call;
 
 use PhpParser;
 use Psalm\Checker\ClassLikeChecker;
+use Psalm\Checker\FunctionLikeChecker;
 use Psalm\Checker\MethodChecker;
 use Psalm\Checker\Statements\ExpressionChecker;
 use Psalm\Checker\StatementsChecker;
@@ -186,6 +187,16 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
         }
 
         if (!$context->check_methods || !$lhs_type) {
+            if (self::checkFunctionArguments(
+                $statements_checker,
+                $stmt->args,
+                null,
+                null,
+                $context
+            ) === false) {
+                return false;
+            }
+
             return null;
         }
 
@@ -264,11 +275,16 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 $method_id = $fq_class_name . '::' . strtolower($stmt->name->name);
                 $cased_method_id = $fq_class_name . '::' . $stmt->name->name;
 
+                $source_method_id = $source instanceof FunctionLikeChecker
+                    ? $source->getMethodId()
+                    : null;
+
                 $does_method_exist = MethodChecker::checkMethodExists(
                     $project_checker,
                     $cased_method_id,
                     new CodeLocation($source, $stmt),
-                    $statements_checker->getSuppressedIssues()
+                    $statements_checker->getSuppressedIssues(),
+                    $source_method_id
                 );
 
                 if (!$does_method_exist) {
@@ -449,6 +465,16 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     } else {
                         $stmt->inferredType = $return_type_candidate;
                     }
+                }
+            } else {
+                if (self::checkFunctionArguments(
+                    $statements_checker,
+                    $stmt->args,
+                    null,
+                    null,
+                    $context
+                ) === false) {
+                    return false;
                 }
             }
         }

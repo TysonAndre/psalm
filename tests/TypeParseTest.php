@@ -252,6 +252,14 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testBracketInUnion()
+    {
+        Type::parseString('null|(scalar|array|object)');
+    }
+
+    /**
+     * @return void
+     */
     public function testObjectLikeWithSimpleArgs()
     {
         $this->assertSame('array{a:int, b:string}', (string) Type::parseString('array{a:int, b:string}'));
@@ -491,6 +499,16 @@ class TypeParseTest extends TestCase
     public function testBadBar()
     {
         Type::parseString('|array');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
+    public function testBadColonDash()
+    {
+        Type::parseString('array|string:-');
     }
 
     /**

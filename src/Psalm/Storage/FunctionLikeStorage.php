@@ -87,7 +87,7 @@ class FunctionLikeStorage
     public $global_types = [];
 
     /**
-     * @var array<string, string>|null
+     * @var array<string, Type\Union>|null
      */
     public $template_types;
 
@@ -125,4 +125,9 @@ class FunctionLikeStorage
      * @var bool
      */
     public $has_visitor_issues = false;
+
+    /**
+     * @var array<string, bool>
+     */
+    public $throws = [];
 }

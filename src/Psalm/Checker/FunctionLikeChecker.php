@@ -20,7 +20,7 @@ use Psalm\Issue\MethodSignatureMismatch;
 use Psalm\Issue\MismatchingDocblockParamType;
 use Psalm\Issue\MissingClosureParamType;
 use Psalm\Issue\MissingParamType;
-use Psalm\Issue\PossiblyInvalidReturnType;
+use Psalm\Issue\MissingThrowsDocblock;
 use Psalm\Issue\ReservedWord;
 use Psalm\Issue\UnusedParam;
 use Psalm\IssueBuffer;
@@ -222,7 +222,15 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
         } elseif ($this->function instanceof Function_) {
             $file_storage = $file_storage_provider->get($this->source->getFilePath());
 
-            $storage = $file_storage->functions[(string)$this->getMethodId()];
+            $function_id = (string)$this->getMethodId();
+
+            if (!isset($file_storage->functions[$function_id])) {
+                throw new \UnexpectedValueException(
+                    'Function ' . $function_id . ' should be defined in ' . $this->source->getFilePath()
+                );
+            }
+
+            $storage = $file_storage->functions[$function_id];
 
             $cased_method_id = $this->function->name;
         } else { // Closure
@@ -298,7 +306,9 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $context->vars_possibly_in_scope['$' . $function_param->name] = true;
 
             if ($context->collect_references && $function_param->location) {
-                $context->unreferenced_vars['$' . $function_param->name] = $function_param->location;
+                $context->unreferenced_vars['$' . $function_param->name] = [
+                    $function_param->location->getHash() => $function_param->location
+                ];
             }
 
             if (!$function_param->type_location || !$function_param->location) {
@@ -461,7 +471,7 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             return false;
         }
 
-        $statements_checker->analyze($function_stmts, $context, null, $global_context, true);
+        $statements_checker->analyze($function_stmts, $context, $global_context, true);
 
         foreach ($storage->params as $offset => $function_param) {
             // only complain if there's no type defined by a parent type
@@ -617,6 +627,35 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
 
                             $parent_method_storage->used_params[$i] = true;
                         }
+                    }
+                }
+            }
+        }
+
+        if ($context->collect_exceptions) {
+            if ($context->possibly_thrown_exceptions) {
+                $ignored_exceptions = array_change_key_case($codebase->config->ignored_exceptions);
+
+                $undocumented_throws = array_diff_key($context->possibly_thrown_exceptions, $storage->throws);
+
+                foreach ($undocumented_throws as $possibly_thrown_exception => $_) {
+                    if (isset($ignored_exceptions[strtolower($possibly_thrown_exception)])) {
+                        continue;
+                    }
+
+                    if (IssueBuffer::accepts(
+                        new MissingThrowsDocblock(
+                            $possibly_thrown_exception . ' is thrown but not caught - please either catch'
+                                . ' or add a @throws annotation',
+                            new CodeLocation(
+                                $this,
+                                $this->function,
+                                null,
+                                true
+                            )
+                        )
+                    )) {
+                        // fall through
                     }
                 }
             }
@@ -1019,7 +1058,13 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     continue;
                 }
 
-                if (TypeChecker::isContainedBy($project_checker->codebase, $arg->value->inferredType, $param_type)) {
+                if (TypeChecker::isContainedBy(
+                    $project_checker->codebase,
+                    $arg->value->inferredType,
+                    $param_type,
+                    $arg->value->inferredType->ignore_nullable_issues,
+                    $arg->value->inferredType->ignore_falsable_issues
+                )) {
                     continue;
                 }
 

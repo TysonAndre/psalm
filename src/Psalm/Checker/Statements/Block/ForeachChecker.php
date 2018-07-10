@@ -367,7 +367,7 @@ class ForeachChecker
             $location = new CodeLocation($statements_checker, $stmt->keyVar);
 
             if ($context->collect_references && !isset($foreach_context->byref_constraints[$key_var_id])) {
-                $foreach_context->unreferenced_vars[$key_var_id] = $location;
+                $foreach_context->unreferenced_vars[$key_var_id] = [$location->getHash() => $location];
             }
 
             if (!$statements_checker->hasVariable($key_var_id)) {
@@ -376,10 +376,15 @@ class ForeachChecker
                     $location,
                     $foreach_context->branch_point
                 );
+            } else {
+                $statements_checker->registerVariableAssignment(
+                    $key_var_id,
+                    $location
+                );
             }
 
-            if ($stmt->byRef) {
-                $statements_checker->registerVariableUse($location);
+            if ($stmt->byRef && $context->collect_references) {
+                $statements_checker->registerVariableUses([$location->getHash() => $location]);
             }
         }
 
@@ -459,8 +464,18 @@ class ForeachChecker
             $context->referenced_var_ids
         );
 
+        if ($context->collect_exceptions) {
+            $context->possibly_thrown_exceptions += $foreach_context->possibly_thrown_exceptions;
+        }
+
         if ($context->collect_references) {
-            $context->unreferenced_vars = $foreach_context->unreferenced_vars;
+            foreach ($foreach_context->unreferenced_vars as $var_id => $locations) {
+                if (isset($context->unreferenced_vars[$var_id])) {
+                    $context->unreferenced_vars[$var_id] += $locations;
+                } else {
+                    $context->unreferenced_vars[$var_id] = $locations;
+                }
+            }
         }
 
         return null;

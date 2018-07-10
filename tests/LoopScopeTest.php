@@ -1019,6 +1019,123 @@ class LoopScopeTest extends TestCase
                         }
                     }'
             ],
+            'invalidateBothByRefAssignments' => [
+                '<?php
+                    function foo(?string &$i) : void {}
+                    function bar(?string &$i) : void {}
+
+                    $c = null;
+
+                    while (rand(0, 1)) {
+                        if (!$c) {
+                            foo($c);
+                        } else {
+                            bar($c);
+                        }
+                    }',
+            ],
+            'invalidateBothByRefAssignmentsInDo' => [
+                '<?php
+                    function foo(?string &$i) : void {}
+                    function bar(?string &$i) : void {}
+
+                    $c = null;
+
+                    do {
+                        if (!$c) {
+                            foo($c);
+                        } else {
+                            bar($c);
+                        }
+                    } while (rand(0, 1));',
+            ],
+            'applyLoopConditionalAfterIf' => [
+                '<?php
+                    class Obj {}
+                    class A extends Obj {
+                        /** @var A|null */
+                        public $foo;
+                    }
+                    class B extends Obj {}
+
+                    function foo(Obj $node) : void {
+                        while ($node instanceof A
+                            || $node instanceof B
+                        ) {
+                            if (!$node instanceof B) {
+                                $node = $node->foo;
+                            }
+                        }
+                    }',
+            ],
+            'shouldBeFine' => [
+                '<?php
+                    class Obj {}
+                    class A extends Obj {
+                        /** @var A|null */
+                        public $foo;
+                    }
+                    class B extends Obj {
+                        /** @var A|null */
+                        public $foo;
+                    }
+                    class C extends Obj {
+                        /** @var A|C|null */
+                        public $bar;
+                    }
+
+                    function takesA(A $a) : void {}
+
+                    function foo(Obj $node) : void {
+                        while ($node instanceof A
+                            || $node instanceof B
+                            || ($node instanceof C && $node->bar instanceof A)
+                        ) {
+                            if (!$node instanceof C) {
+                                $node = $node->foo;
+                            } else {
+                                $node = $node->bar;
+                            }
+                        }
+                    }',
+            ],
+            'doParentCall' => [
+                '<?php
+                    class A {
+                        /** @return A|false */
+                        public function getParent() {
+                            return rand(0, 1) ? new A : false;
+                        }
+                    }
+
+                    $a = new A();
+
+                    do {
+                        $a = $a->getParent();
+                    } while ($a !== false);',
+            ],
+            'doWithContinue' => [
+                '<?php
+                    do {
+                        if (rand(0, 1)) {
+                            continue;
+                        }
+                    } while (rand(0, 1));',
+            ],
+            'comparisonAfterContinue' => [
+                '<?php
+                    $foo = null;
+                    while (rand(0, 1)) {
+                        if (rand(0, 1)) {
+                            $foo = 1;
+                            continue;
+                        }
+
+                        $a = rand(0, 1);
+
+                        if ($a === $foo) {}
+                    }',
+            ],
         ];
     }
 
@@ -1203,6 +1320,22 @@ class LoopScopeTest extends TestCase
                       foreach ([1, 2, 3] as $i) {}
                     }',
                 'error_message' => 'LoopInvalidation',
+            ],
+            'invalidateByRefAssignmentWithRedundantCondition' => [
+                '<?php
+                    function foo(?string $i) : void {}
+                    function bar(?string $i) : void {}
+
+                    $c = null;
+
+                    while (rand(0, 1)) {
+                        if (!$c) {
+                            foo($c);
+                        } else {
+                            bar($c);
+                        }
+                    }',
+                'error_message' => 'RedundantCondition',
             ],
         ];
     }

@@ -343,6 +343,16 @@ class Scanner
             foreach ($file_storage->referenced_classlikes as $fq_classlike_name) {
                 $this->queueClassLikeForScanning($fq_classlike_name, $file_path, false, false);
             }
+
+            if ($this->codebase->register_autoload_files) {
+                foreach ($file_storage->functions as $function_storage) {
+                    $this->codebase->functions->addGlobalFunction($function_storage->cased_name, $function_storage);
+                }
+
+                foreach ($file_storage->constants as $name => $type) {
+                    $this->codebase->addGlobalConstantType($name, $type);
+                }
+            }
         }
 
         return $file_scanner;

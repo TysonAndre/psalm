@@ -75,7 +75,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
             }
         }
 
-        $var_id = ExpressionChecker::getVarId(
+        $var_id = ExpressionChecker::getArrayVarId(
             $stmt->var,
             $statements_checker->getFQCLN(),
             $statements_checker
@@ -94,6 +94,16 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
         $source = $statements_checker->getSource();
 
         if (!$context->check_methods || !$context->check_classes) {
+            if (self::checkFunctionArguments(
+                $statements_checker,
+                $stmt->args,
+                null,
+                null,
+                $context
+            ) === false) {
+                return false;
+            }
+
             return null;
         }
 
@@ -336,9 +346,21 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
 
                                     continue;
                                 }
-                            } elseif ($class_storage->sealed_methods) {
-                                $non_existent_method_ids[] = $method_id;
-                                continue;
+                            } else {
+                                if (self::checkFunctionArguments(
+                                    $statements_checker,
+                                    $stmt->args,
+                                    null,
+                                    null,
+                                    $context
+                                ) === false) {
+                                    return false;
+                                }
+
+                                if ($class_storage->sealed_methods) {
+                                    $non_existent_method_ids[] = $method_id;
+                                    continue;
+                                }
                             }
                         }
 
@@ -379,7 +401,11 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
-                if (!$codebase->methodExists($method_id, $code_location)) {
+                $source_method_id = $source instanceof FunctionLikeChecker
+                    ? $source->getMethodId()
+                    : null;
+
+                if (!$codebase->methodExists($method_id, $method_id !== $source_method_id ? $code_location : null)) {
                     if ($config->use_phpdoc_methods_without_call) {
                         $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
 
@@ -502,16 +528,18 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 if ($method_name_lc === '__tostring') {
                     $return_type_candidate = Type::getString();
                 } elseif ($call_map_id && CallMap::inCallMap($call_map_id)) {
-                    if ($class_template_params
+                    if (($class_template_params || $class_storage->stubbed)
                         && isset($class_storage->methods[$method_name_lc])
                         && ($method_storage = $class_storage->methods[$method_name_lc])
                         && $method_storage->return_type
                     ) {
                         $return_type_candidate = clone $method_storage->return_type;
 
-                        $return_type_candidate->replaceTemplateTypesWithArgTypes(
-                            $class_template_params
-                        );
+                        if ($class_template_params) {
+                            $return_type_candidate->replaceTemplateTypesWithArgTypes(
+                                $class_template_params
+                            );
+                        }
                     } else {
                         if ($call_map_id === 'domnode::appendchild'
                             && isset($stmt->args[0]->value->inferredType)
@@ -522,6 +550,9 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $return_type_candidate = Type::parseString('string|false');
                         } else {
                             $return_type_candidate = CallMap::getReturnTypeFromCallMap($call_map_id);
+                            if ($return_type_candidate->isFalsable()) {
+                                $return_type_candidate->ignore_falsable_issues = true;
+                            }
                         }
                     }
 

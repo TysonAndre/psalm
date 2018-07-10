@@ -384,7 +384,7 @@ class ClassChecker extends ClassLikeChecker
         }
 
         $constructor_checker = null;
-        $property_stmts = [];
+        $member_stmts = [];
 
         foreach ($class->stmts as $stmt) {
             if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
@@ -414,15 +414,17 @@ class ClassChecker extends ClassLikeChecker
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Property) {
                 foreach ($stmt->props as $prop) {
                     if ($prop->default) {
-                        $property_stmts[] = $stmt;
+                        $member_stmts[] = $stmt;
                         break;
                     }
                 }
+            } elseif ($stmt instanceof PhpParser\Node\Stmt\ClassConst) {
+                $member_stmts[] = $stmt;
             }
         }
 
         $statements_checker = new StatementsChecker($this);
-        $statements_checker->analyze($property_stmts, $class_context, null, $global_context, true);
+        $statements_checker->analyze($member_stmts, $class_context, $global_context, true);
 
         $config = Config::getInstance();
 
@@ -704,6 +706,13 @@ class ClassChecker extends ClassLikeChecker
 
                 foreach ($trait_node->stmts as $trait_stmt) {
                     if ($trait_stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
+                        if ($trait_stmt->stmts) {
+                            $traverser = new PhpParser\NodeTraverser;
+
+                            $traverser->addVisitor(new \Psalm\Visitor\NodeCleanerVisitor());
+                            $traverser->traverse($trait_stmt->stmts);
+                        }
+
                         $trait_method_checker = $this->analyzeClassMethod(
                             $trait_stmt,
                             $storage,
@@ -853,8 +862,11 @@ class ClassChecker extends ClassLikeChecker
             }
         }
 
+        $method_context = clone $class_context;
+        $method_context->collect_exceptions = $config->check_for_throws_docblock;
+
         $method_checker->analyze(
-            clone $class_context,
+            $method_context,
             $global_context ? clone $global_context : null
         );
 

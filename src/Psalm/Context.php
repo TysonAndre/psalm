@@ -148,6 +148,13 @@ class Context
     public $collect_references = false;
 
     /**
+     * Whether or not to track exceptions
+     *
+     * @var bool
+     */
+    public $collect_exceptions = false;
+
+    /**
      * A list of variables that have been referenced
      *
      * @var array<string, bool>
@@ -157,7 +164,7 @@ class Context
     /**
      * A list of variables that have never been referenced
      *
-     * @var array<string, CodeLocation>
+     * @var array<string, array<string, CodeLocation>>
      */
     public $unreferenced_vars = [];
 
@@ -195,6 +202,13 @@ class Context
     public $possibly_assigned_var_ids = [];
 
     /**
+     * A list of classes or interfaces that may have been thrown
+     *
+     * @var array<string, bool>
+     */
+    public $possibly_thrown_exceptions = [];
+
+    /**
      * @var bool
      */
     public $is_global = false;
@@ -222,6 +236,16 @@ class Context
      * @var bool
      */
     public $inside_loop = false;
+
+    /**
+     * @var Scope\LoopScope|null
+     */
+    public $loop_scope = null;
+
+    /**
+     * @var Scope\SwitchScope|null
+     */
+    public $switch_scope = null;
 
     /**
      * @param string|null $self
@@ -450,7 +474,7 @@ class Context
         foreach ($clauses as $clause) {
             \Psalm\Type\Algebra::calculateNegation($clause);
 
-            $quoted_remove_var_id = preg_quote($remove_var_id);
+            $quoted_remove_var_id = preg_quote($remove_var_id, '/');
 
             foreach ($clause->possibilities as $var_id => $_) {
                 if (preg_match('/' . $quoted_remove_var_id . '[\]\[\-]/', $var_id)) {
@@ -559,7 +583,7 @@ class Context
         $vars_to_remove = [];
 
         foreach ($this->vars_in_scope as $var_id => $_) {
-            if (preg_match('/' . preg_quote($remove_var_id, DIRECTORY_SEPARATOR) . '[\]\[\-]/', $var_id)) {
+            if (preg_match('/' . preg_quote($remove_var_id, '/') . '[\]\[\-]/', $var_id)) {
                 $vars_to_remove[] = $var_id;
             }
         }
@@ -668,12 +692,12 @@ class Context
 
         $stripped_var = preg_replace('/(->|\[).*$/', '', $var_name);
 
-        if ($stripped_var[0] === '$' && $stripped_var !== '$this') {
+        if ($stripped_var[0] === '$' && ($stripped_var !== '$this' || $var_name !== $stripped_var)) {
             $this->referenced_var_ids[$var_name] = true;
 
             if ($this->collect_references && $statements_checker) {
                 if (isset($this->unreferenced_vars[$var_name])) {
-                    $statements_checker->registerVariableUse($this->unreferenced_vars[$var_name]);
+                    $statements_checker->registerVariableUses($this->unreferenced_vars[$var_name]);
                 }
 
                 unset($this->unreferenced_vars[$var_name]);

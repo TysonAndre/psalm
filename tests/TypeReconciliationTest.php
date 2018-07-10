@@ -602,6 +602,42 @@ class TypeReconciliationTest extends TestCase
                         public function bat(): void {}
                     }',
             ],
+            'createIntersectionOfInterfaceAndClass' => [
+                '<?php
+                    class A {
+                      public function bat() : void {}
+                    }
+                    interface I {
+                      public function baz();
+                    }
+
+                    function foo(I $i) : void {
+                      if ($i instanceof A) {
+                        $i->bat();
+                        $i->baz();
+                      }
+                    }
+
+                    function bar(A $a) : void {
+                      if ($a instanceof I) {
+                        $a->bat();
+                        $a->baz();
+                      }
+                    }
+
+                    class B extends A implements I {
+                      public function baz() : void {}
+                    }
+
+                    foo(new B);
+                    bar(new B);',
+            ],
+            'unionOfArrayOrTraversable' => [
+                '<?php
+                    function foo(iterable $iterable) : void {
+                        if (\is_array($iterable) || $iterable instanceof \Traversable) {}
+                    }',
+            ],
             'isTruthy' => [
                 '<?php
                     function f(string $s = null): string {
@@ -902,6 +938,81 @@ class TypeReconciliationTest extends TestCase
                     '$a' => 'string',
                 ],
             ],
+            'scalarToNumeric' => [
+                '<?php
+                    /**
+                     * @param scalar $thing
+                     */
+                    function Foo($thing) : void {
+                        if (is_numeric($thing)) {}
+                    }'
+            ],
+            'filterSubclassBasedOnParentNegativeInstanceof' => [
+                '<?php
+                    class Obj {}
+                    class A extends Obj {}
+                    class B extends A {}
+                    class C extends Obj {}
+                    class D extends C {}
+
+                    function takesD(D $d) : void {}
+
+                    /** @param B|D $bar */
+                    function foo(Obj $bar) : void {
+                        if (!$bar instanceof A) {
+                            takesD($bar);
+                        }
+                    }',
+            ],
+            'dontEliminateAssignOp' => [
+                '<?php
+                    class Obj {}
+                    class A extends Obj {}
+                    class B extends A {}
+                    class C extends Obj {}
+                    class D extends C {}
+                    class E extends C {}
+
+                    function bar(Obj $node) : void {
+                        if ($node instanceof B
+                            || $node instanceof D
+                            || $node instanceof E
+                        ) {
+                            if ($node instanceof C) {}
+                            if ($node instanceof D) {}
+                        }
+                    }',
+            ],
+            'eliminateNonArrays' => [
+                '<?php
+                    interface I {}
+
+                    function takesArray(array $_a): void {}
+
+                    /** @param string|I|string[]|I[] $p */
+                    function eliminatesNonArray($p): void {
+                        if (is_array($p)) {
+                            takesArray($p);
+                        }
+                    }'
+            ],
+            'eliminateNonIterable' => [
+                '<?php
+                    /**
+                     * @param  iterable<string>|null $foo
+                     */
+                    function d(?iterable $foo): void {
+                        if (is_iterable($foo)) {
+                            foreach ($foo as $f) {}
+                        }
+
+                        if (!is_iterable($foo)) {
+
+                        } else {
+                            foreach ($foo as $f) {}
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -1067,6 +1178,37 @@ class TypeReconciliationTest extends TestCase
 
                     if (!is_scalar($a)) {
                         exit;
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'impossibleNullEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i === null;',
+                'error_message' => 'TypeDoesNotContainNull',
+            ],
+            'impossibleTrueEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i === true;',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'impossibleFalseEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i === false;',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'impossibleNumberEquality' => [
+                '<?php
+                    $i = 5;
+                    echo $i === 3;',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'SKIPPED-noIntersectionOfArrayOrTraversable' => [
+                '<?php
+                    function foo(iterable $iterable) : void {
+                        if (\is_array($iterable) && $iterable instanceof \Traversable) {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
             ],

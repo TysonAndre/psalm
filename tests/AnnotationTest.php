@@ -270,99 +270,266 @@ class AnnotationTest extends TestCase
     }
 
     /**
-     * @return void
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return                   void
      */
-    public function testPhpDocMethodWhenUndefined()
+    public function testUndocumentedThrow()
     {
-        Config::getInstance()->use_phpdoc_methods_without_call = true;
+        Config::getInstance()->check_for_throws_docblock = true;
 
         $this->addFile(
             'somefile.php',
             '<?php
-                /**
-                 * @method string getString()
-                 * @method  void setInteger(int $integer)
-                 * @method setString(int $integer)
-                 * @method  getBool(string $foo) : bool
-                 * @method (string|int)[] getArray() : array
-                 * @method (callable() : string) getCallable() : callable
-                 */
-                class Child {}
-
-                $child = new Child();
-
-                $a = $child->getString();
-                $child->setInteger(4);
-                /** @psalm-suppress MixedAssignment */
-                $b = $child->setString(5);
-                $c = $child->getBool("hello");
-                $d = $child->getArray();
-                $e = $child->getCallable();'
-        );
-
-        $this->analyzeFile('somefile.php', new Context());
-    }
-
-    /**
-     * @return void
-     */
-    public function testCannotOverrideParentRetunTypeWhenIgnoringPhpDocMethod()
-    {
-        Config::getInstance()->use_phpdoc_methods_without_call = false;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                class Parent {
-                    public static function getMe() : self {
-                        return new self();
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
                     }
-                }
 
-                /**
-                 * @method getMe() : Child
-                 */
-                class Child extends Parent {}
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
 
-                $child = Child::getMe();'
+                    return intdiv($x, $y);
+                }'
         );
 
         $context = new Context();
 
         $this->analyzeFile('somefile.php', $context);
-
-        $this->assertSame('Parent', (string) $context->vars_in_scope['$child']);
     }
 
     /**
      * @return void
      */
-    public function testOverrideParentRetunType()
+    public function testDocumentedThrow()
     {
-        Config::getInstance()->use_phpdoc_methods_without_call = true;
+        Config::getInstance()->check_for_throws_docblock = true;
 
         $this->addFile(
             'somefile.php',
             '<?php
-                class Parent {
-                    public static function getMe() : self {
-                        return new self();
-                    }
-                }
-
                 /**
-                 * @method getMe() : Child
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
                  */
-                class Child extends Parent {}
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
 
-                $child = Child::getMe();'
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }'
         );
 
         $context = new Context();
 
         $this->analyzeFile('somefile.php', $context);
+    }
 
-        $this->assertSame('Child', (string) $context->vars_in_scope['$child']);
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return                   void
+     */
+    public function testUndocumentedThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    foo($x, $y);
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return                   void
+     */
+    public function testDocumentedThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function bar(int $x, int $y) : void {
+                    foo($x, $y);
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCaughtThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    try {
+                        foo($x, $y);
+                    } catch (RangeException $e) {
+
+                    } catch (InvalidArgumentException $e) {}
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return                   void
+     */
+    public function testUncaughtThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    try {
+                        foo($x, $y);
+                    } catch (\RangeException $e) {
+
+                    }
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCaughtAllThrowInFunctionCall()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @throws RangeException
+                 * @throws InvalidArgumentException
+                 */
+                function foo(int $x, int $y) : int {
+                    if ($y === 0) {
+                        throw new \RangeException("Cannot divide by zero");
+                    }
+
+                    if ($y < 0) {
+                        throw new \InvalidArgumentException("This is also bad");
+                    }
+
+                    return intdiv($x, $y);
+                }
+
+                function bar(int $x, int $y) : void {
+                    try {
+                        foo($x, $y);
+                    } catch (Exception $e) {}
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
     }
 
     /**
@@ -803,62 +970,6 @@ class AnnotationTest extends TestCase
 
                     $arr["a"]()',
             ],
-            'magicMethodValidAnnotations' => [
-                '<?php
-                    class Parent {
-                        public function __call() {}
-                    }
-
-                    /**
-                     * @method string getString()
-                     * @method  void setInteger(int $integer)
-                     * @method setString(int $integer)
-                     * @method  getBool(string $foo)  :   bool
-                     * @method setBool(string $foo, string|bool $bar)  :   bool
-                     * @method (string|int)[] getArray() : array with some text
-                     * @method void setArray(array $arr = array(), int $foo = 5) with some more text
-                     * @method (callable() : string) getCallable() : callable
-                     */
-                    class Child extends Parent {}
-
-                    $child = new Child();
-
-                    $a = $child->getString();
-                    $child->setInteger(4);
-                    /** @psalm-suppress MixedAssignment */
-                    $b = $child->setString(5);
-                    $c = $child->getBool("hello");
-                    $c = $child->setBool("hello", true);
-                    $c = $child->setBool("hello", "true");
-                    $d = $child->getArray();
-                    $child->setArray(["boo"])
-                    $e = $child->getCallable();',
-                'assertions' => [
-                    '$a' => 'string',
-                    '$b' => 'mixed',
-                    '$c' => 'bool',
-                    '$d' => 'array<mixed, string|int>',
-                    '$e' => 'callable():string',
-                ],
-            ],
-            'namespacedMagicMethodValidAnnotations' => [
-                '<?php
-                    namespace Foo;
-
-                    class Parent {
-                        public function __call() {}
-                    }
-
-                    /**
-                     * @method setBool(string $foo, string|bool $bar)  :   bool
-                     */
-                    class Child extends Parent {}
-
-                    $child = new Child();
-
-                    $c = $child->setBool("hello", true);
-                    $c = $child->setBool("hello", "true");',
-            ],
             'slashAfter?' => [
                 '<?php
                     namespace ns;
@@ -896,6 +1007,22 @@ class AnnotationTest extends TestCase
                 '<?php
                     /** @param string[] $s */
                     function foo(string ...$s) : void {}',
+            ],
+            'valueReturnType' => [
+                '<?php
+                    /**
+                     * @param "a"|"b" $_p
+                     */
+                    function acceptsLiteral($_p): void {}
+
+                    /**
+                     * @return "a"|"b"
+                     */
+                    function returnsLiteral(): string {
+                        return rand(0,1) ? "a" : "b";
+                    }
+
+                    acceptsLiteral(returnsLiteral());'
             ],
         ];
     }
@@ -1357,63 +1484,6 @@ class AnnotationTest extends TestCase
                         return function () : void {}
                     }',
                 'error_message' => 'InvalidDocblock',
-            ],
-            'magicMethodAnnotationWithoutCall' => [
-                '<?php
-                    /**
-                     * @method string getString()
-                     */
-                    class Child {}
-
-                    $child = new Child();
-
-                    $a = $child->getString();',
-                'error_message' => 'UndefinedMethod',
-            ],
-            'magicMethodAnnotationWithBadDocblock' => [
-                '<?php
-                    class Parent {
-                        public function __call() {}
-                    }
-
-                    /**
-                     * @method string getString(\)
-                     */
-                    class Child extends Parent {}',
-                'error_message' => 'InvalidDocblock',
-            ],
-            'magicMethodAnnotationWithSealed' => [
-                '<?php
-                    class Parent {
-                        public function __call() {}
-                    }
-
-                    /**
-                     * @method string getString()
-                     * @psalm-seal-methods
-                     */
-                    class Child extends Parent {}
-
-                    $child = new Child();
-                    $child->getString();
-                    $child->foo();',
-                'error_message' => 'UndefinedMethod - src/somefile.php:14 - Method Child::foo does not exist',
-            ],
-            'magicMethodAnnotationInvalidArg' => [
-                '<?php
-                    class Parent {
-                        public function __call() {}
-                    }
-
-                    /**
-                     * @method setString(int $integer)
-                     */
-                    class Child extends Parent {}
-
-                    $child = new Child();
-
-                    $child->setString("five");',
-                'error_message' => 'InvalidScalarArgument',
             ],
             'hyphenInType' => [
                 '<?php

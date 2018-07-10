@@ -146,6 +146,26 @@ class MethodCallTest extends TestCase
                     '$b' => 'string|bool',
                 ],
             ],
+            'datetimeformatNotFalse' => [
+                '<?php
+                    $format = random_bytes(10);
+                    $dt = new DateTime;
+                    $formatted = $dt->format($format);
+                    if (false !== $formatted) {}
+                    function takesString(string $s) : void {}
+                    takesString($formatted);'
+            ],
+            'domElement' => [
+                '<?php
+                    function foo(DOMElement $e) : ?string {
+                        $a = $e->getElementsByTagName("bar");
+                        $b = $a->item(0);
+                        if (!$b) {
+                            return null;
+                        }
+                        return $b->getAttribute("bat");
+                    }',
+            ],
         ];
     }
 
@@ -337,6 +357,16 @@ class MethodCallTest extends TestCase
                     }
                     (new A)->__invoke(1);',
                 'error_message' => 'InvalidScalarArgument',
+            ],
+            'undefinedMethodPassedAsArg' => [
+                '<?php
+                    class A {
+                        public function __call(string $method, array $args) {}
+                    }
+
+                    $q = new A;
+                    $q->foo(bar());',
+                'error_message' => 'UndefinedFunction'
             ],
         ];
     }

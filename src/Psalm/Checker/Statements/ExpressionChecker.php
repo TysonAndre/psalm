@@ -8,6 +8,7 @@ use Psalm\Checker\CommentChecker;
 use Psalm\Checker\FunctionLikeChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Checker\Statements\Expression\ArrayChecker;
+use Psalm\Checker\Statements\Expression\AssertionFinder;
 use Psalm\Checker\Statements\Expression\AssignmentChecker;
 use Psalm\Checker\Statements\Expression\BinaryOpChecker;
 use Psalm\Checker\Statements\Expression\Call\FunctionCallChecker;
@@ -212,6 +213,20 @@ class ExpressionChecker
             }
 
             if (isset($stmt->var->inferredType)) {
+                $return_type = null;
+
+                $fake_right_expr = new PhpParser\Node\Scalar\LNumber(1, $stmt->getAttributes());
+                $fake_right_expr->inferredType = Type::getInt();
+
+                BinaryOpChecker::analyzeNonDivArithmenticOp(
+                    $statements_checker,
+                    $stmt->var,
+                    $fake_right_expr,
+                    $stmt,
+                    $return_type,
+                    $context
+                );
+
                 $stmt->inferredType = clone $stmt->var->inferredType;
                 $stmt->inferredType->from_calculation = true;
 
@@ -227,6 +242,17 @@ class ExpressionChecker
 
                 if ($var_id && isset($context->vars_in_scope[$var_id])) {
                     $context->vars_in_scope[$var_id] = $stmt->inferredType;
+
+                    if ($context->collect_references && $stmt->var instanceof PhpParser\Node\Expr\Variable) {
+                        $location = new CodeLocation($statements_checker, $stmt->var);
+                        $context->assigned_var_ids[$var_id] = true;
+                        $context->possibly_assigned_var_ids[$var_id] = true;
+                        $statements_checker->registerVariableAssignment(
+                            $var_id,
+                            $location
+                        );
+                        $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
+                    }
                 }
             } else {
                 $stmt->inferredType = Type::getMixed();
@@ -434,8 +460,11 @@ class ExpressionChecker
                 return false;
             }
 
-            if ($stmt->class instanceof PhpParser\Node\Name &&
-                !in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)
+            if ($stmt->class instanceof PhpParser\Node\Expr) {
+                if (self::analyze($statements_checker, $stmt->class, $context) === false) {
+                    return false;
+                }
+            } elseif (!in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)
             ) {
                 if ($context->check_classes) {
                     $fq_class_name = ClassLikeChecker::getFQCLNFromNameObject(
@@ -509,6 +538,22 @@ class ExpressionChecker
             }
         }
 
+        if (!$context->inside_conditional
+            && ($stmt instanceof PhpParser\Node\Expr\BinaryOp
+                || $stmt instanceof PhpParser\Node\Expr\Instanceof_
+                || $stmt instanceof PhpParser\Node\Expr\Assign
+                || $stmt instanceof PhpParser\Node\Expr\BooleanNot
+                || $stmt instanceof PhpParser\Node\Expr\Empty_
+                || $stmt instanceof PhpParser\Node\Expr\Isset_
+                || $stmt instanceof PhpParser\Node\Expr\FuncCall)
+        ) {
+            AssertionFinder::scrapeAssertions(
+                $stmt,
+                $context->self,
+                $statements_checker
+            );
+        }
+
         $project_checker = $statements_checker->getFileChecker()->project_checker;
 
         $plugin_classes = $project_checker->config->after_expression_checks;
@@ -574,7 +619,7 @@ class ExpressionChecker
                     $statements_checker->registerVariable($var_id, $location, null);
 
                     if ($context->collect_references) {
-                        $context->unreferenced_vars[$var_id] = $location;
+                        $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
                     }
 
                     $context->hasVariable($var_id, $statements_checker);

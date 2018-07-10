@@ -219,6 +219,8 @@ class ValueTest extends TestCase
                     };
                     $a();
                     if ($i === 0) {}',
+                'assertions' => [],
+                'error_levels' => ['MixedOperand'],
             ],
             'incrementMixedCall' => [
                 '<?php
@@ -230,7 +232,7 @@ class ValueTest extends TestCase
                         if ($i === 0) {}
                     }',
                 'assertions' => [],
-                'error_levels' => ['MissingParamType', 'MixedMethodCall'],
+                'error_levels' => ['MissingParamType', 'MixedMethodCall', 'MixedOperand'],
             ],
             'regularValueReconciliation' => [
                 '<?php
@@ -368,6 +370,54 @@ class ValueTest extends TestCase
                                 break;
                         }
                     }',
+            ],
+            'removeLiteralStringForNotIsString' => [
+                '<?php
+                    function takesInt(int $i) : void {}
+
+                    $f = ["a", "b", "c"];
+                    $f[rand(0, 2)] = 5;
+
+                    $i = rand(0, 2);
+                    if (isset($f[$i]) && !is_string($f[$i])) {
+                        takesInt($f[$i]);
+                    }'
+            ],
+            'removeLiteralIntForNotIsInt' => [
+                '<?php
+                    function takesString(string $i) : void {}
+
+                    $f = [0, 1, 2];
+                    $f[rand(0, 2)] = "hello";
+
+                    $i = rand(0, 2);
+                    if (isset($f[$i]) && !is_int($f[$i])) {
+                        takesString($f[$i]);
+                    }'
+            ],
+            'removeLiteralFloatForNotIsFloat' => [
+                '<?php
+                    function takesString(string $i) : void {}
+
+                    $f = [1.1, 1.2, 1.3];
+                    $f[rand(0, 2)] = "hello";
+
+                    $i = rand(0, 2);
+                    if (isset($f[$i]) && !is_float($f[$i])) {
+                        takesString($f[$i]);
+                    }'
+            ],
+            'noRedundantConditionAfterWhile' => [
+                '<?php
+                    $i = 5;
+                    while (--$i > 0) {}
+                    echo $i === 0;',
+            ],
+            'noRedundantConditionAfterDoWhile' => [
+                '<?php
+                    $i = 5;
+                    do {} while (--$i > 0);
+                    echo $i === 0;',
             ],
         ];
     }
