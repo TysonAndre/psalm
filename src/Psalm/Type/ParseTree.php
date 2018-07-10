@@ -34,7 +34,7 @@ class ParseTree
     /**
      * Create a parse tree from a tokenised type (cached)
      *
-     * @param  array<int, string>  $type_tokens
+     * @param  array<int,string>  $type_tokens
      *
      * @return self
      */
@@ -51,7 +51,7 @@ class ParseTree
     /**
      * Create a parse tree from a tokenised type
      *
-     * @param  array<string>  $type_tokens
+     * @param  array<int,string>  $type_tokens
      *
      * @return self
      */
