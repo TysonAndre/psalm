@@ -406,6 +406,8 @@ return [
     ],
     'phpparser\\node\\expr\\funccall' => [
         'args' => 'array<int, PhpParser\Node\Arg>',
+        'ifTrueAssertions' => 'array<int, Psalm\Storage\Assertion>|null',
+        'ifFalseAssertions' => 'array<int, Psalm\Storage\Assertion>|null',
     ],
     'phpparser\\node\\expr\\new_' => [
         'args' => 'array<int, PhpParser\Node\Arg>',
@@ -418,9 +420,13 @@ return [
     ],
     'phpparser\\node\\expr\\methodcall' => [
         'args' => 'array<int, PhpParser\Node\Arg>',
+        'ifTrueAssertions' => 'array<int, Psalm\Storage\Assertion>|null',
+        'ifFalseAssertions' => 'array<int, Psalm\Storage\Assertion>|null',
     ],
     'phpparser\\node\\expr\\staticcall' => [
         'args' => 'array<int, PhpParser\Node\Arg>',
+        'ifTrueAssertions' => 'array<int, Psalm\Storage\Assertion>|null',
+        'ifFalseAssertions' => 'array<int, Psalm\Storage\Assertion>|null',
     ],
     'phpparser\\node\\stmt\\namespace_' => [
         'stmts' => 'array<int, PhpParser\Node\Stmt>',

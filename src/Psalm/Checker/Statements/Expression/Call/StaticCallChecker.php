@@ -430,6 +430,29 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
+                try {
+                    $method_storage = $codebase->methods->getUserMethodStorage($method_id);
+
+                    if ($method_storage->assertions) {
+                        self::applyAssertionsToContext(
+                            $method_storage->assertions,
+                            $stmt->args,
+                            $context,
+                            $statements_checker
+                        );
+                    }
+
+                    if ($method_storage->if_true_assertions) {
+                        $stmt->ifTrueAssertions = $method_storage->if_true_assertions;
+                    }
+
+                    if ($method_storage->if_false_assertions) {
+                        $stmt->ifFalseAssertions = $method_storage->if_false_assertions;
+                    }
+                } catch (\UnexpectedValueException $e) {
+                    // do nothing for non-user-defined methods
+                }
+
                 if ($config->after_method_checks) {
                     $file_manipulations = [];
 

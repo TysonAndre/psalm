@@ -382,7 +382,7 @@ class ParseTree
 
                     if ($current_parent && $current_parent instanceof ParseTree\UnionTree) {
                         $current_leaf = $current_parent;
-                        continue;
+                        break;
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\IntersectionTree) {
@@ -420,7 +420,7 @@ class ParseTree
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\IntersectionTree) {
-                        continue;
+                        break;
                     }
 
                     $new_parent_leaf = new ParseTree\IntersectionTree($current_parent);

@@ -540,7 +540,7 @@ class MethodChecker extends FunctionLikeChecker
 
                 if (IssueBuffer::accepts(
                     new MethodSignatureMismatch(
-                        'Method ' . $cased_implementer_method_id . ' has fewer arguments than parent method ' .
+                        'Method ' . $cased_implementer_method_id . ' has fewer parameters than parent method ' .
                             $cased_guide_method_id,
                         $code_location
                     )
@@ -665,7 +665,7 @@ class MethodChecker extends FunctionLikeChecker
         ) {
             if (IssueBuffer::accepts(
                 new MethodSignatureMismatch(
-                    'Method ' . $cased_implementer_method_id . ' has more arguments than parent method ' .
+                    'Method ' . $cased_implementer_method_id . ' has more required parameters than parent method ' .
                         $cased_guide_method_id,
                     $code_location
                 )
