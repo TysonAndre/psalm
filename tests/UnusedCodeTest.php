@@ -40,7 +40,7 @@ class UnusedCodeTest extends TestCase
      */
     public function testValidCode($code, array $error_levels = [])
     {
-        $test_name = $this->getName();
+        $test_name = $this->getTestName();
         if (strpos($test_name, 'PHP7-') !== false) {
             if (version_compare(PHP_VERSION, '7.0.0dev', '<')) {
                 $this->markTestSkipped('Test case requires PHP 7.');
@@ -81,7 +81,7 @@ class UnusedCodeTest extends TestCase
      */
     public function testInvalidCode($code, $error_message, $error_levels = [])
     {
-        if (strpos($this->getName(), 'SKIPPED-') !== false) {
+        if (strpos($this->getTestName(), 'SKIPPED-') !== false) {
             $this->markTestSkipped();
         }
 
@@ -283,6 +283,43 @@ class UnusedCodeTest extends TestCase
                         $a->foo();
                     }
                     takesA(new B);'
+            ],
+            'usedMethodInTryCatch' => [
+                '<?php
+                    class A {
+                        protected function getC() : C {
+                            return new C;
+                        }
+                    }
+                    class C {
+                        public function foo() : void {}
+                    }
+
+                    class B extends A {
+                        public function bar() : void {
+                            $c = $this->getC();
+
+                            foreach ([1, 2, 3] as $i) {
+                                try {
+                                    $c->foo();
+                                } catch (Exception $e) {}
+                            }
+                        }
+                    }
+
+                    (new B)->bar();',
+            ],
+            'suppressPrivateUnusedMethod' => [
+                '<?php
+                    class A {
+                        /**
+                         * @psalm-suppress UnusedMethod
+                         * @return void
+                         */
+                        private function foo() {}
+                    }
+
+                    new A();',
             ],
         ];
     }

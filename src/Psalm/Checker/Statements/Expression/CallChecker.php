@@ -347,6 +347,108 @@ class CallChecker
             return;
         }
 
+        if ($method_id && $method_id === 'array_splice' && $function_params && count($args) > 1) {
+            $array_arg = $args[0]->value;
+
+            if (ExpressionChecker::analyze(
+                $statements_checker,
+                $array_arg,
+                $context
+            ) === false) {
+                return false;
+            }
+
+            $offset_arg = $args[1]->value;
+
+            if (ExpressionChecker::analyze(
+                $statements_checker,
+                $offset_arg,
+                $context
+            ) === false) {
+                return false;
+            }
+
+            if (!isset($args[2])) {
+                return;
+            }
+
+            $length_arg = $args[2]->value;
+
+            if (ExpressionChecker::analyze(
+                $statements_checker,
+                $length_arg,
+                $context
+            ) === false) {
+                return false;
+            }
+
+            if (!isset($args[3])) {
+                return;
+            }
+
+            $replacement_arg = $args[3]->value;
+
+            if (ExpressionChecker::analyze(
+                $statements_checker,
+                $replacement_arg,
+                $context
+            ) === false) {
+                return false;
+            }
+
+            if (isset($replacement_arg->inferredType)
+                && !$replacement_arg->inferredType->hasArray()
+                && $replacement_arg->inferredType->hasString()
+                && $replacement_arg->inferredType->isSingle()
+            ) {
+                $replacement_arg->inferredType = new Type\Union([
+                    new Type\Atomic\TArray([Type::getInt(), $replacement_arg->inferredType])
+                ]);
+            }
+
+            if (isset($array_arg->inferredType)
+                && $array_arg->inferredType->hasArray()
+                && isset($replacement_arg->inferredType)
+                && $replacement_arg->inferredType->hasArray()
+            ) {
+                /** @var TArray|ObjectLike */
+                $array_type = $array_arg->inferredType->getTypes()['array'];
+
+                if ($array_type instanceof ObjectLike) {
+                    $array_type = $array_type->getGenericArrayType();
+                }
+
+                /** @var TArray|ObjectLike */
+                $replacement_array_type = $replacement_arg->inferredType->getTypes()['array'];
+
+                if ($replacement_array_type instanceof ObjectLike) {
+                    $replacement_array_type = $replacement_array_type->getGenericArrayType();
+                }
+
+                $by_ref_type = Type\TypeCombination::combineTypes([$array_type, $replacement_array_type]);
+
+                ExpressionChecker::assignByRefParam(
+                    $statements_checker,
+                    $array_arg,
+                    $by_ref_type,
+                    $context,
+                    false
+                );
+
+                return;
+            }
+
+            ExpressionChecker::assignByRefParam(
+                $statements_checker,
+                $array_arg,
+                Type::getArray(),
+                $context,
+                false
+            );
+
+            return;
+        }
+
         foreach ($args as $argument_offset => $arg) {
             if ($function_params !== null) {
                 $by_ref = $argument_offset < count($function_params)
@@ -713,7 +815,7 @@ class CallChecker
                         'shuffle', 'sort', 'rsort', 'usort', 'ksort', 'asort',
                         'krsort', 'arsort', 'natcasesort', 'natsort', 'reset',
                         'end', 'next', 'prev', 'array_pop', 'array_shift',
-                        'array_push', 'array_unshift', 'socket_select',
+                        'array_push', 'array_unshift', 'socket_select', 'array_splice',
                     ],
                     true
                 )) {
@@ -969,7 +1071,8 @@ class CallChecker
                 if (IssueBuffer::accepts(
                     new TooFewArguments(
                         'Too few arguments for ' . $method_id,
-                        $code_location
+                        $code_location,
+                        $method_id
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
@@ -979,7 +1082,8 @@ class CallChecker
                 if (IssueBuffer::accepts(
                     new TooFewArguments(
                         'Too few arguments for ' . $method_id,
-                        $code_location
+                        $code_location,
+                        $method_id
                     ),
                     $statements_checker->getSuppressedIssues()
                 )) {
@@ -1005,7 +1109,8 @@ class CallChecker
                 new TooManyArguments(
                     'Too many arguments for method ' . ($cased_method_id ?: $method_id)
                         . ' - expecting ' . count($function_params) . ' but saw ' . count($args),
-                    $code_location
+                    $code_location,
+                    $method_id ?: ''
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
@@ -1024,7 +1129,8 @@ class CallChecker
                         new TooFewArguments(
                             'Too few arguments for method ' . $cased_method_id
                                 . ' - expecting ' . count($function_params) . ' but saw ' . count($args),
-                            $code_location
+                            $code_location,
+                            $method_id ?: ''
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {
@@ -1305,7 +1411,8 @@ class CallChecker
                 new TooManyArguments(
                     'The callable passed to ' . $method_id . ' will be called with ' . $argument_text . ', expecting '
                         . $required_param_count,
-                    new CodeLocation($statements_checker->getSource(), $closure_arg)
+                    new CodeLocation($statements_checker->getSource(), $closure_arg),
+                    $method_id
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
@@ -1318,7 +1425,8 @@ class CallChecker
                 new TooFewArguments(
                     'The callable passed to ' . $method_id . ' will be called with ' . $argument_text . ', expecting '
                         . $required_param_count,
-                    new CodeLocation($statements_checker->getSource(), $closure_arg)
+                    new CodeLocation($statements_checker->getSource(), $closure_arg),
+                    $method_id
                 ),
                 $statements_checker->getSuppressedIssues()
             )) {
@@ -1519,6 +1627,15 @@ class CallChecker
             $type_coerced_from_mixed,
             $to_string_cast
         );
+
+        if ($context->strict_types && !$param_type->from_docblock && $cased_method_id !== 'echo') {
+            $scalar_type_match_found = false;
+
+            if ($to_string_cast) {
+                $to_string_cast = false;
+                $type_match_found = false;
+            }
+        }
 
         if ($type_coerced) {
             if ($type_coerced_from_mixed) {

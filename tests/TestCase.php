@@ -4,6 +4,7 @@ namespace Psalm\Tests;
 use PHPUnit\Framework\TestCase as BaseTestCase;
 use Psalm\Checker\FileChecker;
 use Psalm\Checker\ProjectChecker;
+use RuntimeException;
 
 class TestCase extends BaseTestCase
 {
@@ -98,5 +99,19 @@ class TestCase extends BaseTestCase
             $codebase->config->shortenFileName($file_path)
         );
         $file_checker->analyze($context);
+    }
+
+    /**
+     * @param  bool $withDataSet
+     * @return string
+     */
+    protected function getTestName($withDataSet = true)
+    {
+        $name = parent::getName($withDataSet);
+        /** @psalm-suppress DocblockTypeContradiction PHPUnit 7 introduced nullable name */
+        if (null === $name) {
+            throw new RuntimeException('anonymous test - shouldn\'t happen');
+        }
+        return $name;
     }
 }

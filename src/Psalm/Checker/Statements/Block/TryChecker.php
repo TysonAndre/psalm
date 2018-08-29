@@ -31,14 +31,14 @@ class TryChecker
         $catch_actions = [];
         $all_catches_leave = true;
 
-        /** @var int $i */
-        foreach ($stmt->catches as $i => $catch) {
-            $catch_actions[$i] = ScopeChecker::getFinalControlActions($catch->stmts);
-            $all_catches_leave = $all_catches_leave && !in_array(ScopeChecker::ACTION_NONE, $catch_actions[$i], true);
-        }
-
         $project_checker = $statements_checker->getFileChecker()->project_checker;
         $codebase = $project_checker->codebase;
+
+        /** @var int $i */
+        foreach ($stmt->catches as $i => $catch) {
+            $catch_actions[$i] = ScopeChecker::getFinalControlActions($catch->stmts, $codebase->config->exit_functions);
+            $all_catches_leave = $all_catches_leave && !in_array(ScopeChecker::ACTION_NONE, $catch_actions[$i], true);
+        }
 
         $existing_thrown_exceptions = $context->possibly_thrown_exceptions;
 
@@ -81,6 +81,7 @@ class TryChecker
                 if (!isset($try_context->vars_in_scope[$var_id])) {
                     $try_context->vars_in_scope[$var_id] = clone $type;
                     $try_context->vars_in_scope[$var_id]->from_docblock = true;
+                    $type->possibly_undefined_from_try = true;
                 } else {
                     $try_context->vars_in_scope[$var_id] = Type::combineUnionTypes(
                         $try_context->vars_in_scope[$var_id],

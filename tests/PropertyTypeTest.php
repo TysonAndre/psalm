@@ -114,6 +114,39 @@ class PropertyTypeTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testRemoveClauseAfterReassignment()
+    {
+        Config::getInstance()->remember_property_assignments_after_call = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class Test {
+                    /** @var ?bool */
+                    private $foo;
+
+                    public function run(): void {
+                        $this->foo = false;
+                        $this->bar();
+                        if ($this->foo === true) {}
+                    }
+
+                    private function bar(): void {
+                        if (mt_rand(0, 1)) {
+                            $this->foo = true;
+                        }
+                    }
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
      * @return array
      */
     public function providerFileCheckerValidCodeParse()
@@ -928,6 +961,154 @@ class PropertyTypeTest extends TestCase
                     '$d->e' => 'mixed',
                 ],
             ],
+            'allowLessSpecificReturnTypeForOverriddenMethod' => [
+                '<?php
+                    class A {
+                        public function aa(): ?string {
+                            return "bar";
+                        }
+                    }
+
+                    class B extends A {
+                        public static function aa(): ?string {
+                            return rand(0, 1) ? "bar" : null;
+                        }
+                    }
+
+                    class C extends A {
+                        public static function aa(): ?string {
+                            return "bar";
+                        }
+                    }'
+            ],
+            'allowLessSpecificReturnTypeForInterfaceMethod' => [
+                '<?php
+                    interface Foo {
+                        public static function foo(): ?string;
+                    }
+
+                    class Bar implements Foo {
+                        public static function foo(): ?string
+                        {
+                            return "bar";
+                        }
+                    }
+
+                    class Baz implements Foo {
+                        /**
+                         * @return string $baz
+                         */
+                        public static function foo(): ?string
+                        {
+                            return "baz";
+                        }
+                    }
+
+                    class Bax implements Foo {
+                        /**
+                         * @return null|string $baz
+                         */
+                        public static function foo(): ?string
+                        {
+                            return "bax";
+                        }
+                    }
+
+                    class Baw implements Foo {
+                        /**
+                         * @return null|string $baz
+                         */
+                        public static function foo(): ?string
+                        {
+                            /** @var null|string $val */
+                            $val = "baw";
+
+                            return $val;
+                        }
+                    }',
+            ],
+            'staticPropertyMethodCall' => [
+                '<?php
+                    class A {
+                        /** @var self|null */
+                        public static $instance;
+
+                        /** @var string|null */
+                        public $bat;
+
+                        public function foo() : void {
+                            if (self::$instance) {
+                                self::$instance->bar();
+                                echo self::$instance->bat;
+                            }
+                        }
+
+                        public function bar() : void {}
+                    }
+
+                    $a = new A();
+
+                    if ($a->instance) {
+                        $a->instance->bar();
+                        echo $a->instance->bat;
+                    }',
+            ],
+            'nonStaticPropertyMethodCall' => [
+                '<?php
+                    class A {
+                        /** @var self|null */
+                        public $instance;
+
+                        /** @var string|null */
+                        public $bat;
+
+                        public function foo() : void {
+                            if ($this->instance) {
+                                $this->instance->bar();
+                                echo $this->instance->bat;
+                            }
+                        }
+
+                        public function bar() : void {}
+                    }
+
+                    $a = new A();
+
+                    if ($a->instance) {
+                        $a->instance->bar();
+                        echo $a->instance->bat;
+                    }'
+            ],
+            'staticPropertyOfStaticTypeMethodCall' => [
+                '<?php
+                    class A {
+                        /** @var static|null */
+                        public $instance;
+                    }
+
+                    class B extends A {
+                        /** @var string|null */
+                        public $bat;
+
+                        public function foo() : void {
+                            if ($this->instance) {
+                                $this->instance->bar();
+                                echo $this->instance->bat;
+                            }
+                        }
+
+                        public function bar() : void {}
+                    }'
+            ],
+            'classStringPropertyType' => [
+                '<?php
+                    class C {
+                        /** @psalm-var array<class-string, int> */
+                        public $member = [
+                            InvalidArgumentException::class => 1,
+                        ];
+                    }'
+            ],
         ];
     }
 
@@ -1398,6 +1579,82 @@ class PropertyTypeTest extends TestCase
                     }',
                 'error_message' => 'PropertyNotSetInConstructor',
             ],
+            'privatePropertySameNameNotSetInConstructor' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        private $b;
+
+                        public function __construct() {
+                            $this->b = "foo";
+                        }
+                    }
+
+                    class B extends A {
+                        /** @var string */
+                        private $b;
+                    }',
+                'error_message' => 'PropertyNotSetInConstructor',
+            ],
+            'privateMethodCalledInParentConstructor' => [
+                '<?php
+                    class C extends B {}
+
+                    abstract class B extends A {
+                        /** @var string */
+                        private $b;
+
+                        /** @var string */
+                        protected $c;
+                    }
+
+                    class A {
+                        public function __construct() {
+                            $this->publicMethod();
+                        }
+
+                        public function publicMethod() : void {
+                            $this->privateMethod();
+                        }
+
+                        private function privateMethod() : void {}
+                    }',
+                'error_message' => 'PropertyNotSetInConstructor',
+            ],
+            'privatePropertySetInParentConstructorReversedOrder' => [
+                '<?php
+                    class B extends A {
+                        /** @var string */
+                        private $b;
+                    }
+
+                    class A {
+                        public function __construct() {
+                            if ($this instanceof B) {
+                                $this->b = "foo";
+                            }
+                        }
+                    }',
+                'error_message' => 'PropertyNotSetInConstructor',
+            ],
+            'privatePropertySetInParentConstructor' => [
+                '<?php
+                    class A {
+                        public function __construct() {
+                            if ($this instanceof B) {
+                                $this->b = "foo";
+                            }
+                        }
+                    }
+
+                    class B extends A {
+                        /** @var string */
+                        private $b;
+                    }
+
+                    ',
+                'error_message' => 'InaccessibleProperty',
+            ],
             'undefinedPropertyClass' => [
                 '<?php
                     class A {
@@ -1523,6 +1780,24 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'DocblockTypeContradiction',
+            ],
+            'staticPropertyOfStaticTypeMethodCallWithUndefinedMethod' => [
+                '<?php
+                    class A {
+                        /** @var static|null */
+                        public $instance;
+
+                        public function foo() : void {
+                            if ($this->instance) {
+                                $this->instance->bar();
+                            }
+                        }
+                    }
+
+                    class B extends A {
+                        public function bar() : void {}
+                    }',
+                'error_message' => 'UndefinedMethod',
             ],
         ];
     }

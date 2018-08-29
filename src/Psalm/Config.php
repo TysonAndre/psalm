@@ -285,6 +285,13 @@ class Config
     /** @var ClassLoader|null */
     private $composer_class_loader;
 
+    /**
+     * Custom functions that always exit
+     *
+     * @var array<string, bool>
+     */
+    public $exit_functions = [];
+
     protected function __construct()
     {
         self::$instance = $this;
@@ -572,7 +579,14 @@ class Config
         if (isset($config_xml->ignoreExceptions) && isset($config_xml->ignoreExceptions->class)) {
             /** @var \SimpleXMLElement $exception_class */
             foreach ($config_xml->ignoreExceptions->class as $exception_class) {
-                $config->ignored_exceptions[(string)$exception_class ['name']] = true;
+                $config->ignored_exceptions[(string) $exception_class['name']] = true;
+            }
+        }
+
+        if (isset($config_xml->exitFunctions) && isset($config_xml->exitFunctions->function)) {
+            /** @var \SimpleXMLElement $exit_function */
+            foreach ($config_xml->exitFunctions->function as $exit_function) {
+                $config->exit_functions[strtolower((string) $exit_function['name'])] = true;
             }
         }
 
@@ -981,6 +995,26 @@ class Config
         }
 
         return $this->project_files->getFiles();
+    }
+
+    /**
+     * @param   string $file_path
+     *
+     * @return  bool
+     */
+    public function reportTypeStatsForFile($file_path)
+    {
+        return $this->project_files && $this->project_files->reportTypeStats($file_path);
+    }
+
+    /**
+     * @param   string $file_path
+     *
+     * @return  bool
+     */
+    public function useStrictTypesForFile($file_path)
+    {
+        return $this->project_files && $this->project_files->useStrictTypes($file_path);
     }
 
     /**

@@ -215,6 +215,29 @@ class ConstantTest extends TestCase
                 '<?php
                     if ("phpdbg" === \PHP_SAPI) {}',
             ],
+            'stdinout' => [
+                '<?php
+                    echo fread(STDIN, 100);
+                    fwrite(STDOUT, "asd");
+                    fwrite(STDERR, "zcx");'
+            ],
+            'classStringArrayOffset' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    const C = [
+                        A::class => 1,
+                        B::class => 2,
+                    ];
+
+                    /**
+                     * @param class-string $s
+                     */
+                    function foo(string $s) : void {
+                        if (isset(C[$s])) {}
+                    }',
+            ],
         ];
     }
 

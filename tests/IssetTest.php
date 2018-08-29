@@ -341,6 +341,12 @@ class IssetTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment', 'MixedArrayAccess'],
             ],
+            'mixedArrayIssetGetStringVar' => [
+                '<?php
+                    if (isset($_GET["b"]) && is_string($_GET["b"])) {
+                        echo $_GET["b"];
+                    }',
+            ],
             'nestedArrayAccessInLoopAfterIsset' => [
                 '<?php
                     $arr = [];
@@ -374,7 +380,23 @@ class IssetTest extends TestCase
                     function takesInt(int $i) : void {}',
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment', 'MixedArgument'],
-            ]
+            ],
+            'noParadoxOnMultipleNotIssets' => [
+                '<?php
+                    /** @var array */
+                    $array = [];
+                    function sameString(string $string): string {
+                        return $string;
+                    }
+
+                    if (isset($array[sameString("key1")]) || isset($array[sameString("key2")])) {
+                        throw new \InvalidArgumentException();
+                    }
+
+                    if (!isset($array[sameString("key3")]) || !isset($array[sameString("key4")])) {
+                        throw new \InvalidArgumentException();
+                    }'
+            ],
         ];
     }
 

@@ -7,6 +7,44 @@ class ClassTest extends TestCase
     use Traits\FileCheckerValidCodeParseTestTrait;
 
     /**
+     * @return void
+     */
+    public function testExtendsMysqli()
+    {
+        if (class_exists('mysqli') === false) {
+            $this->markTestSkipped('Cannot run test, base class "mysqli" does not exist!');
+
+            return;
+        }
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class db extends mysqli {
+                    public function close()
+                    {
+                        return true;
+                    }
+
+                    public function prepare(string $sql)
+                    {
+                        return false;
+                    }
+
+                    public function commit(?int $flags = null, ?string $name = null)
+                    {
+                        return true;
+                    }
+
+                    public function real_escape_string(string $string)
+                    {
+                        return "escaped";
+                    }
+                }'
+        );
+    }
+
+    /**
      * @return array
      */
     public function providerFileCheckerValidCodeParse()
@@ -153,31 +191,6 @@ class ClassTest extends TestCase
                       return $maybeBaz;
                     }',
             ],
-            'extendsMysqli' => [
-                '<?php
-                    class db extends mysqli
-                    {
-                        public function close()
-                        {
-                            return true;
-                        }
-
-                        public function prepare(string $sql)
-                        {
-                            return false;
-                        }
-
-                        public function commit(?int $flags = null, ?string $name = null)
-                        {
-                            return true;
-                        }
-
-                        public function real_escape_string(string $string)
-                        {
-                            return "escaped";
-                        }
-                    }',
-            ],
             'assignAnonymousClassToArray' => [
                 '<?php
                     /**
@@ -191,6 +204,96 @@ class ClassTest extends TestCase
                             if ($array[$i] === $array[$key]) {}
                         }
                     }',
+            ],
+            'getClassSelfClass' => [
+                '<?php
+                    class C {
+                        public function work(object $obj): string {
+                            if (get_class($obj) === self::class) {
+                                return $obj->baz();
+                            }
+                            return "";
+                        }
+
+                        public function baz(): string {
+                            return "baz";
+                        }
+                    }',
+            ],
+            'staticClassComparison' => [
+                '<?php
+                    class C {
+                        public function foo1(): string {
+                            if (static::class === D::class) {
+                                return $this->baz();
+                            }
+                            return "";
+                        }
+
+                        public static function foo2(): string {
+                            if (static::class === D::class) {
+                                return static::bat();
+                            }
+                            return "";
+                        }
+                    }
+
+                    class D extends C {
+                        public function baz(): string {
+                            return "baz";
+                        }
+
+                        public static function bat(): string {
+                            return "baz";
+                        }
+                    }',
+            ],
+            'isAStaticClass' => [
+                '<?php
+                    class C {
+                        public function foo1(): string {
+                            if (is_a(static::class, D::class, true)) {
+                                return $this->baz();
+                            }
+                            return "";
+                        }
+
+                        public static function foo2(): string {
+                            if (is_a(static::class, D::class, true)) {
+                                return static::bat();
+                            }
+                            return "";
+                        }
+                    }
+
+                    class D extends C {
+                        public function baz(): string {
+                            return "baz";
+                        }
+
+                        public static function bat(): string {
+                            return "baz";
+                        }
+                    }',
+            ],
+            'typedMagicCall' => [
+                '<?php
+                    class B {
+                        public function __call(string $methodName, array $args) : string {
+                            return __METHOD__;
+                        }
+                    }
+                    class A {
+                        public function __call(string $methodName, array $args) : B {
+                            return new B;
+                        }
+                    }
+                    $a = (new A)->zugzug();
+                    $b = (new A)->bar()->baz();',
+                'assertions' => [
+                    '$a' => 'B',
+                    '$b' => 'string',
+                ],
             ],
         ];
     }
@@ -344,11 +447,20 @@ class ClassTest extends TestCase
             ],
             'abstractClassMethod' => [
                 '<?php
-                abstract class A {
-                    abstract public function foo();
-                }
+                    abstract class A {
+                        abstract public function foo();
+                    }
 
-                class B extends A { }',
+                    class B extends A { }',
+                'error_message' => 'UnimplementedAbstractMethod',
+            ],
+            'abstractReflectedClassMethod' => [
+                '<?php
+                    class DedupeIterator extends FilterIterator {
+                        public function __construct(Iterator $i) {
+                            parent::__construct($i);
+                        }
+                    }',
                 'error_message' => 'UnimplementedAbstractMethod',
             ],
             'missingParent' => [

@@ -625,7 +625,14 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Label) {
                 // do nothing
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Declare_) {
-                // do nothing
+                foreach ($stmt->declares as $declaration) {
+                    if ((string) $declaration->key === 'strict_types'
+                        && $declaration->value instanceof PhpParser\Node\Scalar\LNumber
+                        && $declaration->value->value === 1
+                    ) {
+                        $context->strict_types = true;
+                    }
+                }
             } else {
                 if (IssueBuffer::accepts(
                     new UnrecognizedStatement(
@@ -952,6 +959,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
             $item_value_type = null;
 
             $property_types = [];
+            $class_strings = [];
 
             $can_create_objectlike = true;
 
@@ -1027,6 +1035,10 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                         if ($atomic_type instanceof Type\Atomic\TLiteralInt
                             || $atomic_type instanceof Type\Atomic\TLiteralString
                         ) {
+                            if ($atomic_type instanceof Type\Atomic\TLiteralClassString) {
+                                $class_strings[$atomic_type->value] = true;
+                            }
+
                             $property_types[$atomic_type->value] = $single_item_value_type;
                         } else {
                             $can_create_objectlike = false;
@@ -1047,7 +1059,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                 && ($item_key_type->hasString() || $item_key_type->hasInt())
                 && $can_create_objectlike
             ) {
-                return new Type\Union([new Type\Atomic\ObjectLike($property_types)]);
+                return new Type\Union([new Type\Atomic\ObjectLike($property_types, $class_strings)]);
             }
 
             if (!$item_key_type || !$item_value_type) {

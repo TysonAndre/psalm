@@ -626,7 +626,7 @@ class FunctionCallTest extends TestCase
                     $b = key($a);
                     $c = $a[$b];',
                 'assertions' => [
-                    '$b' => 'false|string',
+                    '$b' => 'null|string',
                     '$c' => 'int',
                 ],
             ],
@@ -694,12 +694,17 @@ class FunctionCallTest extends TestCase
                     '$h' => 'array<mixed, mixed>',
                 ],
             ],
-            'strstrWithPossiblyFalseFirstArg' => [
+            'strtrWithPossiblyFalseFirstArg' => [
                 '<?php
-                    strtr(
-                        file_get_contents("foobar.txt"),
-                        ["foo" => "bar"]
-                    );'
+                    /**
+                     * @param string|false $str
+                     * @param array<string, string> $replace_pairs
+                     * @return string
+                     */
+                    function strtr_wrapper($str, array $replace_pairs) {
+                        /** @psalm-suppress PossiblyFalseArgument */
+                        return strtr($str, $replace_pairs);
+                    }',
             ],
             'splatArrayIntersect' => [
                 '<?php
@@ -884,6 +889,47 @@ class FunctionCallTest extends TestCase
                         return "";
                     }',
             ],
+            'triggerUserError' => [
+                '<?php
+                    function mightLeave() : string {
+                        if (rand(0, 1)) {
+                            trigger_error("bad", E_USER_ERROR);
+                        } else {
+                            return "here";
+                        }
+                    }',
+            ],
+            'getParentClass' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    $b = get_parent_class(new A());
+                    if ($b === false) {}
+                    $c = new $b();',
+            ],
+            'arraySplice' => [
+                '<?php
+                    $a = [1, 2, 3];
+                    $c = $a;
+                    $b = ["a", "b", "c"];
+                    array_splice($a, -1, 1, $b);
+                    $d = [1, 2, 3];
+                    array_splice($d, -1, 1);',
+                'assertions' => [
+                    '$a' => 'array<int, string|int>',
+                    '$b' => 'array{0:string, 1:string, 2:string}',
+                    '$c' => 'array{0:int, 1:int, 2:int}',
+                ],
+            ],
+            'arraySpliceOtherType' => [
+                '<?php
+                    $d = [["red"], ["green"], ["blue"]];
+                    array_splice($d, -1, 1, "foo");',
+                'assertions' => [
+                    '$d' => 'array<int, array{0:string}|string>',
+                ],
+            ],
         ];
     }
 
@@ -909,6 +955,31 @@ class FunctionCallTest extends TestCase
                     function fooFoo(int $a): void {}
                     fooFoo("string");',
                 'error_message' => 'InvalidScalarArgument',
+            ],
+            'invalidArgumentWithDeclareStrictTypes' => [
+                '<?php declare(strict_types=1);
+                    function fooFoo(int $a): void {}
+                    fooFoo("string");',
+                'error_message' => 'InvalidArgument',
+            ],
+            'builtinFunctioninvalidArgumentWithWeakTypes' => [
+                '<?php
+                    $s = substr(5, 4);',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'builtinFunctioninvalidArgumentWithDeclareStrictTypes' => [
+                '<?php declare(strict_types=1);
+                    $s = substr(5, 4);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'builtinFunctioninvalidArgumentWithDeclareStrictTypesInClass' => [
+                '<?php declare(strict_types=1);
+                    class A {
+                        public function foo() : void {
+                            $s = substr(5, 4);
+                        }
+                    }',
+                'error_message' => 'InvalidArgument',
             ],
             'mixedArgument' => [
                 '<?php

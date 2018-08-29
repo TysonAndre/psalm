@@ -80,6 +80,19 @@ class A {}
 new A();
 ```
 
+### DeprecatedConstant
+
+Emitted when referring to a deprecated constant:
+
+```php
+class A {
+    /** @deprecated */
+    const FOO = 'foo';
+}
+
+echo A::FOO;
+```
+
 ### DeprecatedInterface
 
 Emitted when referring to a deprecated interface
@@ -116,6 +129,18 @@ class A {
     public $foo;
 }
 (new A())->foo = 5;
+```
+
+### DeprecatedTrait
+
+Emitted when referring to a deprecated trait:
+
+```php
+/** @deprecated */
+trait T {}
+class A {
+    use T;
+}
 ```
 
 ### DocblockTypeContradiction
@@ -679,7 +704,7 @@ class B extends A {
 
 ### MethodSignatureMustOmitReturnType
 
-Emmitted when a `__clone`, `__construct`, or `__destruct` method is defined with a return type.
+Emitted when a `__clone`, `__construct`, or `__destruct` method is defined with a return type.
 
 ```php
 class A {
@@ -760,7 +785,7 @@ function foo(int $i = 5, string $j) : void {}
 
 ### MissingClosureParamType
 
-Emitted when a closure paramter has no type information associated with it
+Emitted when a closure parameter has no type information associated with it
 
 ```php
 $a = function($a): string {
@@ -821,7 +846,7 @@ require("nonexistent.php");
 
 ### MissingParamType
 
-Emitted when a function paramter has no type information associated with it
+Emitted when a function parameter has no type information associated with it
 
 ```php
 function foo($a) : void {}

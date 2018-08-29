@@ -189,6 +189,21 @@ class AssertTest extends TestCase
                         echo "Ma chaine " . $myString;
                     }'
             ],
+            'assertServerVar' => [
+                '<?php
+                    /**
+                     * @psalm-assert-if-true string $a
+                     * @param mixed $a
+                     */
+                    function my_is_string($a) : bool
+                    {
+                        return is_string($a);
+                    }
+
+                    if (my_is_string($_SERVER["abc"])) {
+                        $i = substr($_SERVER["abc"], 1, 2);
+                    }',
+            ],
         ];
     }
 
@@ -254,6 +269,48 @@ class AssertTest extends TestCase
                         echo "Ma chaine " . $myString;
                     }',
                 'error_message' => 'PossiblyNullOperand',
+            ],
+            'assertIfTrueMethodCall' => [
+                '<?php
+                    class C {
+                        /**
+                         * @param mixed $p
+                         * @psalm-assert-if-true int $p
+                         */
+                        public function isInt($p): bool {
+                            return is_int($p);
+                        }
+                        /**
+                         * @param mixed $p
+                         */
+                        public function doWork($p): void {
+                            if ($this->isInt($p)) {
+                                strlen($p);
+                            }
+                        }
+                    }',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'assertIfStaticTrueMethodCall' => [
+                '<?php
+                    class C {
+                        /**
+                         * @param mixed $p
+                         * @psalm-assert-if-true int $p
+                         */
+                        public static function isInt($p): bool {
+                            return is_int($p);
+                        }
+                        /**
+                         * @param mixed $p
+                         */
+                        public function doWork($p): void {
+                            if ($this->isInt($p)) {
+                                strlen($p);
+                            }
+                        }
+                    }',
+                'error_message' => 'InvalidScalarArgument',
             ],
         ];
     }

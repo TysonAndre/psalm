@@ -361,6 +361,7 @@ class Reconciler
             }
 
             $existing_var_type->possibly_undefined = false;
+            $existing_var_type->possibly_undefined_from_try = false;
 
             return $existing_var_type;
         }
@@ -1134,6 +1135,7 @@ class Reconciler
                 }
 
                 $existing_var_type->possibly_undefined = false;
+                $existing_var_type->possibly_undefined_from_try = false;
 
                 if ($existing_var_type->getTypes()) {
                     return $existing_var_type;
@@ -1147,7 +1149,8 @@ class Reconciler
             $did_remove_type = $existing_var_type->hasDefinitelyNumericType()
                 || $existing_var_type->isEmpty()
                 || $existing_var_type->hasType('bool')
-                || $existing_var_type->possibly_undefined;
+                || $existing_var_type->possibly_undefined
+                || $existing_var_type->possibly_undefined_from_try;
 
             if ($existing_var_type->hasType('null')) {
                 $did_remove_type = true;
@@ -1210,6 +1213,7 @@ class Reconciler
             }
 
             $existing_var_type->possibly_undefined = false;
+            $existing_var_type->possibly_undefined_from_try = false;
 
             if (!$did_remove_type || empty($existing_var_type->getTypes())) {
                 if ($key && $code_location && !$is_equality) {
@@ -1419,7 +1423,7 @@ class Reconciler
                     $existing_var_type = new Type\Union([new Type\Atomic\TLiteralInt($value)]);
                 }
             }
-        } elseif ($scalar_type === 'string') {
+        } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
             if ($existing_var_type->hasString()) {
                 $existing_string_types = $existing_var_type->getLiteralStrings();
 
@@ -1451,7 +1455,11 @@ class Reconciler
                         );
                     }
                 } else {
-                    $existing_var_type = new Type\Union([new Type\Atomic\TLiteralString($value)]);
+                    if ($scalar_type === 'class-string') {
+                        $existing_var_type = new Type\Union([new Type\Atomic\TLiteralClassString($value)]);
+                    } else {
+                        $existing_var_type = new Type\Union([new Type\Atomic\TLiteralString($value)]);
+                    }
                 }
             }
         } elseif ($scalar_type === 'float') {
@@ -1532,7 +1540,7 @@ class Reconciler
                     $did_remove_type = true;
                 }
             }
-        } elseif ($scalar_type === 'string') {
+        } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
             if ($existing_var_type->hasString() && $existing_string_types = $existing_var_type->getLiteralStrings()) {
                 $did_match_literal_type = true;
 
@@ -1737,7 +1745,7 @@ class Reconciler
                     $parts_offset++;
                     $parts[$parts_offset] = $char;
                     $parts_offset++;
-                    continue;
+                    continue 2;
 
                 case '\'':
                 case '"':
@@ -1747,7 +1755,7 @@ class Reconciler
                     $parts[$parts_offset] .= $char;
                     $string_char = $char;
 
-                    continue;
+                    continue 2;
 
                 case '-':
                     if ($i < $char_count - 1 && $chars[$i + 1] === '>') {
@@ -1756,7 +1764,7 @@ class Reconciler
                         $parts_offset++;
                         $parts[$parts_offset] = '->';
                         $parts_offset++;
-                        continue;
+                        continue 2;
                     }
                     // fall through
 

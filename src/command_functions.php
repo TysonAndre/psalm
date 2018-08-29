@@ -46,7 +46,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
             $has_autoloader = true;
         }
 
-        if (!$has_autoloader) {
+        if (!$has_autoloader && file_exists($autoload_root . '/composer.json')) {
             $error_message = 'Could not find any composer autoloaders in ' . $autoload_root;
 
             if (!$has_explicit_root) {

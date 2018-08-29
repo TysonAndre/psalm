@@ -41,6 +41,16 @@ class FileFilter
     protected $inclusive;
 
     /**
+     * @var array<string, bool>
+     */
+    protected $ignore_type_stats = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    protected $declare_strict_types = [];
+
+    /**
      * @param  bool             $inclusive
      *
      * @psalm-suppress DocblockTypeContradiction
@@ -71,7 +81,20 @@ class FileFilter
         if ($e->directory) {
             /** @var \SimpleXMLElement $directory */
             foreach ($e->directory as $directory) {
-                $prospective_directory_path = ($base_dir . DIRECTORY_SEPARATOR . (string)$directory['name']);
+                $directory_path = (string) $directory['name'];
+                $ignore_type_stats = strtolower(
+                    isset($directory['ignoreTypeStats']) ? (string) $directory['ignoreTypeStats'] : ''
+                ) === 'true';
+                $declare_strict_types = strtolower(
+                    isset($directory['useStrictTypes']) ? (string) $directory['useStrictTypes'] : ''
+                ) === 'true';
+
+                if ($directory_path[0] === '/' && DIRECTORY_SEPARATOR === '/') {
+                    $prospective_directory_path = $directory_path;
+                } else {
+                    $prospective_directory_path = $base_dir . DIRECTORY_SEPARATOR . $directory_path;
+                }
+
                 if (strpos($prospective_directory_path, '*') !== false) {
                     $globs = array_map(
                         'realpath',
@@ -93,6 +116,15 @@ class FileFilter
                                 (string)$directory['name'] . ':' . $glob_index . PHP_EOL;
                             exit(1);
                         }
+
+                        if ($ignore_type_stats && $filter instanceof ProjectFileFilter) {
+                            $filter->ignore_type_stats[$directory_path] = true;
+                        }
+
+                        if ($declare_strict_types && $filter instanceof ProjectFileFilter) {
+                            $filter->declare_strict_types[$directory_path] = true;
+                        }
+
                         $filter->addDirectory($directory_path);
                     }
                     continue;
@@ -106,6 +138,14 @@ class FileFilter
                     exit(1);
                 }
 
+                if ($ignore_type_stats && $filter instanceof ProjectFileFilter) {
+                    $filter->ignore_type_stats[$directory_path] = true;
+                }
+
+                if ($declare_strict_types && $filter instanceof ProjectFileFilter) {
+                    $filter->declare_strict_types[$directory_path] = true;
+                }
+
                 $filter->addDirectory($directory_path);
             }
         }
@@ -113,7 +153,13 @@ class FileFilter
         if ($e->file) {
             /** @var \SimpleXMLElement $file */
             foreach ($e->file as $file) {
-                $prospective_file_path = $base_dir . DIRECTORY_SEPARATOR . (string)$file['name'];
+                $file_path = (string) $file['name'];
+
+                if ($file_path[0] === '/' && DIRECTORY_SEPARATOR === '/') {
+                    $prospective_file_path = $file_path;
+                } else {
+                    $prospective_file_path = $base_dir . DIRECTORY_SEPARATOR . $file_path;
+                }
 
                 if (strpos($prospective_file_path, '*') !== false) {
                     $globs = array_map(
@@ -164,6 +210,13 @@ class FileFilter
             /** @var \SimpleXMLElement $referenced_method */
             foreach ($e->referencedMethod as $referenced_method) {
                 $filter->method_ids[] = strtolower((string)$referenced_method['name']);
+            }
+        }
+
+        if ($e->referencedFunction) {
+            /** @var \SimpleXMLElement $referenced_function */
+            foreach ($e->referencedFunction as $referenced_function) {
+                $filter->method_ids[] = strtolower((string)$referenced_function['name']);
             }
         }
 
@@ -264,7 +317,7 @@ class FileFilter
      */
     public function allowsMethod($method_id)
     {
-        return in_array(strtolower($method_id), $this->method_ids);
+        return in_array($method_id, $this->method_ids);
     }
 
     /**

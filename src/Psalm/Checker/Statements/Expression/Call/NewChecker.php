@@ -157,6 +157,10 @@ class NewChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         || $lhs_type_part instanceof Type\Atomic\TGenericParam
                     ) {
                         // do nothing
+                    } elseif ($lhs_type_part instanceof Type\Atomic\TFalse
+                        && $stmt->class->inferredType->ignore_falsable_issues
+                    ) {
+                        // do nothing
                     } elseif ($lhs_type_part instanceof Type\Atomic\TNull
                         && $stmt->class->inferredType->ignore_nullable_issues
                     ) {
@@ -319,7 +323,8 @@ class NewChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     if (IssueBuffer::accepts(
                         new TooManyArguments(
                             'Class ' . $fq_class_name . ' has no __construct, but arguments were passed',
-                            new CodeLocation($statements_checker->getSource(), $stmt)
+                            new CodeLocation($statements_checker->getSource(), $stmt),
+                            $fq_class_name . '::__construct'
                         ),
                         $statements_checker->getSuppressedIssues()
                     )) {

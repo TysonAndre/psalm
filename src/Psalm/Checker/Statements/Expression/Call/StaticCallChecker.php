@@ -15,6 +15,7 @@ use Psalm\Issue\DeprecatedClass;
 use Psalm\Issue\InvalidStringClass;
 use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\UndefinedClass;
+use Psalm\Issue\UndefinedMethod;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
@@ -79,17 +80,40 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
 
                     $fq_class_name = $class_storage->name;
 
-                    if ($stmt->name instanceof PhpParser\Node\Identifier && $class_storage->user_defined) {
+                    if ($stmt->name instanceof PhpParser\Node\Identifier
+                        && $class_storage->user_defined
+                        && ($context->collect_mutations || $context->collect_initializations)
+                    ) {
                         $method_id = $fq_class_name . '::' . strtolower($stmt->name->name);
+
+                        $appearing_method_id = $codebase->getAppearingMethodId($method_id);
+
+                        if (!$appearing_method_id) {
+                            if (IssueBuffer::accepts(
+                                new UndefinedMethod(
+                                    'Method ' . $method_id . ' does not exist',
+                                    new CodeLocation($statements_checker->getSource(), $stmt),
+                                    $method_id
+                                ),
+                                $statements_checker->getSuppressedIssues()
+                            )) {
+                                return false;
+                            }
+
+                            return;
+                        }
+
+                        list($appearing_method_class_name) = explode('::', $appearing_method_id);
 
                         $old_context_include_location = $context->include_location;
                         $old_self = $context->self;
                         $context->include_location = new CodeLocation($statements_checker->getSource(), $stmt);
-                        $context->self = $fq_class_name;
+                        $context->self = $appearing_method_class_name;
 
                         if ($context->collect_mutations) {
                             $file_checker->getMethodMutations($method_id, $context);
-                        } elseif ($context->collect_initializations) {
+                        } else {
+                            // collecting initializations
                             $local_vars_in_scope = [];
                             $local_vars_possibly_in_scope = [];
 
@@ -131,12 +155,19 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $context->vars_in_scope['$this'] = Type::parseString($old_self);
                         }
                     }
+                } elseif ($context->self) {
+                    if ($stmt->class->parts[0] === 'static' && isset($context->vars_in_scope['$this'])) {
+                        $fq_class_name = (string) $context->vars_in_scope['$this'];
+                        $lhs_type = clone $context->vars_in_scope['$this'];
+                    } else {
+                        $fq_class_name = $context->self;
+                    }
                 } else {
                     $namespace = $statements_checker->getNamespace()
                         ? $statements_checker->getNamespace() . '\\'
                         : '';
 
-                    $fq_class_name = $context->self ?: $namespace . $statements_checker->getClassName();
+                    $fq_class_name = $namespace . $statements_checker->getClassName();
                 }
 
                 if ($context->isPhantomClass($fq_class_name)) {
@@ -178,7 +209,7 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 }
             }
 
-            if ($fq_class_name) {
+            if ($fq_class_name && !$lhs_type) {
                 $lhs_type = new Type\Union([new TNamedObject($fq_class_name)]);
             }
         } else {
@@ -425,9 +456,32 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                             $statements_checker,
                             new CodeLocation($source, $stmt),
                             $statements_checker->getSuppressedIssues(),
-                            $context->getPhantomClasses()
+                            $context->phantom_classes
                         );
                     }
+                }
+
+                try {
+                    $method_storage = $codebase->methods->getUserMethodStorage($method_id);
+
+                    if ($method_storage->assertions) {
+                        self::applyAssertionsToContext(
+                            $method_storage->assertions,
+                            $stmt->args,
+                            $context,
+                            $statements_checker
+                        );
+                    }
+
+                    if ($method_storage->if_true_assertions) {
+                        $stmt->ifTrueAssertions = $method_storage->if_true_assertions;
+                    }
+
+                    if ($method_storage->if_false_assertions) {
+                        $stmt->ifFalseAssertions = $method_storage->if_false_assertions;
+                    }
+                } catch (\UnexpectedValueException $e) {
+                    // do nothing for non-user-defined methods
                 }
 
                 if ($config->after_method_checks) {

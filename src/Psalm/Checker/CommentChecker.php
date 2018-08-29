@@ -23,6 +23,7 @@ class CommentChecker
      * @param  array<string, string>|null   $template_type_names
      * @param  int|null         $var_line_number
      * @param  int|null         $came_from_line_number what line number in $source that $comment came from
+     * @param  array<string, array<int, string>> $type_aliases
      *
      * @throws DocblockParseException if there was a problem parsing the docblock
      *
@@ -35,7 +36,8 @@ class CommentChecker
         Aliases $aliases,
         array $template_type_names = null,
         $var_line_number = null,
-        $came_from_line_number = null
+        $came_from_line_number = null,
+        array $type_aliases = null
     ) {
         $var_id = null;
 
@@ -77,7 +79,8 @@ class CommentChecker
                         $var_type_tokens = Type::fixUpLocalType(
                             $line_parts[0],
                             $aliases,
-                            $template_type_names
+                            $template_type_names,
+                            $type_aliases
                         );
                     } catch (TypeParseTreeException $e) {
                         throw new DocblockParseException($line_parts[0] . ' is not a valid type');
@@ -154,6 +157,101 @@ class CommentChecker
             'url' => 'string',
         ];
         return $renamings[$comment_type] ?? $comment_type;
+    }
+
+    /**
+     * @param  string           $comment
+     * @param  Aliases          $aliases
+     * @param  array<string, array<int, string>> $type_aliases
+     *
+     * @throws DocblockParseException if there was a problem parsing the docblock
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function getTypeAliasesFromComment(
+        $comment,
+        Aliases $aliases,
+        array $type_aliases = null
+    ) {
+        $comments = self::parseDocComment($comment);
+
+        if (!isset($comments['specials']['psalm-type'])) {
+            return [];
+        }
+
+        return self::getTypeAliasesFromCommentLines(
+            $comments['specials']['psalm-type'],
+            $aliases,
+            $type_aliases
+        );
+    }
+
+    /**
+     * @param  array<string>    $type_alias_comment_lines
+     * @param  Aliases          $aliases
+     * @param  array<string, array<int, string>> $type_aliases
+     *
+     * @throws DocblockParseException if there was a problem parsing the docblock
+     *
+     * @return array<string, array<int, string>>
+     */
+    private static function getTypeAliasesFromCommentLines(
+        array $type_alias_comment_lines,
+        Aliases $aliases,
+        array $type_aliases = null
+    ) {
+        $type_alias_tokens = [];
+
+        foreach ($type_alias_comment_lines as $var_line) {
+            $var_line = trim($var_line);
+
+            if (!$var_line) {
+                continue;
+            }
+
+            $var_line = preg_replace('/[ \t]+/', ' ', $var_line);
+
+            $var_line_parts = preg_split('/( |=)/', $var_line, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+
+            $type_alias = array_shift($var_line_parts);
+
+            if (!isset($var_line_parts[0])) {
+                continue;
+            }
+
+            if ($var_line_parts[0] === ' ') {
+                array_shift($var_line_parts);
+            }
+
+            if ($var_line_parts[0] === '=') {
+                array_shift($var_line_parts);
+            }
+
+            if (!isset($var_line_parts[0])) {
+                continue;
+            }
+
+            if ($var_line_parts[0] === ' ') {
+                array_shift($var_line_parts);
+            }
+
+            $type_string = implode('', $var_line_parts);
+
+            try {
+                $type_tokens = Type::fixUpLocalType(
+                    $type_string,
+                    $aliases,
+                    null,
+                    $type_aliases
+                );
+            } catch (TypeParseTreeException $e) {
+                throw new DocblockParseException($type_string . ' is not a valid type');
+            }
+
+            $type_alias_tokens[$type_alias] = $type_tokens;
+        }
+
+        return $type_alias_tokens;
     }
 
     /**
@@ -309,8 +407,11 @@ class CommentChecker
             }
         }
 
-        if (isset($comments['specials']['template'])) {
-            foreach ($comments['specials']['template'] as $template_line) {
+        if (isset($comments['specials']['template']) || isset($comments['specials']['psalm-template'])) {
+            $all_templates = (isset($comments['specials']['template']) ? $comments['specials']['template'] : [])
+                + (isset($comments['specials']['psalm-template']) ? $comments['specials']['psalm-template'] : []);
+
+            foreach ($all_templates as $template_line) {
                 $template_type = preg_split('/[\s]+/', $template_line);
 
                 if (count($template_type) > 2 && in_array(strtolower($template_type[1]), ['as', 'super'], true)) {
@@ -667,8 +768,20 @@ class CommentChecker
                 ) {
                     throw new DocblockParseException('Invalid string ' . $return_block);
                 }
-            } elseif ($char === ' ' || $char === "\t") {
+            } elseif ($char === ' ') {
                 if ($brackets) {
+                    continue;
+                }
+
+                if ($next_char === '|') {
+                    ++$i;
+                    $type .= $next_char;
+                    continue;
+                }
+
+                $last_char = $i > 0 ? $return_block[$i - 1] : null;
+
+                if ($last_char === '|') {
                     continue;
                 }
 
