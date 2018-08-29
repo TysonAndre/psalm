@@ -17,6 +17,14 @@ class TLiteralClassString extends TLiteralString
     }
 
     /**
+     * @return string
+     */
+    public function getKey()
+    {
+        return 'class-string(' . $this->value . ')';
+    }
+
+    /**
      * @param  string|null   $namespace
      * @param  array<string> $aliased_classes
      * @param  string|null   $this_class
@@ -41,5 +49,13 @@ class TLiteralClassString extends TLiteralString
     public function canBeFullyExpressedInPhp()
     {
         return false;
+    }
+
+    /**
+     * @return string
+     */
+    public function getId()
+    {
+        return 'class-string(' . $this->value . ')';
     }
 }

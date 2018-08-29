@@ -106,6 +106,28 @@ class IncludeTest extends TestCase
                     getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
                 ],
             ],
+            'requireSingleStringType' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php
+                        $a = "file1.php";
+                        require($a);
+
+                        class B {
+                            public function foo(): void {
+                                (new A)->fooFoo();
+                            }
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        class A{
+                            public function fooFoo(): void {
+
+                            }
+                        }',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+            ],
             'nestedRequire' => [
                 'files' => [
                     getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
@@ -444,6 +466,75 @@ class IncludeTest extends TestCase
                     getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
                 ],
                 'error_message' => 'UndefinedMethod',
+            ],
+            'requireFunctionWithStrictTypes' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        function fooFoo(int $bar): void {
+
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php declare(strict_types=1);
+                        require("file1.php");
+
+                        fooFoo("hello");',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+                'error_message' => 'InvalidArgument',
+            ],
+            'requireFunctionWithStrictTypesInClass' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        function fooFoo(int $bar): void {
+
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php declare(strict_types=1);
+                        require("file1.php");
+
+                        class A {
+                            public function foo() {
+                                fooFoo("hello");
+                            }
+                        }',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+                'error_message' => 'InvalidArgument',
+            ],
+            'requireFunctionWithWeakTypes' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        function fooFoo(int $bar): void {
+
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php
+                        require("file1.php");
+
+                        fooFoo("hello");',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'requireFunctionWithStrictTypesButDocblockType' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        /** @param int $bar */
+                        function fooFoo($bar): void {
+
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php declare(strict_types=1);
+                        require("file1.php");
+
+                        fooFoo("hello");',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+                'error_message' => 'InvalidScalarArgument',
             ],
             'namespacedRequireFunction' => [
                 'files' => [

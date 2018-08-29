@@ -47,6 +47,7 @@ use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\TypeCombination;
@@ -430,11 +431,13 @@ class ExpressionChecker
 
                 foreach ($stmt->expr->inferredType->getTypes() as $type) {
                     if ($type instanceof Scalar) {
-                        $permissible_atomic_types[] = new TArray([Type::getInt(), new Type\Union([$type])]);
+                        $permissible_atomic_types[] = new ObjectLike([new Type\Union([$type])]);
+                    } elseif ($type instanceof TNull) {
+                        $permissible_atomic_types[] = new TArray([Type::getEmpty(), Type::getEmpty()]);
                     } elseif ($type instanceof TArray) {
-                        $permissible_atomic_types[] = $type;
+                        $permissible_atomic_types[] = clone $type;
                     } elseif ($type instanceof ObjectLike) {
-                        $permissible_atomic_types[] = $type->getGenericArrayType();
+                        $permissible_atomic_types[] = clone $type;
                     } else {
                         $all_permissible = false;
                         break;
@@ -793,7 +796,7 @@ class ExpressionChecker
             if ($stmt->name instanceof PhpParser\Node\Identifier) {
                 return $object_id . '->' . $stmt->name;
             } elseif (isset($stmt->name->inferredType) && $stmt->name->inferredType->isSingleStringLiteral()) {
-                return $object_id . '->' . $stmt->name->inferredType->getSingleStringLiteral();
+                return $object_id . '->' . $stmt->name->inferredType->getSingleStringLiteral()->value;
             } else {
                 return null;
             }
@@ -856,6 +859,7 @@ class ExpressionChecker
         $fleshed_out_type->ignore_falsable_issues = $return_type->ignore_falsable_issues;
         $fleshed_out_type->possibly_undefined = $return_type->possibly_undefined;
         $fleshed_out_type->by_ref = $return_type->by_ref;
+        $fleshed_out_type->initialized = $return_type->initialized;
 
         return $fleshed_out_type;
     }
@@ -896,7 +900,15 @@ class ExpressionChecker
         }
 
         if ($return_type instanceof Type\Atomic\TScalarClassConstant) {
+            if ($return_type->fq_classlike_name === 'self' && $self_class) {
+                $return_type->fq_classlike_name = $self_class;
+            }
+
             if ($project_checker->codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
+                if (strtolower($return_type->const_name) === 'class') {
+                    return new Type\Atomic\TLiteralClassString($return_type->fq_classlike_name);
+                }
+
                 $class_constants = $project_checker->codebase->classlikes->getConstantsForClass(
                     $return_type->fq_classlike_name,
                     \ReflectionProperty::IS_PRIVATE
@@ -1134,8 +1146,22 @@ class ExpressionChecker
         }
 
         if (isset($stmt->expr->inferredType)) {
+            $yield_from_type = null;
+
+            foreach ($stmt->expr->inferredType->getTypes() as $atomic_type) {
+                if ($yield_from_type === null
+                    && $atomic_type instanceof Type\Atomic\TGenericObject
+                    && strtolower($atomic_type->value) === 'generator'
+                    && isset($atomic_type->type_params[3])
+                ) {
+                    $yield_from_type = clone $atomic_type->type_params[3];
+                } else {
+                    $yield_from_type = Type::getMixed();
+                }
+            }
+
             // this should be whatever the generator above returns, but *not* the return type
-            $stmt->inferredType = Type::getMixed();
+            $stmt->inferredType = $yield_from_type ?: Type::getMixed();
         }
 
         return null;

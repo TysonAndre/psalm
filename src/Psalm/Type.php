@@ -24,6 +24,7 @@ use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
+use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
@@ -91,8 +92,11 @@ abstract class Type
      * @return Union
      * @throws TypeParseTreeException
      */
-    public static function parseString($type_string, $php_compatible = false, array $template_type_names = [])
-    {
+    public static function parseString(
+        $type_string,
+        $php_compatible = false,
+        array $template_type_names = []
+    ) {
         return self::parseTokens(self::tokenize($type_string), $php_compatible, $template_type_names);
     }
 
@@ -105,8 +109,11 @@ abstract class Type
      *
      * @return Union
      */
-    public static function parseTokens(array $type_tokens, $php_compatible = false, array $template_type_names = [])
-    {
+    public static function parseTokens(
+        array $type_tokens,
+        $php_compatible = false,
+        array $template_type_names = []
+    ) {
         if (count($type_tokens) === 1) {
             $only_token = $type_tokens[0];
 
@@ -590,13 +597,15 @@ abstract class Type
      * @param  string                       $string_type
      * @param  Aliases                      $aliases
      * @param  array<string, string>|null   $template_type_names
+     * @param  array<string, array<int, string>>|null   $type_aliases
      *
      * @return array<int, string>
      */
     public static function fixUpLocalType(
         $string_type,
         Aliases $aliases,
-        array $template_type_names = null
+        array $template_type_names = null,
+        array $type_aliases = null
     ) {
         $type_tokens = self::tokenize($string_type);
 
@@ -652,10 +661,24 @@ abstract class Type
                 continue;
             }
 
-            $type_tokens[$i] = self::getFQCLNFromString(
-                $string_type_token,
-                $aliases
-            );
+            if (isset($type_aliases[$string_type_token])) {
+                $replacement_tokens = $type_aliases[$string_type_token];
+
+                array_unshift($replacement_tokens, '(');
+                array_push($replacement_tokens, ')');
+
+                $diff = count($replacement_tokens) - 1;
+
+                array_splice($type_tokens, $i, 1, $replacement_tokens);
+
+                $i += $diff;
+                $l += $diff;
+            } else {
+                $type_tokens[$i] = self::getFQCLNFromString(
+                    $string_type_token,
+                    $aliases
+                );
+            }
         }
 
         return $type_tokens;
@@ -736,6 +759,16 @@ abstract class Type
         } else {
             $type = new TString();
         }
+
+        return new Union([$type]);
+    }
+
+    /**
+     * @return Type\Union
+     */
+    public static function getSingleLetter()
+    {
+        $type = new TSingleLetter;
 
         return new Union([$type]);
     }
@@ -940,6 +973,10 @@ abstract class Type
 
             if (!$type_1->initialized || !$type_2->initialized) {
                 $combined_type->initialized = false;
+            }
+
+            if ($type_1->possibly_undefined_from_try || $type_2->possibly_undefined_from_try) {
+                $combined_type->possibly_undefined_from_try = true;
             }
 
             if ($type_1->from_docblock || $type_2->from_docblock) {

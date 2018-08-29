@@ -28,6 +28,7 @@ use Psalm\Type\Atomic\TNumericString;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
+use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 
@@ -227,7 +228,7 @@ class TypeChecker
                     $atomic_to_string_cast
                 );
 
-                if ($is_atomic_contained_by) {
+                if ($is_atomic_contained_by && !$atomic_to_string_cast) {
                     return true;
                 }
             }
@@ -620,7 +621,10 @@ class TypeChecker
             return true;
         }
 
-        if (get_class($container_type_part) === TString::class && $input_type_part instanceof TLiteralString) {
+        if ((get_class($container_type_part) === TString::class
+                || get_class($container_type_part) === TSingleLetter::class)
+            && $input_type_part instanceof TLiteralString
+        ) {
             return true;
         }
 
@@ -638,7 +642,9 @@ class TypeChecker
             return false;
         }
 
-        if (get_class($input_type_part) === TString::class && $container_type_part instanceof TLiteralString) {
+        if ((get_class($input_type_part) === TString::class || get_class($container_type_part) === TSingleLetter::class)
+            && $container_type_part instanceof TLiteralString
+        ) {
             $type_coerced = true;
             $type_coerced_from_scalar = true;
 
@@ -654,6 +660,7 @@ class TypeChecker
 
             if ($input_type_part instanceof TClassString) {
                 $type_coerced = true;
+                $type_coerced_from_scalar = true;
 
                 return false;
             }
@@ -666,6 +673,7 @@ class TypeChecker
 
         if (($input_type_part instanceof TClassString || $input_type_part instanceof TLiteralClassString)
             && (get_class($container_type_part) === TString::class
+                || get_class($container_type_part) === TSingleLetter::class
                 || get_class($container_type_part) === Type\Atomic\GetClassT::class)
         ) {
             return true;
@@ -691,8 +699,8 @@ class TypeChecker
             return false;
         }
 
-        if ($container_type_part instanceof TString &&
-            $input_type_part instanceof TNamedObject
+        if ($container_type_part instanceof TString
+            && $input_type_part instanceof TNamedObject
         ) {
             // check whether the object has a __toString method
             if ($codebase->classOrInterfaceExists($input_type_part->value)
@@ -813,10 +821,6 @@ class TypeChecker
 
             foreach ($input_type_part->type_params as $i => $input_param) {
                 if (!isset($container_type_part->type_params[$i])) {
-                    $type_coerced = true;
-                    $type_coerced_from_mixed = true;
-
-                    $all_types_contain = false;
                     break;
                 }
 

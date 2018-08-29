@@ -56,7 +56,7 @@ class PropertyFetchChecker
         } elseif (isset($stmt->name->inferredType)
             && $stmt->name->inferredType->isSingleStringLiteral()
         ) {
-            $prop_name = $stmt->name->inferredType->getSingleStringLiteral();
+            $prop_name = $stmt->name->inferredType->getSingleStringLiteral()->value;
         } else {
             $prop_name = null;
         }
@@ -536,7 +536,7 @@ class PropertyFetchChecker
         } elseif (isset($stmt->name->inferredType)
             && $stmt->name->inferredType->isSingleStringLiteral()
         ) {
-            $prop_name = $stmt->name->inferredType->getSingleStringLiteral();
+            $prop_name = $stmt->name->inferredType->getSingleStringLiteral()->value;
         } else {
             $prop_name = null;
         }

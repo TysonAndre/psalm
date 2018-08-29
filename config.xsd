@@ -14,6 +14,7 @@
             <xs:element name="mockClasses" type="MockClassesType" minOccurs="0" maxOccurs="1" />
             <xs:element name="stubs" type="StubsType" minOccurs="0" maxOccurs="1" />
             <xs:element name="plugins" type="PluginsType" minOccurs="0" maxOccurs="1" />
+            <xs:element name="exitFunctions" type="ExitFunctionsType" minOccurs="0" maxOccurs="1" />
             <xs:element name="issueHandlers" type="IssueHandlersType" minOccurs="0" maxOccurs="1" />
             <xs:element name="ignoreExceptions" type="ExceptionsType" minOccurs="0" maxOccurs="1" />
         </xs:choice>
@@ -45,7 +46,7 @@
 
     <xs:complexType name="ProjectFilesType">
         <xs:choice maxOccurs="unbounded">
-            <xs:element name="directory" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
+            <xs:element name="directory" minOccurs="0" maxOccurs="unbounded" type="ProjectDirectoryAttributeType" />
             <xs:element name="file" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
             <xs:element name="ignoreFiles" minOccurs="0" maxOccurs="1">
                 <xs:complexType>
@@ -61,6 +62,12 @@
 	<!-- TODO: Add phpdoc renaming to xsd -->
     <xs:complexType name="NameAttributeType">
         <xs:attribute name="name" type="xs:string" use="required" />
+    </xs:complexType>
+
+    <xs:complexType name="ProjectDirectoryAttributeType">
+        <xs:attribute name="name" type="xs:string" use="required" />
+        <xs:attribute name="ignoreTypeStats" type="xs:string" />
+        <xs:attribute name="useStrictTypes" type="xs:string" />
     </xs:complexType>
 
     <xs:complexType name="FileExtensionsType">
@@ -93,6 +100,12 @@
         </xs:sequence>
     </xs:complexType>
 
+    <xs:complexType name="ExitFunctionsType">
+        <xs:sequence>
+            <xs:element name="function" maxOccurs="unbounded" type="NameAttributeType" />
+        </xs:sequence>
+    </xs:complexType>
+
     <xs:complexType name="PluginsType">
         <xs:sequence>
             <xs:element name="plugin" maxOccurs="unbounded">
@@ -111,9 +124,11 @@
             <xs:element name="ContinueOutsideLoop" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ConflictingReferenceConstraint" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedClass" type="ClassIssueHandlerType" minOccurs="0" />
+            <xs:element name="DeprecatedConstant" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedInterface" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedMethod" type="MethodIssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedProperty" type="PropertyIssueHandlerType" minOccurs="0" />
+            <xs:element name="DeprecatedTrait" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="DocblockTypeContradiction" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DuplicateArrayKey" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DuplicateParam" type="IssueHandlerType" minOccurs="0" />
@@ -251,8 +266,8 @@
             <xs:element name="RedundantConditionGivenDocblockType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ReferenceConstraintViolation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ReservedWord" type="IssueHandlerType" minOccurs="0" />
-            <xs:element name="TooFewArguments" type="IssueHandlerType" minOccurs="0" />
-            <xs:element name="TooManyArguments" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="TooFewArguments" type="FunctionIssueHandlerType" minOccurs="0" />
+            <xs:element name="TooManyArguments" type="FunctionIssueHandlerType" minOccurs="0" />
             <xs:element name="TypeCoercion" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TypeDoesNotContainNull" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TypeDoesNotContainType" type="IssueHandlerType" minOccurs="0" />

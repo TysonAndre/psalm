@@ -135,80 +135,6 @@ class AnnotationTest extends TestCase
 
     /**
      * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage InvalidArgument
-     *
-     * @return                   void
-     */
-    public function testDontAllowStringConstCoercion()
-    {
-        Config::getInstance()->allow_coercion_from_string_to_class_const = false;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                /**
-                 * @param class-string $s
-                 */
-                function takesClassConstants(string $s) : void {}
-
-                class A {}
-
-                takesClassConstants("A");'
-        );
-
-        $this->analyzeFile('somefile.php', new Context());
-    }
-
-    /**
-     * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage InvalidStringClass
-     *
-     * @return                   void
-     */
-    public function testDontAllowStringStandInForNewClass()
-    {
-        Config::getInstance()->allow_string_standin_for_class = false;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                class A {}
-
-                $a = "A";
-
-                new $a();'
-        );
-
-        $this->analyzeFile('somefile.php', new Context());
-    }
-
-    /**
-     * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage InvalidStringClass
-     *
-     * @return                   void
-     */
-    public function testDontAllowStringStandInForStaticMethodCall()
-    {
-        Config::getInstance()->allow_string_standin_for_class = false;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                class A {
-                    public static function foo() : void {}
-                }
-
-                $a = "A";
-
-                $a::foo();'
-        );
-
-        $this->analyzeFile('somefile.php', new Context());
-    }
-
-    /**
-     * @expectedException        \Psalm\Exception\CodeException
      * @expectedExceptionMessage InvalidParamDefault
      *
      * @return                   void
@@ -792,117 +718,6 @@ class AnnotationTest extends TestCase
                     '$b' => 'null|stdClass',
                 ],
             ],
-            'arrayOfClassConstants' => [
-                '<?php
-                    /**
-                     * @param array<class-string> $arr
-                     */
-                    function takesClassConstants(array $arr) : void {}
-
-                    class A {}
-                    class B {}
-
-                    takesClassConstants([A::class, B::class]);',
-            ],
-            'arrayOfStringClasses' => [
-                '<?php
-                    /**
-                     * @param array<class-string> $arr
-                     */
-                    function takesClassConstants(array $arr) : void {}
-
-                    class A {}
-                    class B {}
-
-                    takesClassConstants(["A", "B"]);',
-                'annotations' => [],
-                'error_levels' => ['TypeCoercion'],
-            ],
-            'singleClassConstantAsConstant' => [
-                '<?php
-                    /**
-                     * @param class-string $s
-                     */
-                    function takesClassConstants(string $s) : void {}
-
-                    class A {}
-
-                    takesClassConstants(A::class);',
-            ],
-            'singleClassConstantWithString' => [
-                '<?php
-                    /**
-                     * @param class-string $s
-                     */
-                    function takesClassConstants(string $s) : void {}
-
-                    class A {}
-
-                    takesClassConstants("A");',
-                'annotations' => [],
-                'error_levels' => ['TypeCoercion'],
-            ],
-            'returnClassConstant' => [
-                '<?php
-                    class A {}
-
-                    /**
-                     * @return class-string
-                     */
-                    function takesClassConstants() : string {
-                        return A::class;
-                    }',
-            ],
-            'returnClassConstantAllowCoercion' => [
-                '<?php
-                    class A {}
-
-                    /**
-                     * @return class-string
-                     */
-                    function takesClassConstants() : string {
-                        return "A";
-                    }',
-                'annotations' => [],
-                'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
-            ],
-            'returnClassConstantArray' => [
-                '<?php
-                    class A {}
-                    class B {}
-
-                    /**
-                     * @return array<class-string>
-                     */
-                    function takesClassConstants() : array {
-                        return [A::class, B::class];
-                    }',
-            ],
-            'returnClassConstantArrayAllowCoercion' => [
-                '<?php
-                    class A {}
-                    class B {}
-
-                    /**
-                     * @return array<class-string>
-                     */
-                    function takesClassConstants() : array {
-                        return ["A", "B"];
-                    }',
-                'annotations' => [],
-                'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
-            ],
-            'ifClassStringEquals' => [
-                '<?php
-                    class A {}
-                    class B {}
-
-                    /** @param class-string $class */
-                    function foo(string $class) : void {
-                        if ($class === A::class) {}
-                        if ($class === A::class || $class === B::class) {}
-                    }',
-            ],
             'allowOptionalParamsToBeEmptyArray' => [
                 '<?php
                     /** @param array{b?: int, c?: string} $a */
@@ -1023,6 +838,141 @@ class AnnotationTest extends TestCase
                     }
 
                     acceptsLiteral(returnsLiteral());'
+            ],
+            'typeAliasBeforeClass' => [
+                '<?php
+                    /**
+                     * @psalm-type CoolType = A|B|null
+                     */
+
+                    class A {}
+                    class B {}
+
+                    /** @return CoolType */
+                    function foo() {
+                        if (rand(0, 1)) {
+                            return new A();
+                        }
+
+                        if (rand(0, 1)) {
+                            return new B();
+                        }
+
+                        return null;
+                    }
+
+                    /** @param CoolType $a **/
+                    function bar ($a) : void { }
+
+                    bar(foo());'
+            ],
+            'typeAliasBeforeFunction' => [
+                '<?php
+                    /**
+                     * @psalm-type CoolType = A|B|null
+                     * @return CoolType
+                     */
+                    function foo() {
+                        if (rand(0, 1)) {
+                            return new A();
+                        }
+
+                        if (rand(0, 1)) {
+                            return new B();
+                        }
+
+                        return null;
+                    }
+
+                    class A {}
+                    class B {}
+
+                    /** @param CoolType $a **/
+                    function bar ($a) : void { }
+
+                    bar(foo());'
+            ],
+            'typeAliasInSeparateBlockBeforeFunction' => [
+                '<?php
+                    /**
+                     * @psalm-type CoolType = A|B|null
+                     */
+                    /**
+                     * @return CoolType
+                     */
+                    function foo() {
+                        if (rand(0, 1)) {
+                            return new A();
+                        }
+
+                        if (rand(0, 1)) {
+                            return new B();
+                        }
+
+                        return null;
+                    }
+
+                    class A {}
+                    class B {}
+
+                    /** @param CoolType $a **/
+                    function bar ($a) : void { }
+
+                    bar(foo());'
+            ],
+            'almostFreeStandingTypeAlias' => [
+                '<?php
+                    /**
+                     * @psalm-type CoolType = A|B|null
+                     */
+
+                    // this breaks up the line
+
+                    class A {}
+                    class B {}
+
+                    /** @return CoolType */
+                    function foo() {
+                        if (rand(0, 1)) {
+                            return new A();
+                        }
+
+                        if (rand(0, 1)) {
+                            return new B();
+                        }
+
+                        return null;
+                    }
+
+                    /** @param CoolType $a **/
+                    function bar ($a) : void { }
+
+                    bar(foo());'
+            ],
+            'listUnpackWithDocblock' => [
+                '<?php
+                    interface I {}
+
+                    class A implements I {
+                        public function bar() : void {}
+                    }
+
+                    /** @return I[] */
+                    function foo() : array {
+                        return [new A()];
+                    }
+
+                    /** @var A $a1 */
+                    [$a1, $a2] = foo();
+
+                    $a1->bar();',
+            ],
+            'spaceInType' => [
+                '<?php
+                    /** @return string | null */
+                    function foo(string $s = null) {
+                        return $s;
+                    }',
             ],
         ];
     }
@@ -1391,74 +1341,6 @@ class AnnotationTest extends TestCase
                     }',
                 'error_message' => 'PossiblyInvalidMethodCall',
             ],
-            'arrayOfStringClasses' => [
-                '<?php
-                    /**
-                     * @param array<class-string> $arr
-                     */
-                    function takesClassConstants(array $arr) : void {}
-
-                    class A {}
-                    class B {}
-
-                    takesClassConstants(["A", "B"]);',
-                'error_message' => 'TypeCoercion',
-            ],
-            'arrayOfNonExistentStringClasses' => [
-                '<?php
-                    /**
-                     * @param array<class-string> $arr
-                     */
-                    function takesClassConstants(array $arr) : void {}
-                    takesClassConstants(["A", "B"]);',
-                'error_message' => 'UndefinedClass',
-                'error_levels' => ['TypeCoercion'],
-            ],
-            'singleClassConstantWithInvalidDocblock' => [
-                '<?php
-                    /**
-                     * @param clas-string $s
-                     */
-                    function takesClassConstants(string $s) : void {}',
-                'error_message' => 'InvalidDocblock',
-            ],
-            'returnClassConstantDisallowCoercion' => [
-                '<?php
-                    class A {}
-
-                    /**
-                     * @return class-string
-                     */
-                    function takesClassConstants() : string {
-                        return "A";
-                    }',
-                'error_message' => 'LessSpecificReturnStatement',
-            ],
-            'returnClassConstantArrayDisallowCoercion' => [
-                '<?php
-                    class A {}
-
-                    /**
-                     * @return array<class-string>
-                     */
-                    function takesClassConstants() : array {
-                        return ["A", "B"];
-                    }',
-                'error_message' => 'LessSpecificReturnStatement',
-            ],
-            'returnClassConstantArrayAllowCoercionWithUndefinedClass' => [
-                '<?php
-                    class A {}
-
-                    /**
-                     * @return array<class-string>
-                     */
-                    function takesClassConstants() : array {
-                        return ["A", "B"];
-                    }',
-                'error_message' => 'UndefinedClass',
-                'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
-            ],
             'badStaticVar' => [
                 '<?php
                     /** @var static */
@@ -1502,6 +1384,27 @@ class AnnotationTest extends TestCase
                         return [];
                     }',
                 'error_message' => 'InvalidDocblock',
+            ],
+            'invalidTypeAlias' => [
+                '<?php
+                    /**
+                     * @psalm-type CoolType = A|B>
+                     */
+
+                    class A {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'typeAliasInObjectLike' => [
+                '<?php
+                    /**
+                     * @psalm-type aType null|"a"|"b"|"c"|"d"
+                     */
+
+                    /** @psalm-return array{0:bool,1:aType} */
+                    function f(): array {
+                        return [(bool)rand(0,1), rand(0,1) ? "z" : null];
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

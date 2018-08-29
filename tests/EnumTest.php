@@ -60,15 +60,47 @@ class EnumTest extends TestCase
                     namespace Ns;
 
                     class C {
-                        const A = "bat";
+                        const A1 = "bat";
                         const B = "baz";
                     }
-                    /** @psalm-param "foo"|"bar"|C::A|C::B $s */
+                    /** @psalm-param "foo"|"bar"|C::A1|C::B $s */
                     function foo($s) : void {}
                     foo("foo");
                     foo("bar");
                     foo("bat");
                     foo("baz");',
+            ],
+            'selfClassConstGoodValue' => [
+                '<?php
+                    class A {
+                        const FOO = "foo";
+                        const BAR = "bar";
+
+                        /**
+                         * @param (self::FOO | self::BAR) $s
+                         */
+                        public static function foo(string $s) : void {}
+                    }
+
+                    A::foo("foo");',
+            ],
+            'classConstants' => [
+                '<?php
+                    namespace NS {
+                        use OtherNS\C as E;
+                        class C {}
+                        class D {};
+                        /** @psalm-param C::class|D::class|E::class $s */
+                        function foo(string $s) : void {}
+                        foo(C::class);
+                        foo(D::class);
+                        foo(E::class);
+                        foo(\OtherNS\C::class);
+                    }
+
+                    namespace OtherNS {
+                        class C {}
+                    }',
             ],
         ];
     }
@@ -119,13 +151,58 @@ class EnumTest extends TestCase
                     foo("for");',
                 'error_message' => 'InvalidArgument',
             ],
-            'classConstantCorrect' => [
+            'classConstantNoClass' => [
                 '<?php
                     namespace Ns;
 
                     /** @psalm-param "foo"|"bar"|C::A|C::B $s */
                     function foo($s) : void {}',
                 'error_message' => 'UndefinedClass',
+            ],
+            'selfClassConstBadValue' => [
+                '<?php
+                    class A {
+                        const FOO = "foo";
+                        const BAR = "bar";
+
+                        /**
+                         * @param (self::FOO | self::BAR) $s
+                         */
+                        public static function foo(string $s) : void {}
+                    }
+
+                    A::foo("for");',
+                'error_message' => 'InvalidArgument',
+            ],
+            'selfClassConstBadConst' => [
+                '<?php
+                    class A {
+                        const FOO = "foo";
+                        const BAR = "bar";
+
+                        /**
+                         * @param (self::1FOO | self::BAR) $s
+                         */
+                        public static function foo(string $s) : void {}
+                    }',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'classConstantInvalidValue' => [
+                '<?php
+                    namespace NS {
+                        use OtherNS\C as E;
+                        class C {}
+                        class D {};
+                        class F {};
+                        /** @psalm-param C::class|D::class|E::class $s */
+                        function foo(string $s) : void {}
+                        foo(F::class);
+                    }
+
+                    namespace OtherNS {
+                        class C {}
+                    }',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

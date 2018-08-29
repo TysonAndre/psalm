@@ -57,14 +57,14 @@ abstract class Atomic
      *
      * @return Atomic
      */
-    public static function create($value, $php_compatible = false, array $template_type_names = [])
-    {
+    public static function create(
+        $value,
+        $php_compatible = false,
+        array $template_type_names = []
+    ) {
         switch ($value) {
             case 'int':
                 return new TInt();
-
-            case 'void':
-                return new TVoid();
 
             case 'float':
                 return new TFloat();
@@ -74,6 +74,9 @@ abstract class Atomic
 
             case 'bool':
                 return new TBool();
+
+            case 'void':
+                return new TVoid();
 
             case 'object':
                 return new TObject();

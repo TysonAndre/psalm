@@ -576,6 +576,10 @@ class Populator
         foreach ($parent_storage->inheritable_method_ids as $method_name => $declaring_method_id) {
             if (!$parent_storage->is_trait) {
                 $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
+
+                if (isset($storage->methods[$method_name])) {
+                    $storage->methods[$method_name]->overridden_somewhere = true;
+                }
             }
 
             $aliased_method_names = [$method_name];
@@ -614,6 +618,7 @@ class Populator
 
                     // tell the declaring class it's overridden downstream
                     $declaring_class_storage->methods[strtolower($declaring_method_name)]->overridden_downstream = true;
+                    $declaring_class_storage->methods[strtolower($declaring_method_name)]->overridden_somewhere = true;
                 }
             }
         }
@@ -647,7 +652,7 @@ class Populator
         }
 
         // register where they're declared
-        foreach ($parent_storage->declaring_property_ids as $property_name => $declaring_property_id) {
+        foreach ($parent_storage->declaring_property_ids as $property_name => $declaring_property_class) {
             if (isset($storage->declaring_property_ids[$property_name])) {
                 continue;
             }
@@ -659,7 +664,7 @@ class Populator
                 continue;
             }
 
-            $storage->declaring_property_ids[$property_name] = $declaring_property_id;
+            $storage->declaring_property_ids[$property_name] = $declaring_property_class;
         }
 
         // register where they're declared

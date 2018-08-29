@@ -77,6 +77,13 @@ class Union
     public $possibly_undefined = false;
 
     /**
+     * Whether or not this variable is possibly undefined
+     *
+     * @var bool
+     */
+    public $possibly_undefined_from_try = false;
+
+    /**
      * @var array<string, TLiteralString>
      */
     private $literal_string_types = [];
@@ -466,20 +473,6 @@ class Union
     {
         foreach ($this->types as $type) {
             if ($type->isObjectType()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return bool
-     */
-    public function hasObject()
-    {
-        foreach ($this->types as $type) {
-            if ($type instanceof Type\Atomic\TObject) {
                 return true;
             }
         }
@@ -955,7 +948,7 @@ class Union
     }
 
     /**
-     * @return string the only string literal represented by this union type
+     * @return TLiteralString the only string literal represented by this union type
      * @throws \InvalidArgumentException if isSingleStringLiteral is false
      */
     public function getSingleStringLiteral()
@@ -964,7 +957,7 @@ class Union
             throw new \InvalidArgumentException("Not a string literal");
         }
 
-        return reset($this->literal_string_types)->value;
+        return reset($this->literal_string_types);
     }
 
     /**
@@ -976,7 +969,7 @@ class Union
     }
 
     /**
-     * @return int the only int literal represented by this union type
+     * @return TLiteralInt the only int literal represented by this union type
      * @throws \InvalidArgumentException if isSingleIntLiteral is false
      */
     public function getSingleIntLiteral()
@@ -985,7 +978,7 @@ class Union
             throw new \InvalidArgumentException("Not an int literal");
         }
 
-        return reset($this->literal_int_types)->value;
+        return reset($this->literal_int_types);
     }
 
     /**
@@ -1044,6 +1037,10 @@ class Union
         }
 
         if ($this->possibly_undefined !== $other_type->possibly_undefined) {
+            return false;
+        }
+
+        if ($this->possibly_undefined_from_try !== $other_type->possibly_undefined_from_try) {
             return false;
         }
 

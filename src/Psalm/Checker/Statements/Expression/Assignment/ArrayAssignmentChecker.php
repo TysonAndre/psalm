@@ -107,6 +107,8 @@ class ArrayAssignmentChecker
 
         $var_id_additions = [];
 
+        $parent_var_id = null;
+
         $full_var_id = true;
 
         $child_stmt = null;
@@ -140,7 +142,7 @@ class ArrayAssignmentChecker
                     if ($child_stmt->dim instanceof PhpParser\Node\Scalar\String_) {
                         $value = $child_stmt->dim->value;
                     } else {
-                        $value = $child_stmt->dim->inferredType->getSingleStringLiteral();
+                        $value = $child_stmt->dim->inferredType->getSingleStringLiteral()->value;
                     }
 
                     if (preg_match('/^(0|[1-9][0-9]*)$/', $value)) {
@@ -154,7 +156,7 @@ class ArrayAssignmentChecker
                     if ($child_stmt->dim instanceof PhpParser\Node\Scalar\LNumber) {
                         $value = $child_stmt->dim->value;
                     } else {
-                        $value = $child_stmt->dim->inferredType->getSingleIntLiteral();
+                        $value = $child_stmt->dim->inferredType->getSingleIntLiteral()->value;
                     }
 
                     $var_id_additions[] = '[' . $value . ']';
@@ -180,6 +182,12 @@ class ArrayAssignmentChecker
             }
 
             $array_var_id = $root_var_id . implode('', $var_id_additions);
+
+            if ($parent_var_id && isset($context->vars_in_scope[$parent_var_id])) {
+                $child_stmt->var->inferredType = clone $context->vars_in_scope[$parent_var_id];
+            }
+
+            $parent_var_id = $array_var_id;
 
             $child_stmt->inferredType = ArrayFetchChecker::getArrayAccessTypeGivenOffset(
                 $statements_checker,
@@ -233,9 +241,9 @@ class ArrayAssignmentChecker
                 ) {
                     $key_value = $current_dim->value;
                 } elseif ($is_single_string_literal) {
-                    $key_value = $current_dim->inferredType->getSingleStringLiteral();
+                    $key_value = $current_dim->inferredType->getSingleStringLiteral()->value;
                 } else {
-                    $key_value = $current_dim->inferredType->getSingleIntLiteral();
+                    $key_value = $current_dim->inferredType->getSingleIntLiteral()->value;
                 }
 
                 $has_matching_objectlike_property = false;
@@ -311,9 +319,9 @@ class ArrayAssignmentChecker
             ) {
                 $key_value = $current_dim->value;
             } elseif ($is_single_string_literal) {
-                $key_value = $current_dim->inferredType->getSingleStringLiteral();
+                $key_value = $current_dim->inferredType->getSingleStringLiteral()->value;
             } else {
-                $key_value = $current_dim->inferredType->getSingleIntLiteral();
+                $key_value = $current_dim->inferredType->getSingleIntLiteral()->value;
             }
 
             $has_matching_objectlike_property = false;

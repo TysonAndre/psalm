@@ -35,8 +35,16 @@ class IncludeChecker
             return false;
         }
 
-        if ($stmt->expr instanceof PhpParser\Node\Scalar\String_) {
-            $path_to_file = str_replace('/', DIRECTORY_SEPARATOR, $stmt->expr->value);
+        if ($stmt->expr instanceof PhpParser\Node\Scalar\String_
+            || (isset($stmt->expr->inferredType) && $stmt->expr->inferredType->isSingleStringLiteral())
+        ) {
+            if ($stmt->expr instanceof PhpParser\Node\Scalar\String_) {
+                $path_to_file = $stmt->expr->value;
+            } else {
+                $path_to_file = $stmt->expr->inferredType->getSingleStringLiteral()->value;
+            }
+
+            $path_to_file = str_replace('/', DIRECTORY_SEPARATOR, $path_to_file);
 
             // attempts to resolve using get_include_path dirs
             $include_path = self::resolveIncludePath($path_to_file, dirname($statements_checker->getFileName()));
@@ -111,11 +119,17 @@ class IncludeChecker
                     $include_file_checker->addParentFilePath($parent_file_path);
                 }
 
-                $include_file_checker->analyze(
-                    $context,
-                    false,
-                    $global_context
-                );
+                try {
+                    $include_file_checker->analyze(
+                        $context,
+                        false,
+                        $global_context
+                    );
+                } catch (\Psalm\Exception\UnpreparedAnalysisException $e) {
+                    $context->check_classes = false;
+                    $context->check_variables = false;
+                    $context->check_functions = false;
+                }
 
                 foreach ($include_file_checker->getRequiredFilePaths() as $required_file_path) {
                     $current_file_checker->addRequiredFilePath($required_file_path);
@@ -136,16 +150,20 @@ class IncludeChecker
                 // fall through
             }
         } else {
-            $source = $statements_checker->getSource();
+            $var_id = ExpressionChecker::getArrayVarId($stmt->expr, null);
 
-            if (IssueBuffer::accepts(
-                new UnresolvableInclude(
-                    'Cannot resolve the given expression to a file path',
-                    new CodeLocation($source, $stmt)
-                ),
-                $source->getSuppressedIssues()
-            )) {
-                // fall through
+            if (!$var_id || !isset($context->phantom_files[$var_id])) {
+                $source = $statements_checker->getSource();
+
+                if (IssueBuffer::accepts(
+                    new UnresolvableInclude(
+                        'Cannot resolve the given expression to a file path',
+                        new CodeLocation($source, $stmt)
+                    ),
+                    $source->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
             }
         }
 
@@ -177,7 +195,13 @@ class IncludeChecker
 
         if ($stmt instanceof PhpParser\Node\Scalar\String_) {
             return $stmt->value;
-        } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
+        }
+
+        if (isset($stmt->inferredType) && $stmt->inferredType->isSingleStringLiteral()) {
+            return $stmt->inferredType->getSingleStringLiteral()->value;
+        }
+
+        if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
             $left_string = self::getPathTo($stmt->left, $file_name);
             $right_string = self::getPathTo($stmt->right, $file_name);
 
@@ -189,13 +213,23 @@ class IncludeChecker
             $stmt->name->parts === ['dirname']
         ) {
             if ($stmt->args) {
+                $dir_level = 1;
+
+                if (isset($stmt->args[1])) {
+                    if ($stmt->args[1]->value instanceof PhpParser\Node\Scalar\LNumber) {
+                        $dir_level = $stmt->args[1]->value->value;
+                    } else {
+                        return null;
+                    }
+                }
+
                 $evaled_path = self::getPathTo($stmt->args[0]->value, $file_name);
 
                 if (!$evaled_path) {
                     return null;
                 }
 
-                return dirname($evaled_path);
+                return dirname($evaled_path, $dir_level);
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\ConstFetch && $stmt->name instanceof PhpParser\Node\Name) {
             $const_name = implode('', $stmt->name->parts);

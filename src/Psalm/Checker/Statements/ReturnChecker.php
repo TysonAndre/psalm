@@ -127,7 +127,7 @@ class ReturnChecker
 
                     $local_return_type = $source->getLocalReturnType($storage->return_type);
 
-                    if ($local_return_type->isGenerator()) {
+                    if ($local_return_type->isGenerator() && $storage->has_yield) {
                         return null;
                     }
 
@@ -265,8 +265,9 @@ class ReturnChecker
                         } else {
                             if (IssueBuffer::accepts(
                                 new InvalidReturnStatement(
-                                    'The type \'' . $stmt->inferredType . '\' does not match the declared return '
-                                        . 'type \'' . $local_return_type . '\' for ' . $cased_method_id,
+                                    'The type \'' . $stmt->inferredType->getId()
+                                        . '\' does not match the declared return '
+                                        . 'type \'' . $local_return_type->getId() . '\' for ' . $cased_method_id,
                                     new CodeLocation($source, $stmt)
                                 ),
                                 $statements_checker->getSuppressedIssues()
@@ -314,7 +315,7 @@ class ReturnChecker
             } else {
                 if ($storage->signature_return_type
                     && !$storage->signature_return_type->isVoid()
-                    && !$storage->signature_return_type->isGenerator()
+                    && (!$storage->signature_return_type->isGenerator() || !$storage->has_yield)
                 ) {
                     if (IssueBuffer::accepts(
                         new InvalidReturnStatement(

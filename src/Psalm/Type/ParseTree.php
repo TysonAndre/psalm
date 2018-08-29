@@ -382,7 +382,7 @@ class ParseTree
 
                     if ($current_parent && $current_parent instanceof ParseTree\UnionTree) {
                         $current_leaf = $current_parent;
-                        continue;
+                        break;
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\IntersectionTree) {
@@ -420,7 +420,7 @@ class ParseTree
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\IntersectionTree) {
-                        continue;
+                        break;
                     }
 
                     $new_parent_leaf = new ParseTree\IntersectionTree($current_parent);
@@ -489,7 +489,10 @@ class ParseTree
                         case '::':
                             $nexter_token = $i + 2 < $c ? $type_tokens[$i + 2] : null;
 
-                            if (!$nexter_token || !preg_match('/^[A-Z_]+$/', $nexter_token)) {
+                            if (!$nexter_token
+                                || (!preg_match('/^[A-Z_][A-Z_0-9]*$/', $nexter_token)
+                                    && strtolower($nexter_token) !== 'class')
+                            ) {
                                 throw new TypeParseTreeException(
                                     'Invalid class constant ' . $nexter_token
                                 );

@@ -831,6 +831,13 @@ class ReturnTypeTest extends TestCase
                     }',
                 'error_message' => 'MixedTypeCoercion',
             ],
+            'detectMagicMethodBadReturnType' => [
+                '<?php
+                    class C {
+                        public function __invoke(): int {}
+                    }',
+                'error_message' => 'InvalidReturnType',
+            ],
         ];
     }
 }
