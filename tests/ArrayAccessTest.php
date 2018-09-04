@@ -149,6 +149,14 @@ class ArrayAccessTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedArgument'],
             ],
+            'mixedKeyMixedOffset' => [
+                '<?php
+                    function example(array $x, $y) : void {
+                        echo $x[$y];
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedArgument', 'MixedArrayOffset', 'MissingParamType'],
+            ],
         ];
     }
 
@@ -248,6 +256,25 @@ class ArrayAccessTest extends TestCase
                     function foo(string $s) : void {
                         echo $s[0][1];
                     }',
+                'error_message' => 'InvalidArrayOffset',
+            ],
+            'mixedKeyStdClassOffset' => [
+                '<?php
+                    function example(array $y) : void {
+                        echo $y[new stdClass()];
+                    }',
+                'error_message' => 'InvalidArrayOffset',
+            ],
+            'toStringOffset' => [
+                '<?php
+                    class Foo {
+                        public function __toString() {
+                            return "Foo";
+                        }
+                    }
+
+                    $a = ["Foo" => "bar"];
+                    echo $a[new Foo];',
                 'error_message' => 'InvalidArrayOffset',
             ],
         ];

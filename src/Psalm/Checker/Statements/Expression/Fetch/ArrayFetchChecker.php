@@ -380,10 +380,12 @@ class ArrayFetchChecker
                             $type->type_params[0] = $offset_type;
                         }
                     } elseif (!$type->type_params[0]->isEmpty()) {
-                        if (!TypeChecker::isContainedBy(
+                        if ((!TypeChecker::isContainedBy(
                             $project_checker->codebase,
                             $offset_type,
-                            $type->type_params[0],
+                            $type->type_params[0]->isMixed()
+                                ? new Type\Union([ new TInt, new TString ])
+                                : $type->type_params[0],
                             true,
                             $offset_type->ignore_falsable_issues,
                             $has_scalar_match,
@@ -393,7 +395,8 @@ class ArrayFetchChecker
                             $unused_incompatible_values,
                             $unused_has_partial_match,
                             $type_coerced_from_scalar
-                        ) && !$type_coerced_from_scalar
+                        ) && !$type_coerced_from_scalar)
+                            || $to_string_cast
                         ) {
                             $expected_offset_types[] = $type->type_params[0]->getId();
                         } else {
@@ -440,6 +443,8 @@ class ArrayFetchChecker
                         }
                     }
                 } else {
+                    $generic_key_type = $type->getGenericKeyType();
+
                     if ($key_value !== null) {
                         if (isset($type->properties[$key_value]) || $replacement_type) {
                             $has_valid_offset = true;
@@ -491,10 +496,12 @@ class ArrayFetchChecker
 
                             $array_access_type = Type::getMixed();
                         }
-                    } elseif (TypeChecker::isContainedBy(
+                    } elseif ((TypeChecker::isContainedBy(
                         $codebase,
                         $offset_type,
-                        $type->getGenericKeyType(),
+                        $generic_key_type->isMixed()
+                            ? new Type\Union([ new TInt, new TString ])
+                            : $generic_key_type,
                         true,
                         $offset_type->ignore_falsable_issues,
                         $has_scalar_match,
@@ -506,7 +513,8 @@ class ArrayFetchChecker
                         $type_coerced_from_scalar
                     )
                     || $type_coerced_from_scalar
-                    || $in_assignment
+                    || $in_assignment)
+                    && !$to_string_cast
                     ) {
                         if ($replacement_type) {
                             $generic_params = Type::combineUnionTypes(
@@ -515,7 +523,7 @@ class ArrayFetchChecker
                             );
 
                             $new_key_type = Type::combineUnionTypes(
-                                $type->getGenericKeyType(),
+                                $generic_key_type,
                                 $offset_type
                             );
 
@@ -553,7 +561,7 @@ class ArrayFetchChecker
                         $has_valid_offset = true;
                     } else {
                         if (!$inside_isset || $type->sealed) {
-                            $expected_offset_types[] = (string)$type->getGenericKeyType()->getId();
+                            $expected_offset_types[] = (string)$generic_key_type->getId();
                         }
 
                         $array_access_type = Type::getMixed();
