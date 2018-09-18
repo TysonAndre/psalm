@@ -420,6 +420,7 @@ class ParseTree
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\IntersectionTree) {
+                        $current_leaf = $current_parent;
                         break;
                     }
 

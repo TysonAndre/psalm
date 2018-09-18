@@ -427,6 +427,23 @@ class Reconciler
                 }
             }
 
+            if ($existing_var_type->hasFloat()) {
+                $existing_float_types = $existing_var_type->getLiteralFloats();
+
+                if ($existing_float_types) {
+                    foreach ($existing_float_types as $key => $literal_type) {
+                        if ($literal_type->value) {
+                            $existing_var_type->removeType($key);
+                            $did_remove_type = true;
+                        }
+                    }
+                } else {
+                    $did_remove_type = true;
+                    $existing_var_type->removeType('float');
+                    $existing_var_type->addType(new Type\Atomic\TLiteralFloat(0));
+                }
+            }
+
             if (isset($existing_var_atomic_types['array'])
                 && $existing_var_atomic_types['array']->getId() !== 'array<empty, empty>'
             ) {
@@ -448,6 +465,7 @@ class Reconciler
 
             foreach ($existing_var_atomic_types as $type_key => $type) {
                 if ($type instanceof TNamedObject
+                    || $type instanceof TObject
                     || $type instanceof TResource
                     || $type instanceof TCallable
                 ) {
@@ -738,6 +756,7 @@ class Reconciler
                     $codebase,
                     $existing_var_type_part,
                     $new_type_part,
+                    false,
                     $scalar_type_match_found,
                     $type_coerced,
                     $type_coerced_from_mixed,
@@ -804,6 +823,7 @@ class Reconciler
                         $project_checker->codebase,
                         $new_type_part,
                         $existing_var_type_part,
+                        false,
                         $scalar_type_match_found,
                         $type_coerced,
                         $type_coerced_from_mixed,
@@ -1325,6 +1345,7 @@ class Reconciler
                         $codebase,
                         $existing_var_type_part,
                         $new_type_part,
+                        false,
                         $scalar_type_match_found,
                         $type_coerced,
                         $type_coerced_from_mixed,
@@ -1389,6 +1410,10 @@ class Reconciler
         if ($scalar_type === 'int') {
             $value = (int) $value;
 
+            if ($existing_var_type->isMixed()) {
+                return new Type\Union([new Type\Atomic\TLiteralInt($value)]);
+            }
+
             if ($existing_var_type->hasInt()) {
                 $existing_int_types = $existing_var_type->getLiteralInts();
 
@@ -1424,6 +1449,14 @@ class Reconciler
                 }
             }
         } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
+            if ($existing_var_type->isMixed()) {
+                if ($scalar_type === 'class-string') {
+                    return new Type\Union([new Type\Atomic\TLiteralClassString($value)]);
+                }
+
+                return new Type\Union([new Type\Atomic\TLiteralString($value)]);
+            }
+
             if ($existing_var_type->hasString()) {
                 $existing_string_types = $existing_var_type->getLiteralStrings();
 
@@ -1464,6 +1497,10 @@ class Reconciler
             }
         } elseif ($scalar_type === 'float') {
             $value = (float) $value;
+
+            if ($existing_var_type->isMixed()) {
+                return new Type\Union([new Type\Atomic\TLiteralFloat($value)]);
+            }
 
             if ($existing_var_type->hasFloat()) {
                 $existing_float_types = $existing_var_type->getLiteralFloats();

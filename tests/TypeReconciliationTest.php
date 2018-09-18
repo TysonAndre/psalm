@@ -1019,6 +1019,35 @@ class TypeReconciliationTest extends TestCase
                         echo substr($_SERVER["abc"], 1, 2);
                     }',
             ],
+            'notObject' => [
+                '<?php
+                  function f(): ?object {
+                        return rand(0,1) ? new stdClass : null;
+                  }
+
+                  $data = f();
+                  if (!$data) {}
+                  if ($data) {}',
+            ],
+            'reconcileWithInstanceof' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                        public function b() : bool {
+                            return (bool) rand(0, 1);
+                        }
+                    }
+
+                    function bar(?A $a) : void {
+                        if (!$a || ($a instanceof B && $a->b())) {}
+                    }',
+            ],
+            'reconcileFloatToEmpty' => [
+                '<?php
+                    function bar(float $f) : void {
+                        if (!$f) {}
+                    }',
+            ],
         ];
     }
 

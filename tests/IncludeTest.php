@@ -11,11 +11,16 @@ class IncludeTest extends TestCase
      * @param array<int, string> $files_to_check
      * @param array<string, string> $files
      * @param bool $hoist_constants
+     * @param array<string, string> $error_levels
      *
      * @return void
      */
-    public function testValidInclude(array $files, array $files_to_check, $hoist_constants = false)
-    {
+    public function testValidInclude(
+        array $files,
+        array $files_to_check,
+        $hoist_constants = false,
+        array $error_levels = []
+    ) {
         $codebase = $this->project_checker->getCodebase();
 
         foreach ($files as $file_path => $contents) {
@@ -27,9 +32,14 @@ class IncludeTest extends TestCase
             $codebase->addFilesToAnalyze([$file_path => $file_path]);
         }
 
+        $config = $codebase->config;
+
+        foreach ($error_levels as $error_level) {
+            $config->setCustomErrorLevel($error_level, \Psalm\Config::REPORT_SUPPRESS);
+        }
+
         $codebase->scanFiles();
 
-        $config = $codebase->config;
         $config->hoist_constants = $hoist_constants;
 
         foreach ($files_to_check as $file_path) {
@@ -51,8 +61,7 @@ class IncludeTest extends TestCase
     public function testInvalidInclude(
         array $files,
         array $files_to_check,
-        $error_message,
-        $hoist_constants = false
+        $error_message
     ) {
         $codebase = $this->project_checker->getCodebase();
 
@@ -65,13 +74,12 @@ class IncludeTest extends TestCase
             $codebase->addFilesToAnalyze([$file_path => $file_path]);
         }
 
-        $codebase->scanFiles();
+        $config = $codebase->config;
 
         $this->expectException('\Psalm\Exception\CodeException');
         $this->expectExceptionMessageRegexp('/\b' . preg_quote($error_message, '/') . '\b/');
 
-        $config = $codebase->config;
-        $config->hoist_constants = $hoist_constants;
+        $codebase->scanFiles();
 
         foreach ($files_to_check as $file_path) {
             $file_checker = new FileChecker($this->project_checker, $file_path, $config->shortenFileName($file_path));
@@ -367,9 +375,9 @@ class IncludeTest extends TestCase
                             function doThing() : void {}
                         }',
                     getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php
-                        require("file1.php");
-
                         namespace Bar;
+
+                        require("file1.php");
 
                         use Foo\A;
 
@@ -378,9 +386,9 @@ class IncludeTest extends TestCase
                             return new A;
                         }',
                     getcwd() . DIRECTORY_SEPARATOR . 'file3.php' => '<?php
-                        require("file2.php");
-
                         namespace Bat;
+
+                        require("file2.php");
 
                         class C {
                             function boop() : void {
@@ -433,8 +441,51 @@ class IncludeTest extends TestCase
                 ],
                 'files_to_check' => [
                     getcwd() . DIRECTORY_SEPARATOR . 'file1.php',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
                 ],
                 'hoist_constants' => true,
+            ],
+            'duplicateClasses' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        class A {
+                            /** @var string|null */
+                            protected $a;
+                            public function aa() : void {}
+                            public function bb() : void { $this->aa(); }
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php
+                        class A {
+                            /** @var string|null */
+                            protected $b;
+                            public function dd() : void {}
+                            public function zz() : void { $this->dd(); }
+                        }',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+                'hoist_constants' => false,
+                'error_levels' => ['DuplicateClass'],
+            ],
+            'duplicateClassesProperty' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php' => '<?php
+                        class A {
+                            protected $a;
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php
+                        class A {
+                            protected $b;
+                        }',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'file1.php',
+                    getcwd() . DIRECTORY_SEPARATOR . 'file2.php',
+                ],
+                'hoist_constants' => false,
+                'error_levels' => ['DuplicateClass', 'MissingPropertyType'],
             ],
         ];
     }
@@ -596,9 +647,9 @@ class IncludeTest extends TestCase
             'invalidDoubleNestedTraitFunctionReturnInUncheckedFile' => [
                 'files' => [
                     getcwd() . DIRECTORY_SEPARATOR . 'file3.php' => '<?php
-                        require("file2.php");
-
                         namespace Foo;
+
+                        require("file2.php");
 
                         use Bar\B;
 
@@ -606,9 +657,9 @@ class IncludeTest extends TestCase
                             use B;
                         }',
                     getcwd() . DIRECTORY_SEPARATOR . 'file2.php' => '<?php
-                        require("file1.php");
-
                         namespace Bar;
+
+                        require("file1.php");
 
                         use Bat\A;
 

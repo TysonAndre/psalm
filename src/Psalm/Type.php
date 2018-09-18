@@ -329,7 +329,7 @@ abstract class Type
             }
 
             if ($type !== 'array') {
-                throw new \InvalidArgumentException('Object-like type must be array');
+                throw new TypeParseTreeException('Unexpected brace character');
             }
 
             return new ObjectLike($properties);
@@ -415,6 +415,12 @@ abstract class Type
             throw new \UnexpectedValueException(
                 'Was expecting an atomic or union type, got ' . get_class($non_nullable_type)
             );
+        }
+
+        if ($parse_tree instanceof ParseTree\MethodTree
+            || $parse_tree instanceof ParseTree\MethodWithReturnTypeTree
+        ) {
+            throw new TypeParseTreeException('Misplaced brackets');
         }
 
         if (!$parse_tree instanceof ParseTree\Value) {

@@ -744,7 +744,7 @@ class AnnotationTest extends TestCase
                     /** @var array{a:Closure():(array<mixed, mixed>|null), b?:Closure():array<mixed, mixed>, c?:Closure():array<mixed, mixed>, d?:Closure():array<mixed, mixed>, e?:Closure():(array{f:null|string, g:null|string, h:null|string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), p?:Closure():(array{f:null|string, g:null|string, h:null|string, q:string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), r?:Closure():(array<mixed, mixed>|null), s:array<mixed, mixed>} */
                     $arr = [];
 
-                    $arr["a"]()',
+                    $arr["a"]();',
             ],
             'megaClosureAnnotationWithSpacing' => [
                 '<?php
@@ -783,7 +783,7 @@ class AnnotationTest extends TestCase
                     } */
                     $arr = [];
 
-                    $arr["a"]()',
+                    $arr["a"]();',
             ],
             'slashAfter?' => [
                 '<?php
@@ -869,7 +869,8 @@ class AnnotationTest extends TestCase
             'typeAliasBeforeFunction' => [
                 '<?php
                     /**
-                     * @psalm-type CoolType = A|B|null
+                     * @psalm-type A_OR_B = A|B
+                     * @psalm-type CoolType = A_OR_B|null
                      * @return CoolType
                      */
                     function foo() {
@@ -1363,7 +1364,7 @@ class AnnotationTest extends TestCase
                 '<?php
                     /** @return Closure(int): */
                     function foo() : callable {
-                        return function () : void {}
+                        return function () : void {};
                     }',
                 'error_message' => 'InvalidDocblock',
             ],

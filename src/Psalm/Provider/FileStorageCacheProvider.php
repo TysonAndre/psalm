@@ -32,6 +32,10 @@ class FileStorageCacheProvider
             $storage_dir . 'FunctionLikeParameter.php',
         ];
 
+        if ($config->after_visit_classlikes) {
+            $dependent_files = array_merge($dependent_files, $config->plugin_paths);
+        }
+
         foreach ($dependent_files as $dependent_file_path) {
             if (!file_exists($dependent_file_path)) {
                 throw new \UnexpectedValueException($dependent_file_path . ' must exist');
@@ -78,6 +82,7 @@ class FileStorageCacheProvider
 
         $cache_hash = $this->getCacheHash($file_path, $file_contents);
 
+        /** @psalm-suppress TypeDoesNotContainType */
         if (@get_class($cached_value) === '__PHP_Incomplete_Class'
             || $cache_hash !== $cached_value->hash
         ) {

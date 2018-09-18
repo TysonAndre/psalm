@@ -14,7 +14,7 @@ class RedundantConditionTest extends TestCase
         return [
             'ignoreIssueAndAssign' => [
                 '<?php
-                    public function foo(): stdClass {
+                    function foo(): stdClass {
                         return new stdClass;
                     }
 
@@ -142,19 +142,23 @@ class RedundantConditionTest extends TestCase
             'noRedundantConditionAfterFromDocblockRemoval' => [
                 '<?php
                     class A {
-                      public function foo(): void{}
-                      public function bar(): void{}
+                        public function foo(): bool {
+                            return (bool) rand(0, 1);
+                        }
+                        public function bar(): bool {
+                            return (bool) rand(0, 1);
+                        }
                     }
 
                     /** @return A */
                     function makeA() {
-                      return new A;
+                        return new A;
                     }
 
                     $a = makeA();
 
                     if ($a === null) {
-                      exit;
+                        exit;
                     }
 
                     if ($a->foo() || $a->bar()) {}',
@@ -479,19 +483,19 @@ class RedundantConditionTest extends TestCase
         return [
             'ifFalse' => [
                 '<?php
-                    $y = false:
+                    $y = false;
                     if ($y) {}',
                 'error_message' => 'TypeDoesNotContainType',
             ],
             'ifNotTrue' => [
                 '<?php
-                    $y = true:
+                    $y = true;
                     if (!$y) {}',
                 'error_message' => 'TypeDoesNotContainType',
             ],
             'ifTrue' => [
                 '<?php
-                    $y = true:
+                    $y = true;
                     if ($y) {}',
                 'error_message' => 'RedundantCondition',
             ],

@@ -162,14 +162,14 @@ class FileManipulationTest extends TestCase
                 '<?php
                     $a = function() {
                         return "hello";
-                    }',
+                    };',
                 '<?php
                     $a = /**
                      * @return string
                      */
                     function() {
                         return "hello";
-                    }',
+                    };',
                 '5.6',
                 ['MissingClosureReturnType'],
                 true,
@@ -1060,6 +1060,113 @@ class FileManipulationTest extends TestCase
                 '7.1',
                 ['LessSpecificReturnType'],
                 true,
+            ],
+            'fixLessSpecificClosureReturnType' => [
+                '<?php
+                    function foo(string $name) : string {
+                        return $name . " hello";
+                    }
+
+                    function bar() : callable {
+                        return function(string $name) {
+                            return foo($name);
+                        };
+                    }',
+                '<?php
+                    function foo(string $name) : string {
+                        return $name . " hello";
+                    }
+
+                    /**
+                     * @return Closure
+                     *
+                     * @psalm-return Closure(string):string
+                     */
+                    function bar() : Closure {
+                        return function(string $name) {
+                            return foo($name);
+                        };
+                    }',
+                '7.1',
+                ['LessSpecificReturnType'],
+                false,
+            ],
+            'fixLessSpecificReturnTypePreserveNotes' => [
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @return object some description
+                     */
+                    function foo() {
+                        return new \stdClass();
+                    }',
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @return \stdClass some description
+                     */
+                    function foo() {
+                        return new \stdClass();
+                    }',
+                '5.6',
+                ['LessSpecificReturnType'],
+                false,
+            ],
+            'fixInvalidReturnTypePreserveNotes' => [
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        /**
+                         * @return string some description
+                         */
+                        function foo() {
+                            return new \stdClass();
+                        }
+                    }',
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        /**
+                         * @return \stdClass some description
+                         */
+                        function foo() {
+                            return new \stdClass();
+                        }
+                    }',
+                '5.6',
+                ['InvalidReturnType'],
+                false,
+            ],
+            'fixInvalidNullableReturnTypePreserveNotes' => [
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        /**
+                         * @return string|null some notes
+                         */
+                        function foo() : ?string {
+                            return "hello";
+                        }
+                    }',
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        /**
+                         * @return string some notes
+                         */
+                        function foo() : string {
+                            return "hello";
+                        }
+                    }',
+                '7.1',
+                ['LessSpecificReturnType'],
+                false,
             ],
             'fixLessSpecificReturnType' => [
                 '<?php

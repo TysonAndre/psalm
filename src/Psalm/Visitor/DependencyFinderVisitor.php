@@ -450,7 +450,7 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     }
                 }
             }
-        } elseif ($node instanceof PhpParser\Node\Expr\Yield_) {
+        } elseif ($node instanceof PhpParser\Node\Expr\Yield_ || $node instanceof PhpParser\Node\Expr\YieldFrom) {
             $function_like_storage = end($this->functionlike_storages);
 
             if ($function_like_storage) {
@@ -582,6 +582,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                         )) {
                             $this->file_storage->has_visitor_issues = true;
                         }
+
+                        $duplicate_storage->has_visitor_issues = true;
 
                         return false;
                     }
@@ -1348,6 +1350,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
                     $storage->return_type_location->setCommentLine($docblock_info->return_type_line_number);
                 }
             }
+
+            $storage->return_type_description = $docblock_info->return_type_description;
         }
 
         foreach ($docblock_info->globals as $global) {

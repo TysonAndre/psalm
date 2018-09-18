@@ -86,6 +86,10 @@ class ClassChecker extends ClassLikeChecker
 
         $storage = $this->storage;
 
+        if ($storage->has_visitor_issues) {
+            return;
+        }
+
         if ($class->name && preg_match(
             '/(^|\\\)(int|float|bool|string|void|null|false|true|resource|object|numeric|mixed)$/i',
             $fq_class_name
@@ -190,8 +194,6 @@ class ClassChecker extends ClassLikeChecker
                 } catch (\InvalidArgumentException $e) {
                     continue;
                 }
-
-                $storage->public_class_constants += $interface_storage->public_class_constants;
 
                 $code_location = new CodeLocation(
                     $this,
@@ -839,6 +841,8 @@ class ClassChecker extends ClassLikeChecker
 
         $analyzed_method_id = $actual_method_id;
 
+        $classlike_storage_provider = $project_checker->classlike_storage_provider;
+
         if ($class_context->self && $class_context->self !== $source->getFQCLN()) {
             $analyzed_method_id = (string)$method_checker->getMethodId($class_context->self);
 
@@ -854,7 +858,6 @@ class ClassChecker extends ClassLikeChecker
                 }
 
                 if ($declaring_method_id && $implementer_method_storage->abstract) {
-                    $classlike_storage_provider = $project_checker->classlike_storage_provider;
                     $appearing_storage = $classlike_storage_provider->get($class_context->self);
                     $declaring_method_storage = $codebase->methods->getStorage($declaring_method_id);
 
@@ -885,6 +888,7 @@ class ClassChecker extends ClassLikeChecker
 
         if ($stmt->name->name !== '__construct'
             && $config->reportIssueInFile('InvalidReturnType', $source->getFilePath())
+            && $class_context->self
         ) {
             $return_type_location = null;
             $secondary_return_type_location = null;

@@ -930,6 +930,36 @@ class FunctionCallTest extends TestCase
                     '$d' => 'array<int, array{0:string}|string>',
                 ],
             ],
+            'ksortPreserveShape' => [
+                '<?php
+                    $a = ["a" => 3, "b" => 4];
+                    ksort($a);
+                    acceptsAShape($a);
+
+                    /**
+                     * @param array{a:int,b:int} $a
+                     */
+                    function acceptsAShape(array $a): void {}',
+            ],
+            'suppressError' => [
+                '<?php
+                    $a = @file_get_contents("foo");',
+                'assertions' => [
+                    '$a' => 'string|false',
+                ],
+            ],
+            'arraySlicePreserveKeys' => [
+                '<?php
+                    $a = ["a" => 1, "b" => 2, "c" => 3];
+                    $b = array_slice($a, 1, 2, true);
+                    $c = array_slice($a, 1, 2, false);
+                    $d = array_slice($a, 1, 2);',
+                'assertions' => [
+                    '$b' => 'array<string, int>',
+                    '$c' => 'array<int, int>',
+                    '$d' => 'array<int, int>',
+                ],
+            ],
         ];
     }
 
