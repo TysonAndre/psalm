@@ -101,6 +101,7 @@ class PropertyFetchChecker
 
                         $codebase->properties->propertyExists(
                             $property_id,
+                            $context->calling_method_id,
                             new CodeLocation($statements_checker->getSource(), $stmt)
                         );
                     }
@@ -285,6 +286,7 @@ class PropertyFetchChecker
 
             if (!$codebase->properties->propertyExists(
                 $property_id,
+                $context->calling_method_id,
                 $context->collect_references ? new CodeLocation($statements_checker->getSource(), $stmt) : null
             )
             ) {
@@ -563,6 +565,7 @@ class PropertyFetchChecker
                     // log the appearance
                     $codebase->properties->propertyExists(
                         $property_id,
+                        $context->calling_method_id,
                         new CodeLocation($statements_checker->getSource(), $stmt)
                     );
                 }
@@ -572,6 +575,7 @@ class PropertyFetchChecker
 
             if (!$codebase->properties->propertyExists(
                 $property_id,
+                $context->calling_method_id,
                 $context->collect_references ? new CodeLocation($statements_checker->getSource(), $stmt) : null
             )
             ) {

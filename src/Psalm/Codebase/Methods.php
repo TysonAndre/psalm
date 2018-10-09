@@ -5,6 +5,7 @@ use PhpParser;
 use Psalm\Checker\MethodChecker;
 use Psalm\CodeLocation;
 use Psalm\Provider\ClassLikeStorageProvider;
+use Psalm\Provider\FileReferenceProvider;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
 
@@ -31,26 +32,35 @@ class Methods
     public $collect_references = false;
 
     /**
+     * @var FileReferenceProvider
+     */
+    public $file_reference_provider;
+
+    /**
      * @param ClassLikeStorageProvider $storage_provider
      */
     public function __construct(
         \Psalm\Config $config,
-        ClassLikeStorageProvider $storage_provider
+        ClassLikeStorageProvider $storage_provider,
+        FileReferenceProvider $file_reference_provider
     ) {
         $this->classlike_storage_provider = $storage_provider;
         $this->config = $config;
+        $this->file_reference_provider = $file_reference_provider;
     }
 
     /**
      * Whether or not a given method exists
      *
      * @param  string       $method_id
+     * @param  ?string      $calling_method_id
      * @param  CodeLocation|null $code_location
      *
      * @return bool
      */
     public function methodExists(
         $method_id,
+        $calling_method_id = null,
         CodeLocation $code_location = null
     ) {
         // remove trailing backslash if it exists
@@ -64,8 +74,36 @@ class Methods
         $class_storage = $this->classlike_storage_provider->get($fq_class_name);
 
         if (isset($class_storage->declaring_method_ids[$method_name])) {
+            $declaring_method_id = $class_storage->declaring_method_ids[$method_name];
+
+            $declaring_method_id_lc = strtolower($declaring_method_id);
+
+            if ($calling_method_id === $declaring_method_id_lc) {
+                return true;
+            }
+
+            if ($calling_method_id) {
+                $method_id_lc = strtolower($method_id);
+
+                if ($method_id_lc !== $declaring_method_id_lc
+                    && $class_storage->user_defined
+                    && isset($class_storage->potential_declaring_method_ids[$method_name])
+                ) {
+                    foreach ($class_storage->potential_declaring_method_ids[$method_name] as $potential_id => $_) {
+                        $this->file_reference_provider->addReferenceToClassMethod(
+                            $calling_method_id,
+                            $potential_id
+                        );
+                    }
+                } else {
+                    $this->file_reference_provider->addReferenceToClassMethod(
+                        $calling_method_id,
+                        $declaring_method_id_lc
+                    );
+                }
+            }
+
             if ($this->collect_references && $code_location) {
-                $declaring_method_id = $class_storage->declaring_method_ids[$method_name];
                 list($declaring_method_class, $declaring_method_name) = explode('::', $declaring_method_id);
 
                 $declaring_class_storage = $this->classlike_storage_provider->get($declaring_method_class);
@@ -120,6 +158,14 @@ class Methods
             && (CallMap::inCallMap($method_id) || ($old_method_id && CallMap::inCallMap($method_id)))
         ) {
             return true;
+        }
+
+        if ($calling_method_id) {
+            // also store failures in case the method is added later
+            $this->file_reference_provider->addReferenceToClassMethod(
+                $calling_method_id,
+                strtolower($method_id)
+            );
         }
 
         return false;

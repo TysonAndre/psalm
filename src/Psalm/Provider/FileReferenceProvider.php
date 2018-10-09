@@ -6,50 +6,101 @@ use Psalm\Checker\ProjectChecker;
 use Psalm\Config;
 
 /**
+ * @psalm-type  IssueData = array{
+ *     severity: string,
+ *     line_from: int,
+ *     line_to: int,
+ *     type: string,
+ *     message: string,
+ *     file_name: string,
+ *     file_path: string,
+ *     snippet: string,
+ *     from: int,
+ *     to: int,
+ *     snippet_from: int,
+ *     snippet_to: int,
+ *     column_from: int,
+ *     column_to: int
+ * }
+ */
+/**
  * Used to determine which files reference other files, necessary for using the --diff
  * option from the command line.
  */
 class FileReferenceProvider
 {
-    const REFERENCE_CACHE_NAME = 'references';
+    /**
+     * @var bool
+     */
+    private $loaded_from_cache = false;
 
     /**
      * A lookup table used for getting all the files that reference a class
      *
      * @var array<string, array<string,bool>>
      */
-    protected static $file_references_to_class = [];
+    private static $file_references_to_class = [];
 
     /**
      * A lookup table used for getting all the files that reference any other file
      *
      * @var array<string,array<string,bool>>
      */
-    protected static $referencing_files = [];
+    private static $referencing_files = [];
 
     /**
      * @var array<string, array<int,string>>
      */
-    protected static $files_inheriting_classes = [];
+    private static $files_inheriting_classes = [];
 
     /**
      * A list of all files deleted since the last successful run
      *
      * @var array<int, string>|null
      */
-    protected static $deleted_files = null;
+    private static $deleted_files = null;
 
     /**
      * A lookup table used for getting all the files referenced by a file
      *
      * @var array<string, array{a:array<int, string>, i:array<int, string>}>
      */
-    protected static $file_references = [];
+    private static $file_references = [];
+
+    /**
+     * @var array<string, array<string, bool>>
+     */
+    private static $class_method_references = [];
+
+    /**
+     * @var array<string, array<string, bool>>
+     */
+    private static $correct_methods = [];
+
+    /**
+     * @var array<string, array<int, IssueData>>
+     */
+    private static $issues = [];
+
+    /**
+     * @var bool
+     */
+    private $loaded_correct_methods_from_cache = false;
+
+    /**
+     * @var ?FileReferenceCacheProvider
+     */
+    public $cache;
+
+    public function __construct(FileReferenceCacheProvider $cache = null)
+    {
+        $this->cache = $cache;
+    }
 
     /**
      * @return array<string>
      */
-    public static function getDeletedReferencedFiles()
+    public function getDeletedReferencedFiles()
     {
         if (self::$deleted_files === null) {
             self::$deleted_files = array_filter(
@@ -74,7 +125,7 @@ class FileReferenceProvider
      *
      * @return void
      */
-    public static function addFileReferenceToClass($source_file, $fq_class_name_lc)
+    public function addFileReferenceToClass($source_file, $fq_class_name_lc)
     {
         self::$referencing_files[$source_file] = true;
         self::$file_references_to_class[$fq_class_name_lc][$source_file] = true;
@@ -83,7 +134,7 @@ class FileReferenceProvider
     /**
      * @return array<string, array<string,bool>>
      */
-    public static function getAllFileReferences()
+    public function getAllFileReferences()
     {
         return self::$file_references_to_class;
     }
@@ -94,7 +145,7 @@ class FileReferenceProvider
      *
      * @return void
      */
-    public static function addFileReferences(array $references)
+    public function addFileReferences(array $references)
     {
         self::$file_references_to_class = array_merge_recursive($references, self::$file_references_to_class);
     }
@@ -105,7 +156,7 @@ class FileReferenceProvider
      *
      * @return void
      */
-    public static function addFileInheritanceToClass($source_file, $fq_class_name_lc)
+    public function addFileInheritanceToClass($source_file, $fq_class_name_lc)
     {
         self::$files_inheriting_classes[$fq_class_name_lc][$source_file] = true;
     }
@@ -115,7 +166,7 @@ class FileReferenceProvider
      *
      * @return  array
      */
-    public static function calculateFilesReferencingFile(ProjectChecker $project_checker, $file)
+    private function calculateFilesReferencingFile(ProjectChecker $project_checker, $file)
     {
         $referenced_files = [];
 
@@ -138,7 +189,7 @@ class FileReferenceProvider
      *
      * @return  array
      */
-    public static function calculateFilesInheritingFile(ProjectChecker $project_checker, $file)
+    private function calculateFilesInheritingFile(ProjectChecker $project_checker, $file)
     {
         $referenced_files = [];
 
@@ -159,10 +210,8 @@ class FileReferenceProvider
     /**
      * @return void
      */
-    public static function removeDeletedFilesFromReferences()
+    public function removeDeletedFilesFromReferences()
     {
-        $cache_directory = Config::getInstance()->getCacheDirectory();
-
         $deleted_files = self::getDeletedReferencedFiles();
 
         if ($deleted_files) {
@@ -170,10 +219,9 @@ class FileReferenceProvider
                 unset(self::$file_references[$file]);
             }
 
-            file_put_contents(
-                $cache_directory . DIRECTORY_SEPARATOR . self::REFERENCE_CACHE_NAME,
-                serialize(self::$file_references)
-            );
+            if ($this->cache) {
+                $this->cache->setCachedFileReferences(self::$file_references);
+            }
         }
     }
 
@@ -182,7 +230,7 @@ class FileReferenceProvider
      *
      * @return array<string>
      */
-    public static function getFilesReferencingFile($file)
+    public function getFilesReferencingFile($file)
     {
         return isset(self::$file_references[$file]['a']) ? self::$file_references[$file]['a'] : [];
     }
@@ -192,9 +240,17 @@ class FileReferenceProvider
      *
      * @return array<string>
      */
-    public static function getFilesInheritingFromFile($file)
+    public function getFilesInheritingFromFile($file)
     {
         return isset(self::$file_references[$file]['i']) ? self::$file_references[$file]['i'] : [];
+    }
+
+    /**
+     * @return array<string, array<string, bool>>
+     */
+    public function getMethodsReferencing()
+    {
+        return self::$class_method_references;
     }
 
     /**
@@ -202,63 +258,186 @@ class FileReferenceProvider
      * @psalm-suppress MixedAssignment
      * @psalm-suppress MixedTypeCoercion
      */
-    public static function loadReferenceCache()
+    public function loadReferenceCache()
     {
-        $cache_directory = Config::getInstance()->getCacheDirectory();
+        if ($this->cache && !$this->loaded_from_cache) {
+            $this->loaded_from_cache = true;
 
-        if ($cache_directory) {
-            $cache_location = $cache_directory . DIRECTORY_SEPARATOR . self::REFERENCE_CACHE_NAME;
+            $file_references = $this->cache->getCachedFileReferences();
 
-            if (is_readable($cache_location)) {
-                $reference_cache = unserialize((string) file_get_contents($cache_location));
-
-                if (!is_array($reference_cache)) {
-                    throw new \UnexpectedValueException('The reference cache must be an array');
-                }
-
-                self::$file_references = $reference_cache;
-
-                return true;
+            if ($file_references === null) {
+                return false;
             }
+
+            self::$file_references = $file_references;
+
+            $class_method_references = $this->cache->getCachedMethodReferences();
+
+            if ($class_method_references === null) {
+                return false;
+            }
+
+            self::$class_method_references = $class_method_references;
+
+            $issues = $this->cache->getCachedIssues();
+
+            if ($issues === null) {
+                return false;
+            }
+
+            self::$issues = $issues;
+
+            return true;
         }
 
         return false;
     }
 
     /**
-     * @param  array<string, bool>  $visited_files
+     * @param  array<string, string|bool>  $visited_files
      *
      * @return void
      */
-    public static function updateReferenceCache(ProjectChecker $project_checker, array $visited_files)
+    public function updateReferenceCache(ProjectChecker $project_checker, array $visited_files)
     {
-        $cache_directory = Config::getInstance()->getCacheDirectory();
+        foreach ($visited_files as $file => $_) {
+            $all_file_references = array_unique(
+                array_merge(
+                    isset(self::$file_references[$file]['a']) ? self::$file_references[$file]['a'] : [],
+                    $this->calculateFilesReferencingFile($project_checker, $file)
+                )
+            );
 
-        if ($cache_directory) {
-            $cache_location = $cache_directory . DIRECTORY_SEPARATOR . self::REFERENCE_CACHE_NAME;
+            $inheritance_references = array_unique(
+                array_merge(
+                    isset(self::$file_references[$file]['i']) ? self::$file_references[$file]['i'] : [],
+                    $this->calculateFilesInheritingFile($project_checker, $file)
+                )
+            );
 
-            foreach ($visited_files as $file => $_) {
-                $all_file_references = array_unique(
-                    array_merge(
-                        isset(self::$file_references[$file]['a']) ? self::$file_references[$file]['a'] : [],
-                        FileReferenceProvider::calculateFilesReferencingFile($project_checker, $file)
-                    )
-                );
-
-                $inheritance_references = array_unique(
-                    array_merge(
-                        isset(self::$file_references[$file]['i']) ? self::$file_references[$file]['i'] : [],
-                        FileReferenceProvider::calculateFilesInheritingFile($project_checker, $file)
-                    )
-                );
-
-                self::$file_references[$file] = [
-                    'a' => $all_file_references,
-                    'i' => $inheritance_references,
-                ];
-            }
-
-            file_put_contents($cache_location, serialize(self::$file_references));
+            self::$file_references[$file] = [
+                'a' => $all_file_references,
+                'i' => $inheritance_references,
+            ];
         }
+
+        if ($this->cache) {
+            $this->cache->setCachedFileReferences(self::$file_references);
+            $this->cache->setCachedMethodReferences(self::$class_method_references);
+            $this->cache->setCachedIssues(self::$issues);
+        }
+    }
+
+    /**
+     * @param string $calling_method_id
+     * @param string $referenced_member_id
+     * @return void
+     */
+    public function addReferenceToClassMethod($calling_method_id, $referenced_member_id)
+    {
+        if (!isset(self::$class_method_references[$referenced_member_id])) {
+            self::$class_method_references[$referenced_member_id] = [$calling_method_id => true];
+        } else {
+            self::$class_method_references[$referenced_member_id][$calling_method_id] = true;
+        }
+    }
+
+    /**
+     * @return array<string, array<string,bool>>
+     */
+    public function getClassMethodReferences() : array
+    {
+        return self::$class_method_references;
+    }
+
+    /**
+     * @param array<string, array<string,bool>> $references
+     * @psalm-suppress MixedTypeCoercion
+     *
+     * @return void
+     */
+    public function addClassMethodReferences(array $references)
+    {
+        foreach ($references as $referenced_member_id => $calling_method_ids) {
+            if (isset(self::$class_method_references[$referenced_member_id])) {
+                self::$class_method_references[$referenced_member_id] = array_merge(
+                    self::$class_method_references[$referenced_member_id],
+                    $calling_method_ids
+                );
+            } else {
+                self::$class_method_references[$referenced_member_id] = $calling_method_ids;
+            }
+        }
+    }
+
+    /**
+     * @return array<string, array<int, IssueData>>
+     */
+    public function getExistingIssues() : array
+    {
+        return self::$issues;
+    }
+
+    /**
+     * @param string $file_path
+     * @return void
+     */
+    public function clearExistingIssuesForFile($file_path)
+    {
+        unset(self::$issues[$file_path]);
+    }
+
+    /**
+     * @param string $file_path
+     * @return void
+     */
+    public function addIssue($file_path, array $issue)
+    {
+        if (!isset(self::$issues[$file_path])) {
+            self::$issues[$file_path] = [$issue];
+        } else {
+            self::$issues[$file_path][] = $issue;
+        }
+    }
+
+    /**
+     * @return array<string, array<string, bool>>
+     */
+    public function getCorrectMethods(\Psalm\Config $config)
+    {
+        if (!$this->loaded_correct_methods_from_cache && $this->cache) {
+            self::$correct_methods = $this->cache->getCorrectMethodCache($config) ?: [];
+            $this->loaded_correct_methods_from_cache = true;
+        }
+
+        return self::$correct_methods;
+    }
+
+    /**
+     * @param array<string, array<string, bool>> $correct_methods
+     * @return  void
+     */
+    public function setCorrectMethods(array $correct_methods)
+    {
+        self::$correct_methods = $correct_methods;
+            
+        if ($this->cache) {
+            $this->cache->setCorrectMethodCache($correct_methods);
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public static function clearCache()
+    {
+        self::$file_references_to_class = [];
+        self::$referencing_files = [];
+        self::$files_inheriting_classes = [];
+        self::$deleted_files = null;
+        self::$file_references = [];
+        self::$class_method_references = [];
+        self::$correct_methods = [];
+        self::$issues = [];
     }
 }

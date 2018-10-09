@@ -485,6 +485,7 @@ class ClassChecker extends ClassLikeChecker
                             function (FunctionLikeParameter $param) {
                                 $fake_param = (new PhpParser\Builder\Param($param->name));
                                 if ($param->signature_type) {
+                                    /** @psalm-suppress DeprecatedMethod */
                                     $fake_param->setTypehint((string)$param->signature_type);
                                 }
 
@@ -532,7 +533,8 @@ class ClassChecker extends ClassLikeChecker
                             $storage,
                             $this,
                             $class_context,
-                            $global_context
+                            $global_context,
+                            true
                         );
 
                         $codebase->analyzer->enableMixedCounts();
@@ -820,6 +822,7 @@ class ClassChecker extends ClassLikeChecker
      * @param  StatementsSource                $source
      * @param  Context                         $class_context
      * @param  Context|null                    $global_context
+     * @param  bool                            $is_fake
      *
      * @return MethodChecker|null
      */
@@ -828,7 +831,8 @@ class ClassChecker extends ClassLikeChecker
         ClassLikeStorage $class_storage,
         StatementsSource $source,
         Context $class_context,
-        Context $global_context = null
+        Context $global_context = null,
+        $is_fake = false
     ) {
         $config = Config::getInstance();
 
@@ -873,10 +877,45 @@ class ClassChecker extends ClassLikeChecker
                     );
                 }
 
-
                 return;
             }
         }
+
+        $is_method_correct = $codebase->analyzer->isMethodCorrect(
+            $source->getFilePath(),
+            strtolower($analyzed_method_id)
+        );
+
+        if ($is_method_correct
+            && !$class_context->collect_initializations
+            && !$class_context->collect_mutations
+            && !$is_fake
+        ) {
+            if ($project_checker->debug_output) {
+                echo 'Skipping analysis of pre-verified method ' . $analyzed_method_id . "\n";
+            }
+
+            $start = (int)$stmt->getAttribute('startFilePos');
+            $end = (int)$stmt->getAttribute('endFilePos');
+
+            $comments = $stmt->getComments();
+
+            if ($comments) {
+                $start = $comments[0]->getFilePos();
+            }
+
+            $existing_issues = $codebase->analyzer->getExistingIssuesForFile(
+                $source->getFilePath(),
+                $start,
+                $end
+            );
+
+            IssueBuffer::addIssues($existing_issues);
+
+            return $method_checker;
+        }
+
+        $existing_error_count = IssueBuffer::getErrorCount();
 
         $method_context = clone $class_context;
         $method_context->collect_exceptions = $config->check_for_throws_docblock;
@@ -952,6 +991,17 @@ class ClassChecker extends ClassLikeChecker
                     $overridden_method_ids
                 );
             }
+        }
+
+        $has_errors = IssueBuffer::getErrorCount() > $existing_error_count;
+
+        if (!$is_method_correct
+            && !$has_errors
+            && !$class_context->collect_initializations
+            && !$class_context->collect_mutations
+            && !$is_fake
+        ) {
+            $codebase->analyzer->setCorrectMethod($source->getFilePath(), strtolower($analyzed_method_id));
         }
 
         return $method_checker;

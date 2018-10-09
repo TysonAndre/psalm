@@ -223,6 +223,16 @@ class Config
     public $ignored_exceptions = [];
 
     /**
+     * @var array<string, bool>
+     */
+    public $forbidden_functions = [];
+
+    /**
+     * @var bool
+     */
+    public $forbid_echo = false;
+
+    /**
      * @var string[]
      */
     public $plugin_paths = [];
@@ -291,6 +301,11 @@ class Config
      * @var array<string, bool>
      */
     public $exit_functions = [];
+
+    /**
+     * @var int
+     */
+    public $modified_time = 0;
 
     protected function __construct()
     {
@@ -369,6 +384,7 @@ class Config
 
         try {
             $config = self::loadFromXML($base_dir, $file_contents);
+            $config->modified_time = filemtime($file_path);
         } catch (ConfigException $e) {
             throw new ConfigException(
                 'Problem parsing ' . $file_path . ":\n" . '  ' . $e->getMessage()
@@ -559,6 +575,11 @@ class Config
             $config->check_for_throws_docblock = $attribute_text === 'true' || $attribute_text === '1';
         }
 
+        if (isset($config_xml['forbidEcho'])) {
+            $attribute_text = (string) $config_xml['forbidEcho'];
+            $config->forbid_echo = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
         }
@@ -580,6 +601,13 @@ class Config
             /** @var \SimpleXMLElement $exception_class */
             foreach ($config_xml->ignoreExceptions->class as $exception_class) {
                 $config->ignored_exceptions[(string) $exception_class['name']] = true;
+            }
+        }
+
+        if (isset($config_xml->forbiddenFunctions) && isset($config_xml->forbiddenFunctions->function)) {
+            /** @var \SimpleXMLElement $forbidden_function */
+            foreach ($config_xml->forbiddenFunctions->function as $forbidden_function) {
+                $config->forbidden_functions[strtolower((string) $forbidden_function['name'])] = true;
             }
         }
 

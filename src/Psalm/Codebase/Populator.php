@@ -45,6 +45,11 @@ class Populator
     private $config;
 
     /**
+     * @var FileReferenceProvider
+     */
+    private $file_reference_provider;
+
+    /**
      * @param bool $debug_output
      */
     public function __construct(
@@ -52,6 +57,7 @@ class Populator
         ClassLikeStorageProvider $classlike_storage_provider,
         FileStorageProvider $file_storage_provider,
         ClassLikes $classlikes,
+        FileReferenceProvider $file_reference_provider,
         $debug_output
     ) {
         $this->classlike_storage_provider = $classlike_storage_provider;
@@ -59,6 +65,7 @@ class Populator
         $this->classlikes = $classlikes;
         $this->debug_output = $debug_output;
         $this->config = $config;
+        $this->file_reference_provider = $file_reference_provider;
     }
 
     /**
@@ -214,6 +221,15 @@ class Populator
             $this->populateDataFromParentClass($storage, $storage_provider, $dependent_classlikes);
         }
 
+        if (!strpos($fq_classlike_name_lc, '\\')
+            && !isset($storage->methods['__construct'])
+            && isset($storage->methods[$fq_classlike_name_lc])
+            && !$storage->is_interface
+            && !$storage->is_trait
+        ) {
+            $storage->methods['__construct'] = $storage->methods[$fq_classlike_name_lc];
+        }
+
         $this->populateInterfaceDataFromParentInterfaces($storage, $storage_provider, $dependent_classlikes);
 
         $this->populateDataFromImplementedInterfaces($storage, $storage_provider, $dependent_classlikes);
@@ -222,19 +238,22 @@ class Populator
             $file_path = $storage->location->file_path;
 
             foreach ($storage->parent_interfaces as $parent_interface_lc) {
-                FileReferenceProvider::addFileInheritanceToClass($file_path, $parent_interface_lc);
+                $this->file_reference_provider->addFileInheritanceToClass($file_path, $parent_interface_lc);
             }
 
             foreach ($storage->parent_classes as $parent_class_lc) {
-                FileReferenceProvider::addFileInheritanceToClass($file_path, $parent_class_lc);
+                $this->file_reference_provider->addFileInheritanceToClass($file_path, $parent_class_lc);
             }
 
             foreach ($storage->class_implements as $implemented_interface) {
-                FileReferenceProvider::addFileInheritanceToClass($file_path, strtolower($implemented_interface));
+                $this->file_reference_provider->addFileInheritanceToClass(
+                    $file_path,
+                    strtolower($implemented_interface)
+                );
             }
 
             foreach ($storage->used_traits as $used_trait_lc) {
-                FileReferenceProvider::addFileInheritanceToClass($file_path, $used_trait_lc);
+                $this->file_reference_provider->addFileInheritanceToClass($file_path, $used_trait_lc);
             }
         }
 
@@ -577,6 +596,22 @@ class Populator
 
                 $storage->appearing_method_ids[$aliased_method_name] =
                     $parent_storage->is_trait ? $implemented_method_id : $appearing_method_id;
+
+                $this_method_id = strtolower($fq_class_name . '::' . $method_name);
+
+                if (isset($storage->methods[$aliased_method_name])) {
+                    $storage->potential_declaring_method_ids[$aliased_method_name] = [$this_method_id => true];
+                } else {
+                    if (isset($parent_storage->potential_declaring_method_ids[$aliased_method_name])) {
+                        $storage->potential_declaring_method_ids[$aliased_method_name]
+                            = $parent_storage->potential_declaring_method_ids[$aliased_method_name];
+                    }
+
+                    $storage->potential_declaring_method_ids[$aliased_method_name][$this_method_id] = true;
+
+                    $parent_method_id = strtolower($parent_storage->name . '::' . $method_name);
+                    $storage->potential_declaring_method_ids[$aliased_method_name][$parent_method_id] = true;
+                }
             }
         }
 

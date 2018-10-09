@@ -378,6 +378,7 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
                         $statements_checker,
                         $function_id,
                         $stmt->args,
+                        $context,
                         $code_location,
                         $statements_checker->getSuppressedIssues()
                     );
@@ -506,6 +507,16 @@ class FunctionCallChecker extends \Psalm\Checker\Statements\Expression\CallCheck
                 if (IssueBuffer::accepts(
                     new ForbiddenCode(
                         'Unsafe ' . implode('', $function->parts),
+                        new CodeLocation($statements_checker->getSource(), $stmt)
+                    ),
+                    $statements_checker->getSuppressedIssues()
+                )) {
+                    return false;
+                }
+            } elseif (isset($codebase->config->forbidden_functions[strtolower((string) $function)])) {
+                if (IssueBuffer::accepts(
+                    new ForbiddenCode(
+                        'You have forbidden the use of ' . $function,
                         new CodeLocation($statements_checker->getSource(), $stmt)
                     ),
                     $statements_checker->getSuppressedIssues()

@@ -80,10 +80,10 @@ class ConfigTest extends TestCase
     {
         return new \Psalm\Checker\ProjectChecker(
             $config,
-            $this->file_provider,
-            new Provider\FakeParserCacheProvider(),
-            new \Psalm\Provider\NoCache\NoFileStorageCacheProvider(),
-            new \Psalm\Provider\NoCache\NoClassLikeStorageCacheProvider()
+            new \Psalm\Provider\Providers(
+                $this->file_provider,
+                new Provider\FakeParserCacheProvider()
+            )
         );
     }
 
@@ -401,6 +401,10 @@ class ConfigTest extends TestCase
                  * @return string
                  */
                 function ($issue_name) {
+                    if ($issue_name === 'ParseError') {
+                        return '';
+                    }
+
                     return '<' . $issue_name . ' errorLevel="suppress" />' . "\n";
                 },
                 self::getAllIssues()
@@ -622,6 +626,298 @@ class ConfigTest extends TestCase
                             exit();
                         }
                     }
+                }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testAllowedEchoFunction()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm></psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                echo "hello";'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException  \Psalm\Exception\CodeException
+     * @expectedExceptionMessage  ForbiddenCode
+     * @return void
+     */
+    public function testForbiddenEchoFunctionViaFunctions()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <forbiddenFunctions>
+                        <function name="echo" />
+                    </forbiddenFunctions>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                echo "hello";'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException  \Psalm\Exception\CodeException
+     * @expectedExceptionMessage  ForbiddenEcho
+     * @return void
+     */
+    public function testForbiddenEchoFunctionViaFlag()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm forbidEcho="true"></psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                echo "hello";'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testAllowedVarExportFunction()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm></psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                $a = [1, 2, 3];
+                var_export($a);'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException  \Psalm\Exception\CodeException
+     * @expectedExceptionMessage  ForbiddenCode
+     * @return  void
+     */
+    public function testForbiddenVarExportFunction()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <forbiddenFunctions>
+                        <function name="var_export" />
+                    </forbiddenFunctions>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                $a = [1, 2, 3];
+                var_export($a);'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException  \Psalm\Exception\CodeException
+     * @expectedExceptionMessage  InvalidCatch
+     * @return void
+     */
+    public function testValidThrowInvalidCatch()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <issueHandlers>
+                        <InvalidThrow>
+                            <errorLevel type="suppress">
+                                <referencedClass name="I" />
+                            </errorLevel>
+                        </InvalidThrow>
+                    </issueHandlers>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                interface I {}
+
+                class E extends Exception implements I {}
+
+                function foo() : void {
+                    throw new E();
+                }
+
+                function handleThrow(I $e) : void {
+                    echo "about to throw";
+                    throw $e;
+                }
+
+                try {
+                    foo();
+                } catch (I $e) {
+                    handleThrow($e);
+                }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException  \Psalm\Exception\CodeException
+     * @expectedExceptionMessage  InvalidThrow
+     * @return void
+     */
+    public function testInvalidThrowValidCatch()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <issueHandlers>
+                        <InvalidCatch>
+                            <errorLevel type="suppress">
+                                <referencedClass name="I" />
+                            </errorLevel>
+                        </InvalidCatch>
+                    </issueHandlers>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                interface I {}
+
+                class E extends Exception implements I {}
+
+                function foo() : void {
+                    throw new E();
+                }
+
+                function handleThrow(I $e) : void {
+                    echo "about to throw";
+                    throw $e;
+                }
+
+                try {
+                    foo();
+                } catch (I $e) {
+                    handleThrow($e);
+                }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testValidThrowValidCatch()
+    {
+        $this->project_checker = $this->getProjectCheckerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <issueHandlers>
+                        <InvalidCatch>
+                            <errorLevel type="suppress">
+                                <referencedClass name="I" />
+                            </errorLevel>
+                        </InvalidCatch>
+                        <InvalidThrow>
+                            <errorLevel type="suppress">
+                                <referencedClass name="I" />
+                            </errorLevel>
+                        </InvalidThrow>
+                    </issueHandlers>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                interface I {}
+
+                class E extends Exception implements I {}
+
+                function foo() : void {
+                    throw new E();
+                }
+
+                function handleThrow(I $e) : void {
+                    echo "about to throw";
+                    throw $e;
+                }
+
+                try {
+                    foo();
+                } catch (I $e) {
+                    handleThrow($e);
                 }'
         );
 

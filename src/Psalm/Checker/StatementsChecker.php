@@ -24,6 +24,8 @@ use Psalm\Exception\DocblockParseException;
 use Psalm\FileManipulation\FileManipulation;
 use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\ContinueOutsideLoop;
+use Psalm\Issue\ForbiddenCode;
+use Psalm\Issue\ForbiddenEcho;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidGlobal;
 use Psalm\Issue\UnevaluatedCode;
@@ -149,7 +151,7 @@ class StatementsChecker extends SourceChecker implements StatementsSource
         $original_context = null;
 
         if ($context->loop_scope) {
-            $original_context = clone $context;
+            $original_context = clone $context->loop_scope->loop_parent_context;
         }
 
         $plugin_classes = $codebase->config->after_statement_checks;
@@ -431,6 +433,28 @@ class StatementsChecker extends SourceChecker implements StatementsSource
                         ) === false) {
                             return false;
                         }
+                    }
+                }
+
+                if ($codebase->config->forbid_echo) {
+                    if (IssueBuffer::accepts(
+                        new ForbiddenEcho(
+                            'Use of echo',
+                            new CodeLocation($this->source, $stmt)
+                        ),
+                        $this->source->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+                } elseif (isset($codebase->config->forbidden_functions['echo'])) {
+                    if (IssueBuffer::accepts(
+                        new ForbiddenCode(
+                            'Use of echo',
+                            new CodeLocation($this->source, $stmt)
+                        ),
+                        $this->source->getSuppressedIssues()
+                    )) {
+                        return false;
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {

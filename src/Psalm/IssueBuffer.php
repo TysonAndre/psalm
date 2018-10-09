@@ -160,7 +160,7 @@ class IssueBuffer
         }
 
         if ($reporting_level === Config::REPORT_INFO) {
-            if ($project_checker->show_info && !self::alreadyEmitted($error_message)) {
+            if (!self::alreadyEmitted($error_message)) {
                 self::$issues_data[] = $e->toArray(Config::REPORT_INFO);
             }
 
@@ -172,6 +172,7 @@ class IssueBuffer
         }
 
         if (!self::alreadyEmitted($error_message)) {
+            ++self::$error_count;
             self::$issues_data[] = $e->toArray(Config::REPORT_ERROR);
         }
 
@@ -269,13 +270,21 @@ class IssueBuffer
     }
 
     /**
-     * @return array<int, array{severity: string, line_from: int, type: string, message: string, file_name: string,
-     *  file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int, column_from: int,
-     *  column_to: int}>
+     * @return array<int, array{severity: string, line_from: int, line_to: int, type: string, message: string,
+     *  file_name: string, file_path: string, snippet: string, from: int, to: int, snippet_from: int, snippet_to: int,
+     *  column_from: int, column_to: int}>
      */
     public static function getIssuesData()
     {
         return self::$issues_data;
+    }
+
+    /**
+     * @return int
+     */
+    public static function getErrorCount()
+    {
+        return self::$error_count;
     }
 
     /**
@@ -305,7 +314,7 @@ class IssueBuffer
         $add_stats = false
     ) {
         $scanned_files = $project_checker->codebase->scanner->getScannedFiles();
-        Provider\FileReferenceProvider::updateReferenceCache($project_checker, $scanned_files);
+        $project_checker->file_reference_provider->updateReferenceCache($project_checker, $scanned_files);
 
         if ($project_checker->output_format === ProjectChecker::TYPE_CONSOLE) {
             echo "\n";
@@ -346,7 +355,8 @@ class IssueBuffer
             echo self::getOutput(
                 $project_checker->output_format,
                 $project_checker->use_color,
-                $project_checker->show_snippet
+                $project_checker->show_snippet,
+                $project_checker->show_info
             );
         }
 
@@ -369,7 +379,7 @@ class IssueBuffer
                 echo 'No errors found!' . "\n";
             }
 
-            if ($info_count) {
+            if ($info_count && $project_checker->show_info) {
                 echo str_repeat('-', 30) . "\n";
 
                 echo $info_count . ' other issues found.' . "\n"
@@ -403,7 +413,11 @@ class IssueBuffer
         }
 
         if ($is_full && $start_time) {
-            $project_checker->cache_provider->processSuccessfulRun($start_time);
+            $project_checker->file_reference_provider->removeDeletedFilesFromReferences();
+
+            if ($project_checker->parser_cache_provider) {
+                $project_checker->parser_cache_provider->processSuccessfulRun($start_time);
+            }
         }
     }
 
@@ -411,10 +425,11 @@ class IssueBuffer
      * @param string $format
      * @param bool   $use_color
      * @param bool   $show_snippet
+     * @param bool   $show_info
      *
      * @return string
      */
-    public static function getOutput($format, $use_color, $show_snippet = true)
+    public static function getOutput($format, $use_color, $show_snippet = true, $show_info = true)
     {
         if ($format === ProjectChecker::TYPE_JSON) {
             return json_encode(self::$issues_data) . "\n";
@@ -440,6 +455,10 @@ class IssueBuffer
 
         $output = '';
         foreach (self::$issues_data as $issue_data) {
+            if (!$show_info && $issue_data['severity'] === Config::REPORT_INFO) {
+                continue;
+            }
+
             $output .= self::getConsoleOutput($issue_data, $use_color, $show_snippet) . "\n" . "\n";
         }
 

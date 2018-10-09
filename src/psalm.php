@@ -43,6 +43,7 @@ $valid_long_options = [
     'threads:',
     'use-ini-defaults',
     'version',
+    'cache-results',
 ];
 
 $args = array_slice($argv, 1);
@@ -148,6 +149,9 @@ Options:
 
     --diff
         Runs Psalm in diff mode, only checking files that have changed (and their dependents)
+
+    --cache-results
+        Cache results of analysis for faster runs
 
     --output-format=console
         Changes the output format. Possible values: console, emacs, json, pylint, xml
@@ -368,10 +372,6 @@ $find_references_to = isset($options['find-references-to']) && is_string($option
     ? $options['find-references-to']
     : null;
 
-$cache_provider = isset($options['no-cache'])
-    ? new Psalm\Provider\NoCache\NoParserCacheProvider()
-    : new Psalm\Provider\ParserCacheProvider();
-
 // initialise custom config, if passed
 try {
     if ($path_to_config) {
@@ -386,16 +386,6 @@ try {
 
 $config->setComposerClassLoader($first_autoloader);
 
-$no_class_cache = isset($options['no-cache']) || isset($options['no-class-cache']);
-
-$file_storage_cache_provider = $no_class_cache
-    ? new Psalm\Provider\NoCache\NoFileStorageCacheProvider()
-    : new Psalm\Provider\FileStorageCacheProvider($config);
-
-$classlike_storage_cache_provider = $no_class_cache
-    ? new Psalm\Provider\NoCache\NoClassLikeStorageCacheProvider()
-    : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
-
 if (isset($options['clear-cache'])) {
     $cache_directory = $config->getCacheDirectory();
 
@@ -404,14 +394,35 @@ if (isset($options['clear-cache'])) {
     exit;
 }
 
+$no_class_cache = isset($options['no-cache']) || isset($options['no-class-cache']);
+
+$file_storage_cache_provider = $no_class_cache
+    ? null
+    : new Psalm\Provider\FileStorageCacheProvider($config);
+
+$classlike_storage_cache_provider = $no_class_cache
+    ? null
+    : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
+
 $debug = array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options);
+
+if (isset($options['no-cache'])) {
+    $providers = new Psalm\Provider\Providers(
+        new Psalm\Provider\FileProvider
+    );
+} else {
+    $providers = new Psalm\Provider\Providers(
+        new Psalm\Provider\FileProvider,
+        new Psalm\Provider\ParserCacheProvider,
+        $file_storage_cache_provider,
+        $classlike_storage_cache_provider,
+        new Psalm\Provider\FileReferenceCacheProvider($config)
+    );
+}
 
 $project_checker = new ProjectChecker(
     $config,
-    new Psalm\Provider\FileProvider(),
-    $cache_provider,
-    $file_storage_cache_provider,
-    $classlike_storage_cache_provider,
+    $providers,
     !array_key_exists('m', $options),
     $show_info,
     $output_format,
@@ -421,7 +432,17 @@ $project_checker = new ProjectChecker(
     !isset($options['show-snippet']) || $options['show-snippet'] !== "false"
 );
 
+$project_checker->cache_results = isset($options['cache-results']);
+
+$start_time = (float) microtime(true);
+
 $config->visitComposerAutoloadFiles($project_checker, $debug);
+
+$now_time = (float) microtime(true);
+
+if ($debug) {
+    echo 'Visiting autoload files took ' . number_format($now_time - $start_time, 2) . "\n";
+}
 
 if (array_key_exists('debug-by-line', $options)) {
     $project_checker->debug_lines = true;
@@ -443,8 +464,6 @@ if ($find_dead_code) {
 foreach ($plugins as $plugin_path) {
     Config::getInstance()->addPluginPath($current_dir . DIRECTORY_SEPARATOR . $plugin_path);
 }
-
-$start_time = (float) microtime(true);
 
 if ($paths_to_check === null) {
     $project_checker->check($current_dir, $is_diff);
