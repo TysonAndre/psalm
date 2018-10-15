@@ -18,7 +18,7 @@ class FakeFileReferenceCacheProvider extends \Psalm\Provider\FileReferenceCacheP
     /** @var ?array */
     private $cached_issues;
 
-    /** @var array<string, array<string, bool>> */
+    /** @var array<string, array<string, int>> */
     private $cached_correct_methods = [];
 
     public function __construct()
@@ -83,15 +83,15 @@ class FakeFileReferenceCacheProvider extends \Psalm\Provider\FileReferenceCacheP
     }
 
     /**
-     * @return array<string, array<string, bool>>
+     * @return array<string, array<string, int>>
      */
-    public function getCorrectMethodCache(Config $config)
+    public function getCorrectMethodCache()
     {
         return $this->cached_correct_methods;
     }
 
     /**
-     * @param array<string, array<string, bool>> $correct_methods
+     * @param array<string, array<string, int>> $correct_methods
      * @return void
      */
     public function setCorrectMethodCache(array $correct_methods)

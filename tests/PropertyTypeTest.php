@@ -318,6 +318,12 @@ class PropertyTypeTest extends TestCase
                     '$owner' => 'DOMDocument',
                 ],
             ],
+            'propertyMapHydration' => [
+                '<?php
+                    function foo(DOMElement $e) : void {
+                        echo $e->attributes->length;
+                    }',
+            ],
             'goodArrayProperties' => [
                 '<?php
                     interface I1 {}
@@ -1108,6 +1114,23 @@ class PropertyTypeTest extends TestCase
                             InvalidArgumentException::class => 1,
                         ];
                     }'
+            ],
+            'allowPrivatePropertySetAfterInstanceof' => [
+                '<?php
+                    class A {
+                        /** @var string|null */
+                        private $foo;
+
+                        public function bar() : void {
+                            if (!$this instanceof B) {
+                                return;
+                            }
+
+                            $this->foo = "hello";
+                        }
+                    }
+
+                    class B extends A {}',
             ],
         ];
     }

@@ -3,6 +3,7 @@ namespace Psalm\Checker;
 
 use PhpParser;
 use Psalm\Aliases;
+use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Context;
@@ -248,7 +249,15 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
             return null;
         }
 
-        $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
+        try {
+            $class_storage = $project_checker->classlike_storage_provider->get($fq_class_name);
+        } catch (\InvalidArgumentException $e) {
+            if (!$inferred) {
+                throw $e;
+            }
+
+            return null;
+        }
 
         foreach ($class_storage->invalid_dependencies as $dependency_class_name) {
             if (IssueBuffer::accepts(
@@ -554,10 +563,10 @@ abstract class ClassLikeChecker extends SourceChecker implements StatementsSourc
      *
      * @return  array<string, string>
      */
-    public static function getClassesForFile(ProjectChecker $project_checker, $file_path)
+    public static function getClassesForFile(Codebase $codebase, $file_path)
     {
         try {
-            return $project_checker->file_storage_provider->get($file_path)->classlikes_in_file;
+            return $codebase->file_storage_provider->get($file_path)->classlikes_in_file;
         } catch (\InvalidArgumentException $e) {
             return [];
         }

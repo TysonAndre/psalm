@@ -82,6 +82,13 @@ class Config
     public $cache_directory;
 
     /**
+     * The directory to store all Psalm project caches
+     *
+     * @var string
+     */
+    public $global_cache_directory;
+
+    /**
      * Path to the autoader
      *
      * @var string|null
@@ -98,7 +105,7 @@ class Config
      *
      * @var string
      */
-    protected $base_dir;
+    public $base_dir;
 
     /**
      * @var array<int, string>
@@ -139,11 +146,6 @@ class Config
      * @var array<int, string>
      */
     private $stub_files = [];
-
-    /**
-     * @var bool
-     */
-    public $cache_file_hashes_during_run = true;
 
     /**
      * @var bool
@@ -489,6 +491,10 @@ class Config
             $config->cache_directory = sys_get_temp_dir() . '/psalm';
         }
 
+        $config->global_cache_directory = $config->cache_directory;
+
+        $config->cache_directory .= DIRECTORY_SEPARATOR . sha1($base_dir);
+
         if (@mkdir($config->cache_directory, 0777, true) === false && is_dir($config->cache_directory) === false) {
             trigger_error('Could not create cache directory: ' . $config->cache_directory, E_USER_ERROR);
         }
@@ -516,11 +522,6 @@ class Config
         if (isset($config_xml['useAssertForType'])) {
             $attribute_text = (string) $config_xml['useAssertForType'];
             $config->use_assert_for_type = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['cacheFileContentHashes'])) {
-            $attribute_text = (string) $config_xml['cacheFileContentHashes'];
-            $config->cache_file_hashes_during_run = $attribute_text === 'true' || $attribute_text === '1';
         }
 
         if (isset($config_xml['rememberPropertyAssignmentsAfterCall'])) {
@@ -764,7 +765,7 @@ class Config
         $codebase = $project_checker->codebase;
 
         foreach ($this->filetype_scanner_paths as $extension => $path) {
-            $fq_class_name = $this->getPluginClassForPath($project_checker, $path, 'Psalm\\Scanner\\FileScanner');
+            $fq_class_name = $this->getPluginClassForPath($codebase, $path, 'Psalm\\Scanner\\FileScanner');
 
             $this->filetype_scanners[$extension] = $fq_class_name;
 
@@ -773,7 +774,7 @@ class Config
         }
 
         foreach ($this->filetype_checker_paths as $extension => $path) {
-            $fq_class_name = $this->getPluginClassForPath($project_checker, $path, 'Psalm\\Checker\\FileChecker');
+            $fq_class_name = $this->getPluginClassForPath($codebase, $path, 'Psalm\\Checker\\FileChecker');
 
             $this->filetype_checkers[$extension] = $fq_class_name;
 
@@ -782,7 +783,7 @@ class Config
         }
 
         foreach ($this->plugin_paths as $path) {
-            $fq_class_name = $this->getPluginClassForPath($project_checker, $path, 'Psalm\\Plugin');
+            $fq_class_name = $this->getPluginClassForPath($codebase, $path, 'Psalm\\Plugin');
 
             /** @psalm-suppress UnresolvableInclude */
             require_once($path);
@@ -822,10 +823,8 @@ class Config
      *
      * @return string
      */
-    private function getPluginClassForPath(ProjectChecker $project_checker, $path, $must_extend)
+    private function getPluginClassForPath(Codebase $codebase, $path, $must_extend)
     {
-        $codebase = $project_checker->codebase;
-
         $file_storage = $codebase->createFileStorageForPath($path);
         $file_to_scan = new FileScanner($path, $this->shortenFileName($path), true);
         $file_to_scan->scan(
@@ -833,7 +832,7 @@ class Config
             $file_storage
         );
 
-        $declared_classes = ClassLikeChecker::getClassesForFile($project_checker, $path);
+        $declared_classes = ClassLikeChecker::getClassesForFile($codebase, $path);
         $declared_plugin_classes = [];
 
         foreach ($declared_classes as $fq_class_name_in_file) {
@@ -1125,6 +1124,14 @@ class Config
     public function getCacheDirectory()
     {
         return $this->cache_directory;
+    }
+
+    /**
+     * @return string
+     */
+    public function getGlobalCacheDirectory()
+    {
+        return $this->global_cache_directory;
     }
 
     /**

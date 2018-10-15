@@ -20,6 +20,7 @@ $valid_short_options = [
 
 $valid_long_options = [
     'clear-cache',
+    'clear-global-cache',
     'config:',
     'debug',
     'debug-by-line',
@@ -43,7 +44,7 @@ $valid_long_options = [
     'threads:',
     'use-ini-defaults',
     'version',
-    'cache-results',
+    'diff-methods',
 ];
 
 $args = array_slice($argv, 1);
@@ -150,8 +151,8 @@ Options:
     --diff
         Runs Psalm in diff mode, only checking files that have changed (and their dependents)
 
-    --cache-results
-        Cache results of analysis for faster runs
+    --diff-methods
+        Only checks methods that have changed (and their dependents)
 
     --output-format=console
         Changes the output format. Possible values: console, emacs, json, pylint, xml
@@ -171,7 +172,10 @@ Options:
         (Currently supported format: ".json", ".xml", ".txt")
 
     --clear-cache
-        Clears all cache files that Psalm uses
+        Clears all cache files that Psalm uses for this specific project
+
+    --clear-global-cache
+        Clears all cache files that Psalm uses for all projects
 
     --no-cache
         Runs Psalm without using any cache
@@ -394,15 +398,13 @@ if (isset($options['clear-cache'])) {
     exit;
 }
 
-$no_class_cache = isset($options['no-cache']) || isset($options['no-class-cache']);
+if (isset($options['clear-global-cache'])) {
+    $cache_directory = $config->getGlobalCacheDirectory();
 
-$file_storage_cache_provider = $no_class_cache
-    ? null
-    : new Psalm\Provider\FileStorageCacheProvider($config);
-
-$classlike_storage_cache_provider = $no_class_cache
-    ? null
-    : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
+    Config::removeCacheDirectory($cache_directory);
+    echo 'Global cache directory deleted' . PHP_EOL;
+    exit;
+}
 
 $debug = array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options);
 
@@ -411,6 +413,16 @@ if (isset($options['no-cache'])) {
         new Psalm\Provider\FileProvider
     );
 } else {
+    $no_class_cache = isset($options['no-class-cache']);
+
+    $file_storage_cache_provider = $no_class_cache
+        ? null
+        : new Psalm\Provider\FileStorageCacheProvider($config);
+
+    $classlike_storage_cache_provider = $no_class_cache
+        ? null
+        : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
+
     $providers = new Psalm\Provider\Providers(
         new Psalm\Provider\FileProvider,
         new Psalm\Provider\ParserCacheProvider,
@@ -432,13 +444,13 @@ $project_checker = new ProjectChecker(
     !isset($options['show-snippet']) || $options['show-snippet'] !== "false"
 );
 
-$project_checker->cache_results = isset($options['cache-results']);
+$project_checker->diff_methods = isset($options['diff-methods']);
 
-$start_time = (float) microtime(true);
+$start_time = microtime(true);
 
 $config->visitComposerAutoloadFiles($project_checker, $debug);
 
-$now_time = (float) microtime(true);
+$now_time = microtime(true);
 
 if ($debug) {
     echo 'Visiting autoload files took ' . number_format($now_time - $start_time, 2) . "\n";

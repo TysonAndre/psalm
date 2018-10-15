@@ -960,6 +960,28 @@ class FunctionCallTest extends TestCase
                     '$d' => 'array<int, int>',
                 ],
             ],
+            'printrOutput' => [
+                '<?php
+                    function foo(string $s) : void {
+                        echo $s;
+                    }
+
+                    foo(print_r(1, true));',
+            ],
+            'microtime' => [
+                '<?php
+                    $a = microtime(true);
+                    $b = microtime();
+                    /** @psalm-suppress InvalidScalarArgument */
+                    $c = microtime(1);
+                    $d = microtime(false);',
+                'assertions' => [
+                    '$a' => 'float',
+                    '$b' => 'string',
+                    '$c' => 'float|string',
+                    '$d' => 'string',
+                ],
+            ],
         ];
     }
 

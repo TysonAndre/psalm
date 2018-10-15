@@ -106,9 +106,21 @@ class ClassStatementsDiffer extends Differ
                     $body_change = substr($a_code, $a_stmts_start, $a_end - $a_stmts_start)
                         !== substr($b_code, $b_stmts_start, $b_end - $b_stmts_start);
 
-                    $signature_change = $signature_change
-                        || substr($a_code, $a_start, $a_stmts_start - $a_start)
-                            !== substr($b_code, $b_start, $b_stmts_start - $b_start);
+                    if (!$signature_change) {
+                        $a_signature = substr($a_code, $a_start, $a_stmts_start - $a_start);
+                        $b_signature = substr($b_code, $b_start, $b_stmts_start - $b_start);
+
+                        if ($a_signature !== $b_signature) {
+                            $a_signature = trim($a_signature);
+                            $b_signature = trim($b_signature);
+
+                            if (strpos($a_signature, $b_signature) === false
+                                && strpos($b_signature, $a_signature) === false
+                            ) {
+                                $signature_change = true;
+                            }
+                        }
+                    }
                 } elseif ($a instanceof PhpParser\Node\Stmt\Property && $b instanceof PhpParser\Node\Stmt\Property) {
                     if (count($a->props) !== 1 || count($b->props) !== 1) {
                         return false;
@@ -140,7 +152,7 @@ class ClassStatementsDiffer extends Differ
 
         $keep = [];
         $keep_signature = [];
-        $delete = [];
+        $add_or_delete = [];
 
         foreach ($diff as $diff_elem) {
             if ($diff_elem->type === DiffElem::TYPE_KEEP) {
@@ -154,6 +166,10 @@ class ClassStatementsDiffer extends Differ
                     foreach ($diff_elem->old->consts as $const) {
                         $keep[] = strtolower($name) . '::' . $const->name;
                     }
+                } elseif ($diff_elem->old instanceof PhpParser\Node\Stmt\TraitUse) {
+                    foreach ($diff_elem->old->traits as $trait) {
+                        $keep[] = strtolower((string) $trait->getAttribute('resolvedName')) . '::*';
+                    }
                 }
             } elseif ($diff_elem->type === DiffElem::TYPE_KEEP_SIGNATURE) {
                 if ($diff_elem->old instanceof PhpParser\Node\Stmt\ClassMethod) {
@@ -163,21 +179,27 @@ class ClassStatementsDiffer extends Differ
                         $keep_signature[] = strtolower($name) . '::$' . $prop->name;
                     }
                 }
-            } elseif ($diff_elem->type === DiffElem::TYPE_REMOVE) {
-                if ($diff_elem->old instanceof PhpParser\Node\Stmt\ClassMethod) {
-                    $delete[] = strtolower($name) . '::' . strtolower((string) $diff_elem->old->name);
-                } elseif ($diff_elem->old instanceof PhpParser\Node\Stmt\Property) {
-                    foreach ($diff_elem->old->props as $prop) {
-                        $delete[] = strtolower($name) . '::$' . $prop->name;
+            } elseif ($diff_elem->type === DiffElem::TYPE_REMOVE || $diff_elem->type === DiffElem::TYPE_ADD) {
+                /** @psalm-suppress MixedAssignment */
+                $affected_elem = $diff_elem->type === DiffElem::TYPE_REMOVE ? $diff_elem->old : $diff_elem->new;
+                if ($affected_elem instanceof PhpParser\Node\Stmt\ClassMethod) {
+                    $add_or_delete[] = strtolower($name) . '::' . strtolower((string) $affected_elem->name);
+                } elseif ($affected_elem instanceof PhpParser\Node\Stmt\Property) {
+                    foreach ($affected_elem->props as $prop) {
+                        $add_or_delete[] = strtolower($name) . '::$' . $prop->name;
                     }
-                } elseif ($diff_elem->old instanceof PhpParser\Node\Stmt\ClassConst) {
-                    foreach ($diff_elem->old->consts as $const) {
-                        $delete[] = strtolower($name) . '::' . $const->name;
+                } elseif ($affected_elem instanceof PhpParser\Node\Stmt\ClassConst) {
+                    foreach ($affected_elem->consts as $const) {
+                        $add_or_delete[] = strtolower($name) . '::' . $const->name;
+                    }
+                } elseif ($affected_elem instanceof PhpParser\Node\Stmt\TraitUse) {
+                    foreach ($affected_elem->traits as $trait) {
+                        $add_or_delete[] = strtolower((string) $trait->getAttribute('resolvedName')) . '::*';
                     }
                 }
             }
         };
 
-        return [$keep, $keep_signature, $delete, $diff_map];
+        return [$keep, $keep_signature, $add_or_delete, $diff_map];
     }
 }

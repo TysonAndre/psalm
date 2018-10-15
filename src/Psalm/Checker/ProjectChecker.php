@@ -16,6 +16,7 @@ use Psalm\Provider\StatementsProvider;
 use Psalm\Type;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use Sabre\Event\Loop;
 
 class ProjectChecker
 {
@@ -137,7 +138,7 @@ class ProjectChecker
     /**
      * @var bool
      */
-    public $cache_results = false;
+    public $diff_methods = false;
 
     /**
      * @var bool
@@ -234,7 +235,7 @@ class ProjectChecker
     }
 
     /**
-     * @return ProjectChecker
+     * @return self
      */
     public static function getInstance()
     {
@@ -258,9 +259,11 @@ class ProjectChecker
         $diff_files = null;
         $deleted_files = null;
 
+        $reference_cache = $this->file_reference_provider->loadReferenceCache();
+
         if ($is_diff
+            && $reference_cache
             && $this->parser_cache_provider
-            && $this->file_reference_provider->loadReferenceCache()
             && $this->parser_cache_provider->canDiffFiles()
         ) {
             $deleted_files = $this->file_reference_provider->getDeletedReferencedFiles();
@@ -286,10 +289,11 @@ class ProjectChecker
 
             $this->config->initializePlugins($this);
 
-            $this->codebase->scanFiles();
+            $this->codebase->scanFiles($this->threads);
         } else {
             if ($this->debug_output) {
-                echo count($diff_files) . ' changed files' . "\n";
+                echo count($diff_files) . ' changed files: ' . "\n";
+                echo '    ' . implode("\n    ", $diff_files) . "\n";
             }
 
             if ($diff_files) {
@@ -302,7 +306,7 @@ class ProjectChecker
 
                 $this->config->initializePlugins($this);
 
-                $this->codebase->scanFiles();
+                $this->codebase->scanFiles($this->threads);
             }
         }
 
@@ -397,7 +401,7 @@ class ProjectChecker
 
         $this->config->initializePlugins($this);
 
-        $this->codebase->scanFiles();
+        $this->codebase->scanFiles($this->threads);
 
         $this->config->visitStubFiles($this->codebase, $this->debug_output);
 
@@ -567,7 +571,7 @@ class ProjectChecker
 
         $this->config->initializePlugins($this);
 
-        $this->codebase->scanFiles();
+        $this->codebase->scanFiles($this->threads);
 
         $this->config->visitStubFiles($this->codebase, $this->debug_output);
 
@@ -605,7 +609,7 @@ class ProjectChecker
 
         $this->config->initializePlugins($this);
 
-        $this->codebase->scanFiles();
+        $this->codebase->scanFiles($this->threads);
 
         $this->config->visitStubFiles($this->codebase, $this->debug_output);
 
@@ -626,10 +630,11 @@ class ProjectChecker
 
     /**
      * @param  array<string>  $diff_files
+     * @param  bool           $include_referencing_files
      *
-     * @return array<string>
+     * @return array<string, string>
      */
-    public function getReferencedFilesFromDiff(array $diff_files)
+    public function getReferencedFilesFromDiff(array $diff_files, $include_referencing_files = true)
     {
         $all_inherited_files_to_check = $diff_files;
 
@@ -645,12 +650,14 @@ class ProjectChecker
 
         $all_files_to_check = $all_inherited_files_to_check;
 
-        foreach ($all_inherited_files_to_check as $file_name) {
-            $dependent_files = $this->file_reference_provider->getFilesReferencingFile($file_name);
-            $all_files_to_check = array_merge($dependent_files, $all_files_to_check);
+        if ($include_referencing_files) {
+            foreach ($all_inherited_files_to_check as $file_name) {
+                $dependent_files = $this->file_reference_provider->getFilesReferencingFile($file_name);
+                $all_files_to_check = array_merge($dependent_files, $all_files_to_check);
+            }
         }
 
-        return array_unique($all_files_to_check);
+        return array_combine($all_files_to_check, $all_files_to_check);
     }
 
     /**
@@ -764,7 +771,9 @@ class ProjectChecker
             $file_checker = $this->getFileCheckerForClassLike($appearing_fq_class_name);
         }
 
-        $stmts = $this->codebase->getStatementsForFile($file_checker->getFilePath());
+        $stmts = $this->codebase->getStatementsForFile(
+            $file_checker->getFilePath()
+        );
 
         $file_checker->populateCheckers($stmts);
 

@@ -378,6 +378,10 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
         } elseif ($node instanceof PhpParser\Node\Expr\Assign
             || $node instanceof PhpParser\Node\Expr\AssignOp
             || $node instanceof PhpParser\Node\Expr\AssignRef
+            || $node instanceof PhpParser\Node\Stmt\For_
+            || $node instanceof PhpParser\Node\Stmt\Foreach_
+            || $node instanceof PhpParser\Node\Stmt\While_
+            || $node instanceof PhpParser\Node\Stmt\Do_
         ) {
             if ($doc_comment = $node->getDocComment()) {
                 $var_comments = [];
@@ -456,6 +460,8 @@ class DependencyFinderVisitor extends PhpParser\NodeVisitorAbstract implements P
             if ($function_like_storage) {
                 $function_like_storage->has_yield = true;
             }
+        } elseif ($node instanceof PhpParser\Node\Expr\Cast\Object_) {
+            $this->codebase->scanner->queueClassLikeForScanning('stdClass', null, false, false);
         }
     }
 

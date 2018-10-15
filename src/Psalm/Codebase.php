@@ -5,12 +5,14 @@ use PhpParser;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Provider\ClassLikeStorageProvider;
 use Psalm\Provider\FileProvider;
+use Psalm\Provider\FileReferenceProvider;
 use Psalm\Provider\FileStorageProvider;
 use Psalm\Provider\Providers;
 use Psalm\Provider\StatementsProvider;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Storage\FunctionLikeStorage;
+use Psalm\Checker\ClassLikeChecker;
 
 class Codebase
 {
@@ -54,6 +56,11 @@ class Codebase
      * @var FileProvider
      */
     private $file_provider;
+
+    /**
+     * @var FileReferenceProvider
+     */
+    public $file_reference_provider;
 
     /**
      * @var StatementsProvider
@@ -130,6 +137,7 @@ class Codebase
     public $populator;
 
     /**
+     * @param bool $collect_references
      * @param bool $debug_output
      */
     public function __construct(
@@ -142,6 +150,7 @@ class Codebase
         $this->classlike_storage_provider = $providers->classlike_storage_provider;
         $this->debug_output = $debug_output;
         $this->file_provider = $providers->file_provider;
+        $this->file_reference_provider = $providers->file_reference_provider;
         $this->statements_provider = $providers->statements_provider;
         $this->debug_output = $debug_output;
 
@@ -171,13 +180,12 @@ class Codebase
             $providers->classlike_storage_provider,
             $providers->file_reference_provider
         );
+
         $this->classlikes = new Codebase\ClassLikes(
-            $config,
-            $this,
+            $this->config,
             $providers->classlike_storage_provider,
             $this->scanner,
-            $this->methods,
-            $debug_output
+            $this->methods
         );
         $this->populator = new Codebase\Populator(
             $config,
@@ -187,6 +195,8 @@ class Codebase
             $providers->file_reference_provider,
             $debug_output
         );
+
+        $this->loadAnalyzer();
     }
 
     /**
@@ -198,6 +208,7 @@ class Codebase
             $this->config,
             $this->file_provider,
             $this->file_storage_provider,
+            $this->classlike_storage_provider,
             $this->debug_output
         );
     }
@@ -213,7 +224,7 @@ class Codebase
 
         $project_checker->file_reference_provider->loadReferenceCache();
 
-        $referenced_files = $project_checker->getReferencedFilesFromDiff($diff_files);
+        $referenced_files = $project_checker->getReferencedFilesFromDiff($diff_files, false);
 
         foreach ($diff_files as $diff_file_path) {
             $this->invalidateInformationForFile($diff_file_path);
@@ -240,7 +251,7 @@ class Codebase
         $this->scanner->addFilesToDeepScan($referenced_files);
         $this->scanner->scanFiles($this->classlikes);
 
-        $project_checker->file_reference_provider->updateReferenceCache($project_checker, $referenced_files);
+        $project_checker->file_reference_provider->updateReferenceCache($this, $referenced_files);
 
         $this->populator->populateCodebase($this);
     }
@@ -281,9 +292,9 @@ class Codebase
      *
      * @return void
      */
-    public function scanFiles()
+    public function scanFiles(int $threads = 1)
     {
-        $has_changes = $this->scanner->scanFiles($this->classlikes);
+        $has_changes = $this->scanner->scanFiles($this->classlikes, $threads);
 
         if ($has_changes) {
             $this->populator->populateCodebase($this);

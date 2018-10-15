@@ -149,10 +149,10 @@ class FileDiffTest extends TestCase
                 namespace Foo;
 
                 class A {
-                    public function foo() {
+                    public function foo() : void {
                         $a = 1;
                     }
-                    public function bar() {
+                    public function bar() : void {
                         $b = 1;
                     }
                 }',
@@ -160,10 +160,10 @@ class FileDiffTest extends TestCase
                 namespace Foo;
 
                 class A {
-                    public function foo() {
+                    public function foo() : void {
                         $a = 12;
                     }
-                    public function bar() {
+                    public function bar() : void {
                         $b = 1;
                     }
                 }',
@@ -197,7 +197,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo'],
                 [],
-                ['foo\a::bar'],
+                ['foo\a::bar', 'foo\a::bar'],
                 [[0, 0]]
             ],
             'propertyChange' => [
@@ -215,7 +215,7 @@ class FileDiffTest extends TestCase
                 }',
                 [],
                 [],
-                ['foo\a::$a'],
+                ['foo\a::$a', 'foo\a::$b'],
                 []
             ],
             'propertyDefaultChange' => [
@@ -271,7 +271,7 @@ class FileDiffTest extends TestCase
                 }',
                 [],
                 [],
-                ['foo\a::$a'],
+                ['foo\a::$a', 'foo\a::$a'],
                 []
             ],
             'propertyStaticChange' => [
@@ -291,7 +291,7 @@ class FileDiffTest extends TestCase
                 }',
                 [],
                 [],
-                ['foo\a::$a'],
+                ['foo\a::$a', 'foo\a::$a'],
                 []
             ],
             'propertyVisibilityChange' => [
@@ -311,7 +311,7 @@ class FileDiffTest extends TestCase
                 }',
                 [],
                 [],
-                ['foo\a::$a'],
+                ['foo\a::$a', 'foo\a::$a'],
                 []
             ],
             'addDocblockToFirst' => [
@@ -342,7 +342,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::bar'],
                 [],
-                ['foo\a::foo'],
+                ['foo\a::foo', 'foo\a::foo'],
                 [[84, 3]]
             ],
             'addDocblockToSecond' => [
@@ -373,7 +373,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo'],
                 [],
-                ['foo\a::bar'],
+                ['foo\a::bar', 'foo\a::bar'],
                 [[0, 0]]
             ],
             'removeDocblock' => [
@@ -404,7 +404,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo'],
                 [],
-                ['foo\a::bar'],
+                ['foo\a::bar', 'foo\a::bar'],
                 [[0, 0]]
             ],
             'changeDocblock' => [
@@ -438,7 +438,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo'],
                 [],
-                ['foo\a::bar'],
+                ['foo\a::bar', 'foo\a::bar'],
                 [[0, 0]]
             ],
             'changeMethodVisibility' => [
@@ -466,7 +466,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo'],
                 [],
-                ['foo\a::bar'],
+                ['foo\a::bar', 'foo\a::bar'],
                 [[0, 0]]
             ],
             'removeFunctionAtEnd' => [
@@ -638,7 +638,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo', 'foo\a::bar'],
                 [],
-                [],
+                ['foo\a::bat'],
                 [[0, 0], [0, 0]]
             ],
             'newFunctionAtBeginning' => [
@@ -669,7 +669,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo', 'foo\a::bar'],
                 [],
-                [],
+                ['foo\a::bat'],
                 [[98, 3], [98, 3]]
             ],
             'newFunctionInMiddle' => [
@@ -700,7 +700,7 @@ class FileDiffTest extends TestCase
                 }',
                 ['foo\a::foo', 'foo\a::bar'],
                 [],
-                [],
+                ['foo\a::bat'],
                 [[0, 0], [98, 3]]
             ],
             'SKIPPED-whiteSpaceOnly' => [
@@ -764,8 +764,62 @@ class FileDiffTest extends TestCase
                     class C extends B { }',
                 ['foo\a::__construct', 'foo\a::bar', 'foo\b::bat'],
                 [],
-                [],
+                ['foo\b::__construct', 'foo\b::bar'],
                 [[0, 0], [0, 0], [120, 2]]
+            ],
+            'sameTrait' => [
+                '<?php
+                namespace Foo;
+
+                trait T {
+                    public $aB = 5;
+
+                    const F = 1;
+
+                    public function foo() {
+                        $a = 1;
+                    }
+                    public function bar() {
+                        $b = 1;
+                    }
+                }',
+                '<?php
+                namespace Foo;
+
+                trait T {
+                    public $aB = 5;
+
+                    const F = 1;
+
+                    public function foo() {
+                        $a = 1;
+                    }
+                    public function bar() {
+                        $b = 1;
+                    }
+                }',
+                ['foo\t::$aB', 'foo\t::F', 'foo\t::foo', 'foo\t::bar'],
+                [],
+                [],
+                [[0, 0], [0, 0], [0, 0], [0, 0]]
+            ],
+            'traitPropertyChange' => [
+                '<?php
+                namespace Foo;
+
+                trait T {
+                    public $a;
+                }',
+                '<?php
+                namespace Foo;
+
+                trait T {
+                    public $b;
+                }',
+                [],
+                [],
+                ['foo\t::$a', 'foo\t::$b'],
+                []
             ],
         ];
     }

@@ -21,7 +21,14 @@ class ParserCacheProvider
      *
      * @var array<string, string>|null
      */
-    protected $file_content_hashes = null;
+    protected $existing_file_content_hashes = null;
+
+    /**
+     * A map of recently-added filename hashes to contents hashes
+     *
+     * @var array<string, string>
+     */
+    protected $new_file_content_hashes = [];
 
     /** @var bool */
     public $use_igbinary = false;
@@ -45,22 +52,24 @@ class ParserCacheProvider
 
         $parser_cache_directory = $root_cache_directory . DIRECTORY_SEPARATOR . self::PARSER_CACHE_DIRECTORY;
 
-        $file_content_hashes = $this->getFileContentHashes();
+        $file_content_hashes = $this->new_file_content_hashes + $this->getExistingFileContentHashes();
 
         $cache_location = $parser_cache_directory . DIRECTORY_SEPARATOR . $file_cache_key;
 
-        if (isset($file_content_hashes[$file_cache_key]) &&
-            $file_content_hash === $file_content_hashes[$file_cache_key] &&
-            is_readable($cache_location) &&
-            filemtime($cache_location) > $file_modified_time
+        if (isset($file_content_hashes[$file_cache_key])
+            && $file_content_hash === $file_content_hashes[$file_cache_key]
+            && is_readable($cache_location)
+            && filemtime($cache_location) > $file_modified_time
         ) {
             if ($this->use_igbinary) {
                 /** @var array<int, \PhpParser\Node\Stmt> */
-                return igbinary_unserialize((string)file_get_contents($cache_location)) ?: null;
+                $stmts = igbinary_unserialize((string)file_get_contents($cache_location));
+            } else {
+                /** @var array<int, \PhpParser\Node\Stmt> */
+                $stmts = unserialize((string)file_get_contents($cache_location));
             }
 
-            /** @var array<int, \PhpParser\Node\Stmt> */
-            return unserialize((string)file_get_contents($cache_location)) ?: null;
+            return $stmts;
         }
     }
 
@@ -119,21 +128,40 @@ class ParserCacheProvider
     /**
      * @return array<string, string>
      */
-    public function getFileContentHashes()
+    private function getExistingFileContentHashes()
     {
         $config = Config::getInstance();
         $root_cache_directory = $config->getCacheDirectory();
 
-        if ($this->file_content_hashes === null || !$config->cache_file_hashes_during_run) {
+        if ($this->existing_file_content_hashes === null) {
             $file_hashes_path = $root_cache_directory . DIRECTORY_SEPARATOR . self::FILE_HASHES;
-            /** @var array<string, string> */
-            $this->file_content_hashes =
-                $root_cache_directory && is_readable($file_hashes_path)
-                    ? json_decode((string)file_get_contents($file_hashes_path), true)
-                    : [];
+
+            if ($root_cache_directory && is_readable($file_hashes_path)) {
+                $hashes_encoded = (string) file_get_contents($file_hashes_path);
+
+                if (!$hashes_encoded) {
+                    error_log('Unexpected value when loading from file content hashes');
+                    $this->existing_file_content_hashes = [];
+                    return [];
+                }
+
+                /** @psalm-suppress MixedAssignment */
+                $hashes_decoded = json_decode($hashes_encoded, true);
+
+                if (!is_array($hashes_decoded)) {
+                    error_log('Unexpected value ' . gettype($hashes_decoded));
+                    $this->existing_file_content_hashes = [];
+                    return [];
+                }
+
+                /** @var array<string, string> $hashes_decoded */
+                $this->existing_file_content_hashes = $hashes_decoded;
+            } else {
+                $this->existing_file_content_hashes = [];
+            }
         }
 
-        return $this->file_content_hashes;
+        return $this->existing_file_content_hashes;
     }
 
     /**
@@ -171,13 +199,46 @@ class ParserCacheProvider
                 file_put_contents($cache_location, serialize($stmts));
             }
 
-            $this->file_content_hashes[$file_cache_key] = $file_content_hash;
-
-            file_put_contents(
-                $root_cache_directory . DIRECTORY_SEPARATOR . self::FILE_HASHES,
-                json_encode($this->file_content_hashes)
-            );
+            $this->new_file_content_hashes[$file_cache_key] = $file_content_hash;
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getNewFileContentHashes()
+    {
+        return $this->new_file_content_hashes;
+    }
+
+    /**
+     * @param array<string, string> $file_content_hashes
+     * @return void
+     */
+    public function addNewFileContentHashes(array $file_content_hashes)
+    {
+        $this->new_file_content_hashes = $file_content_hashes + $this->new_file_content_hashes;
+    }
+
+    /**
+     * @return void
+     */
+    public function saveFileContentHashes()
+    {
+        $root_cache_directory = Config::getInstance()->getCacheDirectory();
+
+        if (!$root_cache_directory) {
+            return;
+        }
+
+        $file_content_hashes = $this->new_file_content_hashes + $this->getExistingFileContentHashes();
+
+        $file_hashes_path = $root_cache_directory . DIRECTORY_SEPARATOR . self::FILE_HASHES;
+
+        file_put_contents(
+            $file_hashes_path,
+            json_encode($file_content_hashes)
+        );
     }
 
     /**

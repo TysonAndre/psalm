@@ -215,8 +215,8 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     );
 
                     foreach ($parent_method_storage->params as $i => $guide_param) {
-                        if ($guide_param->type && (!$guide_param->signature_type || !$parent_storage->user_defined)) {
-                            $implemented_docblock_param_types[$i] = true;
+                        if ($guide_param->type && !($guide_param->signature_type && $parent_storage->user_defined)) {
+                            $implemented_docblock_param_types[$i] = $guide_param->type;
                         }
                     }
                 }
@@ -282,6 +282,14 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
             $template_types = array_merge($template_types ?: [], $class_storage->template_types);
         }
 
+        $non_null_param_types = array_filter(
+            $storage->params,
+            /** @return bool */
+            function (FunctionLikeParameter $p) {
+                return $p->type !== null;
+            }
+        );
+
         foreach ($storage->params as $offset => $function_param) {
             $signature_type = $function_param->signature_type;
 
@@ -305,7 +313,18 @@ abstract class FunctionLikeChecker extends SourceChecker implements StatementsSo
                     $context->self
                 );
             } else {
-                $param_type = Type::getMixed();
+                if (!$non_null_param_types && isset($implemented_docblock_param_types[$offset])) {
+                    $param_type = clone $implemented_docblock_param_types[$offset];
+
+                    $param_type = ExpressionChecker::fleshOutType(
+                        $project_checker,
+                        $param_type,
+                        $context->self,
+                        $context->self
+                    );
+                } else {
+                    $param_type = Type::getMixed();
+                }
             }
 
             $context->vars_in_scope['$' . $function_param->name] = $param_type;

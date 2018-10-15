@@ -27,11 +27,6 @@ use ReflectionProperty;
 class ClassLikes
 {
     /**
-     * @var Codebase
-     */
-    private $codebase;
-
-    /**
      * @var ClassLikeStorageProvider
      */
     private $classlike_storage_provider;
@@ -107,27 +102,18 @@ class ClassLikes
     private $scanner;
 
     /**
-     * @var bool
-     */
-    private $debug_output;
-
-    /**
      * @param bool $debug_output
      */
     public function __construct(
         Config $config,
-        Codebase $codebase,
         ClassLikeStorageProvider $storage_provider,
         Scanner $scanner,
-        Methods $methods,
-        $debug_output
+        Methods $methods
     ) {
         $this->config = $config;
         $this->classlike_storage_provider = $storage_provider;
         $this->scanner = $scanner;
-        $this->debug_output = $debug_output;
         $this->methods = $methods;
-        $this->codebase = $codebase;
 
         $this->collectPredefinedClassLikes();
     }
@@ -258,13 +244,6 @@ class ClassLikes
                 )
                 && !$this->classlike_storage_provider->has($fq_class_name_lc)
             ) {
-                if ($this->debug_output) {
-                    echo 'Last-chance attempt to hydrate ' . $fq_class_name . "\n";
-                }
-                // attempt to load in the class
-                $this->scanner->queueClassLikeForScanning($fq_class_name);
-                $this->codebase->scanFiles();
-
                 if (!isset($this->existing_classes_lc[$fq_class_name_lc])) {
                     $this->existing_classes_lc[$fq_class_name_lc] = false;
 
@@ -307,14 +286,6 @@ class ClassLikes
                 )
                 && !$this->classlike_storage_provider->has($fq_class_name_lc)
             ) {
-                if ($this->debug_output) {
-                    echo 'Last-chance attempt to hydrate ' . $fq_class_name . "\n";
-                }
-
-                // attempt to load in the class
-                $this->scanner->queueClassLikeForScanning($fq_class_name);
-                $this->scanner->scanFiles($this);
-
                 if (!isset($this->existing_interfaces_lc[$fq_class_name_lc])) {
                     $this->existing_interfaces_lc[$fq_class_name_lc] = false;
 
@@ -906,11 +877,88 @@ class ClassLikes
             $this->existing_classlikes_lc[$fq_class_name_lc],
             $this->existing_classes_lc[$fq_class_name_lc],
             $this->existing_traits_lc[$fq_class_name_lc],
+            $this->existing_traits[$fq_class_name],
             $this->existing_interfaces_lc[$fq_class_name_lc],
+            $this->existing_interfaces[$fq_class_name],
             $this->existing_classes[$fq_class_name],
             $this->trait_nodes[$fq_class_name_lc],
             $this->trait_aliases[$fq_class_name_lc],
             $this->classlike_references[$fq_class_name_lc]
         );
+
+        $this->scanner->removeClassLike($fq_class_name_lc);
+    }
+
+    /**
+     * @return array{
+     *     0: array<string, bool>,
+     *     1: array<string, bool>,
+     *     2: array<string, bool>,
+     *     3: array<string, bool>,
+     *     4: array<string, bool>,
+     *     5: array<string, bool>,
+     *     6: array<string, bool>,
+     *     7: array<string, \PhpParser\Node\Stmt\Trait_>,
+     *     8: array<string, \Psalm\Aliases>,
+     *     9: array<string, int>
+     * }
+     */
+    public function getThreadData()
+    {
+        return [
+            $this->existing_classlikes_lc,
+            $this->existing_classes_lc,
+            $this->existing_traits_lc,
+            $this->existing_traits,
+            $this->existing_interfaces_lc,
+            $this->existing_interfaces,
+            $this->existing_classes,
+            $this->trait_nodes,
+            $this->trait_aliases,
+            $this->classlike_references
+        ];
+    }
+
+    /**
+     * @param array{
+     *     0: array<string, bool>,
+     *     1: array<string, bool>,
+     *     2: array<string, bool>,
+     *     3: array<string, bool>,
+     *     4: array<string, bool>,
+     *     5: array<string, bool>,
+     *     6: array<string, bool>,
+     *     7: array<string, \PhpParser\Node\Stmt\Trait_>,
+     *     8: array<string, \Psalm\Aliases>,
+     *     9: array<string, int>
+     * } $thread_data
+     *
+     * @return void
+     */
+    public function addThreadData(array $thread_data)
+    {
+        list (
+            $existing_classlikes_lc,
+            $existing_classes_lc,
+            $existing_traits_lc,
+            $existing_traits,
+            $existing_interfaces_lc,
+            $existing_interfaces,
+            $existing_classes,
+            $trait_nodes,
+            $trait_aliases,
+            $classlike_references
+        ) = $thread_data;
+
+        $this->existing_classlikes_lc = array_merge($existing_classlikes_lc, $this->existing_classlikes_lc);
+        $this->existing_classes_lc = array_merge($existing_classes_lc, $this->existing_classes_lc);
+        $this->existing_traits_lc = array_merge($existing_traits_lc, $this->existing_traits_lc);
+        $this->existing_traits = array_merge($existing_traits, $this->existing_traits);
+        $this->existing_interfaces_lc = array_merge($existing_interfaces_lc, $this->existing_interfaces_lc);
+        $this->existing_interfaces = array_merge($existing_interfaces, $this->existing_interfaces);
+        $this->existing_classes = array_merge($existing_classes, $this->existing_classes);
+        $this->trait_nodes = array_merge($trait_nodes, $this->trait_nodes);
+        $this->trait_aliases = array_merge($trait_aliases, $this->trait_aliases);
+        $this->classlike_references = array_merge($classlike_references, $this->classlike_references);
     }
 }

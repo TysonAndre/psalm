@@ -1,6 +1,7 @@
 <?php
 namespace Psalm\Codebase;
 
+use PhpParser;
 use Psalm\Checker\FileChecker;
 use Psalm\Checker\ProjectChecker;
 use Psalm\Config;
@@ -8,6 +9,7 @@ use Psalm\FileManipulation\FileManipulation;
 use Psalm\FileManipulation\FileManipulationBuffer;
 use Psalm\FileManipulation\FunctionDocblockManipulator;
 use Psalm\IssueBuffer;
+use Psalm\Provider\ClassLikeStorageProvider;
 use Psalm\Provider\FileProvider;
 use Psalm\Provider\FileReferenceProvider;
 use Psalm\Provider\FileStorageProvider;
@@ -35,7 +37,7 @@ use Psalm\Provider\FileStorageProvider;
  *     file_references: array<string, array<string,bool>>,
  *     mixed_counts: array<string, array{0: int, 1: int}>,
  *     method_references: array<string, array<string,bool>>,
- *     correct_methods: array<string, array<string, bool>>
+ *     correct_methods: array<string, array<string, int>>
  * }
  */
 
@@ -62,6 +64,11 @@ class Analyzer
     private $file_storage_provider;
 
     /**
+     * @var ClassLikeStorageProvider
+     */
+    private $classlike_storage_provider;
+
+    /**
      * @var bool
      */
     private $debug_output;
@@ -86,7 +93,7 @@ class Analyzer
     private $files_to_analyze = [];
 
     /**
-     * @var array<string, array<string, bool>>
+     * @var array<string, array<string, int>>
      */
     private $correct_methods = [];
 
@@ -102,11 +109,13 @@ class Analyzer
         Config $config,
         FileProvider $file_provider,
         FileStorageProvider $file_storage_provider,
+        ClassLikeStorageProvider $classlike_storage_provider,
         $debug_output
     ) {
         $this->config = $config;
         $this->file_provider = $file_provider;
         $this->file_storage_provider = $file_storage_provider;
+        $this->classlike_storage_provider = $classlike_storage_provider;
         $this->debug_output = $debug_output;
     }
 
@@ -272,8 +281,11 @@ class Analyzer
             }
         }
 
-        if ($project_checker->cache_results) {
-            $project_checker->file_reference_provider->setCorrectMethods($this->correct_methods);
+        $scanned_files = $project_checker->codebase->scanner->getScannedFiles();
+        $project_checker->file_reference_provider->setCorrectMethods($this->correct_methods);
+        $project_checker->file_reference_provider->updateReferenceCache($project_checker->codebase, $scanned_files);
+
+        if ($project_checker->diff_methods) {
             $project_checker->codebase->statements_provider->resetDiffs();
         }
 
@@ -289,57 +301,113 @@ class Analyzer
      */
     public function loadCachedResults(ProjectChecker $project_checker)
     {
-        if ($project_checker->cache_results
+        if ($project_checker->diff_methods
             && !$project_checker->codebase->collect_references
         ) {
-            $this->correct_methods = $project_checker->file_reference_provider->getCorrectMethods(
-                $this->config
-            );
-
+            $this->correct_methods = $project_checker->file_reference_provider->getCorrectMethods();
             $this->existing_issues = $project_checker->file_reference_provider->getExistingIssues();
         }
 
         $statements_provider = $project_checker->codebase->statements_provider;
 
-        $unchanged_members = $statements_provider->getUnchangedMembers();
         $changed_members = $statements_provider->getChangedMembers();
+        $unchanged_signature_members = $statements_provider->getUnchangedSignatureMembers();
 
         $diff_map = $statements_provider->getDiffMap();
 
-        $method_map = [];
+        $all_referencing_methods = $project_checker->file_reference_provider->getMethodsReferencing();
 
-        foreach ($this->correct_methods as $file_path => $correct_methods) {
-            foreach ($correct_methods as $correct_method_id => $_) {
-                $method_map[$correct_method_id] = $file_path;
+        foreach ($all_referencing_methods as $member_id => $referencing_method_ids) {
+            $member_class_name = preg_replace('/::.*$/', '', $member_id);
+
+            try {
+                $member_class_storage = $this->classlike_storage_provider->get($member_class_name);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            if (!$member_class_storage->is_trait) {
+                continue;
+            }
+
+            $member_stub = $member_class_name . '::*';
+
+            if (!isset($all_referencing_methods[$member_stub])) {
+                $all_referencing_methods[$member_stub] = $referencing_method_ids;
+            } else {
+                $all_referencing_methods[$member_stub] += $referencing_method_ids;
             }
         }
-
-        $all_referencing_methods = $project_checker->file_reference_provider->getMethodsReferencing();
 
         $newly_invalidated_methods = [];
 
+        foreach ($unchanged_signature_members as $file_unchanged_signature_members) {
+            $newly_invalidated_methods = array_merge($newly_invalidated_methods, $file_unchanged_signature_members);
+
+            foreach ($file_unchanged_signature_members as $unchanged_signature_member_id => $_) {
+                // also check for things that might invalidate constructor property initialisation
+                if (isset($all_referencing_methods[$unchanged_signature_member_id])) {
+                    foreach ($all_referencing_methods[$unchanged_signature_member_id] as $referencing_method_id => $_) {
+                        if (substr($referencing_method_id, -13) === '::__construct') {
+                            $newly_invalidated_methods[$referencing_method_id] = true;
+                        }
+                    }
+                }
+            }
+        }
+
         foreach ($changed_members as $file_changed_members) {
             foreach ($file_changed_members as $member_id => $_) {
+                $newly_invalidated_methods[$member_id] = true;
+
                 if (isset($all_referencing_methods[$member_id])) {
-                    $newly_invalidated_methods = array_merge($all_referencing_methods[$member_id]);
+                    $newly_invalidated_methods = array_merge(
+                        $all_referencing_methods[$member_id],
+                        $newly_invalidated_methods
+                    );
+                }
+
+                $member_stub = preg_replace('/::.*$/', '::*', $member_id);
+
+                if (isset($all_referencing_methods[$member_stub])) {
+                    $newly_invalidated_methods = array_merge(
+                        $all_referencing_methods[$member_stub],
+                        $newly_invalidated_methods
+                    );
                 }
             }
         }
 
         foreach ($this->correct_methods as $file_path => $correct_methods) {
             foreach ($correct_methods as $correct_method_id => $_) {
-                if (isset($newly_invalidated_methods[$correct_method_id])) {
-                    unset($this->correct_methods[$file_path][$correct_method_id]);
-                }
+                $trait_safe_method_id = $correct_method_id;
 
-                if (isset($unchanged_members[$file_path])
-                    && !isset($unchanged_members[$file_path][$correct_method_id])
+                $correct_method_ids = explode('&', $correct_method_id);
+
+                $correct_method_id = $correct_method_ids[0];
+
+                if (isset($newly_invalidated_methods[$correct_method_id])
+                    || (isset($correct_method_ids[1])
+                        && isset($newly_invalidated_methods[$correct_method_ids[1]]))
                 ) {
-                    unset($this->correct_methods[$file_path][$correct_method_id]);
+                    unset($this->correct_methods[$file_path][$trait_safe_method_id]);
                 }
             }
         }
 
+        $this->shiftFileOffsets($diff_map);
+
+        foreach ($this->files_to_analyze as $file_path) {
+            $project_checker->file_reference_provider->clearExistingIssuesForFile($file_path);
+        }
+    }
+
+    /**
+     * @param array<string, array<int, array{0: int, 1: int, 2: int, 3: int}>> $diff_map
+     * @return void
+     */
+    public function shiftFileOffsets(array $diff_map)
+    {
         foreach ($this->existing_issues as $file_path => &$file_issues) {
             if (!isset($this->correct_methods[$file_path])) {
                 unset($this->existing_issues[$file_path]);
@@ -375,10 +443,6 @@ class Analyzer
                     }
                 }
             }
-        }
-
-        foreach ($this->files_to_analyze as $file_path) {
-            $project_checker->file_reference_provider->clearExistingIssuesForFile($file_path);
         }
     }
 
@@ -640,7 +704,7 @@ class Analyzer
     }
 
     /**
-     * @return array<string, array<string, bool>>
+     * @return array<string, array<string, int>>
      */
     public function getCorrectMethods()
     {
@@ -650,21 +714,29 @@ class Analyzer
     /**
      * @param string $file_path
      * @param string $method_id
+     * @param bool $is_constructor
      *
      * @return void
      */
-    public function setCorrectMethod($file_path, $method_id)
+    public function setCorrectMethod($file_path, $method_id, $is_constructor = false)
     {
-        $this->correct_methods[$file_path][$method_id] = true;
+        $this->correct_methods[$file_path][$method_id] = $is_constructor ? 2 : 1;
     }
 
     /**
      * @param  string  $file_path
      * @param  string  $method_id
+     * @param bool $is_constructor
+     *
      * @return bool
      */
-    public function isMethodCorrect($file_path, $method_id)
+    public function isMethodCorrect($file_path, $method_id, $is_constructor = false)
     {
+        if ($is_constructor) {
+            return isset($this->correct_methods[$file_path][$method_id])
+                && $this->correct_methods[$file_path][$method_id] === 2;
+        }
+
         return isset($this->correct_methods[$file_path][$method_id]);
     }
 }
