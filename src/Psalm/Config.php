@@ -1311,4 +1311,12 @@ class Config
             rmdir($dir);
         }
     }
+
+    /**
+     * @return void
+     */
+    public function setServerMode()
+    {
+        $this->cache_directory .= '-s';
+    }
 }

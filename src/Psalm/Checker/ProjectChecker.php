@@ -1,9 +1,11 @@
 <?php
 namespace Psalm\Checker;
 
+use JsonRPC\Server;
 use Psalm\Codebase;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\LanguageServer\{LanguageServer, ProtocolStreamReader, ProtocolStreamWriter};
 use Psalm\Provider\ClassLikeStorageCacheProvider;
 use Psalm\Provider\ClassLikeStorageProvider;
 use Psalm\Provider\FileProvider;
@@ -14,8 +16,6 @@ use Psalm\Provider\ParserCacheProvider;
 use Psalm\Provider\Providers;
 use Psalm\Provider\StatementsProvider;
 use Psalm\Type;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use Sabre\Event\Loop;
 
 class ProjectChecker
@@ -228,9 +228,123 @@ class ProjectChecker
 
         $this->output_format = $output_format;
         self::$instance = $this;
+    }
 
-        if ($this->parser_cache_provider) {
-            $this->parser_cache_provider->use_igbinary = $config->use_igbinary;
+    /**
+     * @param  string $base_dir
+     * @param  string|null $address
+     * @param  bool $server_mode
+     * @return void
+     */
+    public function server($address = '127.0.0.1:12345', $server_mode = true)
+    {
+        $this->diff_methods = true;
+        $this->file_reference_provider->loadReferenceCache();
+        $this->codebase->enterServerMode();
+
+        $this->config->visitStubFiles($this->codebase, $this->debug_output);
+
+        $cwd = getcwd();
+
+        if (!$cwd) {
+            throw new \InvalidArgumentException('Cannot work with empty cwd');
+        }
+
+        $cpu_count = self::getCpuCount();
+
+        // let's not go crazy
+        $usable_cpus = $cpu_count - 2;
+
+        if ($usable_cpus > 1) {
+            $this->threads = $usable_cpus;
+        }
+
+        $this->config->initializePlugins($this);
+
+        foreach ($this->config->getProjectDirectories() as $dir_name) {
+            $this->checkDirWithConfig($dir_name, $this->config);
+        }
+
+        $this->output_format = self::TYPE_JSON;
+
+        @cli_set_process_title('Psalm PHP Language Server');
+
+        if (!$server_mode && $address) {
+            // Connect to a TCP server
+            $socket = stream_socket_client('tcp://' . $address, $errno, $errstr);
+            if ($socket === false) {
+                fwrite(STDERR, "Could not connect to language client. Error $errno\n$errstr");
+                exit(1);
+            }
+            stream_set_blocking($socket, false);
+            new LanguageServer(
+                new ProtocolStreamReader($socket),
+                new ProtocolStreamWriter($socket),
+                $this
+            );
+            Loop\run();
+        } elseif ($server_mode && $address) {
+            // Run a TCP Server
+            $tcpServer = stream_socket_server('tcp://' . $address, $errno, $errstr);
+            if ($tcpServer === false) {
+                fwrite(STDERR, "Could not listen on $address. Error $errno\n$errstr");
+                exit(1);
+            }
+            fwrite(STDOUT, "Server listening on $address\n");
+            if (!extension_loaded('pcntl')) {
+                fwrite(STDERR, "PCNTL is not available. Only a single connection will be accepted\n");
+            }
+            while ($socket = stream_socket_accept($tcpServer, -1)) {
+                fwrite(STDOUT, "Connection accepted\n");
+                stream_set_blocking($socket, false);
+                if (extension_loaded('pcntl')) {
+                    // If PCNTL is available, fork a child process for the connection
+                    // An exit notification will only terminate the child process
+                    $pid = pcntl_fork();
+                    if ($pid === -1) {
+                        fwrite(STDERR, "Could not fork\n");
+                        exit(1);
+                    }
+
+                    if ($pid === 0) {
+                        // Child process
+                        $reader = new ProtocolStreamReader($socket);
+                        $reader->on(
+                            'close',
+                            /** @return void */
+                            function () {
+                                fwrite(STDOUT, "Connection closed\n");
+                            }
+                        );
+                        new LanguageServer(
+                            $reader,
+                            new ProtocolStreamWriter($socket),
+                            $this
+                        );
+                        Loop\run();
+                        // Just for safety
+                        exit(0);
+                    }
+                } else {
+                    // If PCNTL is not available, we only accept one connection.
+                    // An exit notification will terminate the server
+                    new LanguageServer(
+                        new ProtocolStreamReader($socket),
+                        new ProtocolStreamWriter($socket),
+                        $this
+                    );
+                    Loop\run();
+                }
+            }
+        } else {
+            // Use STDIO
+            stream_set_blocking(STDIN, false);
+            new LanguageServer(
+                new ProtocolStreamReader(STDIN),
+                new ProtocolStreamWriter(STDOUT),
+                $this
+            );
+            Loop\run();
         }
     }
 
@@ -259,7 +373,7 @@ class ProjectChecker
         $diff_files = null;
         $deleted_files = null;
 
-        $reference_cache = $this->file_reference_provider->loadReferenceCache();
+        $reference_cache = $this->file_reference_provider->loadReferenceCache(true);
 
         if ($is_diff
             && $reference_cache
@@ -423,25 +537,14 @@ class ProjectChecker
     {
         $file_extensions = $config->getFileExtensions();
 
-        /** @var RecursiveDirectoryIterator */
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir_name));
-        $iterator->rewind();
+        $file_paths = $this->file_provider->getFilesInDir($dir_name, $file_extensions);
 
         $files_to_scan = [];
 
-        while ($iterator->valid()) {
-            if (!$iterator->isDot()) {
-                $extension = $iterator->getExtension();
-                if (in_array($extension, $file_extensions, true)) {
-                    $file_path = (string)$iterator->getRealPath();
-
-                    if ($allow_non_project_files || $config->isInProjectDirs($file_path)) {
-                        $files_to_scan[$file_path] = $file_path;
-                    }
-                }
+        foreach ($file_paths as $file_path) {
+            if ($allow_non_project_files || $config->isInProjectDirs($file_path)) {
+                $files_to_scan[$file_path] = $file_path;
             }
-
-            $iterator->next();
         }
 
         $this->codebase->addFilesToAnalyze($files_to_scan);
@@ -455,26 +558,16 @@ class ProjectChecker
     private function getAllFiles(Config $config)
     {
         $file_extensions = $config->getFileExtensions();
-        $file_names = [];
+        $file_paths = [];
 
         foreach ($config->getProjectDirectories() as $dir_name) {
-            /** @var RecursiveDirectoryIterator */
-            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir_name));
-            $iterator->rewind();
-
-            while ($iterator->valid()) {
-                if (!$iterator->isDot()) {
-                    $extension = $iterator->getExtension();
-                    if (in_array($extension, $file_extensions, true)) {
-                        $file_names[] = (string)$iterator->getRealPath();
-                    }
-                }
-
-                $iterator->next();
-            }
+            $file_paths = array_merge(
+                $file_paths,
+                $this->file_provider->getFilesInDir($dir_name, $file_extensions)
+            );
         }
 
-        return $file_names;
+        return $file_paths;
     }
 
     /**
@@ -491,29 +584,18 @@ class ProjectChecker
             throw new \UnexpectedValueException('Parser cache provider cannot be null here');
         }
 
-        /** @var RecursiveDirectoryIterator */
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir_name));
-        $iterator->rewind();
-
         $diff_files = [];
 
         $last_good_run = $this->parser_cache_provider->getLastGoodRun();
 
-        while ($iterator->valid()) {
-            if (!$iterator->isDot()) {
-                $extension = $iterator->getExtension();
-                if (in_array($extension, $file_extensions, true)) {
-                    $file_path = (string)$iterator->getRealPath();
+        $file_paths = $this->file_provider->getFilesInDir($dir_name, $file_extensions);
 
-                    if ($config->isInProjectDirs($file_path)) {
-                        if ($this->file_provider->getModifiedTime($file_path) > $last_good_run) {
-                            $diff_files[] = $file_path;
-                        }
-                    }
+        foreach ($file_paths as $file_path) {
+            if ($config->isInProjectDirs($file_path)) {
+                if ($this->file_provider->getModifiedTime($file_path) > $last_good_run) {
+                    $diff_files[] = $file_path;
                 }
             }
-
-            $iterator->next();
         }
 
         return $diff_files;
@@ -530,7 +612,7 @@ class ProjectChecker
         $files_to_scan = [];
 
         foreach ($file_list as $file_path) {
-            if (!file_exists($file_path)) {
+            if (!$this->file_provider->fileExists($file_path)) {
                 continue;
             }
 
@@ -630,11 +712,10 @@ class ProjectChecker
 
     /**
      * @param  array<string>  $diff_files
-     * @param  bool           $include_referencing_files
      *
      * @return array<string, string>
      */
-    public function getReferencedFilesFromDiff(array $diff_files, $include_referencing_files = true)
+    public function getReferencedFilesFromDiff(array $diff_files, bool $include_referencing_files = true)
     {
         $all_inherited_files_to_check = $diff_files;
 
@@ -642,10 +723,11 @@ class ProjectChecker
             $diff_file = array_shift($diff_files);
 
             $dependent_files = $this->file_reference_provider->getFilesInheritingFromFile($diff_file);
+
             $new_dependent_files = array_diff($dependent_files, $all_inherited_files_to_check);
 
-            $all_inherited_files_to_check += $new_dependent_files;
-            $diff_files += $new_dependent_files;
+            $all_inherited_files_to_check = array_merge($all_inherited_files_to_check, $new_dependent_files);
+            $diff_files = array_merge($diff_files, $new_dependent_files);
         }
 
         $all_files_to_check = $all_inherited_files_to_check;
@@ -783,5 +865,61 @@ class ProjectChecker
         }
 
         $file_checker->getMethodMutations($appearing_method_id, $this_context);
+    }
+
+    /**
+     * Adapted from https://gist.github.com/divinity76/01ef9ca99c111565a72d3a8a6e42f7fb
+     * returns number of cpu cores
+     * Copyleft 2018, license: WTFPL
+     * @throws \RuntimeException
+     * @throws \LogicException
+     * @return int
+     * @psalm-suppress ForbiddenCode
+     */
+    private function getCpuCount(): int
+    {
+        if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
+            /*
+            $str = trim((string) shell_exec('wmic cpu get NumberOfCores 2>&1'));
+            if (!preg_match('/(\d+)/', $str, $matches)) {
+                throw new \RuntimeException('wmic failed to get number of cpu cores on windows!');
+            }
+            return ((int) $matches [1]);
+            */
+            return 1;
+        }
+
+        $has_nproc = trim((string) @shell_exec('command -v nproc'));
+        if ($has_nproc) {
+            $ret = @shell_exec('nproc');
+            if (is_string($ret)) {
+                $ret = trim($ret);
+                /** @var int|false */
+                $tmp = filter_var($ret, FILTER_VALIDATE_INT);
+                if (is_int($tmp)) {
+                    return $tmp;
+                }
+            }
+        }
+
+        $ret = @shell_exec('sysctl -n hw.ncpu');
+        if (is_string($ret)) {
+            $ret = trim($ret);
+            /** @var int|false */
+            $tmp = filter_var($ret, FILTER_VALIDATE_INT);
+            if (is_int($tmp)) {
+                return $tmp;
+            }
+        }
+
+        if (is_readable('/proc/cpuinfo')) {
+            $cpuinfo = file_get_contents('/proc/cpuinfo');
+            $count = substr_count($cpuinfo, 'processor');
+            if ($count > 0) {
+                return $count;
+            }
+        }
+
+        throw new \LogicException('failed to detect number of CPUs!');
     }
 }

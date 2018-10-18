@@ -39,7 +39,7 @@ if (isset($options['c']) && is_array($options['c'])) {
 if (array_key_exists('h', $options)) {
     echo <<< HELP
 Usage:
-    psalm [options] [file...]
+    psalter [options] [file...]
 
 Options:
     -h, --help
@@ -131,7 +131,7 @@ $project_checker = new ProjectChecker(
     $config,
     new Psalm\Provider\Providers(
         new Psalm\Provider\FileProvider(),
-        new Psalm\Provider\ParserCacheProvider(),
+        new Psalm\Provider\ParserCacheProvider($config),
         new Psalm\Provider\FileStorageCacheProvider($config),
         new Psalm\Provider\ClassLikeStorageCacheProvider($config)
     ),

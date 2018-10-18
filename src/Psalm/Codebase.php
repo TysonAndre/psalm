@@ -137,6 +137,11 @@ class Codebase
     public $populator;
 
     /**
+     * @var bool
+     */
+    public $server_mode = false;
+
+    /**
      * @param bool $collect_references
      * @param bool $debug_output
      */
@@ -208,21 +213,36 @@ class Codebase
             $this->config,
             $this->file_provider,
             $this->file_storage_provider,
-            $this->classlike_storage_provider,
             $this->debug_output
         );
     }
 
     /**
-     * @param array<string> $diff_files
+     * @param array<string> $candidate_files
      *
      * @return void
      */
-    public function reloadFiles(ProjectChecker $project_checker, array $diff_files)
+    public function reloadFiles(ProjectChecker $project_checker, array $candidate_files)
     {
         $this->loadAnalyzer();
 
         $project_checker->file_reference_provider->loadReferenceCache();
+
+        if (!$this->statements_provider->parser_cache_provider) {
+            $diff_files = $candidate_files;
+        } else {
+            $diff_files = [];
+
+            $parser_cache_provider = $this->statements_provider->parser_cache_provider;
+
+            foreach ($candidate_files as $candidate_file_path) {
+                if ($parser_cache_provider->loadExistingFileContentsFromCache($candidate_file_path)
+                    !== $this->file_provider->getContents($candidate_file_path)
+                ) {
+                    $diff_files[] = $candidate_file_path;
+                }
+            }
+        }
 
         $referenced_files = $project_checker->getReferencedFilesFromDiff($diff_files, false);
 
@@ -254,6 +274,12 @@ class Codebase
         $project_checker->file_reference_provider->updateReferenceCache($this, $referenced_files);
 
         $this->populator->populateCodebase($this);
+    }
+
+    /** @return void */
+    public function enterServerMode()
+    {
+        $this->server_mode = true;
     }
 
     /**
@@ -755,7 +781,7 @@ class Codebase
      *
      * @return void
      */
-    private function invalidateInformationForFile($file_path)
+    private function invalidateInformationForFile(string $file_path)
     {
         $this->scanner->removeFile($file_path);
 

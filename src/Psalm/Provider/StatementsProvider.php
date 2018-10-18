@@ -2,6 +2,7 @@
 namespace Psalm\Provider;
 
 use PhpParser;
+use Psalm\Checker\ProjectChecker;
 
 class StatementsProvider
 {
@@ -86,19 +87,17 @@ class StatementsProvider
                 echo 'Parsing ' . $file_path . "\n";
             }
 
-            return self::parseStatements($file_contents, $file_path) ?: [];
+            $stmts = self::parseStatements($file_contents, $file_path);
+
+            return $stmts ?: [];
         }
 
         $file_content_hash = md5($version . $file_contents);
-        $file_cache_key = $this->parser_cache_provider->getParserCacheKey(
-            $file_path,
-            $this->parser_cache_provider->use_igbinary
-        );
 
         $stmts = $this->parser_cache_provider->loadStatementsFromCache(
+            $file_path,
             $modified_time,
-            $file_content_hash,
-            $file_cache_key
+            $file_content_hash
         );
 
         if ($stmts === null) {
@@ -108,10 +107,10 @@ class StatementsProvider
 
             $stmts = self::parseStatements($file_contents, $file_path);
 
-            $existing_file_contents = $this->parser_cache_provider->loadExistingFileContentsFromCache($file_cache_key);
+            $existing_file_contents = $this->parser_cache_provider->loadExistingFileContentsFromCache($file_path);
 
             if ($existing_file_contents) {
-                $existing_statements = $this->parser_cache_provider->loadExistingStatementsFromCache($file_cache_key);
+                $existing_statements = $this->parser_cache_provider->loadExistingStatementsFromCache($file_path);
 
                 if ($existing_statements) {
                     list($unchanged_members, $unchanged_signature_members, $changed_members, $diff_map)
@@ -190,13 +189,13 @@ class StatementsProvider
                 $this->file_storage_cache_provider->removeCacheForFile($file_path);
             }
 
-            $this->parser_cache_provider->cacheFileContents($file_cache_key, $file_contents);
+            $this->parser_cache_provider->cacheFileContents($file_path, $file_contents);
         } else {
             $from_cache = true;
             $this->diff_map[$file_path] = [];
         }
 
-        $this->parser_cache_provider->saveStatementsToCache($file_cache_key, $file_content_hash, $stmts, $from_cache);
+        $this->parser_cache_provider->saveStatementsToCache($file_path, $file_content_hash, $stmts, $from_cache);
 
         if (!$stmts) {
             return [];
@@ -279,7 +278,8 @@ class StatementsProvider
     }
 
     /**
-     * @param  string   $file_contents
+     * @param  string  $file_contents
+     * @param  bool    $server_mode
      * @param  string   $file_path
      *
      * @return array<int, \PhpParser\Node\Stmt>
@@ -287,11 +287,11 @@ class StatementsProvider
     public static function parseStatements($file_contents, $file_path = null)
     {
         if (!self::$parser) {
-            $lexer = new PhpParser\Lexer([
-                'usedAttributes' => [
-                    'comments', 'startLine', 'startFilePos', 'endFilePos',
-                ],
-            ]);
+            $attributes = [
+                'comments', 'startLine', 'startFilePos', 'endFilePos',
+            ];
+
+            $lexer = new PhpParser\Lexer([ 'usedAttributes' => $attributes ]);
 
             self::$parser = (new PhpParser\ParserFactory())->create(PhpParser\ParserFactory::PREFER_PHP7, $lexer);
         }
@@ -327,7 +327,6 @@ class StatementsProvider
             }
         }
 
-        /** @var array<int, \PhpParser\Node\Stmt> */
         self::$node_traverser->traverse($stmts);
 
         return $stmts;

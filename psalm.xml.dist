@@ -19,6 +19,7 @@
             <file name="src/Psalm/CallMap.php" />
             <directory name="src/Psalm/Stubs" />
             <directory name="tests/stubs" />
+            <directory name="tests/DummyProject" />
             <file name="vendor/phpunit/phpunit/src/Framework/TestCase.php" />
             <file name="src/Psalm/Diff/Differ.php" />
         </ignoreFiles>
@@ -79,6 +80,7 @@
 
         <PossiblyUnusedProperty>
             <errorLevel type="info">
+                <file name="src/Psalm/LanguageServer/LanguageClient.php" />
                 <file name="src/Psalm/Storage/FunctionLikeStorage.php" />
             </errorLevel>
         </PossiblyUnusedProperty>
@@ -89,6 +91,8 @@
             <errorLevel type="suppress">
                 <directory name="tests" />
                 <file name="src/Psalm/Plugin.php" />
+                <file name="src/Psalm/LanguageServer/Client/TextDocument.php" />
+                <file name="src/Psalm/LanguageServer/Server/TextDocument.php" />
                 <referencedMethod name="Psalm\Codebase::getParentInterfaces" />
                 <referencedMethod name="Psalm\Codebase::getMethodParams" />
                 <referencedMethod name="Psalm\Codebase::getMethodReturnType" />

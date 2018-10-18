@@ -64,11 +64,6 @@ class Analyzer
     private $file_storage_provider;
 
     /**
-     * @var ClassLikeStorageProvider
-     */
-    private $classlike_storage_provider;
-
-    /**
      * @var bool
      */
     private $debug_output;
@@ -109,13 +104,11 @@ class Analyzer
         Config $config,
         FileProvider $file_provider,
         FileStorageProvider $file_storage_provider,
-        ClassLikeStorageProvider $classlike_storage_provider,
         $debug_output
     ) {
         $this->config = $config;
         $this->file_provider = $file_provider;
         $this->file_storage_provider = $file_storage_provider;
-        $this->classlike_storage_provider = $classlike_storage_provider;
         $this->debug_output = $debug_output;
     }
 
@@ -266,8 +259,9 @@ class Analyzer
                 }
             }
 
-            // TODO: Tell the caller that the fork pool encountered an error in another PR?
-            // $did_fork_pool_have_error = $pool->didHaveError();
+            if ($pool->didHaveError()) {
+                exit(1);
+            }
         } else {
             $i = 0;
 
@@ -317,16 +311,14 @@ class Analyzer
 
         $all_referencing_methods = $project_checker->file_reference_provider->getMethodsReferencing();
 
+        $classlikes = $project_checker->codebase->classlikes;
+
         foreach ($all_referencing_methods as $member_id => $referencing_method_ids) {
             $member_class_name = preg_replace('/::.*$/', '', $member_id);
 
-            try {
-                $member_class_storage = $this->classlike_storage_provider->get($member_class_name);
-            } catch (\Exception $e) {
-                continue;
-            }
-
-            if (!$member_class_storage->is_trait) {
+            if ($classlikes->hasFullyQualifiedClassLikeName($member_class_name)
+                && !$classlikes->hasFullyQualifiedTraitName($member_class_name)
+            ) {
                 continue;
             }
 

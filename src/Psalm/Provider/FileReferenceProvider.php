@@ -252,13 +252,14 @@ class FileReferenceProvider
     }
 
     /**
+     * @param bool $force_reload
      * @return bool
      * @psalm-suppress MixedAssignment
      * @psalm-suppress MixedTypeCoercion
      */
-    public function loadReferenceCache()
+    public function loadReferenceCache($force_reload = true)
     {
-        if ($this->cache && !$this->loaded_from_cache) {
+        if ($this->cache && (!$this->loaded_from_cache || $force_reload)) {
             $this->loaded_from_cache = true;
 
             $file_references = $this->cache->getCachedFileReferences();
@@ -396,10 +397,16 @@ class FileReferenceProvider
 
     /**
      * @param string $file_path
+     * @param IssueData $issue
      * @return void
      */
     public function addIssue($file_path, array $issue)
     {
+        // don’t save parse errors ever, as they're not responsive to AST diffing
+        if ($issue['type'] === 'ParseError') {
+            return;
+        }
+
         if (!isset(self::$issues[$file_path])) {
             self::$issues[$file_path] = [$issue];
         } else {

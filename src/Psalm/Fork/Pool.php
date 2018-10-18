@@ -253,23 +253,40 @@ class Pool
      */
     public function wait()
     {
+        global $argv;
 
         // Read all the streams from child processes into an array.
         $content = $this->readResultsFromChildren();
 
+        $command = $argv[0];
+
         // Wait for all children to return
         foreach ($this->child_pid_list as $child_pid) {
-            if (pcntl_waitpid($child_pid, $status) < 0) {
-                error_log(posix_strerror(posix_get_last_error()));
+            /** @psalm-suppress ForbiddenCode */
+            $process_lookup = @shell_exec('ps x -p ' . $child_pid . ' | grep "' . $command . '"');
+
+            $status = 0;
+
+            if ($process_lookup) {
+                error_log('Forcing child ' . $child_pid . ' to close');
+                posix_kill($child_pid, SIGALRM);
+
+                if (pcntl_waitpid($child_pid, $status) < 0) {
+                    error_log(posix_strerror(posix_get_last_error()));
+                }
+            } else {
+                error_log('Child ' . $child_pid . ' presumably dead, spawned from ' . $command);
             }
 
             // Check to see if the child died a graceful death
-            $status = 0;
             if (pcntl_wifsignaled($status)) {
                 $return_code = pcntl_wexitstatus($status);
                 $term_sig = pcntl_wtermsig($status);
-                $this->did_have_error = true;
-                error_log("Child terminated with return code $return_code and signal $term_sig");
+
+                if ($term_sig !== SIGALRM) {
+                    $this->did_have_error = true;
+                    error_log("Child terminated with return code $return_code and signal $term_sig");
+                }
             }
         }
 
