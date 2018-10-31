@@ -36,13 +36,10 @@ use function array_merge;
 use function array_values;
 use function count;
 use function in_array;
-use function preg_replace;
 use function strpos;
-use function str_replace;
 use function str_split;
 use function strtolower;
 use function substr;
-use function trim;
 
 abstract class Type
 {

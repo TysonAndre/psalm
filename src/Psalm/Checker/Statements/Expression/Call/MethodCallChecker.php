@@ -130,7 +130,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
         ) {
             if (IssueBuffer::accepts(
                 new PossiblyNullReference(
-                    'Cannot call method ' . $stmt->name->name . ' on possibly null variable ' . $var_id,
+                    'Cannot call method ' . $stmt->name->name . ' on possibly null variable ' . $var_id . ' of type ' . $class_type,
                     new CodeLocation($statements_checker->getSource(), $stmt->var)
                 ),
                 $statements_checker->getSuppressedIssues()
