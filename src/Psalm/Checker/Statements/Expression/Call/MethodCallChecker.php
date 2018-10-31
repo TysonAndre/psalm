@@ -196,6 +196,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         case Type\Atomic\TLiteralString::class:
                         case Type\Atomic\TLiteralClassString::class:
                         case Type\Atomic\TNumericString::class:
+                        case Type\Atomic\THtmlEscapedString::class:
                         case Type\Atomic\TClassString::class:
                         case Type\Atomic\TEmptyMixed::class:
                             $invalid_method_call_types[] = (string)$lhs_type_part;
@@ -417,6 +418,17 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         $method_id = $intersection_type->value . '::' . $method_name_lc;
                         $fq_class_name = $intersection_type->value;
 
+                        $does_class_exist = ClassLikeChecker::checkFullyQualifiedClassLikeName(
+                            $statements_checker,
+                            $fq_class_name,
+                            new CodeLocation($source, $stmt->var),
+                            $statements_checker->getSuppressedIssues()
+                        );
+
+                        if (!$does_class_exist) {
+                            return false;
+                        }
+
                         if ($codebase->methodExists($method_id)) {
                             break;
                         }
@@ -633,6 +645,14 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                         $args
                     );
 
+                    if ($codebase->server_mode && $method_id) {
+                        $codebase->analyzer->addNodeReference(
+                            $statements_checker->getFilePath(),
+                            $stmt->name,
+                            $method_id . '()'
+                        );
+                    }
+
                     if (isset($stmt->inferredType)) {
                         $return_type_candidate = $stmt->inferredType;
                     }
@@ -680,21 +700,24 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     if (count($lhs_types) === 1) {
                         $method_storage = $codebase->methods->getUserMethodStorage($method_id);
 
-                        if ($method_storage->assertions) {
-                            self::applyAssertionsToContext(
-                                $method_storage->assertions,
-                                $args,
-                                $context,
-                                $statements_checker
-                            );
-                        }
+                        if ($method_storage) {
+                            if ($method_storage->assertions) {
+                                self::applyAssertionsToContext(
+                                    $method_storage->assertions,
+                                    $args,
+                                    $method_storage->template_typeof_params ?: [],
+                                    $context,
+                                    $statements_checker
+                                );
+                            }
 
-                        if ($method_storage->if_true_assertions) {
-                            $stmt->ifTrueAssertions = $method_storage->if_true_assertions;
-                        }
+                            if ($method_storage->if_true_assertions) {
+                                $stmt->ifTrueAssertions = $method_storage->if_true_assertions;
+                            }
 
-                        if ($method_storage->if_false_assertions) {
-                            $stmt->ifFalseAssertions = $method_storage->if_false_assertions;
+                            if ($method_storage->if_false_assertions) {
+                                $stmt->ifFalseAssertions = $method_storage->if_false_assertions;
+                            }
                         }
                     }
                 }
@@ -814,6 +837,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
             }
         }
 
+
         if ($method_id === null) {
             return self::checkMethodArgs(
                 $method_id,
@@ -822,6 +846,18 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 $context,
                 new CodeLocation($statements_checker->getSource(), $stmt),
                 $statements_checker
+            );
+        }
+
+        if ($codebase->server_mode
+            && (!$context->collect_initializations
+                && !$context->collect_mutations)
+            && isset($stmt->inferredType)
+        ) {
+            $codebase->analyzer->addNodeType(
+                $statements_checker->getFilePath(),
+                $stmt->name,
+                (string) $stmt->inferredType
             );
         }
 

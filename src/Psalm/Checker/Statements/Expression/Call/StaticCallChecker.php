@@ -174,9 +174,21 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     return null;
                 }
             } elseif ($context->check_classes) {
+                $aliases = $statements_checker->getAliases();
+
+                if ($context->calling_method_id
+                    && !$stmt->class instanceof PhpParser\Node\Name\FullyQualified
+                    && isset($aliases->uses[strtolower($stmt->class->parts[0])])
+                ) {
+                    $codebase->file_reference_provider->addReferenceToClassMethod(
+                        $context->calling_method_id,
+                        'use:' . $stmt->class->parts[0] . ':' . \md5($statements_checker->getFilePath())
+                    );
+                }
+
                 $fq_class_name = ClassLikeChecker::getFQCLNFromNameObject(
                     $stmt->class,
-                    $statements_checker->getAliases()
+                    $aliases
                 );
 
                 if ($context->isPhantomClass($fq_class_name)) {
@@ -207,6 +219,14 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 if (!$does_class_exist) {
                     return $does_class_exist;
                 }
+            }
+
+            if ($codebase->server_mode && $fq_class_name) {
+                $codebase->analyzer->addNodeReference(
+                    $statements_checker->getFilePath(),
+                    $stmt->class,
+                    $fq_class_name
+                );
             }
 
             if ($fq_class_name && !$lhs_type) {
@@ -485,13 +505,14 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     }
                 }
 
-                try {
-                    $method_storage = $codebase->methods->getUserMethodStorage($method_id);
+                $method_storage = $codebase->methods->getUserMethodStorage($method_id);
 
+                if ($method_storage) {
                     if ($method_storage->assertions) {
                         self::applyAssertionsToContext(
                             $method_storage->assertions,
                             $stmt->args,
+                            $method_storage->template_typeof_params ?: [],
                             $context,
                             $statements_checker
                         );
@@ -504,8 +525,6 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                     if ($method_storage->if_false_assertions) {
                         $stmt->ifFalseAssertions = $method_storage->if_false_assertions;
                     }
-                } catch (\UnexpectedValueException $e) {
-                    // do nothing for non-user-defined methods
                 }
 
                 if ($config->after_method_checks) {
@@ -554,6 +573,28 @@ class StaticCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
                 ) === false) {
                     return false;
                 }
+            }
+
+            if ($codebase->server_mode && $method_id) {
+                /** @psalm-suppress PossiblyInvalidArgument never a string, PHP Parser bug */
+                $codebase->analyzer->addNodeReference(
+                    $statements_checker->getFilePath(),
+                    $stmt->name,
+                    $method_id . '()'
+                );
+            }
+
+            if ($codebase->server_mode
+                && (!$context->collect_initializations
+                    && !$context->collect_mutations)
+                && isset($stmt->inferredType)
+            ) {
+                /** @psalm-suppress PossiblyInvalidArgument never a string, PHP Parser bug */
+                $codebase->analyzer->addNodeType(
+                    $statements_checker->getFilePath(),
+                    $stmt->name,
+                    (string) $stmt->inferredType
+                );
             }
         }
 
