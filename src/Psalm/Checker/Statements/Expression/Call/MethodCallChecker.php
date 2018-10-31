@@ -131,7 +131,7 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
             // TODO: Make this more generic and configurable
             $should_check = true;
             foreach ($class_type->getTypes() as $type) {
-                if ($type->isObjectType() && strcasecmp($type->value, 'User') === 0) {
+                if ($type instanceof TNamedObject && strcasecmp($type->value, 'User') === 0) {
                     $should_check = false;
                     break;
                 }
