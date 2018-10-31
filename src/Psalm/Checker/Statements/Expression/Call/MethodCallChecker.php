@@ -128,7 +128,15 @@ class MethodCallChecker extends \Psalm\Checker\Statements\Expression\CallChecker
             && $class_type->isNullable()
             && !$class_type->ignore_nullable_issues
         ) {
-            if (IssueBuffer::accepts(
+            // TODO: Make this more generic and configurable
+            $should_check = true;
+            foreach ($class_type->getTypes() as $type) {
+                if ($type->isObjectType() && strcasecmp($type->value, 'User') === 0) {
+                    $should_check = false;
+                    break;
+                }
+            }
+            if ($should_check && IssueBuffer::accepts(
                 new PossiblyNullReference(
                     'Cannot call method ' . $stmt->name->name . ' on possibly null variable ' . $var_id . ' of type ' . $class_type,
                     new CodeLocation($statements_checker->getSource(), $stmt->var)
