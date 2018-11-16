@@ -26,10 +26,10 @@ class FileDiffTest extends TestCase
             $this->markTestSkipped();
         }
 
-        $a_stmts = \Psalm\Provider\StatementsProvider::parseStatements($a);
-        $b_stmts = \Psalm\Provider\StatementsProvider::parseStatements($b);
+        $a_stmts = \Psalm\Internal\Provider\StatementsProvider::parseStatements($a);
+        $b_stmts = \Psalm\Internal\Provider\StatementsProvider::parseStatements($b);
 
-        $diff = \Psalm\Diff\FileStatementsDiffer::diff($a_stmts, $b_stmts, $a, $b);
+        $diff = \Psalm\Internal\Diff\FileStatementsDiffer::diff($a_stmts, $b_stmts, $a, $b);
 
         $this->assertSame(
             $same_methods,
@@ -84,24 +84,24 @@ class FileDiffTest extends TestCase
             $this->markTestSkipped();
         }
 
-        $file_changes = \Psalm\Diff\FileDiffer::getDiff($a, $b);
+        $file_changes = \Psalm\Internal\Diff\FileDiffer::getDiff($a, $b);
 
-        $a_stmts = \Psalm\Provider\StatementsProvider::parseStatements($a);
+        $a_stmts = \Psalm\Internal\Provider\StatementsProvider::parseStatements($a);
 
         $traverser = new PhpParser\NodeTraverser;
-        $traverser->addVisitor(new \Psalm\Visitor\CloningVisitor);
+        $traverser->addVisitor(new \Psalm\Internal\Visitor\CloningVisitor);
         // performs a deep clone
         /** @var array<int, PhpParser\Node\Stmt> */
         $a_stmts_copy = $traverser->traverse($a_stmts);
 
         $this->assertTreesEqual($a_stmts, $a_stmts_copy);
 
-        $b_stmts = \Psalm\Provider\StatementsProvider::parseStatements($b, null, $a, $a_stmts_copy, $file_changes);
-        $b_clean_stmts = \Psalm\Provider\StatementsProvider::parseStatements($b);
+        $b_stmts = \Psalm\Internal\Provider\StatementsProvider::parseStatements($b, null, $a, $a_stmts_copy, $file_changes);
+        $b_clean_stmts = \Psalm\Internal\Provider\StatementsProvider::parseStatements($b);
 
         $this->assertTreesEqual($b_clean_stmts, $b_stmts);
 
-        $diff = \Psalm\Diff\FileStatementsDiffer::diff($a_stmts, $b_clean_stmts, $a, $b);
+        $diff = \Psalm\Internal\Diff\FileStatementsDiffer::diff($a_stmts, $b_clean_stmts, $a, $b);
 
         $this->assertSame(
             $same_methods,
@@ -161,10 +161,6 @@ class FileDiffTest extends TestCase
                 $b_doc = $b_stmt->getDocComment();
 
                 $this->assertNotNull($b_doc, var_export($a_doc, true));
-
-                if (!$b_doc) {
-                    throw new \UnexpectedValueException('');
-                }
 
                 $this->assertNotSame($a_doc, $b_doc);
 
@@ -1185,7 +1181,7 @@ class FileDiffTest extends TestCase
                 }',
                 [],
                 [],
-                ['foo\a::foo', 'foo\a::bar', 'foo\a::foo', 'foo\a::bar'],
+                ['use:D', 'use:E', 'foo\a::foo', 'foo\a::bar', 'foo\a::foo', 'foo\a::bar'],
                 []
             ],
             'SKIPPED-whiteSpaceOnly' => [
@@ -1601,6 +1597,80 @@ class FileDiffTest extends TestCase
                 ['a\c::foo'],
                 [],
                 []
+            ],
+            'diffMultipleBadDocblocks' => [
+                '<?php
+                    namespace Foo;
+
+                    class A
+                    {
+                        /**
+                         * @param string $s
+                         * @param string $t
+                         * @return Database
+                         */
+                        public static function foo()
+                        {
+                            return D::eep();
+                        }
+
+                        /**
+                         * @param string $s
+                         * @param string $t
+                         * @return bool
+                         */
+                        public static function bar()
+                        {
+                            return 2;
+                        }
+
+                        /**
+                         * @return C|null
+                         */
+                        public static function bat()
+                        {
+                            return 1;
+                        }
+                    }
+                    ',
+                    '<?php
+                    namespace Foo;
+
+                    class A
+                    {
+                        /**
+                         * @param string $s
+                         * @param string
+                         * @return Database
+                         */
+                        public static function foo()
+                        {
+                            return D::eep();
+                        }
+
+                        /**
+                         * @param string $s
+                         * @param string
+                         * @return bool
+                         */
+                        public static function bar()
+                        {
+                            return 2;
+                        }
+
+                        /**
+                         * @return C|null
+                         */
+                        public static function bat()
+                        {
+                            return 1;
+                        }
+                    }
+                    ',
+                ['foo\a::bat'],
+                [],
+                ['foo\a::foo', 'foo\a::bar', 'foo\a::foo', 'foo\a::bar'],
+                [[-6, 0]]
             ],
         ];
     }

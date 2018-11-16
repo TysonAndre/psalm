@@ -6,34 +6,8 @@ use Psalm\Context;
 
 class ClassStringTest extends TestCase
 {
-    use Traits\FileCheckerInvalidCodeParseTestTrait;
-    use Traits\FileCheckerValidCodeParseTestTrait;
-
-    /**
-     * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage InvalidArgument
-     *
-     * @return                   void
-     */
-    public function testDontAllowStringConstCoercion()
-    {
-        Config::getInstance()->allow_coercion_from_string_to_class_const = false;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                /**
-                 * @param class-string $s
-                 */
-                function takesClassConstants(string $s) : void {}
-
-                class A {}
-
-                takesClassConstants("A");'
-        );
-
-        $this->analyzeFile('somefile.php', new Context());
-    }
+    use Traits\InvalidCodeAnalysisTestTrait;
+    use Traits\ValidCodeAnalysisTestTrait;
 
     /**
      * @expectedException        \Psalm\Exception\CodeException
@@ -86,7 +60,7 @@ class ClassStringTest extends TestCase
     /**
      * @return array
      */
-    public function providerFileCheckerValidCodeParse()
+    public function providerValidCodeParse()
     {
         return [
             'arrayOfClassConstants' => [
@@ -271,12 +245,29 @@ class ClassStringTest extends TestCase
                         switch ($a) {
                             case A::class:
                                 return;
-                          
+
                             case B::class:
                             case C::class:
                                 return;
                         }
                     }',
+            ],
+            'reconcileToFalsy' => [
+                '<?php
+                    /** @psalm-param ?class-string $s */
+                    function bar(?string $s) : void {}
+
+                    class A {}
+
+                    /** @psalm-return ?class-string */
+                    function bat() {
+                        if (rand(0, 1)) return null;
+                        return A::class;
+                    }
+
+                    $a = bat();
+                    $a ? 1 : 0;
+                    bar($a);',
             ],
         ];
     }
@@ -284,7 +275,7 @@ class ClassStringTest extends TestCase
     /**
      * @return array
      */
-    public function providerFileCheckerInvalidCodeParse()
+    public function providerInvalidCodeParse()
     {
         return [
             'arrayOfStringClasses' => [

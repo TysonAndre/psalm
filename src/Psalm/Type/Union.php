@@ -509,7 +509,7 @@ class Union
      */
     public function hasString()
     {
-        return isset($this->types['string']) || $this->literal_string_types;
+        return isset($this->types['string']) || isset($this->types['class-string']) || $this->literal_string_types;
     }
 
     /**
@@ -531,12 +531,12 @@ class Union
     /**
      * @return bool
      */
-    public function hasDefinitelyNumericType()
+    public function hasDefinitelyNumericType(bool $include_literal_int = true)
     {
         return isset($this->types['int'])
             || isset($this->types['float'])
             || isset($this->types['numeric-string'])
-            || $this->literal_int_types
+            || ($include_literal_int && $this->literal_int_types)
             || $this->literal_float_types;
     }
 

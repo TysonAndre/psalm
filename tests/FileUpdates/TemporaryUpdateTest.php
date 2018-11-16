@@ -1,11 +1,11 @@
 <?php
 namespace Psalm\Tests\FileUpdates;
 
-use Psalm\Checker\FileChecker;
-use Psalm\Checker\ProjectChecker;
-use Psalm\Provider\Providers;
+use Psalm\Internal\Analyzer\FileAnalyzer;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Provider\Providers;
 use Psalm\Tests\TestConfig;
-use Psalm\Tests\Provider;
+use Psalm\Tests\Internal\Provider;
 
 class TemporaryUpdateTest extends \Psalm\Tests\TestCase
 {
@@ -16,32 +16,32 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
     {
         parent::setUp();
 
-        FileChecker::clearCache();
+        FileAnalyzer::clearCache();
 
-        $this->file_provider = new \Psalm\Tests\Provider\FakeFileProvider();
+        $this->file_provider = new \Psalm\Tests\Internal\Provider\FakeFileProvider();
 
         $config = new TestConfig();
         $config->throw_exception = false;
 
         $providers = new Providers(
             $this->file_provider,
-            new \Psalm\Tests\Provider\ParserInstanceCacheProvider(),
+            new \Psalm\Tests\Internal\Provider\ParserInstanceCacheProvider(),
             null,
             null,
             new Provider\FakeFileReferenceCacheProvider()
         );
 
-        $this->project_checker = new ProjectChecker(
+        $this->project_analyzer = new ProjectAnalyzer(
             $config,
             $providers,
             false,
             true,
-            ProjectChecker::TYPE_CONSOLE,
+            ProjectAnalyzer::TYPE_CONSOLE,
             1,
             false
         );
 
-        $this->project_checker->infer_types_from_usage = true;
+        $this->project_analyzer->getCodebase()->infer_types_from_usage = true;
     }
 
     /**
@@ -58,9 +58,9 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
         array $error_positions,
         array $error_levels = []
     ) {
-        $this->project_checker->diff_methods = true;
+        $this->project_analyzer->getCodebase()->diff_methods = true;
 
-        $codebase = $this->project_checker->getCodebase();
+        $codebase = $this->project_analyzer->getCodebase();
 
         $config = $codebase->config;
 
@@ -79,7 +79,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
 
         $codebase->scanFiles();
 
-        $codebase->analyzer->analyzeFiles($this->project_checker, 1, false);
+        $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
 
         $data = \Psalm\IssueBuffer::clear();
 
@@ -97,15 +97,17 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
             foreach ($file_stage as $file_path => $contents) {
                 $codebase->addTemporaryFileChanges(
                     $file_path,
-                    [new \LanguageServerProtocol\TextDocumentContentChangeEvent(null, null, $contents)]
+                    $contents
                 );
+                $codebase->invalidateInformationForFile($file_path);
+                $codebase->scanTemporaryFileChanges($file_path);
             }
 
             foreach ($file_stage as $file_path => $contents) {
                 $codebase->addFilesToAnalyze([$file_path => $file_path]);
             }
 
-            $codebase->analyzer->analyzeFiles($this->project_checker, 1, false);
+            $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
 
             $data = \Psalm\IssueBuffer::clear();
 
@@ -324,6 +326,50 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
                 ]
             ],
+            'resolveNamesInDifferentFunction' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                /**
+                                 * @param string (A::class | B::class)
+                                 * @return string
+                                 */
+                                public function foo($a) {
+                                    return A::class;
+                                }
+
+                                public function bar() : string {
+                                    return "hello";
+                                }
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                /**
+                                 * @param string $a - one of (A::class | B::class)
+                                 * @return string
+                                 */
+                                public function foo($a) {
+                                    return A::class;
+                                }
+
+                                public function bar() : string {
+                                    return "hello";
+                                }
+                            }',
+                    ],
+                ],
+                'error_positions' => [[333], []],
+                [
+                    'InvalidDocblock' => \Psalm\Config::REPORT_INFO,
+                ]
+            ],
             'bridgeStatements' => [
                 [
                     [
@@ -401,7 +447,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[136, 273], [275, 144, 136]],
+                'error_positions' => [[136, 273], [144, 136, 275]],
                 [
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
                 ]
@@ -470,7 +516,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[120], [120]],
+                'error_positions' => [[127], [127]],
             ],
             'removeUseShouldInvalidate' => [
                 [
@@ -686,7 +732,42 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
 
                             class A {
                                 public function foo() : void {
-                                    throw new Exception();
+                                    throw new E();
+                                }
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'E.php' => '<?php
+                            namespace Bar;
+
+                            class E extends \Exception {}',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            use Bar\E;
+
+                            class A {
+                                public function foo() : void {
+                                    throw new E();
+                                }
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'E.php' => '<?php
+                            namespace Bar;
+
+                            class E extends \Exception {}',
+                    ],
+                ],
+                'error_positions' => [[197], []],
+            ],
+            'fixMissingProperty' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                public function foo() : void {
+                                    echo $this->bar;
                                 }
                             }',
                     ],
@@ -694,16 +775,16 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                         getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
                             namespace Foo;
 
-                            use Exception;
-
                             class A {
+                                /** @var string */
+                                private $bar = "hello";
                                 public function foo() : void {
-                                    throw new Exception();
+                                    echo $this->bar;
                                 }
                             }',
                     ],
                 ],
-                'error_positions' => [[197], []],
+                'error_positions' => [[192, 192], []],
             ],
         ];
     }

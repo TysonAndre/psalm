@@ -3,13 +3,13 @@ namespace Psalm\Tests;
 
 class ValueTest extends TestCase
 {
-    use Traits\FileCheckerInvalidCodeParseTestTrait;
-    use Traits\FileCheckerValidCodeParseTestTrait;
+    use Traits\InvalidCodeAnalysisTestTrait;
+    use Traits\ValidCodeAnalysisTestTrait;
 
     /**
      * @return array
      */
-    public function providerFileCheckerValidCodeParse()
+    public function providerValidCodeParse()
     {
         return [
             'whileCountUpdate' => [
@@ -407,18 +407,6 @@ class ValueTest extends TestCase
                         takesString($f[$i]);
                     }'
             ],
-            'noRedundantConditionAfterWhile' => [
-                '<?php
-                    $i = 5;
-                    while (--$i > 0) {}
-                    echo $i === 0;',
-            ],
-            'noRedundantConditionAfterDoWhile' => [
-                '<?php
-                    $i = 5;
-                    do {} while (--$i > 0);
-                    echo $i === 0;',
-            ],
             'coerceFromMixed' => [
                 '<?php
                     function type(int $b): void {}
@@ -447,13 +435,35 @@ class ValueTest extends TestCase
                         }
                     }',
             ],
+            'coercePossibleOffset' => [
+                '<?php
+                    class A {
+                        const FOO = "foo";
+                        const BAR = "bar";
+                        const BAT = "bat";
+                        const BAM = "bam";
+
+                        /** @var self::FOO|self::BAR|self::BAT|null $s */
+                        public $s;
+
+                        public function isFooOrBar() : void {
+                            $map = [
+                                A::FOO => 1,
+                                A::BAR => 1,
+                                A::BAM => 1,
+                            ];
+
+                            if (isset($map[$this->s])) {}
+                        }
+                    }'
+            ],
         ];
     }
 
     /**
      * @return array
      */
-    public function providerFileCheckerInvalidCodeParse()
+    public function providerInvalidCodeParse()
     {
         return [
             'neverEqualsType' => [

@@ -128,10 +128,7 @@ class ParseTree
                     }
 
                     do {
-                        if ($current_leaf->parent === null
-                            || $current_leaf->parent instanceof ParseTree\CallableWithReturnTypeTree
-                            || $current_leaf->parent instanceof ParseTree\MethodWithReturnTypeTree
-                        ) {
+                        if ($current_leaf->parent === null) {
                             break;
                         }
 

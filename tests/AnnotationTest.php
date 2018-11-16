@@ -6,8 +6,8 @@ use Psalm\Context;
 
 class AnnotationTest extends TestCase
 {
-    use Traits\FileCheckerInvalidCodeParseTestTrait;
-    use Traits\FileCheckerValidCodeParseTestTrait;
+    use Traits\InvalidCodeAnalysisTestTrait;
+    use Traits\ValidCodeAnalysisTestTrait;
 
     /**
      * @return void
@@ -461,7 +461,7 @@ class AnnotationTest extends TestCase
     /**
      * @return array
      */
-    public function providerFileCheckerValidCodeParse()
+    public function providerValidCodeParse()
     {
         return [
             'nopType' => [
@@ -1007,13 +1007,26 @@ class AnnotationTest extends TestCase
                         return $s;
                     }',
             ],
+            'missingReturnTypeWithBadDocblockIgnoreBoth' => [
+                '<?php
+                    /**
+                     * @return [bad]
+                     */
+                    function fooBar() {
+                    }',
+                [],
+                [
+                    'InvalidDocblock' => \Psalm\Config::REPORT_INFO,
+                    'MissingReturnType' => \Psalm\Config::REPORT_INFO,
+                ]
+            ],
         ];
     }
 
     /**
      * @return array
      */
-    public function providerFileCheckerInvalidCodeParse()
+    public function providerInvalidCodeParse()
     {
         return [
             'invalidReturn' => [
@@ -1177,6 +1190,18 @@ class AnnotationTest extends TestCase
                     function fooBar(): void {
                     }',
                 'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:5 - Badly-formatted @param',
+            ],
+            'missingReturnTypeWithBadDocblock' => [
+                '<?php
+                    /**
+                     * @return [bad]
+                     */
+                    function fooBar() {
+                    }',
+                'error_message' => 'MissingReturnType',
+                [
+                    'InvalidDocblock' => \Psalm\Config::REPORT_INFO,
+                ]
             ],
             'invalidDocblockReturn' => [
                 '<?php

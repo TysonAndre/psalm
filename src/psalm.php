@@ -1,7 +1,9 @@
 <?php
 require_once('command_functions.php');
 
-use Psalm\Checker\ProjectChecker;
+use Psalm\ErrorBaseline;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Provider;
 use Psalm\Config;
 use Psalm\IssueBuffer;
 
@@ -25,26 +27,29 @@ $valid_long_options = [
     'debug',
     'debug-by-line',
     'diff',
+    'diff-methods',
     'disable-extension:',
     'find-dead-code',
     'find-references-to:',
     'help',
+    'ignore-baseline',
     'init',
     'monochrome',
     'no-cache',
-    'no-class-cache',
+    'no-reflection-cache',
     'no-vendor-autoloader',
     'output-format:',
     'plugin:',
     'report:',
     'root:',
+    'set-baseline:',
     'show-info:',
     'show-snippet:',
     'stats',
     'threads:',
+    'update-baseline',
     'use-ini-defaults',
     'version',
-    'diff-methods',
 ];
 
 $args = array_slice($argv, 1);
@@ -183,6 +188,10 @@ Options:
     --no-class-cache
         Runs Psalm without using cache of inferences about classlikes.
 
+    --no-reflection-cache
+        Runs Psalm without using cached representations of unchanged classes and files.
+        Useful if you want the afterClassLikeVisit plugin hook to run every time you visit a file.
+
     --plugin=PATH
         Executes a plugin, an alternative to using the Psalm config
 
@@ -197,6 +206,15 @@ Options:
 
     --disable-extension=[extension]
         Used to disable certain extensions while Psalm is running.
+
+    --set-baseline=PATH
+        Save all current error level issues to a file, to mark them as info in subsequent runs
+
+    --ignore-baseline
+        Ignore the error baseline
+
+    --update-baseline
+        Update the baseline by removing fixed issues. This will not add new issues to the baseline
 
 HELP;
 
@@ -236,7 +254,7 @@ if (array_key_exists('v', $options)) {
 
 $threads = isset($options['threads']) ? (int)$options['threads'] : 1;
 
-$ini_handler = new \Psalm\Fork\PsalmRestarter('PSALM');
+$ini_handler = new \Psalm\Internal\Fork\PsalmRestarter('PSALM');
 
 if (isset($options['disable-extension'])) {
     if (is_array($options['disable-extension'])) {
@@ -260,6 +278,12 @@ $ini_handler->check();
 
 setlocale(LC_CTYPE, 'C');
 
+if (isset($options['set-baseline'])) {
+    if (is_array($options['set-baseline'])) {
+        die('Only one baseline file can be created at a time' . PHP_EOL);
+    }
+}
+
 if (isset($options['i'])) {
     if (file_exists($current_dir . 'psalm.xml')) {
         die('A config file already exists in the current directory' . PHP_EOL);
@@ -275,7 +299,7 @@ if (isset($options['i'])) {
         function ($arg) {
             return $arg !== '--ansi'
                 && $arg !== '--no-ansi'
-                && $arg !== '--i'
+                && $arg !== '-i'
                 && $arg !== '--init'
                 && strpos($arg, '--root=') !== 0
                 && strpos($arg, '--r=') !== 0;
@@ -342,7 +366,7 @@ if (isset($options['i'])) {
 
 $output_format = isset($options['output-format']) && is_string($options['output-format'])
     ? $options['output-format']
-    : ProjectChecker::TYPE_CONSOLE;
+    : ProjectAnalyzer::TYPE_CONSOLE;
 
 $paths_to_check = getPathsToCheck(isset($options['f']) ? $options['f'] : null);
 
@@ -409,30 +433,30 @@ if (isset($options['clear-global-cache'])) {
 $debug = array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options);
 
 if (isset($options['no-cache'])) {
-    $providers = new Psalm\Provider\Providers(
-        new Psalm\Provider\FileProvider
+    $providers = new Provider\Providers(
+        new Provider\FileProvider
     );
 } else {
-    $no_class_cache = isset($options['no-class-cache']);
+    $no_reflection_cache = isset($options['no-reflection-cache']);
 
-    $file_storage_cache_provider = $no_class_cache
+    $file_storage_cache_provider = $no_reflection_cache
         ? null
-        : new Psalm\Provider\FileStorageCacheProvider($config);
+        : new Provider\FileStorageCacheProvider($config);
 
-    $classlike_storage_cache_provider = $no_class_cache
+    $classlike_storage_cache_provider = $no_reflection_cache
         ? null
-        : new Psalm\Provider\ClassLikeStorageCacheProvider($config);
+        : new Provider\ClassLikeStorageCacheProvider($config);
 
-    $providers = new Psalm\Provider\Providers(
-        new Psalm\Provider\FileProvider,
-        new Psalm\Provider\ParserCacheProvider($config),
+    $providers = new Provider\Providers(
+        new Provider\FileProvider,
+        new Provider\ParserCacheProvider($config),
         $file_storage_cache_provider,
         $classlike_storage_cache_provider,
-        new Psalm\Provider\FileReferenceCacheProvider($config)
+        new Provider\FileReferenceCacheProvider($config)
     );
 }
 
-$project_checker = new ProjectChecker(
+$project_analyzer = new ProjectAnalyzer(
     $config,
     $providers,
     !array_key_exists('m', $options),
@@ -444,11 +468,11 @@ $project_checker = new ProjectChecker(
     !isset($options['show-snippet']) || $options['show-snippet'] !== "false"
 );
 
-$project_checker->diff_methods = isset($options['diff-methods']);
+$project_analyzer->getCodebase()->diff_methods = isset($options['diff-methods']);
 
 $start_time = microtime(true);
 
-$config->visitComposerAutoloadFiles($project_checker, $debug);
+$config->visitComposerAutoloadFiles($project_analyzer, $debug);
 
 $now_time = microtime(true);
 
@@ -457,19 +481,19 @@ if ($debug) {
 }
 
 if (array_key_exists('debug-by-line', $options)) {
-    $project_checker->debug_lines = true;
+    $project_analyzer->debug_lines = true;
 }
 
 if ($find_dead_code || $find_references_to !== null) {
-    $project_checker->getCodebase()->collectReferences();
+    $project_analyzer->getCodebase()->collectReferences();
 
     if ($find_references_to) {
-        $project_checker->show_issues = false;
+        $project_analyzer->show_issues = false;
     }
 }
 
 if ($find_dead_code) {
-    $project_checker->getCodebase()->reportUnusedCode();
+    $project_analyzer->getCodebase()->reportUnusedCode();
 }
 
 /** @var string $plugin_path */
@@ -478,21 +502,106 @@ foreach ($plugins as $plugin_path) {
 }
 
 if ($paths_to_check === null) {
-    $project_checker->check($current_dir, $is_diff);
+    $project_analyzer->check($current_dir, $is_diff);
 } elseif ($paths_to_check) {
-    $project_checker->checkPaths($paths_to_check);
+    $project_analyzer->checkPaths($paths_to_check);
 }
 
 if ($find_references_to) {
-    $project_checker->findReferencesTo($find_references_to);
+    $project_analyzer->findReferencesTo($find_references_to);
 } elseif ($find_dead_code && !$paths_to_check && !$is_diff) {
     if ($threads > 1) {
-        if ($output_format === ProjectChecker::TYPE_CONSOLE) {
+        if ($output_format === ProjectAnalyzer::TYPE_CONSOLE) {
             echo 'Unused classes and methods cannot currently be found in multithreaded mode' . PHP_EOL;
         }
     } else {
-        $project_checker->checkClassReferences();
+        $project_analyzer->checkClassReferences();
     }
 }
 
-IssueBuffer::finish($project_checker, !$paths_to_check, $start_time, isset($options['stats']));
+if (isset($options['set-baseline']) && is_string($options['set-baseline'])) {
+    echo 'Writing error baseline to file...', PHP_EOL;
+
+    ErrorBaseline::create(
+        new \Psalm\Internal\Provider\FileProvider,
+        $options['set-baseline'],
+        IssueBuffer::getIssuesData()
+    );
+
+    echo "Baseline saved to {$options['set-baseline']}.";
+
+    /** @var string $configFile */
+    $configFile = Config::locateConfigFile($path_to_config ?? $current_dir);
+    $configFileContents = $amendedConfigFileContents = file_get_contents($configFile);
+
+    if ($config->error_baseline) {
+        $amendedConfigFileContents = preg_replace(
+            '/errorBaseline=".*?"/',
+            "errorBaseline=\"{$options['set-baseline']}\"",
+            $configFileContents
+        );
+    } else {
+        $endPsalmOpenTag = strpos($configFileContents, '>', (int)strpos($configFileContents, '<psalm'));
+
+        if (!$endPsalmOpenTag) {
+            echo " Don't forget to set errorBaseline=\"{$options['set-baseline']}\" in your config.";
+        } elseif ($configFileContents[$endPsalmOpenTag - 1] === "\n") {
+            $amendedConfigFileContents = substr_replace(
+                $configFileContents,
+                "    errorBaseline=\"{$options['set-baseline']}\"\n>",
+                $endPsalmOpenTag,
+                1
+            );
+        } else {
+            $amendedConfigFileContents = substr_replace(
+                $configFileContents,
+                " errorBaseline=\"{$options['set-baseline']}\">",
+                $endPsalmOpenTag,
+                1
+            );
+        }
+    }
+
+    file_put_contents($configFile, $amendedConfigFileContents);
+
+    echo PHP_EOL;
+}
+
+$issue_baseline = [];
+
+if (isset($options['update-baseline'])) {
+    $baselineFile = Config::getInstance()->error_baseline;
+
+    if (empty($baselineFile)) {
+        die('Cannot update baseline, because no baseline file is configured.' . PHP_EOL);
+    }
+
+    try {
+        $issue_baseline = ErrorBaseline::update(
+            new \Psalm\Internal\Provider\FileProvider,
+            $baselineFile,
+            IssueBuffer::getIssuesData()
+        );
+    } catch (\Psalm\Exception\ConfigException $exception) {
+        die('Could not update baseline file: ' . $exception->getMessage());
+    }
+}
+
+if (!empty(Config::getInstance()->error_baseline) && !isset($options['ignore-baseline'])) {
+    try {
+        $issue_baseline = ErrorBaseline::read(
+            new \Psalm\Internal\Provider\FileProvider,
+            (string)Config::getInstance()->error_baseline
+        );
+    } catch (\Psalm\Exception\ConfigException $exception) {
+        die('Error while reading baseline: ' . $exception->getMessage());
+    }
+}
+
+IssueBuffer::finish(
+    $project_analyzer,
+    !$paths_to_check,
+    $start_time,
+    isset($options['stats']),
+    $issue_baseline
+);

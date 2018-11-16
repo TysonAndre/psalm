@@ -1,33 +1,34 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Checker\FileChecker;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Context;
+use Psalm\Tests\Internal\Provider;
 
 class FileReferenceTest extends TestCase
 {
-    /** @var \Psalm\Checker\ProjectChecker */
-    protected $project_checker;
+    /** @var \Psalm\Internal\Analyzer\ProjectAnalyzer */
+    protected $project_analyzer;
 
     /**
      * @return void
      */
     public function setUp()
     {
-        FileChecker::clearCache();
-        \Psalm\FileManipulation\FunctionDocblockManipulator::clearCache();
+        FileAnalyzer::clearCache();
+        \Psalm\Internal\FileManipulation\FunctionDocblockManipulator::clearCache();
 
         $this->file_provider = new Provider\FakeFileProvider();
 
-        $this->project_checker = new \Psalm\Checker\ProjectChecker(
+        $this->project_analyzer = new \Psalm\Internal\Analyzer\ProjectAnalyzer(
             new TestConfig(),
-            new \Psalm\Provider\Providers(
+            new \Psalm\Internal\Provider\Providers(
                 $this->file_provider,
                 new Provider\FakeParserCacheProvider()
             )
         );
 
-        $this->project_checker->getCodebase()->collectReferences();
+        $this->project_analyzer->getCodebase()->collectReferences();
     }
 
     /**
@@ -60,7 +61,7 @@ class FileReferenceTest extends TestCase
 
         $this->analyzeFile($file_path, $context);
 
-        $found_references = $this->project_checker->getCodebase()->findReferencesToSymbol($symbol);
+        $found_references = $this->project_analyzer->getCodebase()->findReferencesToSymbol($symbol);
 
         if (!isset($found_references[$file_path])) {
             throw new \UnexpectedValueException('No file references found in this file');
@@ -105,13 +106,13 @@ class FileReferenceTest extends TestCase
 
         $context = new Context();
 
-        $file_path = self::$src_dir_path . 'somefile.php';
+        $file_path = '/var/www/somefile.php';
 
         $this->addFile($file_path, $input_code);
 
         $this->analyzeFile($file_path, $context);
 
-        $referenced_methods = $this->project_checker->file_reference_provider->getClassMethodReferences();
+        $referenced_methods = $this->project_analyzer->getCodebase()->file_reference_provider->getClassMethodReferences();
 
         $this->assertSame($expected_referenced_methods, $referenced_methods);
     }
@@ -175,12 +176,19 @@ class FileReferenceTest extends TestCase
                         }
                     }',
                 [
+                    'use:A:d7863b8594fe57f85cb8183fe55a6c15' => [
+                        'foo\b::__construct' => true,
+                        'foo\c::foo' => true,
+                    ],
                     'foo\a::__construct' => [
                         'foo\b::__construct' => true,
                         'foo\c::foo' => true,
                     ],
                     'foo\a::bat' => [
                         'foo\b::__construct' => true,
+                    ],
+                    'use:C:d7863b8594fe57f85cb8183fe55a6c15' => [
+                        'foo\b::bar' => true,
                     ],
                     'foo\c::__construct' => [
                         'foo\b::bar' => true,
@@ -210,6 +218,9 @@ class FileReferenceTest extends TestCase
                         }
                     }',
                 [
+                    'use:C:d7863b8594fe57f85cb8183fe55a6c15' => [
+                        'foo\d::bat' => true,
+                    ],
                     'foo\b::__construct' => [
                         'foo\d::bat' => true,
                     ],
@@ -277,6 +288,10 @@ class FileReferenceTest extends TestCase
                         }
                     }',
                 [
+                    'use:A:d7863b8594fe57f85cb8183fe55a6c15' => [
+                        'foo\b::__construct' => true,
+                        'foo\c::foo' => true,
+                    ],
                     'foo\a::$fooBar' => [
                         'foo\b::__construct' => true,
                         'foo\c::foo' => true,
@@ -306,6 +321,10 @@ class FileReferenceTest extends TestCase
                 [
                     'foo\a::$fooBar' => [
                         'foo\a::__construct' => true,
+                        'foo\b::__construct' => true,
+                        'foo\c::foo' => true,
+                    ],
+                    'use:A:d7863b8594fe57f85cb8183fe55a6c15' => [
                         'foo\b::__construct' => true,
                         'foo\c::foo' => true,
                     ],

@@ -3,7 +3,7 @@ namespace Psalm\Storage;
 
 use Psalm\CodeLocation;
 use Psalm\Type;
-use Psalm\Checker\ClassLikeChecker;
+use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 
 class FunctionLikeStorage
 {
@@ -128,6 +128,11 @@ class FunctionLikeStorage
     public $has_visitor_issues = false;
 
     /**
+     * @var bool
+     */
+    public $has_docblock_issues = false;
+
+    /**
      * @var array<string, bool>
      */
     public $throws = [];
@@ -159,11 +164,11 @@ class FunctionLikeStorage
         }
 
         switch ($this->visibility) {
-            case ClassLikeChecker::VISIBILITY_PRIVATE:
+            case ClassLikeAnalyzer::VISIBILITY_PRIVATE:
                 $visibility_text = 'private';
                 break;
 
-            case ClassLikeChecker::VISIBILITY_PROTECTED:
+            case ClassLikeAnalyzer::VISIBILITY_PROTECTED:
                 $visibility_text = 'protected';
                 break;
 
