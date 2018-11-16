@@ -113,7 +113,6 @@ return [
     // your application should be included in this list.
     'directory_list' => [
         'vendor/composer/xdebug-handler/src',
-        'vendor/friendsofphp/php-cs-fixer/src',
         'vendor/muglug/package-versions-56/src/PackageVersions',
         'vendor/nikic/php-parser/lib/PhpParser',
         'vendor/openlss/lib-array2xml',
