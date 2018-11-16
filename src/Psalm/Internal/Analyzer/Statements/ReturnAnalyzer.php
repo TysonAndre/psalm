@@ -257,7 +257,7 @@ class ReturnAnalyzer
                                         . 'type \'' . $local_return_type . '\' (but has some compatible types) for ' . $cased_method_id,
                                     new CodeLocation($source, $stmt)
                                 ),
-                                $statements_checker->getSuppressedIssues()
+                                $statements_analyzer->getSuppressedIssues()
                             )) {
                                 return false;
                             }

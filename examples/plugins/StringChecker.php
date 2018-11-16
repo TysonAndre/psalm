@@ -2,14 +2,10 @@
 namespace Psalm\Example\Plugin;
 
 use PhpParser;
-use Psalm\Checker;
-use Psalm\Checker\StatementsChecker;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\FileManipulation;
-use Psalm\IssueBuffer;
-use Psalm\Issue\TypeCoercion;
 use Psalm\Plugin\Hook\AfterExpressionAnalysisInterface;
 use Psalm\StatementsSource;
 
@@ -20,8 +16,6 @@ class StringChecker implements AfterExpressionAnalysisInterface
      *
      * @param  PhpParser\Node\Expr  $expr
      * @param  Context              $context
-     * @param  StatementsSource           $file_soure
-     * @param  string[]             $suppressed_issues
      * @param  FileManipulation[]   $file_replacements
      *
      * @return null|false
