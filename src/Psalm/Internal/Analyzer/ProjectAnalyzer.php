@@ -145,8 +145,6 @@ class ProjectAnalyzer
     ];
 
     /**
-     * @param FileProvider  $file_provider
-     * @param Providers     $cache_provider
      * @param bool          $use_color
      * @param bool          $show_info
      * @param string        $output_format

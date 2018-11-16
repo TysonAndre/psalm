@@ -1,13 +1,12 @@
 <?php
 namespace Psalm\Type;
 
-use Psalm\Internal\Analyzer\AlgebraAnalyzer;
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\Exception\TypeParseTreeException;
 use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\ParadoxicalCondition;
 use Psalm\Issue\RedundantCondition;
@@ -49,7 +48,6 @@ class Reconciler
      * @param  array<string, bool>       $referenced_var_ids
      * @param  StatementsAnalyzer         $statements_analyzer
      * @param  CodeLocation|null         $code_location
-     * @param  array<string>             $suppressed_issues
      *
      * @return array<string, Type\Union>
      */
@@ -718,7 +716,11 @@ class Reconciler
                 );
             }
 
-            $new_type = Type::parseString($new_var_type);
+            try {
+                $new_type = Type::parseString($new_var_type);
+            } catch (TypeParseTreeException $_) {
+                return $existing_var_type;
+            }
         }
 
         if ($existing_var_type->isMixed()) {

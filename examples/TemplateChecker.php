@@ -14,7 +14,7 @@ use Psalm\DocComment;
 use Psalm\Type;
 
 /**
- * Things that TemplateAnalyzer does
+ * Things that TemplateChecker does
  * - it allows you to scan files with a pre-filled Context.
  *   e.g. that $this exists and is of a certain type for the entire folder
  *
@@ -22,7 +22,7 @@ use Psalm\Type;
  *
  * TODO: No unit tests or integration tests exist for TemplateChecker
  */
-class TemplateAnalyzer extends Psalm\Internal\Analyzer\FileAnalyzer
+class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
 {
     const VIEW_CLASS = 'Your\\View\\Class';
 

@@ -154,5 +154,9 @@
             </errorLevel>
         </TypeCoercion>
     </issueHandlers>
-<plugins>
-<pluginClass class="Psalm\PhpUnitPlugin\Plugin"/></plugins></psalm>
+    <plugins>
+      <!-- TODO: https://github.com/psalm/phpunit-psalm-plugin/issues/1
+      <pluginClass class="Psalm\PhpUnitPlugin\Plugin"/>
+      -->
+    </plugins>
+</psalm>
