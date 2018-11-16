@@ -1,5 +1,6 @@
 <?php
-//use PhpParser;
+namespace Psalm\Example\Plugin;
+use PhpParser;
 use PhpParser\Node;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Scalar;
@@ -10,7 +11,8 @@ use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassConst;
 use Psalm\Aliases;
 use Psalm\Checker\ProjectChecker;
-use Psalm\Scanner\FileScanner;
+use Psalm\Internal\Scanner\FileScanner;
+use Psalm\Plugin\Hook\AfterClassLikeVisitInterface;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
@@ -23,7 +25,7 @@ use Psalm\Type\Union;
  * TODO: This does not work as expected after refactoring class like storage cache for psalm 1.0.0
  * (integration test fails)
  */
-class APIFilterPlugin extends \Psalm\Plugin
+class APIFilterPlugin implements AfterClassLikeVisitInterface
 {
     const METHOD_FILTERS_CONST_NAME = 'METHOD_FILTERS';
 
@@ -31,10 +33,10 @@ class APIFilterPlugin extends \Psalm\Plugin
     private static $classes_to_check_later = [];
 
     /**
-     * @return void
+     * @return false|null
      * @override
      */
-    public static function afterVisitClassLike(
+    public static function afterClassLikeVisit(
         ClassLike $class_node,
         ClassLikeStorage $storage,
         FileScanner $file_scanner,
@@ -45,20 +47,20 @@ class APIFilterPlugin extends \Psalm\Plugin
         if (isset($storage->public_class_constants[self::METHOD_FILTERS_CONST_NAME])) {
             $method_filters_node = self::extractMethodFiltersNode($class_node);
             if (!$method_filters_node) {
-                return;
+                return null;
             }
             if (!($method_filters_node instanceof PhpParser\Node\Expr\Array_)) {
-                return;
+                return null;
             }
             $name = $storage->name;
             $record = new APIFilterRecord($method_filters_node, $storage);
             if (count($record->filters) === 0) {
                 // The list of filters is empty
-                return;
+                return null;
             }
             self::$classes_to_check_later[$name] = $record;
         }
-        return;
+        return null;
     }
 
     /**

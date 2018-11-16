@@ -12,9 +12,9 @@
     </projectFiles>
 
     <plugins>
-      <plugin filename="../../../examples/APIFilterPlugin.php" />
-      <plugin filename="../../../examples/ClassUnqualifier.php" />
-      <plugin filename="../../../examples/StringChecker.php" />
+      <plugin filename="../../../examples/plugins/APIFilterPlugin.php" />
+      <plugin filename="../../../examples/plugins/ClassUnqualifier.php" />
+      <plugin filename="../../../examples/plugins/StringChecker.php" />
       <!--<plugin filename="../../../examples/TemplateChecker.php" /> what does this do? N-->
     </plugins>
 </psalm>

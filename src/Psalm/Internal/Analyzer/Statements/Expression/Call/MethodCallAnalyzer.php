@@ -910,7 +910,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
     /**
      * Check properties accessed with magic getters and setters.
      * If `@psalm-seal-properties` is set, they must be defined.
-     * If an `@property` annotation is specified, the setter must set something with the correct
+     * If an (at)property annotation is specified, the setter must set something with the correct
      * type.
      *
      * @param StatementsAnalyzer $statements_analyzer
