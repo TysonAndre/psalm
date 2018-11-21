@@ -10,7 +10,6 @@ use Psalm\Exception\ConfigException;
 use Psalm\Internal\Scanner\FileScanner;
 use Psalm\PluginRegistrationSocket;
 use SimpleXMLElement;
-use function is_array;
 
 class Config
 {
@@ -860,9 +859,6 @@ class Config
                 $plugin_object($socket);
             } catch (\Throwable $e) {
                 throw new ConfigException('Failed to load plugin ' . $path, 0, $e);
-            }
-            if ($codebase->methods->methodExists($fq_class_name . '::beforeAnalyzeFiles')) {
-                $this->before_analyze_files[$fq_class_name] = $fq_class_name;
             }
         }
     }

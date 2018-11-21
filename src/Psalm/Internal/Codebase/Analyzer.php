@@ -195,7 +195,7 @@ class Analyzer
         $plugin_classes = $this->config->before_analyze_files;
         foreach ($plugin_classes as $plugin) {
             // Pass in ProjectChecker
-            $plugin::beforeAnalyzeFiles($project_checker);
+            $plugin::beforeAnalyzeFiles($project_analyzer);
         }
 
         $analysis_worker =
