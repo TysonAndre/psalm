@@ -188,9 +188,6 @@ Options:
     --no-cache
         Runs Psalm without using any cache
 
-    --no-class-cache
-        Runs Psalm without using cache of inferences about classlikes.
-
     --no-reflection-cache
         Runs Psalm without using cached representations of unchanged classes and files.
         Useful if you want the afterClassLikeVisit plugin hook to run every time you visit a file.
