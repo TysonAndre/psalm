@@ -1899,22 +1899,21 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $include_path = IncludeAnalyzer::resolveIncludePath($path_to_file, dirname($this->file_path));
             $path_to_file = $include_path ? $include_path : $path_to_file;
 
-            if ($path_to_file[0] !== DIRECTORY_SEPARATOR) {
-                $path_to_file = getcwd() . DIRECTORY_SEPARATOR . $path_to_file;
+            if (DIRECTORY_SEPARATOR === '/') {
+                $is_path_relative = $path_to_file[0] !== DIRECTORY_SEPARATOR;
+            } else {
+                $is_path_relative = !preg_match('~^[A-Z]:\\\\~i', $path_to_file);
+            }
+
+            if ($is_path_relative) {
+                $path_to_file = $config->base_dir . DIRECTORY_SEPARATOR . $path_to_file;
             }
         } else {
-            $path_to_file = IncludeAnalyzer::getPathTo($stmt->expr, $this->file_path);
+            $path_to_file = IncludeAnalyzer::getPathTo($stmt->expr, $this->file_path, $this->config);
         }
 
         if ($path_to_file) {
-            $reduce_pattern = '/\/[^\/]+\/\.\.\//';
-
-            while (preg_match($reduce_pattern, $path_to_file)) {
-                $path_to_file = preg_replace($reduce_pattern, DIRECTORY_SEPARATOR, $path_to_file);
-            }
-
-            $path_to_file = preg_replace('/\/[\/]+/', '/', $path_to_file);
-            $path_to_file = str_replace('/./', '/', $path_to_file);
+            $path_to_file = IncludeAnalyzer::normalizeFilePath($path_to_file);
 
             if ($this->file_path === $path_to_file) {
                 return;

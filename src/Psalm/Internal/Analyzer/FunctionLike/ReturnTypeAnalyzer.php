@@ -34,7 +34,7 @@ use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
-use Psalm\Type\TypeCombination;
+use Psalm\Internal\Type\TypeCombination;
 
 class ReturnTypeAnalyzer
 {

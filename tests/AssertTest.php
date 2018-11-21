@@ -266,7 +266,7 @@ class AssertTest extends TestCase
                         assertInstanceOf(A::class, $a);
                     }',
             ],
-            'allowCanBeEqualAfterAssertion' => [
+            'allowCanBeSameAfterAssertion' => [
                 '<?php
 
                     /**
@@ -275,7 +275,7 @@ class AssertTest extends TestCase
                      * @template T
                      * @param T      $expected
                      * @param mixed  $actual
-                     * @psalm-assert ^T $actual
+                     * @psalm-assert =T $actual
                      */
                     function assertSame($expected, $actual) : void {}
 
@@ -295,8 +295,81 @@ class AssertTest extends TestCase
                     $d = rand(0, 1) ? 4 : 5;
                     assertSame($d, $c);
 
+                    $d = rand(0, 1) ? 4 : null;
+                    assertSame(null, $d);
+
                     function foo(string $a, string $b) : void {
                         assertSame($a, $b);
+                    }',
+            ],
+            'allowCanBeNotSameAfterAssertion' => [
+                '<?php
+
+                    /**
+                     * Asserts that two variables are the same.
+                     *
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @psalm-assert !=T $actual
+                     */
+                    function assertNotSame($expected, $actual) : void {}
+
+                    $a = rand(0, 1) ? "goodbye" : "hello";
+                    $b = rand(0, 1) ? "hello" : "goodbye";
+                    assertNotSame($a, $b);
+
+                    $c = "hello";
+                    $d = rand(0, 1) ? "hello" : "goodbye";
+                    assertNotSame($c, $d);
+
+                    $c = "hello";
+                    $d = rand(0, 1) ? "hello" : "goodbye";
+                    assertNotSame($d, $c);
+
+                    $c = 4;
+                    $d = rand(0, 1) ? 4 : 5;
+                    assertNotSame($d, $c);
+
+                    function foo(string $a, string $b) : void {
+                        assertNotSame($a, $b);
+                    }',
+            ],
+            'allowCanBeEqualAfterAssertion' => [
+                '<?php
+
+                    /**
+                     * Asserts that two variables are the same.
+                     *
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @psalm-assert ~T $actual
+                     */
+                    function assertEqual($expected, $actual) : void {}
+
+                    $a = rand(0, 1) ? "goodbye" : "hello";
+                    $b = rand(0, 1) ? "hello" : "goodbye";
+                    assertEqual($a, $b);
+
+                    $c = "hello";
+                    $d = rand(0, 1) ? "hello" : "goodbye";
+                    assertEqual($c, $d);
+
+                    $c = "hello";
+                    $d = rand(0, 1) ? "hello" : "goodbye";
+                    assertEqual($d, $c);
+
+                    $c = 4;
+                    $d = rand(0, 1) ? 3.0 : 4.0;
+                    assertEqual($d, $c);
+
+                    $c = 4.0;
+                    $d = rand(0, 1) ? 3 : 4;
+                    assertEqual($d, $c);
+
+                    function foo(string $a, string $b) : void {
+                        assertEqual($a, $b);
                     }',
             ],
         ];
@@ -467,7 +540,7 @@ class AssertTest extends TestCase
                      * @template T
                      * @param T      $expected
                      * @param mixed  $actual
-                     * @psalm-assert ^T $actual
+                     * @psalm-assert =T $actual
                      */
                     function assertSame($expected, $actual) : void {}
 
@@ -485,13 +558,49 @@ class AssertTest extends TestCase
                      * @template T
                      * @param T      $expected
                      * @param mixed  $actual
-                     * @psalm-assert ^T $actual
+                     * @psalm-assert =T $actual
                      */
                     function assertSame($expected, $actual) : void {}
 
                     $a = 5;
                     $b = 5;
                     assertSame($a, $b);',
+                'error_message' => 'RedundantCondition'
+            ],
+            'detectNeverCanBeSameAfterAssertion' => [
+                '<?php
+
+                    /**
+                     * Asserts that two variables are the same.
+                     *
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @psalm-assert =T $actual
+                     */
+                    function assertSame($expected, $actual) : void {}
+
+                    $c = "helloa";
+                    $d = rand(0, 1) ? "hello" : "goodbye";
+                    assertSame($c, $d);',
+                'error_message' => 'TypeDoesNotContainType'
+            ],
+            'detectNeverCanBeNotSameAfterAssertion' => [
+                '<?php
+
+                    /**
+                     * Asserts that two variables are the same.
+                     *
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @psalm-assert !=T $actual
+                     */
+                    function assertNotSame($expected, $actual) : void {}
+
+                    $c = "helloa";
+                    $d = rand(0, 1) ? "hello" : "goodbye";
+                    assertNotSame($c, $d);',
                 'error_message' => 'RedundantCondition'
             ],
             'detectNeverCanBeEqualAfterAssertion' => [
@@ -503,13 +612,49 @@ class AssertTest extends TestCase
                      * @template T
                      * @param T      $expected
                      * @param mixed  $actual
-                     * @psalm-assert ^T $actual
+                     * @psalm-assert ~T $actual
                      */
-                    function assertSame($expected, $actual) : void {}
+                    function assertEqual($expected, $actual) : void {}
 
                     $c = "helloa";
                     $d = rand(0, 1) ? "hello" : "goodbye";
-                    assertSame($c, $d);',
+                    assertEqual($c, $d);',
+                'error_message' => 'TypeDoesNotContainType'
+            ],
+            'detectIntFloatNeverCanBeEqualAfterAssertion' => [
+                '<?php
+
+                    /**
+                     * Asserts that two variables are the same.
+                     *
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @psalm-assert ~T $actual
+                     */
+                    function assertEqual($expected, $actual) : void {}
+
+                    $c = 4;
+                    $d = rand(0, 1) ? 5.0 : 6.0;
+                    assertEqual($c, $d);',
+                'error_message' => 'TypeDoesNotContainType'
+            ],
+            'detectFloatIntNeverCanBeEqualAfterAssertion' => [
+                '<?php
+
+                    /**
+                     * Asserts that two variables are the same.
+                     *
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @psalm-assert ~T $actual
+                     */
+                    function assertEqual($expected, $actual) : void {}
+
+                    $c = 4.0;
+                    $d = rand(0, 1) ? 5 : 6;
+                    assertEqual($c, $d);',
                 'error_message' => 'TypeDoesNotContainType'
             ],
         ];

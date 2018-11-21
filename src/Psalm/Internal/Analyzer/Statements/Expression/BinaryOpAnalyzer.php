@@ -35,7 +35,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Reconciler;
-use Psalm\Type\TypeCombination;
+use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
 
 class BinaryOpAnalyzer
@@ -1328,6 +1328,7 @@ class BinaryOpAnalyzer
                     $left_type_part,
                     new Type\Atomic\TString,
                     false,
+                    false,
                     $left_has_scalar_match,
                     $left_type_coerced,
                     $left_type_coerced_from_mixed,
@@ -1375,6 +1376,7 @@ class BinaryOpAnalyzer
                     $codebase,
                     $right_type_part,
                     new Type\Atomic\TString,
+                    false,
                     false,
                     $right_has_scalar_match,
                     $right_type_coerced,

@@ -63,25 +63,25 @@ class Reconciler
 
         foreach ($new_types as $nk => $type) {
             if ((strpos($nk, '[') || strpos($nk, '->'))
-                && ($type[0][0] === '^isset'
-                    || $type[0][0] === '!^empty'
+                && ($type[0][0] === '=isset'
+                    || $type[0][0] === '!=empty'
                     || $type[0][0] === 'isset'
                     || $type[0][0] === '!empty')
             ) {
-                $isset_or_empty = $type[0][0] === 'isset' || $type[0][0] === '^isset'
-                    ? '^isset'
-                    : '!^empty';
+                $isset_or_empty = $type[0][0] === 'isset' || $type[0][0] === '=isset'
+                    ? '=isset'
+                    : '!=empty';
 
                 $key_parts = Reconciler::breakUpPathIntoParts($nk);
 
                 $base_key = array_shift($key_parts);
 
                 if (!isset($new_types[$base_key])) {
-                    $new_types[$base_key] = [['!^bool'], ['!^int'], ['^isset']];
+                    $new_types[$base_key] = [['!=bool'], ['!=int'], ['=isset']];
                 } else {
-                    $new_types[$base_key][] = ['!^bool'];
-                    $new_types[$base_key][] = ['!^int'];
-                    $new_types[$base_key][] = ['^isset'];
+                    $new_types[$base_key][] = ['!=bool'];
+                    $new_types[$base_key][] = ['!=int'];
+                    $new_types[$base_key][] = ['=isset'];
                 }
 
                 while ($key_parts) {
@@ -108,11 +108,11 @@ class Reconciler
                     }
 
                     if (!isset($new_types[$base_key])) {
-                        $new_types[$base_key] = [['!^bool'], ['!^int'], ['^isset']];
+                        $new_types[$base_key] = [['!=bool'], ['!=int'], ['=isset']];
                     } else {
-                        $new_types[$base_key][] = ['!^bool'];
-                        $new_types[$base_key][] = ['!^int'];
-                        $new_types[$base_key][] = ['^isset'];
+                        $new_types[$base_key][] = ['!=bool'];
+                        $new_types[$base_key][] = ['!=int'];
+                        $new_types[$base_key][] = ['=isset'];
                     }
                 }
 
@@ -154,7 +154,7 @@ class Reconciler
                         case '!':
                             $has_negation = true;
                             break;
-                        case '^':
+                        case '=':
                         case '~':
                             $has_equality = true;
                     }
@@ -284,7 +284,7 @@ class Reconciler
             $is_negation = true;
         }
 
-        if ($new_var_type[0] === '^') {
+        if ($new_var_type[0] === '=') {
             $new_var_type = substr($new_var_type, 1);
             $is_strict_equality = true;
             $is_equality = true;
@@ -779,6 +779,7 @@ class Reconciler
                     $existing_var_type_part,
                     $new_type_part,
                     false,
+                    false,
                     $scalar_type_match_found,
                     $type_coerced,
                     $type_coerced_from_mixed,
@@ -845,6 +846,7 @@ class Reconciler
                         $codebase,
                         $new_type_part,
                         $existing_var_type_part,
+                        false,
                         false,
                         $scalar_type_match_found,
                         $type_coerced,
@@ -1382,6 +1384,7 @@ class Reconciler
                         $existing_var_type_part,
                         $new_type_part,
                         false,
+                        false,
                         $scalar_type_match_found,
                         $type_coerced,
                         $type_coerced_from_mixed,
@@ -1485,7 +1488,7 @@ class Reconciler
                 } else {
                     $existing_var_type = new Type\Union([new Type\Atomic\TLiteralInt($value)]);
                 }
-            } elseif (!$existing_var_type->hasFloat() && $var_id && $code_location && !$is_loose_equality) {
+            } elseif ($var_id && $code_location && !$is_loose_equality) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
                     $old_var_type_string,
@@ -1495,6 +1498,41 @@ class Reconciler
                     $code_location,
                     $suppressed_issues
                 );
+            } elseif ($is_loose_equality && $existing_var_type->hasFloat()) {
+                // convert floats to ints
+                $existing_float_types = $existing_var_type->getLiteralFloats();
+
+                if ($existing_float_types) {
+                    $can_be_equal = false;
+                    $did_remove_type = false;
+
+                    foreach ($existing_var_atomic_types as $atomic_key => $_) {
+                        if (substr($atomic_key, 0, 6) === 'float(') {
+                            $atomic_key = 'int(' . substr($atomic_key, 6);
+                        }
+                        if ($atomic_key !== $new_var_type) {
+                            $existing_var_type->removeType($atomic_key);
+                            $did_remove_type = true;
+                        } else {
+                            $can_be_equal = true;
+                        }
+                    }
+
+                    if ($var_id
+                        && $code_location
+                        && (!$can_be_equal || (!$did_remove_type && count($existing_var_atomic_types) === 1))
+                    ) {
+                        self::triggerIssueForImpossible(
+                            $existing_var_type,
+                            $old_var_type_string,
+                            $var_id,
+                            $new_var_type,
+                            $can_be_equal,
+                            $code_location,
+                            $suppressed_issues
+                        );
+                    }
+                }
             }
         } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
             if ($existing_var_type->isMixed()) {
@@ -1603,6 +1641,41 @@ class Reconciler
                     $code_location,
                     $suppressed_issues
                 );
+            } elseif ($is_loose_equality && $existing_var_type->hasInt()) {
+                // convert ints to floats
+                $existing_float_types = $existing_var_type->getLiteralInts();
+
+                if ($existing_float_types) {
+                    $can_be_equal = false;
+                    $did_remove_type = false;
+
+                    foreach ($existing_var_atomic_types as $atomic_key => $_) {
+                        if (substr($atomic_key, 0, 4) === 'int(') {
+                            $atomic_key = 'float(' . substr($atomic_key, 4);
+                        }
+                        if ($atomic_key !== $new_var_type) {
+                            $existing_var_type->removeType($atomic_key);
+                            $did_remove_type = true;
+                        } else {
+                            $can_be_equal = true;
+                        }
+                    }
+
+                    if ($var_id
+                        && $code_location
+                        && (!$can_be_equal || (!$did_remove_type && count($existing_var_atomic_types) === 1))
+                    ) {
+                        self::triggerIssueForImpossible(
+                            $existing_var_type,
+                            $old_var_type_string,
+                            $var_id,
+                            $new_var_type,
+                            $can_be_equal,
+                            $code_location,
+                            $suppressed_issues
+                        );
+                    }
+                }
             }
         }
 

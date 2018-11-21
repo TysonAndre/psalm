@@ -211,20 +211,14 @@ class ProjectAnalyzer
     /**
      * @param  string $base_dir
      * @param  string|null $address
-     * @param  bool $server_mode
+     * @param  bool $socket_server_mode
      * @return void
      */
-    public function server($address = '127.0.0.1:12345', $server_mode = true)
+    public function server($address = '127.0.0.1:12345', bool $socket_server_mode = false)
     {
         $this->codebase->diff_methods = true;
         $this->file_reference_provider->loadReferenceCache();
         $this->codebase->enterServerMode();
-
-        $cwd = getcwd();
-
-        if (!$cwd) {
-            throw new \InvalidArgumentException('Cannot work with empty cwd');
-        }
 
         $cpu_count = self::getCpuCount();
 
@@ -245,7 +239,7 @@ class ProjectAnalyzer
 
         @cli_set_process_title('Psalm PHP Language Server');
 
-        if (!$server_mode && $address) {
+        if (!$socket_server_mode && $address) {
             // Connect to a TCP server
             $socket = stream_socket_client('tcp://' . $address, $errno, $errstr);
             if ($socket === false) {
@@ -259,7 +253,7 @@ class ProjectAnalyzer
                 $this
             );
             Loop\run();
-        } elseif ($server_mode && $address) {
+        } elseif ($socket_server_mode && $address) {
             // Run a TCP Server
             $tcpServer = stream_socket_server('tcp://' . $address, $errno, $errstr);
             if ($tcpServer === false) {
@@ -841,6 +835,9 @@ class ProjectAnalyzer
         }
 
         $file_analyzer->getMethodMutations($appearing_method_id, $this_context);
+
+        $file_analyzer->class_analyzers_to_analyze = [];
+        $file_analyzer->interface_analyzers_to_analyze = [];
     }
 
     /**

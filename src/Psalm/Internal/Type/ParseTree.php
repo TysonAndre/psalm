@@ -1,5 +1,5 @@
 <?php
-namespace Psalm\Type;
+namespace Psalm\Internal\Type;
 
 use Psalm\Exception\TypeParseTreeException;
 
@@ -30,6 +30,11 @@ class ParseTree
 
     /** @var array<string,self> */
     private static $cache = [];
+
+    public function __destruct()
+    {
+        $this->parent = null;
+    }
 
     /**
      * Create a parse tree from a tokenised type (cached)

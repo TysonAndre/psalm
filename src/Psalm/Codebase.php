@@ -955,6 +955,12 @@ class Codebase
      */
     public function getReferenceAtPosition(string $file_path, Position $position)
     {
+        $is_open = $this->file_provider->isOpen($file_path);
+
+        if (!$is_open) {
+            throw new \Psalm\Exception\UnanalyzedFileException($file_path . ' is not open');
+        }
+
         $file_contents = $this->getFileContents($file_path);
 
         $offset = $position->toOffset($file_contents);
@@ -1017,6 +1023,12 @@ class Codebase
      */
     public function getCompletionDataAtPosition(string $file_path, Position $position)
     {
+        $is_open = $this->file_provider->isOpen($file_path);
+
+        if (!$is_open) {
+            throw new \Psalm\Exception\UnanalyzedFileException($file_path . ' is not open');
+        }
+
         $file_contents = $this->getFileContents($file_path);
 
         $offset = $position->toOffset($file_contents);
@@ -1078,22 +1090,8 @@ class Codebase
     /**
      * @return void
      */
-    public function scanTemporaryFileChanges(string $file_path)
-    {
-        $this->scanner->addFilesToDeepScan([$file_path => $file_path]);
-        $this->scanner->scanFiles($this->classlikes);
-        $this->populator->populateCodebase($this);
-    }
-
-    /**
-     * @return void
-     */
     public function removeTemporaryFileChanges(string $file_path)
     {
-        $this->file_provider->openFile($file_path);
-        $this->invalidateInformationForFile($file_path);
-        $this->scanner->addFilesToDeepScan([$file_path => $file_path]);
-        $this->scanner->scanFiles($this->classlikes);
-        $this->populator->populateCodebase($this);
+        $this->file_provider->removeTemporaryFileChanges($file_path);
     }
 }

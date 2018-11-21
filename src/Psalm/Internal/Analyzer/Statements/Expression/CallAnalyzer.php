@@ -9,6 +9,7 @@ use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\Type\TypeCombination;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\ImplicitToStringCast;
@@ -427,7 +428,7 @@ class CallAnalyzer
                     $replacement_array_type = $replacement_array_type->getGenericArrayType();
                 }
 
-                $by_ref_type = Type\TypeCombination::combineTypes([$array_type, $replacement_array_type]);
+                $by_ref_type = TypeCombination::combineTypes([$array_type, $replacement_array_type]);
 
                 ExpressionAnalyzer::assignByRefParam(
                     $statements_analyzer,
@@ -477,19 +478,28 @@ class CallAnalyzer
                         || $arg->value instanceof PhpParser\Node\Expr\MethodCall
                     )
                 ) {
-                    // special handling for array sort
-                    if ($argument_offset === 0
-                        && $method_id
-                        && in_array(
-                            $method_id,
-                            [
-                                'shuffle', 'sort', 'rsort', 'usort', 'ksort', 'asort',
-                                'krsort', 'arsort', 'natcasesort', 'natsort', 'reset',
-                                'end', 'next', 'prev', 'array_pop', 'array_shift',
-                            ],
-                            true
-                        )
+                    $var_id = ExpressionAnalyzer::getVarId(
+                        $arg->value,
+                        $statements_analyzer->getFQCLN(),
+                        $statements_analyzer
+                    );
+
+                    $builtin_array_functions = [
+                        'shuffle', 'sort', 'rsort', 'usort', 'ksort', 'asort',
+                        'krsort', 'arsort', 'natcasesort', 'natsort', 'reset',
+                        'end', 'next', 'prev', 'array_pop', 'array_shift',
+                    ];
+
+                    if (($var_id && isset($context->vars_in_scope[$var_id]))
+                        || ($method_id
+                            && in_array(
+                                $method_id,
+                                $builtin_array_functions,
+                                true
+                            ))
                     ) {
+                        // if the variable is in scope, get or we're in a special array function,
+                        // figure out its type before proceeding
                         if (ExpressionAnalyzer::analyze(
                             $statements_analyzer,
                             $arg->value,
@@ -497,67 +507,19 @@ class CallAnalyzer
                         ) === false) {
                             return false;
                         }
+                    }
 
+                    // special handling for array sort
+                    if ($argument_offset === 0
+                        && $method_id
+                        && in_array(
+                            $method_id,
+                            $builtin_array_functions,
+                            true
+                        )
+                    ) {
                         if (in_array($method_id, ['array_pop', 'array_shift'], true)) {
-                            $var_id = ExpressionAnalyzer::getVarId(
-                                $arg->value,
-                                $statements_analyzer->getFQCLN(),
-                                $statements_analyzer
-                            );
-
-                            if ($var_id) {
-                                $context->removeVarFromConflictingClauses($var_id, null, $statements_analyzer);
-
-                                if (isset($context->vars_in_scope[$var_id])) {
-                                    $array_type = clone $context->vars_in_scope[$var_id];
-
-                                    $array_atomic_types = $array_type->getTypes();
-
-                                    foreach ($array_atomic_types as $array_atomic_type) {
-                                        if ($array_atomic_type instanceof ObjectLike) {
-                                            $generic_array_type = $array_atomic_type->getGenericArrayType();
-
-                                            if ($generic_array_type instanceof TNonEmptyArray) {
-                                                if (!$context->inside_loop && $generic_array_type->count !== null) {
-                                                    if ($generic_array_type->count === 0) {
-                                                        $generic_array_type = new TArray(
-                                                            [
-                                                                new Type\Union([new TEmpty]),
-                                                                new Type\Union([new TEmpty]),
-                                                            ]
-                                                        );
-                                                    } else {
-                                                        $generic_array_type->count--;
-                                                    }
-                                                } else {
-                                                    $generic_array_type = new TArray($generic_array_type->type_params);
-                                                }
-                                            }
-
-                                            $array_type->addType($generic_array_type);
-                                        } elseif ($array_atomic_type instanceof TNonEmptyArray) {
-                                            if (!$context->inside_loop && $array_atomic_type->count !== null) {
-                                                if ($array_atomic_type->count === 0) {
-                                                    $array_atomic_type = new TArray(
-                                                        [
-                                                            new Type\Union([new TEmpty]),
-                                                            new Type\Union([new TEmpty]),
-                                                        ]
-                                                    );
-                                                } else {
-                                                    $array_atomic_type->count--;
-                                                }
-                                            } else {
-                                                $array_atomic_type = new TArray($array_atomic_type->type_params);
-                                            }
-
-                                            $array_type->addType($array_atomic_type);
-                                        }
-                                    }
-
-                                    $context->vars_in_scope[$var_id] = $array_type;
-                                }
-                            }
+                            self::handleByRefArrayAdjustment($statements_analyzer, $arg, $context);
 
                             continue;
                         }
@@ -707,6 +669,75 @@ class CallAnalyzer
         }
 
         return null;
+    }
+
+    /**
+     * @return void
+     */
+    private static function handleByRefArrayAdjustment(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Arg $arg,
+        Context $context
+    ) {
+        $var_id = ExpressionAnalyzer::getVarId(
+            $arg->value,
+            $statements_analyzer->getFQCLN(),
+            $statements_analyzer
+        );
+
+        if ($var_id) {
+            $context->removeVarFromConflictingClauses($var_id, null, $statements_analyzer);
+
+            if (isset($context->vars_in_scope[$var_id])) {
+                $array_type = clone $context->vars_in_scope[$var_id];
+
+                $array_atomic_types = $array_type->getTypes();
+
+                foreach ($array_atomic_types as $array_atomic_type) {
+                    if ($array_atomic_type instanceof ObjectLike) {
+                        $generic_array_type = $array_atomic_type->getGenericArrayType();
+
+                        if ($generic_array_type instanceof TNonEmptyArray) {
+                            if (!$context->inside_loop && $generic_array_type->count !== null) {
+                                if ($generic_array_type->count === 0) {
+                                    $generic_array_type = new TArray(
+                                        [
+                                            new Type\Union([new TEmpty]),
+                                            new Type\Union([new TEmpty]),
+                                        ]
+                                    );
+                                } else {
+                                    $generic_array_type->count--;
+                                }
+                            } else {
+                                $generic_array_type = new TArray($generic_array_type->type_params);
+                            }
+                        }
+
+                        $array_type->addType($generic_array_type);
+                    } elseif ($array_atomic_type instanceof TNonEmptyArray) {
+                        if (!$context->inside_loop && $array_atomic_type->count !== null) {
+                            if ($array_atomic_type->count === 0) {
+                                $array_atomic_type = new TArray(
+                                    [
+                                        new Type\Union([new TEmpty]),
+                                        new Type\Union([new TEmpty]),
+                                    ]
+                                );
+                            } else {
+                                $array_atomic_type->count--;
+                            }
+                        } else {
+                            $array_atomic_type = new TArray($array_atomic_type->type_params);
+                        }
+
+                        $array_type->addType($array_atomic_type);
+                    }
+                }
+
+                $context->vars_in_scope[$var_id] = $array_type;
+            }
+        }
     }
 
     /**
@@ -862,9 +893,26 @@ class CallAnalyzer
                                 $generic_params = [];
                             }
 
+                            $original_by_ref_type = $by_ref_type;
+
                             $by_ref_type = clone $by_ref_type;
 
-                            $by_ref_type->replaceTemplateTypesWithStandins($template_types, $generic_params);
+                            $by_ref_type->replaceTemplateTypesWithStandins(
+                                $template_types,
+                                $generic_params,
+                                $codebase,
+                                isset($arg->value->inferredType)
+                                    ? clone $arg->value->inferredType
+                                    : null
+                            );
+
+                            if ($generic_params) {
+                                $original_by_ref_type->replaceTemplateTypesWithArgTypes(
+                                    $generic_params
+                                );
+
+                                $by_ref_type = $original_by_ref_type;
+                            }
                         }
                     }
 
@@ -1532,7 +1580,7 @@ class CallAnalyzer
             }
 
             if (!$type_coerced && !$type_match_found) {
-                $types_can_be_identical = TypeAnalyzer::canBeIdenticalTo(
+                $types_can_be_identical = TypeAnalyzer::canExpressionTypesBeIdentical(
                     $codebase,
                     $input_type,
                     $closure_param_type
@@ -2185,8 +2233,8 @@ class CallAnalyzer
                     $prefix .= '!';
                     $rule = substr($rule, 1);
                 }
-                if ($rule[0] === '^') {
-                    $prefix .= '^';
+                if ($rule[0] === '=') {
+                    $prefix .= '=';
                     $rule = substr($rule, 1);
                 }
                 if ($rule[0] === '~') {
@@ -2230,10 +2278,14 @@ class CallAnalyzer
                             $ored_type_assertions[] = $prefix . $replacement_atomic_type->value;
                         } elseif ($replacement_atomic_type instanceof Type\Atomic\Scalar) {
                             $ored_type_assertions[] = $prefix . $replacement_atomic_type->getId();
+                        } elseif ($replacement_atomic_type instanceof Type\Atomic\TNull) {
+                            $ored_type_assertions[] = $prefix . 'null';
                         }
                     }
 
-                    $type_assertions[$assertion_var_id] = [$ored_type_assertions];
+                    if ($ored_type_assertions) {
+                        $type_assertions[$assertion_var_id] = [$ored_type_assertions];
+                    }
                 } else {
                     $type_assertions[$assertion_var_id] = $assertion->rule;
                 }

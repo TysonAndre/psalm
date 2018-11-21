@@ -413,6 +413,8 @@ class TypeReconciliationTest extends TestCase
                     /** @return void */
                     function fooFoo(string $a) {
                         if (is_numeric($a)) { }
+
+                        if (is_numeric($a) && $a === "1") { }
                     }
 
                     $b = rand(0, 1) ? 5 : false;
@@ -860,11 +862,33 @@ class TypeReconciliationTest extends TestCase
                     function foo(int $i) : void {
                         if ($i == "5") {}
                         if ("5" == $i) {}
+                        if ($i == 5.0) {}
+                        if (5.0 == $i) {}
+                        if ($i == 0) {}
+                        if (0 == $i) {}
+                        if ($i == 0.0) {}
+                        if (0.0 == $i) {}
                     }
-                    function bar(float $f) : void {
-                      if ($f === 0) {}
-
-                      if (0 === $f) {}
+                    function foo(float $i) : void {
+                        $i = $i / 100.0;
+                        if ($i == "5") {}
+                        if ("5" == $i) {}
+                        if ($i == 5) {}
+                        if (5 == $i) {}
+                        if ($i == "0") {}
+                        if ("0" == $i) {}
+                        if ($i == 0) {}
+                        if (0 == $i) {}
+                    }
+                    function foo(string $i) : void {
+                        if ($i == 5) {}
+                        if (5 == $i) {}
+                        if ($i == 5.0) {}
+                        if (5.0 == $i) {}
+                        if ($i == 0) {}
+                        if (0 == $i) {}
+                        if ($i == 0.0) {}
+                        if (0.0 == $i) {}
                     }',
             ],
             'filterSubclassBasedOnParentInstanceof' => [
@@ -1288,6 +1312,20 @@ class TypeReconciliationTest extends TestCase
                         return (object) ["a" => 1, "b" => 2];
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'preventStrongEqualityScalarType' => [
+                '<?php
+                    function bar(float $f) : void {
+                        if ($f === 0) {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'preventYodaStrongEqualityScalarType' => [
+                '<?php
+                    function bar(float $f) : void {
+                        if (0 === $f) {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

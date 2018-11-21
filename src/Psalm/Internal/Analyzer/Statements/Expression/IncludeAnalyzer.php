@@ -48,7 +48,7 @@ class IncludeAnalyzer
             $path_to_file = str_replace('/', DIRECTORY_SEPARATOR, $path_to_file);
 
             // attempts to resolve using get_include_path dirs
-            $include_path = self::resolveIncludePath($path_to_file, dirname($statements_analyzer->getFileName()));
+            $include_path = self::resolveIncludePath($path_to_file, dirname($statements_analyzer->getFilePath()));
             $path_to_file = $include_path ? $include_path : $path_to_file;
 
             if (DIRECTORY_SEPARATOR === '/') {
@@ -58,23 +58,14 @@ class IncludeAnalyzer
             }
 
             if ($is_path_relative) {
-                $path_to_file = getcwd() . DIRECTORY_SEPARATOR . $path_to_file;
+                $path_to_file = $config->base_dir . DIRECTORY_SEPARATOR . $path_to_file;
             }
         } else {
-            $path_to_file = self::getPathTo($stmt->expr, $statements_analyzer->getFileName());
+            $path_to_file = self::getPathTo($stmt->expr, $statements_analyzer->getFileName(), $config);
         }
 
         if ($path_to_file) {
-            $path_to_file = preg_replace('/\/[\/]+/', '/', $path_to_file);
-            $path_to_file = str_replace('/./', '/', $path_to_file);
-            $slash = preg_quote(DIRECTORY_SEPARATOR, '/');
-            $reduce_pattern = '/' . $slash . '[^' . $slash . ']+' . $slash . '\.\.' . $slash . '/';
-
-            while (preg_match($reduce_pattern, $path_to_file)) {
-                $path_to_file = preg_replace($reduce_pattern, DIRECTORY_SEPARATOR, $path_to_file);
-            }
-
-            $path_to_file = str_replace('/./', '/', $path_to_file);
+            $path_to_file = self::normalizeFilePath($path_to_file);
 
             // if the file is already included, we can't check much more
             if (in_array(realpath($path_to_file), get_included_files(), true)) {
@@ -184,7 +175,7 @@ class IncludeAnalyzer
      * @return string|null
      * @psalm-suppress MixedAssignment
      */
-    public static function getPathTo(PhpParser\Node\Expr $stmt, $file_name)
+    public static function getPathTo(PhpParser\Node\Expr $stmt, $file_name, Config $config)
     {
         if (DIRECTORY_SEPARATOR === '/') {
             $is_path_relative = $file_name[0] !== DIRECTORY_SEPARATOR;
@@ -193,14 +184,24 @@ class IncludeAnalyzer
         }
 
         if ($is_path_relative) {
-            $file_name = getcwd() . DIRECTORY_SEPARATOR . $file_name;
+            $file_name = $config->base_dir . DIRECTORY_SEPARATOR . $file_name;
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\String_) {
+            if (DIRECTORY_SEPARATOR !== '/') {
+                return str_replace('/', DIRECTORY_SEPARATOR, $stmt->value);
+            }
             return $stmt->value;
         }
 
         if (isset($stmt->inferredType) && $stmt->inferredType->isSingleStringLiteral()) {
+            if (DIRECTORY_SEPARATOR !== '/') {
+                return str_replace(
+                    '/',
+                    DIRECTORY_SEPARATOR,
+                    $stmt->inferredType->getSingleStringLiteral()->value
+                );
+            }
             return $stmt->inferredType->getSingleStringLiteral()->value;
         }
 
@@ -215,8 +216,8 @@ class IncludeAnalyzer
                 }
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
-            $left_string = self::getPathTo($stmt->left, $file_name);
-            $right_string = self::getPathTo($stmt->right, $file_name);
+            $left_string = self::getPathTo($stmt->left, $file_name, $config);
+            $right_string = self::getPathTo($stmt->right, $file_name, $config);
 
             if ($left_string && $right_string) {
                 return $left_string . $right_string;
@@ -236,7 +237,7 @@ class IncludeAnalyzer
                     }
                 }
 
-                $evaled_path = self::getPathTo($stmt->args[0]->value, $file_name);
+                $evaled_path = self::getPathTo($stmt->args[0]->value, $file_name, $config);
 
                 if (!$evaled_path) {
                     return null;
@@ -294,5 +295,31 @@ class IncludeAnalyzer
         }
 
         return null;
+    }
+
+    public static function normalizeFilePath(string $path_to_file) : string
+    {
+        // replace all \ with / for normalization
+        $path_to_file = str_replace('\\', '/', $path_to_file);
+        $path_to_file = str_replace('/./', '/', $path_to_file);
+
+        // first remove unnecessary / duplicates
+        $path_to_file = preg_replace('/\/[\/]+/', '/', $path_to_file);
+
+        $path_to_file = preg_replace('/\/[\/]+/', '/', $path_to_file);
+
+        $reduce_pattern = '/\/[^\/]+\/\.\.\//';
+
+        while (preg_match($reduce_pattern, $path_to_file)) {
+            $path_to_file = preg_replace($reduce_pattern, DIRECTORY_SEPARATOR, $path_to_file);
+        }
+
+        $path_to_file = str_replace('/./', '/', $path_to_file);
+
+        if (DIRECTORY_SEPARATOR !== '/') {
+            $path_to_file = str_replace('/', DIRECTORY_SEPARATOR, $path_to_file);
+        }
+
+        return $path_to_file;
     }
 }
