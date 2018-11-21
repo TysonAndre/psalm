@@ -47,7 +47,7 @@ class ArrayUtilChecker
      * @suppress MixedPropertyFetch
      */
     public static function getTypeOfGet(
-        ProjectAnalyzer $project_checker,
+        ProjectAnalyzer $project_analyzer,
         StatementsAnalyzer $statements_checker,
         PhpParser\Node\Expr $stmt,
         array $args,
@@ -165,8 +165,8 @@ class ArrayUtilChecker
         Type\Union $replacement_type = null,
         $inside_isset = false
     ) {
-        $project_checker = $statements_checker->getFileAnalyzer()->project_checker;
-        $codebase = $project_checker->codebase;
+        $project_analyzer = $statements_checker->getFileAnalyzer()->project_analyzer;
+        $codebase = $project_analyzer->getCodebase();
 
         $has_array_access = false;
         $non_array_types = [];
