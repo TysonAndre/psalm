@@ -83,6 +83,15 @@ return [
         'PhanAccessPropertyInternal',  // PhpParser dynamic properties, let Psalm check that
         'PhanAccessMethodInternal',  // PhpParser dynamic properties, let Psalm check that
         // 'PhanUndeclaredMethod',
+        'PhanUnextractableAnnotationSuffix',  // some issues with multi-line properties
+        'PhanUnextractableAnnotationElementName',
+        'PhanCommentParamWithoutRealParam',
+        'PhanInvalidCommentForDeclarationType',
+        'PhanCommentDuplicateParam',
+
+        // These should be fixed upstream
+        'PhanUnreferencedUseNormal',
+        'PhanCommentParamOutOfOrder',
     ],
 
     // A list of files to include in analysis
@@ -98,7 +107,7 @@ return [
     'exclude_file_list' => [
         'src/Psalm/CallMap.php',
     ],
-    'exclude_file_regex' => '@^(vendor/.*/(tests|Tests)/|src/Psalm/Stubs/)@',
+    'exclude_file_regex' => '@^(vendor/.*/(tests|Tests)/|src/Psalm/Internal/Stubs/)@',
 
     // The number of processes to fork off during the analysis
     // phase.
@@ -113,10 +122,15 @@ return [
     // your application should be included in this list.
     'directory_list' => [
         'vendor/composer/xdebug-handler/src',
+        'vendor/composer/xdebug-handler/src',
+        'vendor/felixfbecker/language-server-protocol/src',
+        'vendor/felixfbecker/advanced-json-rpc/lib',
         'vendor/muglug/package-versions-56/src/PackageVersions',
+        'vendor/netresearch/jsonmapper/src',
         'vendor/nikic/php-parser/lib/PhpParser',
         'vendor/openlss/lib-array2xml',
         'vendor/php-cs-fixer/diff/src',
+        'vendor/sabre/event/lib',
         'vendor/symfony/console',
         'src',
         'examples',

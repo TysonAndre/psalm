@@ -10,7 +10,8 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassConst;
 use Psalm\Aliases;
-use Psalm\Checker\ProjectChecker;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\FileManipulation;
 use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Plugin\Hook\AfterClassLikeVisitInterface;
 use Psalm\Storage\ClassLikeStorage;
@@ -22,7 +23,7 @@ use Psalm\Type\Union;
 /**
  * This is an example plugin to make union types of API methods in an API class depend on a constant within the same class.
  *
- * TODO: This does not work as expected after refactoring class like storage cache for psalm 1.0.0
+ * TODO: This does not work as expected after refactoring class like storage cache for psalm 3.0.0
  * (integration test fails)
  */
 class APIFilterPlugin implements AfterClassLikeVisitInterface
@@ -34,6 +35,7 @@ class APIFilterPlugin implements AfterClassLikeVisitInterface
 
     /**
      * @return false|null
+     * @param  FileManipulation[] $file_replacements
      * @override
      */
     public static function afterClassLikeVisit(
@@ -84,7 +86,7 @@ class APIFilterPlugin implements AfterClassLikeVisitInterface
      * @return void
      */
     public static function beforeAnalyzeFiles(
-        ProjectChecker $project_checker
+        ProjectAnalyzer $project_checker
     ) {
         foreach (self::$classes_to_check_later as $record) {
             self::finishAnalyzing($record->filters, $record->storage, $project_checker);
@@ -99,7 +101,7 @@ class APIFilterPlugin implements AfterClassLikeVisitInterface
     private static function finishAnalyzing(
         array $filters,
         ClassLikeStorage $storage,
-        ProjectChecker $checker
+        ProjectAnalyzer $checker
     ) {
         $name = $storage->name;
         // var_export($storage);
@@ -122,7 +124,7 @@ class APIFilterPlugin implements AfterClassLikeVisitInterface
         $method_name,
         array $filters_for_method,
         ClassLikeStorage $storage,
-        ProjectChecker $checker
+        ProjectAnalyzer $checker
     ) {
         $method_name_lc = strtolower($method_name);
         //printf("Looking up %s in %s\n", $method_name_lc, json_encode(array_keys($storage->methods)));
@@ -264,6 +266,5 @@ class APIFilterRecord {
         return $result;
     }
 }
-
 
 return new APIFilterPlugin;

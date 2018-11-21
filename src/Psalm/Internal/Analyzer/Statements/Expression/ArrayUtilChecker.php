@@ -2,10 +2,10 @@
 namespace Psalm\Checker\Statements\Expression;
 
 use PhpParser;
-use Psalm\Checker\ProjectChecker;
-use Psalm\Checker\Statements\ExpressionChecker;
-use Psalm\Checker\StatementsChecker;
-use Psalm\Checker\TypeChecker;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
+use Psalm\Internal\Analyzer\StatementsAnalyzer;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\EmptyArrayAccess;
@@ -47,8 +47,8 @@ class ArrayUtilChecker
      * @suppress MixedPropertyFetch
      */
     public static function getTypeOfGet(
-        ProjectChecker $project_checker,
-        StatementsChecker $statements_checker,
+        ProjectAnalyzer $project_checker,
+        StatementsAnalyzer $statements_checker,
         PhpParser\Node\Expr $stmt,
         array $args,
         Context $context
@@ -66,7 +66,7 @@ class ArrayUtilChecker
         $var_type = null;
         $used_key_type = null;
 
-        $array_var_id = ExpressionChecker::getArrayVarId(
+        $array_var_id = ExpressionAnalyzer::getArrayVarId(
             $var_node,
             $statements_checker->getFQCLN(),
             $statements_checker
@@ -74,7 +74,7 @@ class ArrayUtilChecker
 
         // No keyed_array_var_id equivalent
 
-        if (ExpressionChecker::analyze($statements_checker, $dim_node, $context) === false) {
+        if (ExpressionAnalyzer::analyze($statements_checker, $dim_node, $context) === false) {
             return Type::getMixed();
         }
 
@@ -85,7 +85,7 @@ class ArrayUtilChecker
             $used_key_type = Type::getMixed();
         }
 
-        if (ExpressionChecker::analyze(
+        if (ExpressionAnalyzer::analyze(
             $statements_checker,
             $var_node,
             $context
@@ -154,7 +154,7 @@ class ArrayUtilChecker
      * @return Type\Union
      */
     public static function getArrayAccessTypeGivenOffset(
-        StatementsChecker $statements_checker,
+        StatementsAnalyzer $statements_checker,
         PhpParser\Node\Expr $stmt,
         PhpParser\Node\Expr $var_node,
         PhpParser\Node\Expr $dim_node,
@@ -165,7 +165,7 @@ class ArrayUtilChecker
         Type\Union $replacement_type = null,
         $inside_isset = false
     ) {
-        $project_checker = $statements_checker->getFileChecker()->project_checker;
+        $project_checker = $statements_checker->getFileAnalyzer()->project_checker;
         $codebase = $project_checker->codebase;
 
         $has_array_access = false;
@@ -282,7 +282,7 @@ class ArrayUtilChecker
                             $type->type_params[0] = $offset_type;
                         }
                     } elseif (!$type->type_params[0]->isEmpty()) {
-                        if (!TypeChecker::isContainedBy(
+                        if (!TypeAnalyzer::isContainedBy(
                             $codebase,
                             $offset_type,
                             $type->type_params[0],
@@ -375,7 +375,7 @@ class ArrayUtilChecker
 
                             $array_access_type = Type::getMixed();
                         }
-                    } elseif (TypeChecker::isContainedBy(
+                    } elseif (TypeAnalyzer::isContainedBy(
                         $codebase,
                         $offset_type,
                         $type->getGenericKeyType(),
@@ -440,7 +440,7 @@ class ArrayUtilChecker
                     }
                 }
 
-                if (!TypeChecker::isContainedBy(
+                if (!TypeAnalyzer::isContainedBy(
                     $codebase,
                     $offset_type,
                     Type::getInt(),
