@@ -121,8 +121,7 @@ return [
     // Thus, both first-party and third-party code being used by
     // your application should be included in this list.
     'directory_list' => [
-        'vendor/composer/xdebug-handler/src',
-        'vendor/composer/xdebug-handler/src',
+        'vendor/composer/',
         'vendor/felixfbecker/language-server-protocol/src',
         'vendor/felixfbecker/advanced-json-rpc/lib',
         'vendor/muglug/package-versions-56/src/PackageVersions',

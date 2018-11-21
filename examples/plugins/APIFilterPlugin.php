@@ -10,8 +10,10 @@ use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\ClassLike;
 use PhpParser\Node\Stmt\ClassConst;
 use Psalm\Aliases;
+use Psalm\Codebase;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\FileManipulation;
+use Psalm\FileSource;
 use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Plugin\Hook\AfterClassLikeVisitInterface;
 use Psalm\Storage\ClassLikeStorage;
@@ -34,35 +36,35 @@ class APIFilterPlugin implements AfterClassLikeVisitInterface
     private static $classes_to_check_later = [];
 
     /**
-     * @return false|null
+     * @return void
      * @param  FileManipulation[] $file_replacements
      * @override
      */
     public static function afterClassLikeVisit(
         ClassLike $class_node,
         ClassLikeStorage $storage,
-        FileScanner $file_scanner,
-        Aliases $aliases,
+        FileSource $statements_source,
+        Codebase $codebase,
         array &$file_replacements = []
     ) {
         // var_export($storage);
         if (isset($storage->public_class_constants[self::METHOD_FILTERS_CONST_NAME])) {
             $method_filters_node = self::extractMethodFiltersNode($class_node);
             if (!$method_filters_node) {
-                return null;
+                return;
             }
             if (!($method_filters_node instanceof PhpParser\Node\Expr\Array_)) {
-                return null;
+                return;
             }
             $name = $storage->name;
             $record = new APIFilterRecord($method_filters_node, $storage);
             if (count($record->filters) === 0) {
                 // The list of filters is empty
-                return null;
+                return;
             }
             self::$classes_to_check_later[$name] = $record;
         }
-        return null;
+        return;
     }
 
     /**
