@@ -1,9 +1,9 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Checker\CommentChecker;
+use Psalm\Internal\Analyzer\CommentAnalyzer;
 
-class CommentCheckerTest extends TestCase
+class CommentAnalyzerTest extends TestCase
 {
     /** @return void */
     public function testParseDocComment()
@@ -19,7 +19,7 @@ EOT;
 Description
  Rest of description
 EOT;
-        $actual = CommentChecker::parseDocComment($input_doc_comment);
+        $actual = CommentAnalyzer::parseDocComment($input_doc_comment);
         $expected = [
             'description' => $expected_doc_comment,
             'specials' => [
