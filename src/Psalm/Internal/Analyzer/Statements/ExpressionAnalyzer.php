@@ -832,7 +832,7 @@ class ExpressionAnalyzer
     /**
      * @param  Type\Union   $return_type
      * @param  string|null  $self_class
-     * @param  string|null  $static_class
+     * @param  string|Type\Atomic\TNamedObject|null $static_class_type
      *
      * @return Type\Union
      */
@@ -840,7 +840,7 @@ class ExpressionAnalyzer
         Codebase $codebase,
         Type\Union $return_type,
         $self_class = null,
-        $static_class = null
+        $static_class_type = null
     ) {
         $return_type = clone $return_type;
 
@@ -851,7 +851,7 @@ class ExpressionAnalyzer
                 $codebase,
                 $return_type_part,
                 $self_class,
-                $static_class
+                $static_class_type
             );
         }
 
@@ -870,27 +870,56 @@ class ExpressionAnalyzer
     /**
      * @param  Type\Atomic  &$return_type
      * @param  string|null  $self_class
-     * @param  string|null  $static_class
+     * @param  string|Type\Atomic\TNamedObject|null $static_class_type
      *
      * @return Type\Atomic
      */
     private static function fleshOutAtomicType(
         Codebase $codebase,
-        Type\Atomic $return_type,
+        Type\Atomic &$return_type,
         $self_class,
-        $static_class
+        $static_class_type = null
     ) {
         if ($return_type instanceof TNamedObject) {
+            if ($return_type->extra_types) {
+                $new_intersection_types = [];
+
+                foreach ($return_type->extra_types as &$extra_type) {
+                    self::fleshOutAtomicType(
+                        $codebase,
+                        $extra_type,
+                        $self_class,
+                        $static_class_type
+                    );
+
+                    if ($extra_type instanceof TNamedObject && $extra_type->extra_types) {
+                        $new_intersection_types = array_merge(
+                            $new_intersection_types,
+                            $extra_type->extra_types
+                        );
+                        $extra_type->extra_types = [];
+                    }
+                }
+
+                if ($new_intersection_types) {
+                    $return_type->extra_types = array_merge($return_type->extra_types, $new_intersection_types);
+                }
+            }
+
             $return_type_lc = strtolower($return_type->value);
 
             if ($return_type_lc === 'static' || $return_type_lc === '$this') {
-                if (!$static_class) {
+                if (!$static_class_type) {
                     throw new \UnexpectedValueException(
                         'Cannot handle ' . $return_type->value . ' when $static_class is empty'
                     );
                 }
 
-                $return_type->value = $static_class;
+                if (is_string($static_class_type)) {
+                    $return_type->value = $static_class_type;
+                } else {
+                    $return_type = clone $static_class_type;
+                }
             } elseif ($return_type_lc === 'self') {
                 if (!$self_class) {
                     throw new \UnexpectedValueException(
@@ -937,7 +966,7 @@ class ExpressionAnalyzer
                     $codebase,
                     $type_param,
                     $self_class,
-                    $static_class
+                    $static_class_type
                 );
             }
         } elseif ($return_type instanceof Type\Atomic\ObjectLike) {
@@ -946,7 +975,7 @@ class ExpressionAnalyzer
                     $codebase,
                     $property_type,
                     $self_class,
-                    $static_class
+                    $static_class_type
                 );
             }
         }
@@ -1097,7 +1126,7 @@ class ExpressionAnalyzer
                     $codebase,
                     $var_comment->type,
                     $context->self,
-                    $context->self
+                    $context->self ? new Type\Atomic\TNamedObject($context->self) : null
                 );
 
                 if (!$var_comment->var_id) {

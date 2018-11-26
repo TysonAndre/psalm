@@ -721,6 +721,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->sealed_properties = $docblock_info->sealed_properties;
                 $storage->sealed_methods = $docblock_info->sealed_methods;
 
+                $storage->override_property_visibility = $docblock_info->override_property_visibility;
+                $storage->override_method_visibility = $docblock_info->override_method_visibility;
+
                 $storage->suppressed_issues = $docblock_info->suppressed_issues;
 
                 foreach ($docblock_info->methods as $method) {
@@ -1186,6 +1189,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $throw_class,
                     $this->aliases
                 );
+
+                $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln, $this->file_path);
 
                 $storage->throws[$exception_fqcln] = true;
             }

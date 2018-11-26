@@ -540,6 +540,14 @@ class CommentAnalyzer
             $info->sealed_methods = true;
         }
 
+        if (isset($comments['specials']['psalm-override-property-visibility'])) {
+            $info->override_property_visibility = true;
+        }
+
+        if (isset($comments['specials']['psalm-override-method-visibility'])) {
+            $info->override_method_visibility = true;
+        }
+
         if (isset($comments['specials']['psalm-suppress'])) {
             foreach ($comments['specials']['psalm-suppress'] as $suppress_entry) {
                 $info->suppressed_issues[] = preg_split('/[\s]+/', $suppress_entry)[0];

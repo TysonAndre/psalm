@@ -41,6 +41,16 @@ class ClassLikeDocblockComment
     public $sealed_methods = false;
 
     /**
+     * @var bool
+     */
+    public $override_property_visibility = false;
+
+    /**
+     * @var bool
+     */
+    public $override_method_visibility = false;
+
+    /**
      * @var array<int, string>
      */
     public $suppressed_issues = [];
