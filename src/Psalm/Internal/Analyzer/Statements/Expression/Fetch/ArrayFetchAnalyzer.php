@@ -512,6 +512,8 @@ class ArrayFetchAnalyzer
                             $type_coerced,
                             $type_coerced_from_mixed,
                             $to_string_cast,
+                            $unused_incompatible_values,
+                            $unused_has_partial_match,
                             $type_coerced_from_scalar
                         );
 

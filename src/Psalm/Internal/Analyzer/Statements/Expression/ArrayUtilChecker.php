@@ -117,7 +117,6 @@ class ArrayUtilChecker
                 }
 
                 return $stmt->inferredType;
-                ;
             }
 
             $field_type = self::getArrayAccessTypeGivenOffset(

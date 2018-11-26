@@ -78,7 +78,6 @@ class TypeAnalyzer
             return false;
         }
 
-        $has_scalar_match = true;
         $has_partial_match = false;
         $has_overall_match = true;
 
