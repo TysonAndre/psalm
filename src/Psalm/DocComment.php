@@ -3,6 +3,7 @@
 namespace Psalm;
 
 use Psalm\DocComment;
+use Psalm\Exception\DocblockParseException;
 
 class DocComment
 {
