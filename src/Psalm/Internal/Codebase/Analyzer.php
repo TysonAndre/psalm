@@ -195,6 +195,7 @@ class Analyzer
         $plugin_classes = $this->config->before_analyze_files;
         foreach ($plugin_classes as $plugin) {
             // Pass in ProjectChecker
+            /** @psalm-suppress InvalidStringClass consider converting to Closure first */
             $plugin::beforeAnalyzeFiles($project_analyzer);
         }
 

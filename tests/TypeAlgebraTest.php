@@ -793,13 +793,6 @@ class TypeAlgebraTest extends TestCase
                         return null;
                     }',
             ],
-            'stringConcatenationTrackedValid' => [
-                '<?php
-                    $x = "a";
-                    $x = "_" . $x;
-                    $array = [$x => 2];
-                    echo $array["_a"];',
-            ],
             'instanceofNoRedundant' => [
                 '<?php
                     function logic(Foo $a, Foo $b) : void {
