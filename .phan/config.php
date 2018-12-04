@@ -79,6 +79,9 @@ return [
     // Add any issue types (such as 'PhanUndeclaredMethod')
     // here to inhibit them from being reported
     'suppress_issue_types' => [
+        'PhanAccessClassInternal',
+        'PhanAccessClassConstantInternal',
+
         'PhanUndeclaredProperty',  // PhpParser dynamic properties, let Psalm check that
         'PhanAccessPropertyInternal',  // PhpParser dynamic properties, let Psalm check that
         'PhanAccessMethodInternal',  // PhpParser dynamic properties, let Psalm check that
