@@ -4,6 +4,9 @@ namespace Psalm\Internal;
 use function count;
 use function array_diff;
 
+/**
+ * @internal
+ */
 class Clause
 {
     /**

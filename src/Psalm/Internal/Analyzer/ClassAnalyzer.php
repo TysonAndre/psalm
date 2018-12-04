@@ -13,6 +13,7 @@ use Psalm\Issue\DeprecatedClass;
 use Psalm\Issue\DeprecatedInterface;
 use Psalm\Issue\DeprecatedTrait;
 use Psalm\Issue\InaccessibleMethod;
+use Psalm\Issue\InternalClass;
 use Psalm\Issue\MissingConstructor;
 use Psalm\Issue\MissingPropertyType;
 use Psalm\Issue\OverriddenPropertyAccess;
@@ -27,6 +28,9 @@ use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type;
 
+/**
+ * @internal
+ */
 class ClassAnalyzer extends ClassLikeAnalyzer
 {
     /**
@@ -160,6 +164,30 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
                     )) {
                         // fall through
+                    }
+                }
+
+                if ($parent_class_storage->internal) {
+                    $code_location = new CodeLocation(
+                        $this,
+                        $class->extends,
+                        $class_context ? $class_context->include_location : null,
+                        true
+                    );
+
+                    $self_root = preg_replace('/^([^\\\]+).*/', '$1', $fq_class_name);
+                    $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $parent_fq_class_name);
+
+                    if (strtolower($self_root) !== strtolower($declaring_root)) {
+                        if (IssueBuffer::accepts(
+                            new InternalClass(
+                                $parent_fq_class_name . ' is marked internal',
+                                $code_location
+                            ),
+                            array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        )) {
+                            // fall through
+                        }
                     }
                 }
 
@@ -340,7 +368,9 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         }
 
         foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
-            $property_class_name = $codebase->properties->getDeclaringClassForProperty($appearing_property_id);
+            $property_class_name = $codebase->properties->getDeclaringClassForProperty(
+                $appearing_property_id
+            );
             $property_class_storage = $classlike_storage_provider->get((string)$property_class_name);
 
             $property_storage = $property_class_storage->properties[$property_name];
@@ -495,6 +525,39 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 }
             }
         }
+
+
+
+        foreach ($storage->pseudo_methods as $pseudo_method_name => $pseudo_method_storage) {
+            $pseudo_method_id = $this->fq_class_name . '::' . $pseudo_method_name;
+
+            $overridden_method_ids = $codebase->methods->getOverriddenMethodIds($pseudo_method_id);
+
+            if ($overridden_method_ids
+                && $pseudo_method_name !== '__construct'
+                && $pseudo_method_storage->location
+            ) {
+                foreach ($overridden_method_ids as $overridden_method_id) {
+                    $parent_method_storage = $codebase->methods->getStorage($overridden_method_id);
+
+                    list($overridden_fq_class_name) = explode('::', $overridden_method_id);
+
+                    $parent_storage = $classlike_storage_provider->get($overridden_fq_class_name);
+
+                    MethodAnalyzer::compareMethods(
+                        $codebase,
+                        $storage,
+                        $parent_storage,
+                        $pseudo_method_storage,
+                        $parent_method_storage,
+                        $pseudo_method_storage->location,
+                        $storage->suppressed_issues,
+                        true,
+                        false
+                    );
+                }
+            }
+        }
     }
 
     /**
@@ -546,7 +609,9 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         $uninitialized_properties = [];
 
         foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
-            $property_class_name = $codebase->properties->getDeclaringClassForProperty($appearing_property_id);
+            $property_class_name = $codebase->properties->getDeclaringClassForProperty(
+                $appearing_property_id
+            );
             $property_class_storage = $classlike_storage_provider->get((string)$property_class_name);
 
             $property = $property_class_storage->properties[$property_name];

@@ -12,6 +12,7 @@ use Psalm\Context;
 use Psalm\Issue\AbstractInstantiation;
 use Psalm\Issue\DeprecatedClass;
 use Psalm\Issue\InterfaceInstantiation;
+use Psalm\Issue\InternalClass;
 use Psalm\Issue\InvalidStringClass;
 use Psalm\Issue\TooManyArguments;
 use Psalm\Issue\UndefinedClass;
@@ -19,6 +20,9 @@ use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
 
+/**
+ * @internal
+ */
 class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer
 {
     /**
@@ -57,6 +61,8 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $stmt->class,
                     $aliases
                 );
+
+                $fq_class_name = $codebase->classlikes->getUnAliasedName($fq_class_name);
 
                 if ($context->check_classes) {
                     if ($context->isPhantomClass($fq_class_name)) {
@@ -243,6 +249,23 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         $statements_analyzer->getSuppressedIssues()
                     )) {
                         // fall through
+                    }
+                }
+
+                if ($storage->internal && $context->self) {
+                    $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
+                    $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $fq_class_name);
+
+                    if (strtolower($self_root) !== strtolower($declaring_root)) {
+                        if (IssueBuffer::accepts(
+                            new InternalClass(
+                                $fq_class_name . ' is marked internal',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
                     }
                 }
 

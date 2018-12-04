@@ -282,7 +282,7 @@ class TraitTest extends TestCase
                 '<?php
                     trait T {
                         public function f(): void {
-                            if (get_class($this) === "B") {
+                            if (get_class($this) === B::class) {
                                 $this->foo();
                             }
                         }
@@ -302,7 +302,7 @@ class TraitTest extends TestCase
                 '<?php
                     trait T {
                         public function f(): void {
-                            if (static::class === "B") {
+                            if (static::class === B::class) {
                                 $this->foo();
                             }
                         }
@@ -660,6 +660,42 @@ class TraitTest extends TestCase
                            $this->value = $bool;
                         }
                     }'
+            ],
+            'manyTraitAliases' => [
+                '<?php
+                    trait Foo {
+                        public static function staticMethod():void {}
+                        public function nonstatic():void {}
+                    }
+
+                    Class Bar {
+                        use Foo {
+                            Foo::staticMethod as foo;
+                            Foo::staticMethod as foobar;
+                            Foo::staticMethod as fine;
+                            Foo::nonstatic as bad;
+                            Foo::nonstatic as good;
+                        }
+                    }
+
+                    $b = new Bar();
+
+                    Bar::fine();
+                    $b::fine();
+                    $b->fine();
+
+                    $b->good();
+
+                    Bar::foo();
+                    Bar::foobar();
+
+                    $b::foo();
+                    $b::foobar();
+
+                    $b->foo();
+                    $b->foobar();
+
+                    $b->bad();'
             ],
         ];
     }

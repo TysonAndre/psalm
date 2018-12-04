@@ -4,10 +4,12 @@ namespace Psalm\Internal\Analyzer;
 use PhpParser;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\Context;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Issue\DeprecatedMethod;
 use Psalm\Issue\ImplementedReturnTypeMismatch;
 use Psalm\Issue\InaccessibleMethod;
+use Psalm\Issue\InternalMethod;
 use Psalm\Issue\InvalidStaticInvocation;
 use Psalm\Issue\MethodSignatureMismatch;
 use Psalm\Issue\MethodSignatureMustOmitReturnType;
@@ -24,6 +26,9 @@ use Psalm\Type;
 
 use function explode;
 
+/**
+ * @internal
+ */
 class MethodAnalyzer extends FunctionLikeAnalyzer
 {
     /**
@@ -145,8 +150,9 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
      *
      * @return false|null
      */
-    public static function checkMethodNotDeprecated(
+    public static function checkMethodNotDeprecatedOrInternal(
         Codebase $codebase,
+        Context $context,
         $method_id,
         CodeLocation $code_location,
         array $suppressed_issues
@@ -167,6 +173,30 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 $suppressed_issues
             )) {
                 // continue
+            }
+        }
+
+        if ($storage->internal
+            && $context->self
+            && !$context->collect_initializations
+            && !$context->collect_mutations
+        ) {
+            $declaring_class = explode('::', $method_id)[0];
+            $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
+            $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $declaring_class);
+
+            if (strtolower($self_root) !== strtolower($declaring_root)) {
+                if (IssueBuffer::accepts(
+                    new InternalMethod(
+                        'The method ' . $codebase_methods->getCasedMethodId($method_id) .
+                            ' has been marked as internal',
+                        $code_location,
+                        $method_id
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
             }
         }
 
@@ -364,6 +394,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
      * @param  CodeLocation     $code_location
      * @param  array            $suppressed_issues
      * @param  bool             $prevent_abstract_override
+     * @param  bool             $prevent_method_signature_mismatch
      *
      * @return false|null
      */
@@ -375,7 +406,8 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
         MethodStorage $guide_method_storage,
         CodeLocation $code_location,
         array $suppressed_issues,
-        $prevent_abstract_override = true
+        $prevent_abstract_override = true,
+        $prevent_method_signature_mismatch = true
     ) {
         $implementer_method_id = $implementer_classlike_storage->name . '::'
             . strtolower($guide_method_storage->cased_name);
@@ -420,7 +452,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
             return null;
         }
 
-        if ($guide_method_storage->signature_return_type) {
+        if ($guide_method_storage->signature_return_type && $prevent_method_signature_mismatch) {
             $guide_signature_return_type = ExpressionAnalyzer::fleshOutType(
                 $codebase,
                 $guide_method_storage->signature_return_type,
@@ -541,7 +573,8 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
 
             $implementer_param = $implementer_method_storage->params[$i];
 
-            if ($guide_classlike_storage->user_defined
+            if ($prevent_method_signature_mismatch
+                && $guide_classlike_storage->user_defined
                 && $implementer_param->signature_type
                 && !TypeAnalyzer::isContainedByInPhp($guide_param->signature_type, $implementer_param->signature_type)
             ) {

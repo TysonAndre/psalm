@@ -37,6 +37,9 @@ use Psalm\Type;
 
 use function strtolower;
 
+/**
+ * @internal
+ */
 class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParser\NodeVisitor, FileSource
 {
     /** @var Aliases */
@@ -64,9 +67,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
     /** @var Config */
     private $config;
-
-    /** @var bool */
-    private $queue_strings_as_possible_type = false;
 
     /** @var array<string, string> */
     private $class_template_types = [];
@@ -276,10 +276,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $return_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
 
-                if ($function_id === 'get_class') {
-                    $this->queue_strings_as_possible_type = true;
-                }
-
                 if ($function_id === 'define') {
                     $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
                     $second_arg_value = isset($node->args[1]) ? $node->args[1]->value : null;
@@ -345,6 +341,48 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $function_like_storage->variadic = true;
                     }
                 }
+
+                if ($function_id === 'class_alias') {
+                    $first_arg = $node->args[0]->value ?? null;
+                    $second_arg = $node->args[1]->value ?? null;
+
+                    if ($first_arg instanceof PhpParser\Node\Scalar\String_) {
+                        $first_arg_value = $first_arg->value;
+                    } elseif ($first_arg instanceof PhpParser\Node\Expr\ClassConstFetch
+                        && $first_arg->class instanceof PhpParser\Node\Name
+                        && $first_arg->name instanceof PhpParser\Node\Identifier
+                        && strtolower($first_arg->name->name) === 'class'
+                    ) {
+                        /** @var string */
+                        $first_arg_value = $first_arg->class->getAttribute('resolvedName');
+                    } else {
+                        $first_arg_value = null;
+                    }
+
+                    if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
+                        $second_arg_value = $second_arg->value;
+                    } elseif ($second_arg instanceof PhpParser\Node\Expr\ClassConstFetch
+                        && $second_arg->class instanceof PhpParser\Node\Name
+                        && $second_arg->name instanceof PhpParser\Node\Identifier
+                        && strtolower($second_arg->name->name) === 'class'
+                    ) {
+                        /** @var string */
+                        $second_arg_value = $second_arg->class->getAttribute('resolvedName');
+                    } else {
+                        $second_arg_value = null;
+                    }
+
+                    if ($first_arg_value && $second_arg_value) {
+                        if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
+                            $this->codebase->classlikes->addClassAlias(
+                                $first_arg_value,
+                                $second_arg_value
+                            );
+                        }
+
+                        $this->file_storage->classlike_aliases[strtolower($second_arg_value)] = $first_arg_value;
+                    }
+                }
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\TraitUse) {
             if (!$this->classlike_storages) {
@@ -358,7 +396,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             foreach ($node->adaptations as $adaptation) {
                 if ($adaptation instanceof PhpParser\Node\Stmt\TraitUseAdaptation\Alias) {
                     if ($adaptation->newName) {
-                        $method_map[strtolower($adaptation->method->name)] = strtolower($adaptation->newName->name);
+                        $method_map[strtolower($adaptation->newName->name)] = strtolower($adaptation->method->name);
                     }
                 }
             }
@@ -373,10 +411,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
         } elseif ($node instanceof PhpParser\Node\Expr\Include_) {
             $this->visitInclude($node);
-        } elseif ($node instanceof PhpParser\Node\Scalar\String_ && $this->queue_strings_as_possible_type) {
-            if (preg_match('/^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$/', $node->value)) {
-                $this->codebase->scanner->queueClassLikeForScanning($node->value, $this->file_path, false, false);
-            }
         } elseif ($node instanceof PhpParser\Node\Expr\Assign
             || $node instanceof PhpParser\Node\Expr\AssignOp
             || $node instanceof PhpParser\Node\Expr\AssignRef
@@ -542,8 +576,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         } elseif ($node instanceof PhpParser\Node\Stmt\Function_
             || $node instanceof PhpParser\Node\Stmt\ClassMethod
         ) {
-            $this->queue_strings_as_possible_type = false;
-
             $this->function_template_types = [];
         } elseif ($node instanceof PhpParser\Node\FunctionLike) {
             $functionlike_storage = array_pop($this->functionlike_storages);
@@ -717,6 +749,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
 
                 $storage->deprecated = $docblock_info->deprecated;
+                $storage->internal = $docblock_info->internal;
 
                 $storage->sealed_properties = $docblock_info->sealed_properties;
                 $storage->sealed_methods = $docblock_info->sealed_methods;
@@ -727,8 +760,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->suppressed_issues = $docblock_info->suppressed_issues;
 
                 foreach ($docblock_info->methods as $method) {
-                    $storage->pseudo_methods[strtolower($method->name->name)]
-                        = $this->registerFunctionLike($method, true);
+                    /** @var MethodStorage */
+                    $pseudo_method_storage = $this->registerFunctionLike($method, true);
+
+                    $storage->pseudo_methods[strtolower($method->name->name)] = $pseudo_method_storage;
                 }
             }
         }
@@ -804,7 +839,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         if ($fake_method && $stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
             $cased_function_id = '@method ' . $stmt->name->name;
 
-            $storage = new FunctionLikeStorage();
+            $storage = new MethodStorage();
         } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
             $cased_function_id =
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $stmt->name->name;
@@ -1026,6 +1061,11 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                     $rules = \Psalm\Type\Algebra::getTruthsFromFormula($negated_formula);
 
+                    if (!$rules) {
+                        $var_assertions = [];
+                        break;
+                    }
+
                     foreach ($rules as $var_id => $rule) {
                         foreach ($rule as $rule_part) {
                             if (count($rule_part) > 1) {
@@ -1169,6 +1209,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->deprecated = true;
         }
 
+        if ($docblock_info->internal) {
+            $storage->internal = true;
+        }
+
         if ($docblock_info->variadic) {
             $storage->variadic = true;
         }
@@ -1191,6 +1235,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 );
 
                 $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln, $this->file_path);
+                $this->file_storage->referenced_classlikes[strtolower($exception_fqcln)] = $exception_fqcln;
 
                 $storage->throws[$exception_fqcln] = true;
             }
@@ -1558,7 +1603,23 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($storage_param === null) {
-                continue;
+                if (!$docblock_param_variadic || $storage->params || $this->scan_deep) {
+                    continue;
+                }
+
+                $storage_param = new FunctionLikeParameter(
+                    $param_name,
+                    false,
+                    null,
+                    null,
+                    null,
+                    false,
+                    false,
+                    true,
+                    null
+                );
+
+                $storage->params[] = $storage_param;
             }
 
             $code_location = new CodeLocation(
@@ -1786,6 +1847,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $property_storage->has_default = $property->default ? true : false;
             $property_storage->suggested_type = $property_group_type ? null : $default_type;
             $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
+            $property_storage->internal = $var_comment ? $var_comment->internal : false;
 
             if ($stmt->isPublic()) {
                 $property_storage->visibility = ClassLikeAnalyzer::VISIBILITY_PUBLIC;

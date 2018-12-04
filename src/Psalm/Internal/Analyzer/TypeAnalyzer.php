@@ -15,6 +15,7 @@ use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\GetClassT;
 use Psalm\Type\Atomic\THtmlEscapedString;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TLiteralClassString;
@@ -33,6 +34,9 @@ use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 
+/**
+ * @internal
+ */
 class TypeAnalyzer
 {
     /**
@@ -308,14 +312,22 @@ class TypeAnalyzer
                 continue;
             }
 
-            $intersection_container_type_lower = strtolower($intersection_container_type->value);
+            $intersection_container_type_lower = strtolower(
+                $codebase->classlikes->getUnAliasedName(
+                    strtolower($intersection_container_type->value)
+                )
+            );
 
             foreach ($intersection_input_types as $intersection_input_type) {
                 if ($intersection_input_type instanceof TGenericParam) {
                     continue;
                 }
 
-                $intersection_input_type_lower = strtolower($intersection_input_type->value);
+                $intersection_input_type_lower = strtolower(
+                    $codebase->classlikes->getUnAliasedName(
+                        strtolower($intersection_input_type->value)
+                    )
+                );
 
                 if ($intersection_container_type_lower === $intersection_input_type_lower) {
                     continue 2;
@@ -714,11 +726,16 @@ class TypeAnalyzer
             );
         }
 
-        if (($input_type_part instanceof TClassString || $input_type_part instanceof TLiteralClassString)
+        if (($input_type_part instanceof TClassString
+            || $input_type_part instanceof TLiteralClassString)
             && (get_class($container_type_part) === TString::class
                 || get_class($container_type_part) === TSingleLetter::class
-                || get_class($container_type_part) === Type\Atomic\GetClassT::class)
+                || get_class($container_type_part) === GetClassT::class)
         ) {
+            return true;
+        }
+
+        if ($container_type_part instanceof TClassString && $input_type_part instanceof GetClassT) {
             return true;
         }
 

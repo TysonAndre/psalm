@@ -54,6 +54,9 @@ use Psalm\Internal\Type\TypeCombination;
 
 use function is_string;
 
+/**
+ * @internal
+ */
 class ExpressionAnalyzer
 {
     /**
@@ -116,7 +119,7 @@ class ExpressionAnalyzer
         } elseif ($stmt instanceof PhpParser\Node\Expr\ConstFetch) {
             ConstFetchAnalyzer::analyze($statements_analyzer, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\String_) {
-            $stmt->inferredType = Type::getString(strlen($stmt->value) < 30 ? $stmt->value : null);
+            $stmt->inferredType = Type::getString(strlen($stmt->value) < 50 ? $stmt->value : null);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\EncapsedStringPart) {
             // do nothing
         } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst) {
@@ -928,6 +931,8 @@ class ExpressionAnalyzer
                 }
 
                 $return_type->value = $self_class;
+            } else {
+                $return_type->value = $codebase->classlikes->getUnAliasedName($return_type->value);
             }
         }
 

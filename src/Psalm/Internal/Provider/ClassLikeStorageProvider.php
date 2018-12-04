@@ -5,6 +5,9 @@ use Psalm\Storage\ClassLikeStorage;
 
 use function strtolower;
 
+/**
+ * @internal
+ */
 class ClassLikeStorageProvider
 {
     /**

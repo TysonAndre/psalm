@@ -42,6 +42,9 @@ use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
 
+/**
+ * @internal
+ */
 class ArrayFetchAnalyzer
 {
     /**
@@ -206,7 +209,7 @@ class ArrayFetchAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
             }
         }

@@ -40,6 +40,9 @@ use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNonEmptyArray;
 
+/**
+ * @internal
+ */
 class CallAnalyzer
 {
     /**
@@ -1607,7 +1610,7 @@ class CallAnalyzer
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        // fall through
                     }
                 } elseif (IssueBuffer::accepts(
                     new InvalidArgument(
@@ -1957,7 +1960,7 @@ class CallAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
             }
         }
@@ -1975,7 +1978,7 @@ class CallAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
         }
 
@@ -2133,7 +2136,8 @@ class CallAnalyzer
                 if (IssueBuffer::accepts(
                     new UndefinedFunction(
                         'Function ' . $cased_function_id . ' does not exist',
-                        $code_location
+                        $code_location,
+                        $function_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {

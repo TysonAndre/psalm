@@ -78,6 +78,11 @@ class ClassLikeStorage
     public $deprecated = false;
 
     /**
+     * @var bool
+     */
+    public $internal = false;
+
+    /**
      * @var array<string, bool>
      */
     public $deprecated_constants = [];
@@ -181,7 +186,7 @@ class ClassLikeStorage
     public $methods = [];
 
     /**
-     * @var array<string, FunctionLikeStorage>
+     * @var array<string, MethodStorage>
      */
     public $pseudo_methods = [];
 

@@ -14,6 +14,9 @@ use Psalm\Internal\Provider\Providers;
 use Psalm\Type;
 use Sabre\Event\Loop;
 
+/**
+ * @internal
+ */
 class ProjectAnalyzer
 {
     /**

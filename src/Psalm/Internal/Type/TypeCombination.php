@@ -27,6 +27,9 @@ use Psalm\Internal\Type\ParseTree;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
 
+/**
+ * @internal
+ */
 class TypeCombination
 {
     /** @var array<string, Atomic> */
@@ -66,12 +69,17 @@ class TypeCombination
      *  - and `array + array<string> = array<mixed>`
      *
      * @param  array<Atomic>    $types
+     * @param  int    $literal_limit any greater number of literal types than this
+     *                               will be merged to a scalar
      *
      * @return Union
      * @psalm-suppress TypeCoercion
      */
-    public static function combineTypes(array $types)
-    {
+    public static function combineTypes(
+        array $types,
+        bool $overwrite_empty_array = false,
+        int $literal_limit = 500
+    ) {
         if (in_array(null, $types, true)) {
             return Type::getMixed();
         }
@@ -101,7 +109,7 @@ class TypeCombination
         foreach ($types as $type) {
             $from_docblock = $from_docblock || $type->from_docblock;
 
-            $result = self::scrapeTypeProperties($type, $combination);
+            $result = self::scrapeTypeProperties($type, $combination, $overwrite_empty_array, $literal_limit);
 
             if ($type instanceof TNull) {
                 $has_null = true;
@@ -179,6 +187,15 @@ class TypeCombination
             (!isset($combination->type_params['array'])
                 || $combination->type_params['array'][1]->isEmpty())
         ) {
+            if (!$overwrite_empty_array
+                && (isset($combination->type_params['array'])
+                    && $combination->type_params['array'][1]->isEmpty())
+            ) {
+                foreach ($combination->objectlike_entries as $objectlike_entry) {
+                    $objectlike_entry->possibly_undefined = true;
+                }
+            }
+
             $objectlike = new ObjectLike($combination->objectlike_entries);
 
             if ($combination->objectlike_sealed && !isset($combination->type_params['array'])) {
@@ -202,7 +219,8 @@ class TypeCombination
                         if ($objectlike_generic_type) {
                             $objectlike_generic_type = Type::combineUnionTypes(
                                 $property_type,
-                                $objectlike_generic_type
+                                $objectlike_generic_type,
+                                $overwrite_empty_array
                             );
                         } else {
                             $objectlike_generic_type = clone $property_type;
@@ -225,11 +243,13 @@ class TypeCombination
 
                     $generic_type_params[0] = Type::combineUnionTypes(
                         $generic_type_params[0],
-                        $objectlike_key_type
+                        $objectlike_key_type,
+                        $overwrite_empty_array
                     );
                     $generic_type_params[1] = Type::combineUnionTypes(
                         $generic_type_params[1],
-                        $objectlike_generic_type
+                        $objectlike_generic_type,
+                        $overwrite_empty_array
                     );
                 }
 
@@ -286,8 +306,12 @@ class TypeCombination
      *
      * @return null|Union
      */
-    private static function scrapeTypeProperties(Atomic $type, TypeCombination $combination)
-    {
+    private static function scrapeTypeProperties(
+        Atomic $type,
+        TypeCombination $combination,
+        bool $overwrite_empty_array,
+        int $literal_limit
+    ) {
         if ($type instanceof TMixed) {
             if ($type->from_isset || $type instanceof TEmptyMixed) {
                 return null;
@@ -316,7 +340,8 @@ class TypeCombination
                 if (isset($combination->type_params[$type_key][$i])) {
                     $combination->type_params[$type_key][$i] = Type::combineUnionTypes(
                         $combination->type_params[$type_key][$i],
-                        $type_param
+                        $type_param,
+                        $overwrite_empty_array
                     );
                 } else {
                     $combination->type_params[$type_key][$i] = $type_param;
@@ -354,7 +379,8 @@ class TypeCombination
                 } else {
                     $combination->objectlike_entries[$candidate_property_name] = Type::combineUnionTypes(
                         $value_type,
-                        $candidate_property_type
+                        $candidate_property_type,
+                        $overwrite_empty_array
                     );
                 }
 
@@ -371,7 +397,7 @@ class TypeCombination
         } else {
             if ($type instanceof TString) {
                 if ($type instanceof TLiteralString) {
-                    if ($combination->strings !== null && count($combination->strings) < 30) {
+                    if ($combination->strings !== null && count($combination->strings) < $literal_limit) {
                         $combination->strings[] = $type;
                     } else {
                         $combination->strings = null;
@@ -402,7 +428,7 @@ class TypeCombination
                 }
             } elseif ($type instanceof TInt) {
                 if ($type instanceof TLiteralInt) {
-                    if ($combination->ints !== null && count($combination->ints) < 30) {
+                    if ($combination->ints !== null && count($combination->ints) < $literal_limit) {
                         $combination->ints[] = $type;
                     } else {
                         $combination->ints = null;
@@ -414,7 +440,7 @@ class TypeCombination
                 }
             } elseif ($type instanceof TFloat) {
                 if ($type instanceof TLiteralFloat) {
-                    if ($combination->floats !== null && count($combination->floats) < 30) {
+                    if ($combination->floats !== null && count($combination->floats) < $literal_limit) {
                         $combination->floats[] = $type;
                     } else {
                         $combination->floats = null;

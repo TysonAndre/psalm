@@ -23,6 +23,9 @@ use Psalm\Issue\PossiblyInvalidReturnStatement;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 
+/**
+ * @internal
+ */
 class ReturnAnalyzer
 {
     /**

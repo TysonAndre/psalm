@@ -18,10 +18,14 @@ use Psalm\Issue\InvalidScope;
 use Psalm\Issue\LoopInvalidation;
 use Psalm\Issue\MissingDocblockType;
 use Psalm\Issue\MixedAssignment;
+use Psalm\Issue\PossiblyUndefinedArrayOffset;
 use Psalm\Issue\ReferenceConstraintViolation;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 
+/**
+ * @internal
+ */
 class AssignmentAnalyzer
 {
     /**
@@ -321,11 +325,28 @@ class AssignmentAnalyzer
                     && !$assign_var_item->key
                     && isset($array_atomic_type->properties[$offset]) // if object-like has int offsets
                 ) {
+                    $offset_type = $array_atomic_type->properties[(string)$offset];
+
+                    if ($offset_type->possibly_undefined) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyUndefinedArrayOffset(
+                                'Possibly undefined array key',
+                                new CodeLocation($statements_analyzer->getSource(), $var)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+
+                        $offset_type = clone $offset_type;
+                        $offset_type->possibly_undefined = false;
+                    }
+
                     self::analyze(
                         $statements_analyzer,
                         $var,
                         null,
-                        $array_atomic_type->properties[(string)$offset],
+                        $offset_type,
                         $context,
                         $doc_comment
                     );
@@ -408,6 +429,20 @@ class AssignmentAnalyzer
                             ) {
                                 $new_assign_type =
                                     clone $array_atomic_type->properties[$assign_var_item->key->value];
+
+                                if ($new_assign_type->possibly_undefined) {
+                                    if (IssueBuffer::accepts(
+                                        new PossiblyUndefinedArrayOffset(
+                                            'Possibly undefined array key',
+                                            new CodeLocation($statements_analyzer->getSource(), $var)
+                                        ),
+                                        $statements_analyzer->getSuppressedIssues()
+                                    )) {
+                                        // fall through
+                                    }
+
+                                    $new_assign_type->possibly_undefined = false;
+                                }
                             }
                         }
                     }

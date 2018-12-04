@@ -259,6 +259,16 @@ class Populator
             }
         }
 
+        if ($storage->internal) {
+            foreach ($storage->methods as $method) {
+                $method->internal = true;
+            }
+
+            foreach ($storage->properties as $property) {
+                $property->internal = true;
+            }
+        }
+
         if ($this->debug_output) {
             echo 'Have populated ' . $storage->name . "\n";
         }
@@ -334,6 +344,8 @@ class Populator
 
             $storage->pseudo_property_get_types += $parent_storage->pseudo_property_get_types;
             $storage->pseudo_property_set_types += $parent_storage->pseudo_property_set_types;
+
+            $storage->pseudo_methods += $parent_storage->pseudo_methods;
         }
     }
 
@@ -584,9 +596,11 @@ class Populator
 
             if ($parent_storage->is_trait
                 && $storage->trait_alias_map
-                && isset($storage->trait_alias_map[$method_name])
             ) {
-                $aliased_method_names[] = $storage->trait_alias_map[$method_name];
+                $aliased_method_names = array_merge(
+                    $aliased_method_names,
+                    array_keys($storage->trait_alias_map, $method_name, true)
+                );
             }
 
             foreach ($aliased_method_names as $aliased_method_name) {
@@ -627,9 +641,11 @@ class Populator
 
             if ($parent_storage->is_trait
                 && $storage->trait_alias_map
-                && isset($storage->trait_alias_map[$method_name])
             ) {
-                $aliased_method_names[] = $storage->trait_alias_map[$method_name];
+                $aliased_method_names = array_merge(
+                    $aliased_method_names,
+                    array_keys($storage->trait_alias_map, $method_name, true)
+                );
             }
 
             foreach ($aliased_method_names as $aliased_method_name) {

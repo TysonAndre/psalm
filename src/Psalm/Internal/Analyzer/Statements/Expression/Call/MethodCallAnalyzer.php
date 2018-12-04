@@ -33,6 +33,9 @@ use Psalm\Type;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TNamedObject;
 
+/**
+ * @internal
+ */
 class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer
 {
     /**
@@ -143,7 +146,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
         }
 
@@ -159,7 +162,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
         }
 
@@ -476,7 +479,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $context->calling_method_id,
                     $method_id !== $source_method_id ? $code_location : null
                 )) {
-                    if ($config->use_phpdoc_methods_without_call) {
+                    if ($config->use_phpdoc_method_without_magic_or_parent) {
                         $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
                         if (isset($class_storage->pseudo_methods[$method_name_lc])) {
@@ -653,8 +656,9 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         }
                     }
 
-                    if (MethodAnalyzer::checkMethodNotDeprecated(
+                    if (MethodAnalyzer::checkMethodNotDeprecatedOrInternal(
                         $codebase,
+                        $context,
                         $method_id,
                         $name_code_location,
                         $statements_analyzer->getSuppressedIssues()

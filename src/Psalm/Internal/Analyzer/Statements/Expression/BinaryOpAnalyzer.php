@@ -38,6 +38,9 @@ use Psalm\Type\Reconciler;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
 
+/**
+ * @internal
+ */
 class BinaryOpAnalyzer
 {
     /**
@@ -941,13 +944,13 @@ class BinaryOpAnalyzer
 
                 $result_type_member = new Type\Union([new ObjectLike($properties)]);
             } else {
-                $result_type_member = TypeCombination::combineTypes([$left_type_part, $right_type_part]);
+                $result_type_member = TypeCombination::combineTypes([$left_type_part, $right_type_part], true);
             }
 
             if (!$result_type) {
                 $result_type = $result_type_member;
             } else {
-                $result_type = Type::combineUnionTypes($result_type_member, $result_type);
+                $result_type = Type::combineUnionTypes($result_type_member, $result_type, true);
             }
 
             if ($left instanceof PhpParser\Node\Expr\ArrayDimFetch
