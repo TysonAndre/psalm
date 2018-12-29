@@ -260,59 +260,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Const_) {
                 $this->analyzeConstAssignment($stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Unset_) {
-                $context->inside_unset = true;
-
-                foreach ($stmt->vars as $var) {
-                    ExpressionAnalyzer::analyze($this, $var, $context);
-
-                    $var_id = ExpressionAnalyzer::getArrayVarId(
-                        $var,
-                        $this->getFQCLN(),
-                        $this
-                    );
-
-                    if ($var_id) {
-                        $context->remove($var_id);
-
-                        if ($var instanceof PhpParser\Node\Expr\ArrayDimFetch
-                            && $var->dim
-                            && ($var->dim instanceof PhpParser\Node\Scalar\String_
-                                || $var->dim instanceof PhpParser\Node\Scalar\LNumber
-                            )
-                        ) {
-                            $root_var_id = ExpressionAnalyzer::getArrayVarId(
-                                $var->var,
-                                $this->getFQCLN(),
-                                $this
-                            );
-
-                            if ($root_var_id && isset($context->vars_in_scope[$root_var_id])) {
-                                $root_type = clone $context->vars_in_scope[$root_var_id];
-
-                                foreach ($root_type->getTypes() as $atomic_root_type) {
-                                    if ($atomic_root_type instanceof Type\Atomic\ObjectLike) {
-                                        if (isset($atomic_root_type->properties[$var->dim->value])) {
-                                            unset($atomic_root_type->properties[$var->dim->value]);
-                                        }
-
-                                        if (!$atomic_root_type->properties) {
-                                            $root_type->addType(
-                                                new Type\Atomic\TArray([
-                                                    new Type\Union([new Type\Atomic\TEmpty]),
-                                                    new Type\Union([new Type\Atomic\TEmpty]),
-                                                ])
-                                            );
-                                        }
-                                    }
-                                }
-
-                                $context->vars_in_scope[$root_var_id] = $root_type;
-                            }
-                        }
-                    }
-                }
-
-                $context->inside_unset = false;
+                $this->analyzeUnset($stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Return_) {
                 $has_returned = true;
                 ReturnAnalyzer::analyze($this, $stmt, $context);
@@ -336,7 +284,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         $loop_scope->possibly_redefined_loop_parent_vars = $redefined_vars;
                     } else {
                         foreach ($redefined_vars as $var => $type) {
-                            if ($type->isMixed()) {
+                            if ($type->hasMixed()) {
                                 $loop_scope->possibly_redefined_loop_parent_vars[$var] = $type;
                             } elseif (isset($loop_scope->possibly_redefined_loop_parent_vars[$var])) {
                                 $loop_scope->possibly_redefined_loop_parent_vars[$var] = Type::combineUnionTypes(
@@ -446,7 +394,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     }
 
                     foreach ($redefined_vars as $var => $type) {
-                        if ($type->isMixed()) {
+                        if ($type->hasMixed()) {
                             $loop_scope->possibly_redefined_loop_vars[$var] = $type;
                         } elseif (isset($loop_scope->possibly_redefined_loop_vars[$var])) {
                             $loop_scope->possibly_redefined_loop_vars[$var] = Type::combineUnionTypes(
@@ -660,7 +608,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 foreach ($stmt->consts as $const) {
                     ExpressionAnalyzer::analyze($this, $const->value, $context);
 
-                    if (isset($const->value->inferredType) && !$const->value->inferredType->isMixed()) {
+                    if (isset($const->value->inferredType) && !$const->value->inferredType->hasMixed()) {
                         $codebase->classlikes->setConstantType(
                             (string)$this->getFQCLN(),
                             $const->name->name,
@@ -685,7 +633,8 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         $var_comments = CommentAnalyzer::getTypeFromComment(
                             (string)$stmt->getDocComment(),
                             $this->getSource(),
-                            $this->getSource()->getAliases()
+                            $this->getSource()->getAliases(),
+                            $this->getSource()->getTemplateTypeMap()
                         );
                     } catch (DocblockParseException $e) {
                         if (IssueBuffer::accepts(
@@ -820,6 +769,79 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 }
             }
         }
+    }
+
+    /**
+     * @return void
+     */
+    private function analyzeUnset(PhpParser\Node\Stmt\Unset_ $stmt, Context $context)
+    {
+        $context->inside_unset = true;
+
+        foreach ($stmt->vars as $var) {
+            ExpressionAnalyzer::analyze($this, $var, $context);
+
+            $var_id = ExpressionAnalyzer::getArrayVarId(
+                $var,
+                $this->getFQCLN(),
+                $this
+            );
+
+            if ($var_id) {
+                $context->remove($var_id);
+            }
+
+            if ($var instanceof PhpParser\Node\Expr\ArrayDimFetch && $var->dim) {
+                $root_var_id = ExpressionAnalyzer::getArrayVarId(
+                    $var->var,
+                    $this->getFQCLN(),
+                    $this
+                );
+
+                if ($root_var_id && isset($context->vars_in_scope[$root_var_id])) {
+                    $root_type = clone $context->vars_in_scope[$root_var_id];
+
+                    foreach ($root_type->getTypes() as $atomic_root_type) {
+                        if ($atomic_root_type instanceof Type\Atomic\ObjectLike) {
+                            if ($var->dim instanceof PhpParser\Node\Scalar\String_
+                                || $var->dim instanceof PhpParser\Node\Scalar\LNumber
+                            ) {
+                                if (isset($atomic_root_type->properties[$var->dim->value])) {
+                                    unset($atomic_root_type->properties[$var->dim->value]);
+                                }
+
+                                if (!$atomic_root_type->properties) {
+                                    $root_type->addType(
+                                        new Type\Atomic\TArray([
+                                            new Type\Union([new Type\Atomic\TEmpty]),
+                                            new Type\Union([new Type\Atomic\TEmpty]),
+                                        ])
+                                    );
+                                }
+                            } else {
+                                $root_type->addType(
+                                    $atomic_root_type->getGenericArrayType()
+                                );
+                            }
+                        } elseif ($atomic_root_type instanceof Type\Atomic\TNonEmptyArray) {
+                            $root_type->addType(
+                                new Type\Atomic\TArray($atomic_root_type->type_params)
+                            );
+                        }
+                    }
+
+                    $context->vars_in_scope[$root_var_id] = $root_type;
+
+                    $context->removeVarFromConflictingClauses(
+                        $root_var_id,
+                        $context->vars_in_scope[$root_var_id],
+                        $this
+                    );
+                }
+            }
+        }
+
+        $context->inside_unset = false;
     }
 
     /**
@@ -1076,6 +1098,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                 $single_item_key_type,
                                 $item_key_type,
                                 false,
+                                true,
                                 30
                             );
                         } else {
@@ -1121,7 +1144,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
                     $dim_atomic_types = $dim_type->getTypes();
 
-                    if (count($dim_atomic_types) > 1 || $dim_type->isMixed() || count($property_types) > 50) {
+                    if (count($dim_atomic_types) > 1 || $dim_type->hasMixed() || count($property_types) > 50) {
                         $can_create_objectlike = false;
                     } else {
                         $atomic_type = array_shift($dim_atomic_types);
@@ -1145,6 +1168,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         $single_item_value_type,
                         $item_value_type,
                         false,
+                        true,
                         30
                     );
                 } else {

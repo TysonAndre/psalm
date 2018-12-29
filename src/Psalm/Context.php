@@ -393,7 +393,7 @@ class Context
 
         $expr_type = $expr->inferredType;
 
-        if (($expr_type->isMixed() || $expr_type->getId() === $inferred_type->getId())
+        if (($expr_type->hasMixed() || $expr_type->getId() === $inferred_type->getId())
             && $expr instanceof PhpParser\Node\Expr\Variable
             && is_string($expr->name)
             && !isset($this->assigned_var_ids['$' . $expr->name])
@@ -464,9 +464,17 @@ class Context
             $this->clauses,
             /** @return bool */
             function (Clause $c) use ($changed_var_ids) {
-                return count($c->possibilities) > 1
-                    || $c->wedge
-                    || !in_array(array_keys($c->possibilities)[0], $changed_var_ids, true);
+                if ($c->wedge) {
+                    return true;
+                }
+
+                foreach ($c->possibilities as $key => $_) {
+                    if (in_array($key, $changed_var_ids, true)) {
+                        return false;
+                    }
+                }
+
+                return true;
             }
         );
     }
@@ -506,7 +514,7 @@ class Context
                 $clauses_to_keep[] = $clause;
             } elseif ($statements_analyzer &&
                 $new_type &&
-                !$new_type->isMixed()
+                !$new_type->hasMixed()
             ) {
                 $type_changed = false;
 
@@ -526,6 +534,7 @@ class Context
                         clone $new_type,
                         null,
                         $statements_analyzer,
+                        false,
                         null,
                         [],
                         $failed_reconciliation
@@ -590,7 +599,7 @@ class Context
         if ($this->clauses) {
             $this->removeVarFromConflictingClauses(
                 $remove_var_id,
-                $existing_type->isMixed()
+                $existing_type->hasMixed()
                     || ($new_type && $existing_type->from_docblock !== $new_type->from_docblock)
                     ? null
                     : $new_type,

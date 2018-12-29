@@ -189,6 +189,8 @@ class CallAnalyzer
 
         list($fq_class_name, $method_name) = explode('::', $method_id);
 
+        $fq_class_name = $codebase->classlikes->getUnAliasedName($fq_class_name);
+
         $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
         $method_storage = null;
@@ -296,7 +298,7 @@ class CallAnalyzer
                         return false;
                     }
 
-                    if (!isset($arg->value->inferredType) || $arg->value->inferredType->isMixed()) {
+                    if (!isset($arg->value->inferredType) || $arg->value->inferredType->hasMixed()) {
                         $by_ref_type = Type::combineUnionTypes(
                             $by_ref_type,
                             new Type\Union([new TArray([Type::getInt(), Type::getMixed()])])
@@ -951,98 +953,56 @@ class CallAnalyzer
 
                     if ($function_storage) {
                         if (isset($function_storage->template_typeof_params[$argument_offset])) {
-                            $template_type = $function_storage->template_typeof_params[$argument_offset];
-
-                            $offset_value_type = null;
-
-                            if ($arg->value instanceof PhpParser\Node\Expr\ClassConstFetch
-                                && $arg->value->class instanceof PhpParser\Node\Name
-                                && $arg->value->name instanceof PhpParser\Node\Identifier
-                                && strtolower($arg->value->name->name) === 'class'
-                            ) {
-                                $offset_value_type = Type::parseString(
-                                    ClassLikeAnalyzer::getFQCLNFromNameObject(
-                                        $arg->value->class,
-                                        $statements_analyzer->getAliases()
-                                    )
-                                );
-
-                                $offset_value_type = ExpressionAnalyzer::fleshOutType(
-                                    $codebase,
-                                    $offset_value_type,
-                                    $context->self,
-                                    $context->self
-                                );
-                            } elseif ($arg->value instanceof PhpParser\Node\Scalar\String_ && $arg->value->value) {
-                                $offset_value_type = Type::parseString($arg->value->value);
-                            } elseif ($arg->value instanceof PhpParser\Node\Scalar\MagicConst\Class_
-                                && $context->self
-                            ) {
-                                $offset_value_type = Type::parseString($context->self);
+                            $param_type_nullable = $param_type->isNullable();
+                            $param_type = new Type\Union([
+                                new Type\Atomic\TGenericParamClass(
+                                    $function_storage->template_typeof_params[$argument_offset]
+                                )
+                            ]);
+                            if ($param_type_nullable) {
+                                $param_type->addType(new Type\Atomic\TNull);
                             }
+                        }
 
-                            if ($offset_value_type) {
-                                foreach ($offset_value_type->getTypes() as $offset_value_type_part) {
-                                    // register class if the class exists
-                                    if ($offset_value_type_part instanceof TNamedObject) {
-                                        ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
-                                            $statements_analyzer,
-                                            $offset_value_type_part->value,
-                                            new CodeLocation($statements_analyzer->getSource(), $arg->value),
-                                            $statements_analyzer->getSuppressedIssues()
-                                        );
-                                    }
-                                }
+                        if ($existing_generic_params_to_strings) {
+                            $empty_generic_params = [];
 
-                                $offset_value_type->setFromDocblock();
-                            }
+                            $param_type->replaceTemplateTypesWithStandins(
+                                $existing_generic_params_to_strings,
+                                $empty_generic_params,
+                                $codebase,
+                                $arg->value->inferredType
+                            );
+                        }
 
+                        if ($template_types) {
                             if ($generic_params === null) {
                                 $generic_params = [];
                             }
 
-                            $generic_params[$template_type] = $offset_value_type ?: Type::getMixed();
-                        } else {
-                            if ($existing_generic_params_to_strings) {
-                                $empty_generic_params = [];
+                            $arg_type = $arg->value->inferredType;
 
-                                $param_type->replaceTemplateTypesWithStandins(
-                                    $existing_generic_params_to_strings,
-                                    $empty_generic_params,
-                                    $codebase,
-                                    $arg->value->inferredType
-                                );
-                            }
+                            if ($arg->unpack) {
+                                if ($arg->value->inferredType->hasArray()) {
+                                    /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                                    $array_atomic_type = $arg->value->inferredType->getTypes()['array'];
 
-                            if ($template_types) {
-                                if ($generic_params === null) {
-                                    $generic_params = [];
-                                }
-
-                                $arg_type = $arg->value->inferredType;
-
-                                if ($arg->unpack) {
-                                    if ($arg->value->inferredType->hasArray()) {
-                                        /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
-                                        $array_atomic_type = $arg->value->inferredType->getTypes()['array'];
-
-                                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                                            $array_atomic_type = $array_atomic_type->getGenericArrayType();
-                                        }
-
-                                        $arg_type = $array_atomic_type->type_params[1];
-                                    } else {
-                                        $arg_type = Type::getMixed();
+                                    if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                                        $array_atomic_type = $array_atomic_type->getGenericArrayType();
                                     }
-                                }
 
-                                $param_type->replaceTemplateTypesWithStandins(
-                                    $template_types,
-                                    $generic_params,
-                                    $codebase,
-                                    $arg_type
-                                );
+                                    $arg_type = $array_atomic_type->type_params[1];
+                                } else {
+                                    $arg_type = Type::getMixed();
+                                }
                             }
+
+                            $param_type->replaceTemplateTypesWithStandins(
+                                $template_types,
+                                $generic_params,
+                                $codebase,
+                                $arg_type
+                            );
                         }
                     }
 
@@ -1080,7 +1040,7 @@ class CallAnalyzer
                             ) === false) {
                                 return false;
                             }
-                        } elseif ($arg->value->inferredType->isMixed()) {
+                        } elseif ($arg->value->inferredType->hasMixed()) {
                             $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
                             if (IssueBuffer::accepts(
@@ -1099,7 +1059,7 @@ class CallAnalyzer
                                     if (IssueBuffer::accepts(
                                         new InvalidArgument(
                                             'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
-                                                . ' expects array, ' . $atomic_type . ' provided',
+                                                . ' expects array, ' . $atomic_type->getId() . ' provided',
                                             $code_location
                                         ),
                                         $statements_analyzer->getSuppressedIssues()
@@ -1131,7 +1091,7 @@ class CallAnalyzer
             } elseif ($function_param) {
                 $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
-                if ($function_param->type && !$function_param->type->isMixed()) {
+                if ($function_param->type && !$function_param->type->hasMixed()) {
                     if (IssueBuffer::accepts(
                         new MixedArgument(
                             'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
@@ -1533,7 +1493,7 @@ class CallAnalyzer
 
             $input_type = $array_arg_type->type_params[1];
 
-            if ($input_type->isMixed()) {
+            if ($input_type->hasMixed()) {
                 ++$i;
                 continue;
             }
@@ -1593,7 +1553,7 @@ class CallAnalyzer
                     if (IssueBuffer::accepts(
                         new InvalidScalarArgument(
                             'First parameter of closure passed to function ' . $method_id . ' expects ' .
-                                $closure_param_type . ', ' . $input_type . ' provided',
+                                $closure_param_type->getId() . ', ' . $input_type->getId() . ' provided',
                             new CodeLocation($statements_analyzer->getSource(), $closure_arg)
                         ),
                         $statements_analyzer->getSuppressedIssues()
@@ -1652,7 +1612,7 @@ class CallAnalyzer
         $by_ref = false,
         $variadic = false
     ) {
-        if ($param_type->isMixed()) {
+        if ($param_type->hasMixed()) {
             return null;
         }
 
@@ -1672,7 +1632,7 @@ class CallAnalyzer
             }
         }
 
-        if ($input_type->isMixed()) {
+        if ($input_type->hasMixed()) {
             $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
             if (IssueBuffer::accepts(
@@ -1747,7 +1707,7 @@ class CallAnalyzer
             if (IssueBuffer::accepts(
                 new ImplicitToStringCast(
                     'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                        $param_type . ', ' . $input_type . ' provided with a __toString method',
+                        $param_type->getId() . ', ' . $input_type->getId() . ' provided with a __toString method',
                     $code_location
                 ),
                 $statements_analyzer->getSuppressedIssues()
@@ -1940,7 +1900,7 @@ class CallAnalyzer
                 if (IssueBuffer::accepts(
                     new NullArgument(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be null, ' .
-                            'null value provided to parameter with type ' . $param_type,
+                            'null value provided to parameter with type ' . $param_type->getId(),
                         $code_location
                     ),
                     $statements_analyzer->getSuppressedIssues()
@@ -1983,7 +1943,7 @@ class CallAnalyzer
         }
 
         if ($type_match_found
-            && !$param_type->isMixed()
+            && !$param_type->hasMixed()
             && !$param_type->from_docblock
             && !$variadic
             && !$by_ref
@@ -2257,7 +2217,7 @@ class CallAnalyzer
                         }
                     }
                 } elseif (isset($generic_params[$rule])) {
-                    if ($generic_params[$rule]->isMixed()) {
+                    if ($generic_params[$rule]->hasMixed()) {
                         continue;
                     }
 
@@ -2302,23 +2262,26 @@ class CallAnalyzer
             $asserted_keys[$var_id] = true;
         }
 
-        // while in an and, we allow scope to boil over to support
-        // statements of the form if ($x && $x->foo())
-        $op_vars_in_scope = \Psalm\Type\Reconciler::reconcileKeyedTypes(
-            $type_assertions,
-            $context->vars_in_scope,
-            $changed_vars,
-            $asserted_keys,
-            $statements_analyzer,
-            new CodeLocation($statements_analyzer->getSource(), $expr)
-        );
+        if ($type_assertions) {
+            // while in an and, we allow scope to boil over to support
+            // statements of the form if ($x && $x->foo())
+            $op_vars_in_scope = \Psalm\Type\Reconciler::reconcileKeyedTypes(
+                $type_assertions,
+                $context->vars_in_scope,
+                $changed_vars,
+                $asserted_keys,
+                $statements_analyzer,
+                $context->inside_loop,
+                new CodeLocation($statements_analyzer->getSource(), $expr)
+            );
 
-        foreach ($changed_vars as $changed_var) {
-            if (isset($op_vars_in_scope[$changed_var])) {
-                $op_vars_in_scope[$changed_var]->from_docblock = true;
+            foreach ($changed_vars as $changed_var) {
+                if (isset($op_vars_in_scope[$changed_var])) {
+                    $op_vars_in_scope[$changed_var]->from_docblock = true;
+                }
             }
-        }
 
-        $context->vars_in_scope = $op_vars_in_scope;
+            $context->vars_in_scope = $op_vars_in_scope;
+        }
     }
 }

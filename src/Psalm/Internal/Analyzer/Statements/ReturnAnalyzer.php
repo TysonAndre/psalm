@@ -119,7 +119,7 @@ class ReturnAnalyzer
             $cased_method_id = $source->getCorrectlyCasedMethodId();
 
             if ($stmt->expr) {
-                if ($storage->return_type && !$storage->return_type->isMixed()) {
+                if ($storage->return_type && !$storage->return_type->hasMixed()) {
                     $inferred_type = ExpressionAnalyzer::fleshOutType(
                         $codebase,
                         $stmt->inferredType,
@@ -133,7 +133,7 @@ class ReturnAnalyzer
                         return null;
                     }
 
-                    if ($stmt->inferredType->isMixed()) {
+                    if ($stmt->inferredType->hasMixed()) {
                         if ($local_return_type->isVoid()) {
                             if (IssueBuffer::accepts(
                                 new InvalidReturnStatement(
@@ -197,8 +197,9 @@ class ReturnAnalyzer
                             if ($type_coerced_from_mixed) {
                                 if (IssueBuffer::accepts(
                                     new MixedTypeCoercion(
-                                        'The type \'' . $stmt->inferredType . '\' is more general than the declared '
-                                            . 'return type \'' . $local_return_type . '\' for ' . $cased_method_id,
+                                        'The type \'' . $stmt->inferredType->getId() . '\' is more general than the'
+                                            . ' declared return type \'' . $local_return_type->getId() . '\''
+                                            . ' for ' . $cased_method_id,
                                         new CodeLocation($source, $stmt)
                                     ),
                                     $statements_analyzer->getSuppressedIssues()
@@ -208,8 +209,9 @@ class ReturnAnalyzer
                             } else {
                                 if (IssueBuffer::accepts(
                                     new LessSpecificReturnStatement(
-                                        'The type \'' . $stmt->inferredType . '\' is more general than the declared '
-                                            . 'return type \'' . $local_return_type . '\' for ' . $cased_method_id,
+                                        'The type \'' . $stmt->inferredType->getId() . '\' is more general than the'
+                                            . ' declared return type \'' . $local_return_type->getId() . '\''
+                                            . ' for ' . $cased_method_id,
                                         new CodeLocation($source, $stmt)
                                     ),
                                     $statements_analyzer->getSuppressedIssues()

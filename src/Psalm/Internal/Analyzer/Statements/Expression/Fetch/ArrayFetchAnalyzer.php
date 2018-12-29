@@ -165,7 +165,10 @@ class ArrayFetchAnalyzer
                     $const_array_key_type = $array_type->getGenericKeyType();
                 }
 
-                if ($dim_var_id && !$const_array_key_type->isMixed() && !$stmt->dim->inferredType->isMixed()) {
+                if ($dim_var_id
+                    && !$const_array_key_type->hasMixed()
+                    && !$stmt->dim->inferredType->hasMixed()
+                ) {
                     $new_offset_type = clone $stmt->dim->inferredType;
                     $const_array_key_atomic_types = $const_array_key_type->getTypes();
 
@@ -212,6 +215,8 @@ class ArrayFetchAnalyzer
                     // fall through
                 }
             }
+
+            $stmt->inferredType->possibly_undefined = false;
         }
 
         if ($context->inside_isset && $dim_var_id && $new_offset_type && $new_offset_type->getTypes()) {
@@ -384,12 +389,14 @@ class ArrayFetchAnalyzer
                             $type->type_params[0] = $offset_type;
                         }
                     } elseif (!$type->type_params[0]->isEmpty()) {
+                        $expected_offset_type = $type->type_params[0]->hasMixed()
+                            ? new Type\Union([ new TInt, new TString ])
+                            : $type->type_params[0];
+
                         if ((!TypeAnalyzer::isContainedBy(
                             $codebase,
                             $offset_type,
-                            $type->type_params[0]->isMixed()
-                                ? new Type\Union([ new TInt, new TString ])
-                                : $type->type_params[0],
+                            $expected_offset_type,
                             true,
                             $offset_type->ignore_falsable_issues,
                             $has_scalar_match,
@@ -402,7 +409,15 @@ class ArrayFetchAnalyzer
                         ) && !$type_coerced_from_scalar)
                             || $to_string_cast
                         ) {
-                            $expected_offset_types[] = $type->type_params[0]->getId();
+                            if (TypeAnalyzer::canExpressionTypesBeIdentical(
+                                $codebase,
+                                $offset_type,
+                                $expected_offset_type
+                            )) {
+                                $has_valid_offset = true;
+                            }
+
+                            $expected_offset_types[] = $expected_offset_type->getId();
                         } else {
                             $has_valid_offset = true;
                         }
@@ -429,6 +444,7 @@ class ArrayFetchAnalyzer
                     }
 
                     if ($array_access_type->isEmpty()
+                        && !$array_type->hasMixed()
                         && !$in_assignment
                         && !$inside_isset
                     ) {
@@ -501,7 +517,7 @@ class ArrayFetchAnalyzer
                             $array_access_type = Type::getMixed();
                         }
                     } else {
-                        $key_type = $generic_key_type->isMixed()
+                        $key_type = $generic_key_type->hasMixed()
                                 ? new Type\Union([ new TInt, new TString ])
                                 : $generic_key_type;
 
@@ -599,7 +615,7 @@ class ArrayFetchAnalyzer
 
             if ($type instanceof TString) {
                 if ($in_assignment && $replacement_type) {
-                    if ($replacement_type->isMixed()) {
+                    if ($replacement_type->hasMixed()) {
                         $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
                         if (IssueBuffer::accepts(
@@ -637,17 +653,19 @@ class ArrayFetchAnalyzer
                     true
                 )) {
                     $expected_offset_types[] = $valid_offset_type->getId();
+
+                    $array_access_type = Type::getMixed();
                 } else {
                     $has_valid_offset = true;
-                }
 
-                if (!$array_access_type) {
-                    $array_access_type = Type::getSingleLetter();
-                } else {
-                    $array_access_type = Type::combineUnionTypes(
-                        $array_access_type,
-                        Type::getSingleLetter()
-                    );
+                    if (!$array_access_type) {
+                        $array_access_type = Type::getSingleLetter();
+                    } else {
+                        $array_access_type = Type::combineUnionTypes(
+                            $array_access_type,
+                            Type::getSingleLetter()
+                        );
+                    }
                 }
 
                 continue;
@@ -680,6 +698,7 @@ class ArrayFetchAnalyzer
                     }
                 }
 
+                $has_valid_offset = true;
                 $array_access_type = Type::getMixed();
                 break;
             }
@@ -764,7 +783,7 @@ class ArrayFetchAnalyzer
             }
         }
 
-        if ($offset_type->isMixed()) {
+        if ($offset_type->hasMixed()) {
             $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
             if (IssueBuffer::accepts(
@@ -789,7 +808,9 @@ class ArrayFetchAnalyzer
                         . (is_int($key_value) ? $key_value : '\'' . $key_value . '\'');
                 }
 
-                if ($has_valid_offset) {
+                if ($has_valid_offset && $inside_isset) {
+                    // do nothing
+                } elseif ($has_valid_offset) {
                     if (IssueBuffer::accepts(
                         new PossiblyInvalidArrayOffset(
                             'Cannot access value on variable ' . $array_var_id . ' ' . $used_offset

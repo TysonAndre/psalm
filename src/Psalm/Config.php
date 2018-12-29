@@ -215,6 +215,16 @@ class Config
     public $check_for_throws_docblock = false;
 
     /**
+     * @var bool
+     */
+    public $ignore_internal_falsable_issues = true;
+
+    /**
+     * @var bool
+     */
+    public $ignore_internal_nullable_issues = true;
+
+    /**
      * @var array<string, bool>
      */
     public $ignored_exceptions = [];
@@ -586,6 +596,16 @@ class Config
             $config->forbid_echo = $attribute_text === 'true' || $attribute_text === '1';
         }
 
+        if (isset($config_xml['ignoreInternalFunctionFalseReturn'])) {
+            $attribute_text = (string) $config_xml['ignoreInternalFunctionFalseReturn'];
+            $config->ignore_internal_falsable_issues = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
+        if (isset($config_xml['ignoreInternalFunctionNullReturn'])) {
+            $attribute_text = (string) $config_xml['ignoreInternalFunctionNullReturn'];
+            $config->ignore_internal_nullable_issues = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml['errorBaseline'])) {
             $attribute_text = (string) $config_xml['errorBaseline'];
             $config->error_baseline = $attribute_text;
@@ -604,7 +624,7 @@ class Config
         if (isset($config_xml->mockClasses) && isset($config_xml->mockClasses->class)) {
             /** @var \SimpleXMLElement $mock_class */
             foreach ($config_xml->mockClasses->class as $mock_class) {
-                $config->mock_classes[] = (string)$mock_class['name'];
+                $config->mock_classes[] = strtolower((string)$mock_class['name']);
             }
         }
 

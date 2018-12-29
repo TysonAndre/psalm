@@ -192,7 +192,7 @@ class ReturnTypeAnalyzer
         );
 
         if ($is_to_string) {
-            if (!$inferred_return_type->isMixed() &&
+            if (!$inferred_return_type->hasMixed() &&
                 !TypeAnalyzer::isContainedBy(
                     $codebase,
                     $inferred_return_type,
@@ -223,7 +223,7 @@ class ReturnTypeAnalyzer
                 if ($codebase->alter_code
                     && isset($project_analyzer->getIssuesToFix()['MissingClosureReturnType'])
                 ) {
-                    if ($inferred_return_type->isMixed() || $inferred_return_type->isNull()) {
+                    if ($inferred_return_type->hasMixed() || $inferred_return_type->isNull()) {
                         return null;
                     }
 
@@ -258,7 +258,7 @@ class ReturnTypeAnalyzer
             if ($codebase->alter_code
                 && isset($project_analyzer->getIssuesToFix()['MissingReturnType'])
             ) {
-                if ($inferred_return_type->isMixed() || $inferred_return_type->isNull()) {
+                if ($inferred_return_type->hasMixed() || $inferred_return_type->isNull()) {
                     return null;
                 }
 
@@ -281,7 +281,7 @@ class ReturnTypeAnalyzer
             if (IssueBuffer::accepts(
                 new MissingReturnType(
                     'Method ' . $cased_method_id . ' does not have a return type' .
-                      (!$inferred_return_type->isMixed() ? ', expecting ' . $inferred_return_type : ''),
+                      (!$inferred_return_type->hasMixed() ? ', expecting ' . $inferred_return_type : ''),
                     new CodeLocation($function_like_analyzer, $function->name, null, true)
                 ),
                 $suppressed_issues
@@ -341,12 +341,12 @@ class ReturnTypeAnalyzer
             return null;
         }
 
-        if (!$declared_return_type->isMixed()) {
+        if (!$declared_return_type->hasMixed()) {
             if ($inferred_return_type->isVoid() && $declared_return_type->isVoid()) {
                 return null;
             }
 
-            if ($inferred_return_type->isMixed() || $inferred_return_type->isEmpty()) {
+            if ($inferred_return_type->hasMixed() || $inferred_return_type->isEmpty()) {
                 if (IssueBuffer::accepts(
                     new MixedInferredReturnType(
                         'Could not verify return type \'' . $declared_return_type . '\' for ' .
@@ -379,8 +379,9 @@ class ReturnTypeAnalyzer
                     if ($type_coerced_from_mixed) {
                         if (IssueBuffer::accepts(
                             new MixedTypeCoercion(
-                                'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
-                                    ' is more specific than the inferred return type \'' . $inferred_return_type . '\'',
+                                'The declared return type \'' . $declared_return_type->getId() . '\' for '
+                                    . $cased_method_id . ' is more specific than the inferred return type '
+                                    . '\'' . $inferred_return_type->getId() . '\'',
                                 $return_type_location
                             ),
                             $suppressed_issues
@@ -390,8 +391,9 @@ class ReturnTypeAnalyzer
                     } else {
                         if (IssueBuffer::accepts(
                             new MoreSpecificReturnType(
-                                'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
-                                    ' is more specific than the inferred return type \'' . $inferred_return_type . '\'',
+                                'The declared return type \'' . $declared_return_type->getId() . '\' for '
+                                    . $cased_method_id . ' is more specific than the inferred return type '
+                                    . '\'' . $inferred_return_type->getId() . '\'',
                                 $return_type_location
                             ),
                             $suppressed_issues

@@ -12,11 +12,11 @@ class EmptyTest extends TestCase
     public function providerValidCodeParse()
     {
         return [
-            'empty' => [
+            'ifNotUndefinedAndEmpty' => [
                 '<?php
                     $a = !empty($b) ? $b : null;',
                 'assertions' => [
-                    '$a' => 'mixed',
+                    '$a' => 'mixed|null',
                 ],
                 'error_levels' => ['MixedAssignment'],
             ],
@@ -138,7 +138,7 @@ class EmptyTest extends TestCase
                 '<?php
                     function testarray(array $data): void {
                         foreach ($data as $item) {
-                            if (!empty($item["a"]) && !empty($item["b"]) && !empty($item["b"]["c"])) {
+                            if (!empty($item["a"]) && !empty($item["b"]["c"])) {
                                 echo "Found\n";
                             }
                         }
@@ -205,15 +205,85 @@ class EmptyTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment', 'MissingParamType'],
             ],
-            'noReconciliationForMixed' => [
+            'canBeNonEmptyArray' => [
                 '<?php
-                    function foo(array $arr) : void {
-                        $a = empty($arr["a"]) ? "" : $arr["a"];
+                    function _processScopes($scopes) : void {
+                        if (!is_array($scopes) && !empty($scopes)) {
+                            $scopes = explode(" ", trim($scopes));
+                        } else {
+                            // false is allowed here
+                        }
 
-                        if ($a) {}
+                        if (empty($scopes)){}
                     }',
                 'assertions' => [],
-                'error_levels' => ['MixedAssignment', 'MissingParamType'],
+                'error_levels' => ['MixedAssignment', 'MissingParamType', 'MixedArgument'],
+            ],
+            'multipleEmptiesInCondition' => [
+                '<?php
+                    /** @param array<int, int> $o */
+                    function foo(array $o) : void {
+                        if (empty($o[0]) && empty($o[1])) {}
+                    }',
+            ],
+            'multipleEmptiesInConditionWithMixedOffset' => [
+                '<?php
+                    /** @param array $o */
+                    function foo(array $o) : void {
+                        if (empty($o[0]) && empty($o[1])) {}
+                    }',
+            ],
+            'unsetChangesArrayEmptiness' => [
+                '<?php
+                    function foo(array $n): void {
+                        if (empty($n)) {
+                            return;
+                        }
+                        while (!empty($n)) {
+                            unset($n[rand(0, 10)]);
+                        }
+                    }',
+            ],
+            'unsetChangesComplicatedArrayEmptiness' => [
+                '<?php
+                    function contains(array $data, array $needle): bool {
+                        if (empty($data) || empty($needle)) {
+                            return false;
+                        }
+                        $stack = [];
+
+                        while (!empty($needle)) {
+                            $key = key($needle);
+                            $val = $needle[$key];
+                            unset($needle[$key]);
+
+                            if (array_key_exists($key, $data) && is_array($val)) {
+                                $next = $data[$key];
+                                unset($data[$key]);
+
+                                if (!empty($val)) {
+                                    $stack[] = [$val, $next];
+                                }
+                            } elseif (!array_key_exists($key, $data) || $data[$key] != $val) {
+                                return false;
+                            }
+
+                            if (empty($needle) && !empty($stack)) {
+                                list($needle, $data) = array_pop($stack);
+                            }
+                        }
+
+                        return true;
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment', 'MissingParamType', 'MixedArgument', 'MixedArrayOffset'],
+            ],
+            'possiblyEmptyIterable' => [
+                '<?php
+                    function foo(iterable $i) : void {
+                        if (empty($i)) {}
+                        if (!empty($i)) {}
+                    }',
             ],
         ];
     }
@@ -232,6 +302,18 @@ class EmptyTest extends TestCase
                         }
                     }',
                 'error_message' => 'UndefinedVariable',
+            ],
+            'reconciliationForMixed' => [
+                '<?php
+                    function foo(array $arr) : void {
+                        $a = empty($arr["a"]) ? "" : $arr["a"];
+
+                        if ($a) {
+                            if ($a) {}
+                        }
+                    }',
+                'error_message' => 'RedundantCondition',
+                'error_levels' => ['MixedAssignment', 'MissingParamType'],
             ],
         ];
     }

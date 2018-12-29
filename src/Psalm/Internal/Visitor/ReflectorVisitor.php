@@ -543,6 +543,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
             }
 
+            if (!$this->classlike_storages) {
+                throw new \LogicException('$this->classlike_storages should not be empty');
+            }
+
             $classlike_storage = array_pop($this->classlike_storages);
 
             if ($classlike_storage->has_visitor_issues) {
@@ -578,6 +582,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         ) {
             $this->function_template_types = [];
         } elseif ($node instanceof PhpParser\Node\FunctionLike) {
+            if (!$this->functionlike_storages) {
+                throw new \UnexpectedValueException('There should be function storages');
+            }
+
             $functionlike_storage = array_pop($this->functionlike_storages);
 
             if ($functionlike_storage->has_visitor_issues) {
@@ -684,10 +692,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($docblock_info) {
-                if ($docblock_info->template_type_names) {
+                if ($docblock_info->templates) {
                     $storage->template_types = [];
 
-                    foreach ($docblock_info->template_type_names as $template_type) {
+                    foreach ($docblock_info->templates as $template_type) {
                         if (count($template_type) === 3) {
                             $storage->template_types[$template_type[0]] = Type::parseTokens(
                                 Type::fixUpLocalType(
@@ -1245,12 +1253,16 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             return $storage;
         }
 
+        if ($storage instanceof MethodStorage && $docblock_info->inheritdoc) {
+            $storage->inheritdoc = true;
+        }
+
         $template_types = $class_storage && $class_storage->template_types ? $class_storage->template_types : null;
 
-        if ($docblock_info->template_type_names) {
+        if ($docblock_info->templates) {
             $storage->template_types = [];
 
-            foreach ($docblock_info->template_type_names as $template_type) {
+            foreach ($docblock_info->templates as $template_type) {
                 if (count($template_type) === 3) {
                     $storage->template_types[$template_type[0]] = Type::parseTokens(
                         Type::fixUpLocalType(
@@ -1679,15 +1691,15 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             $existing_param_type_nullable = $storage_param->is_nullable;
 
-            if (!$storage_param->type || $storage_param->type->isMixed() || $storage->template_types) {
+            if (!$storage_param->type || $storage_param->type->hasMixed() || $storage->template_types) {
                 if ($existing_param_type_nullable && !$new_param_type->isNullable()) {
                     $new_param_type->addType(new Type\Atomic\TNull());
                 }
 
                 if ($this->config->add_param_default_to_docblock_type
                     && $storage_param->default_type
-                    && !$storage_param->default_type->isMixed()
-                    && (!$storage_param->type || !$storage_param->type->isMixed())
+                    && !$storage_param->default_type->hasMixed()
+                    && (!$storage_param->type || !$storage_param->type->hasMixed())
                 ) {
                     $new_param_type = Type::combineUnionTypes($new_param_type, $storage_param->default_type);
                 }

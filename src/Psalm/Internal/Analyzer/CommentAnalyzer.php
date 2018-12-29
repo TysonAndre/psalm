@@ -25,7 +25,7 @@ class CommentAnalyzer
     /**
      * @param  string           $comment
      * @param  Aliases          $aliases
-     * @param  array<string, string>|null   $template_type_names
+     * @param  array<string, string>|null   $template_type_map
      * @param  int|null         $var_line_number
      * @param  int|null         $came_from_line_number what line number in $source that $comment came from
      * @param  array<string, array<int, string>> $type_aliases
@@ -39,7 +39,7 @@ class CommentAnalyzer
         $comment,
         FileSource $source,
         Aliases $aliases,
-        array $template_type_names = null,
+        array $template_type_map = null,
         $var_line_number = null,
         $came_from_line_number = null,
         array $type_aliases = null
@@ -84,7 +84,7 @@ class CommentAnalyzer
                         $var_type_tokens = Type::fixUpLocalType(
                             $line_parts[0],
                             $aliases,
-                            $template_type_names,
+                            $template_type_map,
                             $type_aliases
                         );
                     } catch (TypeParseTreeException $e) {
@@ -105,7 +105,7 @@ class CommentAnalyzer
                 }
 
                 try {
-                    $defined_type = Type::parseTokens($var_type_tokens, false, $template_type_names ?: []);
+                    $defined_type = Type::parseTokens($var_type_tokens, false, $template_type_map ?: []);
                 } catch (TypeParseTreeException $e) {
                     if (is_int($came_from_line_number)) {
                         throw new DocblockParseException(
@@ -218,6 +218,10 @@ class CommentAnalyzer
             $var_line = preg_replace('/[ \t]+/', ' ', $var_line);
 
             $var_line_parts = preg_split('/( |=)/', $var_line, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+
+            if (!$var_line_parts) {
+                continue;
+            }
 
             $type_alias = array_shift($var_line_parts);
 
@@ -415,6 +419,10 @@ class CommentAnalyzer
             }
         }
 
+        if (strpos(strtolower($comments['description']), '@inheritdoc') !== false) {
+            $info->inheritdoc = true;
+        }
+
         if (isset($comments['specials']['template']) || isset($comments['specials']['psalm-template'])) {
             $all_templates = (isset($comments['specials']['template']) ? $comments['specials']['template'] : [])
                 + (isset($comments['specials']['psalm-template']) ? $comments['specials']['psalm-template'] : []);
@@ -423,12 +431,12 @@ class CommentAnalyzer
                 $template_type = preg_split('/[\s]+/', $template_line);
 
                 if (count($template_type) > 2 && in_array(strtolower($template_type[1]), ['as', 'super'], true)) {
-                    $info->template_type_names[] = [
+                    $info->templates[] = [
                         $template_type[0],
                         strtolower($template_type[1]), $template_type[2]
                     ];
                 } else {
-                    $info->template_type_names[] = [$template_type[0]];
+                    $info->templates[] = [$template_type[0]];
                 }
             }
         }
@@ -520,12 +528,12 @@ class CommentAnalyzer
                 $template_type = preg_split('/[\s]+/', $template_line);
 
                 if (count($template_type) > 2 && in_array(strtolower($template_type[1]), ['as', 'super'], true)) {
-                    $info->template_type_names[] = [
+                    $info->templates[] = [
                         $template_type[0],
                         strtolower($template_type[1]), $template_type[2]
                     ];
                 } else {
-                    $info->template_type_names[] = [$template_type[0]];
+                    $info->templates[] = [$template_type[0]];
                 }
             }
         }

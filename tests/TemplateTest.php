@@ -23,7 +23,7 @@ class TemplateTest extends TestCase
                      * @template T as object
                      */
                     class Foo {
-                        /** @var class-string */
+                        /** @var T::class */
                         public $T;
 
                         /**
@@ -55,11 +55,9 @@ class TemplateTest extends TestCase
                     // this shouldn’t cause a problem as it’s a docbblock type
                     if (!($bfoo_bar instanceof B)) {}
 
-                    $cfoo = new Foo("C");
-                    $cfoo_bar = $cfoo->bar();
-
-                    $dt = "D";
-                    $dfoo = new Foo($dt);',
+                    $c = C::class;
+                    $cfoo = new Foo($c);
+                    $cfoo_bar = $cfoo->bar();',
                 'assertions' => [
                     '$afoo' => 'Foo<A>',
                     '$afoo_bar' => 'A',
@@ -69,8 +67,6 @@ class TemplateTest extends TestCase
 
                     '$cfoo' => 'Foo<C>',
                     '$cfoo_bar' => 'C',
-
-                    '$dfoo' => 'Foo<mixed>',
                 ],
                 'error_levels' => [
                     'MixedReturnStatement',
@@ -85,7 +81,7 @@ class TemplateTest extends TestCase
                      * @template T as object
                      */
                     class Foo {
-                        /** @var class-string */
+                        /** @var T::class */
                         public $T;
 
                         /**
@@ -146,7 +142,6 @@ class TemplateTest extends TestCase
                     '$gfoo3' => 'Foo<G>',
                 ],
                 'error_levels' => [
-                    'MixedReturnStatement',
                     'LessSpecificReturnStatement',
                     'RedundantConditionGivenDocblockType',
                 ],
@@ -157,7 +152,7 @@ class TemplateTest extends TestCase
                      * @template T as object
                      */
                     class Foo {
-                        /** @var class-string */
+                        /** @var T::class */
                         public $T;
 
                         /**
@@ -177,10 +172,10 @@ class TemplateTest extends TestCase
                         }
                     }
 
-                    $efoo = new Foo(Exception::class);
+                    $efoo = new Foo(\Exception::class);
                     $efoo_bar = $efoo->bar();
 
-                    $ffoo = new Foo("LogicException");
+                    $ffoo = new Foo(\LogicException::class);
                     $ffoo_bar = $ffoo->bar();',
                 'assertions' => [
                     '$efoo' => 'Foo<Exception>',
@@ -189,7 +184,7 @@ class TemplateTest extends TestCase
                     '$ffoo' => 'Foo<LogicException>',
                     '$ffoo_bar' => 'LogicException',
                 ],
-                'error_levels' => ['MixedReturnStatement', 'LessSpecificReturnStatement', 'TypeCoercion'],
+                'error_levels' => ['LessSpecificReturnStatement'],
             ],
             'classTemplateContainer' => [
                 '<?php
@@ -892,6 +887,198 @@ class TemplateTest extends TestCase
 
                     takesIteratorOfInts(new SomeIterator());'
             ],
+            'allowTemplatedIntersectionToExtend' => [
+                '<?php
+                    interface Foo {}
+
+                    interface AlmostFoo {
+                        /**
+                         * @return Foo
+                         */
+                        public function makeFoo();
+                    }
+
+                    /**
+                     * @template T
+                     */
+                    final class AlmostFooMap implements AlmostFoo {
+                        /** @var T&Foo */
+                        private $bar;
+
+                        /**
+                         * @param T&Foo $closure
+                         */
+                        public function __construct(Foo $bar)
+                        {
+                            $this->bar = $bar;
+                        }
+
+                        /**
+                         * @return T&Foo
+                         */
+                        public function makeFoo()
+                        {
+                            return $this->bar;
+                        }
+                    }'
+            ],
+            'restrictTemplateInputWithTClassGoodInput' => [
+                '<?php
+                    namespace Bar;
+
+                    /** @template T */
+                    class Foo
+                    {
+                        /**
+                         * @psalm-var T::class
+                         */
+                        private $type;
+
+                        /** @var array<T> */
+                        private $items;
+
+                        /**
+                         * @param T::class $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            if (!in_array($type, [A::class, B::class], true)) {
+                                throw new \InvalidArgumentException;
+                            }
+                            $this->type = $type;
+                            $this->items = [];
+                        }
+
+                        /** @param T $item */
+                        public function add($item): void
+                        {
+                            $this->items[] = $item;
+                        }
+                    }
+
+                    class A {}
+                    class B {}
+
+                    $foo = new Foo(A::class);
+                    $foo->add(new A);',
+            ],
+            'classTemplateAsCorrect' => [
+                '<?php
+                    class Foo {}
+                    class FooChild extends Foo {}
+
+                    /**
+                     * @template T as Foo
+                     * @param T $x
+                     * @return T
+                     */
+                    function bar($x) {
+                        return $x;
+                    }
+
+                    bar(new Foo());
+                    bar(new FooChild());',
+            ],
+            'classTemplateAsInterface' => [
+                '<?php
+                    interface Foo {}
+                    interface FooChild extends Foo {}
+                    class FooImplementer implements Foo {}
+
+                    /**
+                     * @template T as Foo
+                     * @param T $x
+                     * @return T
+                     */
+                    function bar($x) {
+                        return $x;
+                    }
+
+                    function takesFoo(Foo $f) : void {
+                        bar($f);
+                    }
+
+                    function takesFooChild(FooChild $f) : void {
+                        bar($f);
+                    }
+
+                    function takesFooImplementer(FooImplementer $f) : void {
+                        bar($f);
+                    }',
+            ],
+            'classTemplateFunctionImplementsInterface' => [
+                '<?php
+                    namespace A\B;
+
+                    interface Foo {}
+
+                    interface IFooGetter {
+                        /**
+                         * @return Foo
+                         */
+                        public function getFoo();
+                    }
+
+                    /**
+                     * @template T as Foo
+                     */
+                    class FooGetter implements IFooGetter {
+                        /** @var T */
+                        private $t;
+
+                        /**
+                         * @param T $t
+                         */
+                        public function __construct(Foo $t)
+                        {
+                            $this->t = $t;
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function getFoo()
+                        {
+                            return $this->t;
+                        }
+                    }
+
+                    function passFoo(Foo $f) : Foo {
+                        return (new FooGetter($f))->getFoo();
+                    }',
+            ],
+            'templateFunctionVar' => [
+                '<?php
+                    namespace A\B;
+
+                    class C {
+                        public function bar() : void {}
+                    }
+
+                    interface D {}
+
+                    /**
+                     * @template T as C
+                     * @return T
+                     */
+                    function foo($some_t) : C {
+                        /** @var T */
+                        $a = $some_t;
+                        $a->bar();
+
+                        /** @var T&D */
+                        $b = $some_t;
+                        $b->bar();
+
+                        /** @var D&T */
+                        $b = $some_t;
+                        $b->bar();
+
+                        return $a;
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment', 'MissingParamType'],
+            ],
         ];
     }
 
@@ -1021,6 +1208,135 @@ class TemplateTest extends TestCase
                     $foo = new Foo(A::class);
                     $foo->add(new B);',
                 'error_message' => 'InvalidArgument',
+            ],
+            'restrictTemplateInputWithTClassBadInput' => [
+                '<?php
+                    /** @template T */
+                    class Foo
+                    {
+                        /**
+                         * @psalm-var class-string
+                         */
+                        private $type;
+
+                        /** @var array<T> */
+                        private $items;
+
+                        /**
+                         * @param T::class $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            if (!in_array($type, [A::class, B::class], true)) {
+                                throw new \InvalidArgumentException;
+                            }
+                            $this->type = $type;
+                            $this->items = [];
+                        }
+
+                        /** @param T $item */
+                        public function add($item): void
+                        {
+                            $this->items[] = $item;
+                        }
+                    }
+
+                    class A {}
+                    class B {}
+
+                    $foo = new Foo(A::class);
+                    $foo->add(new B);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'templatedClosureProperty' => [
+                '<?php
+                    final class State
+                    {}
+
+                    interface Foo
+                    {}
+
+                    function type(string ...$_p): void {}
+
+                    /**
+                     * @template T
+                     */
+                    final class AlmostFooMap
+                    {
+                        /**
+                         * @param callable(State):(T&Foo) $closure
+                         */
+                        public function __construct(callable $closure)
+                        {
+                            type($closure);
+                        }
+                    }',
+                'error_message' => 'InvalidArgument - src/somefile.php:20 - Argument 1 of type expects string, callable(State):T&Foo provided',
+            ],
+            'classTemplateAsIncorrectClass' => [
+                '<?php
+                    class Foo {}
+                    class NotFoo {}
+
+                    /**
+                     * @template T as Foo
+                     * @param T $x
+                     * @return T
+                     */
+                    function bar($x) {
+                        return $x;
+                    }
+
+                    bar(new NotFoo());',
+                'error_message' => 'InvalidArgument',
+            ],
+            'classTemplateAsIncorrectInterface' => [
+                '<?php
+                    interface Foo {}
+                    interface NotFoo {}
+
+                    /**
+                     * @template T as Foo
+                     * @param T $x
+                     * @return T
+                     */
+                    function bar($x) {
+                        return $x;
+                    }
+
+                    function takesNotFoo(NotFoo $f) : void {
+                        bar($f);
+                    }',
+                'error_message' => 'InvalidArgument',
+            ],
+            'templateFunctionMethodCallWithoutMethod' => [
+                '<?php
+                    namespace A\B;
+
+                    class C {}
+
+                    /**
+                     * @template T as C
+                     * @param T $some_t
+                     */
+                    function foo($some_t) : void {
+                        $some_t->bar();
+                    }',
+                'error_message' => 'PossiblyUndefinedMethod',
+            ],
+            'templateFunctionMethodCallWithoutAsType' => [
+                '<?php
+                    namespace A\B;
+
+                    /**
+                     * @template T
+                     * @param T $some_t
+                     * @return T
+                     */
+                    function foo($some_t) : void {
+                        $some_t->bar();
+                    }',
+                'error_message' => 'MixedMethodCall',
             ],
         ];
     }

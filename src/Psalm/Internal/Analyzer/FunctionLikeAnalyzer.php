@@ -83,15 +83,21 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     protected static $no_effects_hashes = [];
 
     /**
+     * @var FunctionLikeStorage $storage
+     */
+    protected $storage;
+
+    /**
      * @param Closure|Function_|ClassMethod $function
      * @param SourceAnalyzer $source
      */
-    public function __construct($function, SourceAnalyzer $source)
+    protected function __construct($function, SourceAnalyzer $source, FunctionLikeStorage $storage)
     {
         $this->function = $function;
         $this->source = $source;
         $this->suppressed_issues = $source->getSuppressedIssues();
         $this->codebase = $source->getCodebase();
+        $this->storage = $storage;
     }
 
     /**
@@ -103,6 +109,8 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
      */
     public function analyze(Context $context, Context $global_context = null, $add_mutations = false)
     {
+        $storage = $this->storage;
+
         $function_stmts = $this->function->getStmts() ?: [];
 
         $hash = null;
@@ -123,13 +131,15 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
         $codebase = $this->codebase;
         $project_analyzer = $this->getProjectAnalyzer();
 
-        $file_storage_provider = $codebase->file_storage_provider;
-
         $implemented_docblock_param_types = [];
 
         $classlike_storage_provider = $codebase->classlike_storage_provider;
 
         if ($this->function instanceof ClassMethod) {
+            if (!$storage instanceof MethodStorage) {
+                throw new \UnexpectedValueException('$storage must be MethodStorage');
+            }
+
             $real_method_id = (string)$this->getMethodId();
 
             $method_id = (string)$this->getMethodId($context->self);
@@ -158,25 +168,8 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             $class_storage = $classlike_storage_provider->get($fq_class_name);
 
-            try {
-                $storage = $codebase->methods->getStorage($real_method_id);
-            } catch (\UnexpectedValueException $e) {
-                if ($class_storage->has_visitor_issues) {
-                    return null;
-                }
-
-                if (!$class_storage->parent_classes) {
-                    throw $e;
-                }
-
-                $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
-
-                if (!$declaring_method_id) {
-                    throw $e;
-                }
-
-                // happens for fake constructors
-                $storage = $codebase->methods->getStorage($declaring_method_id);
+            if ($class_storage->has_visitor_issues) {
+                return null;
             }
 
             $cased_method_id = $fq_class_name . '::' . $storage->cased_name;
@@ -217,7 +210,13 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     );
 
                     foreach ($parent_method_storage->params as $i => $guide_param) {
-                        if ($guide_param->type && !($guide_param->signature_type && $parent_storage->user_defined)) {
+                        if ($guide_param->type
+                            && (!$guide_param->signature_type
+                                || ($guide_param->signature_type !== $guide_param->type
+                                    && $storage->inheritdoc)
+                                || !$parent_storage->user_defined
+                            )
+                        ) {
                             $implemented_docblock_param_types[$i] = $guide_param->type;
                         }
                     }
@@ -228,24 +227,8 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             $context->calling_method_id = strtolower($method_id);
         } elseif ($this->function instanceof Function_) {
-            $file_storage = $file_storage_provider->get($this->source->getFilePath());
-
-            $function_id = (string)$this->getMethodId();
-
-            if (!isset($file_storage->functions[$function_id])) {
-                throw new \UnexpectedValueException(
-                    'Function ' . $function_id . ' should be defined in ' . $this->source->getFilePath()
-                );
-            }
-
-            $storage = $file_storage->functions[$function_id];
-
             $cased_method_id = $this->function->name;
         } else { // Closure
-            $function_id = $this->getMethodId();
-
-            $storage = $codebase->getClosureStorage($this->source->getFilePath(), $function_id);
-
             if ($storage->return_type) {
                 $closure_return_type = ExpressionAnalyzer::fleshOutType(
                     $codebase,
@@ -318,7 +301,17 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     );
                 }
 
-                $param_type = clone $function_param->type;
+                $is_signature_type = $function_param->type === $function_param->signature_type;
+
+                if ($is_signature_type
+                    && $storage instanceof MethodStorage
+                    && $storage->inheritdoc
+                    && isset($implemented_docblock_param_types[$offset])
+                ) {
+                    $param_type = clone $implemented_docblock_param_types[$offset];
+                } else {
+                    $param_type = clone $function_param->type;
+                }
 
                 $param_type = ExpressionAnalyzer::fleshOutType(
                     $codebase,
@@ -412,7 +405,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     : null;
 
                 if ($default_type
-                    && !$default_type->isMixed()
+                    && !$default_type->hasMixed()
                     && !TypeAnalyzer::isContainedBy(
                         $codebase,
                         $default_type,
@@ -434,8 +427,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             if ($template_types) {
                 $substituted_type = clone $param_type;
-                $generic_types = [];
-                $substituted_type->replaceTemplateTypesWithStandins($template_types, $generic_types);
                 $substituted_type->check(
                     $this->source,
                     $function_param->type_location,
@@ -483,7 +474,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             if ($function_param->by_ref) {
                 $context->byref_constraints['$' . $function_param->name]
-                    = new \Psalm\Internal\ReferenceConstraint(!$param_type->isMixed() ? $param_type : null);
+                    = new \Psalm\Internal\ReferenceConstraint(!$param_type->hasMixed() ? $param_type : null);
             }
 
             if ($function_param->by_ref) {
@@ -581,7 +572,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 $closure_return_type = new Type\Union($closure_return_types);
 
                 if (!$storage->return_type
-                    || $storage->return_type->isMixed()
+                    || $storage->return_type->hasMixed()
                     || TypeAnalyzer::isContainedBy(
                         $codebase,
                         $closure_return_type,
@@ -687,7 +678,24 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             if ($context->possibly_thrown_exceptions) {
                 $ignored_exceptions = array_change_key_case($codebase->config->ignored_exceptions);
 
-                $undocumented_throws = array_diff_key($context->possibly_thrown_exceptions, $storage->throws);
+                $undocumented_throws = [];
+
+                foreach ($context->possibly_thrown_exceptions as $possibly_thrown_exception => $_) {
+                    $is_expected = false;
+
+                    foreach ($storage->throws as $expected_exception => $_) {
+                        if ($expected_exception === $possibly_thrown_exception
+                            || $codebase->classExtends($possibly_thrown_exception, $expected_exception)
+                        ) {
+                            $is_expected = true;
+                            break;
+                        }
+                    }
+
+                    if (!$is_expected) {
+                        $undocumented_throws[$possibly_thrown_exception] = true;
+                    }
+                }
 
                 foreach ($undocumented_throws as $possibly_thrown_exception => $_) {
                     if (isset($ignored_exceptions[strtolower($possibly_thrown_exception)])) {
@@ -970,6 +978,19 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     }
 
     /**
+     * @return array<string, Type\Union>|null
+     */
+    public function getTemplateTypeMap()
+    {
+        if ($this->source instanceof ClassLikeAnalyzer) {
+            return ($this->source->getTemplateTypeMap() ?: [])
+                + ($this->storage->template_types ?: []);
+        }
+
+        return $this->storage->template_types;
+    }
+
+    /**
      * @return string|null
      */
     public function getParentFQCLN()
@@ -1009,6 +1030,8 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
         $fq_class_name = strpos($method_id, '::') !== false ? explode('::', $method_id)[0] : null;
 
         if ($fq_class_name) {
+            $fq_class_name = $codebase->classlikes->getUnAliasedName($fq_class_name);
+
             $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
             if ($class_storage->user_defined || $class_storage->stubbed) {
@@ -1108,7 +1131,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     continue;
                 }
 
-                if ($arg->value->inferredType->isMixed()) {
+                if ($arg->value->inferredType->hasMixed()) {
                     continue;
                 }
 

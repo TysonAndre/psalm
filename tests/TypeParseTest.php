@@ -175,7 +175,7 @@ class TypeParseTest extends TestCase
      */
     public function testIntersectionAfterGeneric()
     {
-        $this->assertSame('Countable&iterable<int>&I', (string) Type::parseString('Countable&iterable<int>&I'));
+        $this->assertSame('Countable&iterable<mixed, int>&I', (string) Type::parseString('Countable&iterable<int>&I'));
     }
 
     /**
@@ -349,6 +349,17 @@ class TypeParseTest extends TestCase
         $this->assertSame(
             'callable(int, string):void',
             (string)Type::parseString('callable(int, string) : void')
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testCallableReturningIntersection()
+    {
+        $this->assertSame(
+            'callable(int, string):I1&I2',
+            (string)Type::parseString('callable(int, string) : (I1&I2)')
         );
     }
 

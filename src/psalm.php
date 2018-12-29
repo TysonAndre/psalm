@@ -163,7 +163,7 @@ Options:
         Only checks methods that have changed (and their dependents)
 
     --output-format=console
-        Changes the output format. Possible values: console, emacs, json, pylint, xml
+        Changes the output format. Possible values: compact, console, emacs, json, pylint, xml
 
     --find-dead-code
         Look for dead code
@@ -177,7 +177,7 @@ Options:
 
     --report=PATH
         The path where to output report file. The output format is base on the file extension.
-        (Currently supported format: ".json", ".xml", ".txt")
+        (Currently supported format: ".json", ".xml", ".txt", ".emacs")
 
     --clear-cache
         Clears all cache files that Psalm uses for this specific project

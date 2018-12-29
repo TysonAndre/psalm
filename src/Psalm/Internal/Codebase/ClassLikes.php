@@ -97,11 +97,6 @@ class ClassLikes
     private $config;
 
     /**
-     * @var Methods
-     */
-    private $methods;
-
-    /**
      * @var Scanner
      */
     private $scanner;
@@ -112,13 +107,11 @@ class ClassLikes
     public function __construct(
         Config $config,
         ClassLikeStorageProvider $storage_provider,
-        Scanner $scanner,
-        Methods $methods
+        Scanner $scanner
     ) {
         $this->config = $config;
         $this->classlike_storage_provider = $storage_provider;
         $this->scanner = $scanner;
-        $this->methods = $methods;
 
         $this->collectPredefinedClassLikes();
     }
@@ -298,7 +291,7 @@ class ClassLikes
         $fq_class_name_lc = strtolower($fq_class_name);
 
         if (isset($this->classlike_aliases[$fq_class_name_lc])) {
-            $fq_class_name_lc = $this->classlike_aliases[$fq_class_name_lc];
+            $fq_class_name_lc = strtolower($this->classlike_aliases[$fq_class_name_lc]);
         }
 
         if (!isset($this->existing_interfaces_lc[$fq_class_name_lc])
@@ -344,7 +337,7 @@ class ClassLikes
         $fq_class_name_lc = strtolower($fq_class_name);
 
         if (isset($this->classlike_aliases[$fq_class_name_lc])) {
-            $fq_class_name_lc = $this->classlike_aliases[$fq_class_name_lc];
+            $fq_class_name_lc = strtolower($this->classlike_aliases[$fq_class_name_lc]);
         }
 
         if (!isset($this->existing_traits_lc[$fq_class_name_lc]) ||
@@ -559,6 +552,10 @@ class ClassLikes
             return true;
         }
 
+        if (isset($this->classlike_aliases[strtolower($fq_interface_name)])) {
+            return true;
+        }
+
         return isset($this->existing_interfaces[$fq_interface_name]);
     }
 
@@ -653,7 +650,7 @@ class ClassLikes
     /**
      * @return void
      */
-    public function checkClassReferences()
+    public function checkClassReferences(Methods $methods)
     {
         foreach ($this->existing_classlikes_lc as $fq_class_name_lc => $_) {
             try {
@@ -676,7 +673,7 @@ class ClassLikes
                         // fall through
                     }
                 } else {
-                    $this->checkMethodReferences($classlike_storage);
+                    $this->checkMethodReferences($classlike_storage, $methods);
                 }
             }
         }
@@ -744,7 +741,7 @@ class ClassLikes
     /**
      * @return void
      */
-    private function checkMethodReferences(ClassLikeStorage $classlike_storage)
+    private function checkMethodReferences(ClassLikeStorage $classlike_storage, Methods $methods)
     {
         foreach ($classlike_storage->appearing_method_ids as $method_name => $appearing_method_id) {
             list($appearing_fq_classlike_name) = explode('::', $appearing_method_id);
@@ -778,14 +775,14 @@ class ClassLikes
 
                 $method_id = $classlike_storage->name . '::' . $method_storage->cased_name;
 
-                if ($method_storage->visibility === ClassLikeAnalyzer::VISIBILITY_PUBLIC) {
+                if ($method_storage->visibility !== ClassLikeAnalyzer::VISIBILITY_PRIVATE) {
                     $method_name_lc = strtolower($method_name);
 
                     $has_parent_references = false;
 
                     if (isset($classlike_storage->overridden_method_ids[$method_name_lc])) {
                         foreach ($classlike_storage->overridden_method_ids[$method_name_lc] as $parent_method_id) {
-                            $parent_method_storage = $this->methods->getStorage($parent_method_id);
+                            $parent_method_storage = $methods->getStorage($parent_method_id);
 
                             if (!$parent_method_storage->abstract || $parent_method_storage->referencing_locations) {
                                 $has_parent_references = true;
@@ -838,7 +835,7 @@ class ClassLikes
 
                     if (isset($classlike_storage->overridden_method_ids[$method_name_lc])) {
                         foreach ($classlike_storage->overridden_method_ids[$method_name_lc] as $parent_method_id) {
-                            $parent_method_storage = $this->methods->getStorage($parent_method_id);
+                            $parent_method_storage = $methods->getStorage($parent_method_id);
 
                             if (!$parent_method_storage->abstract
                                 && isset($parent_method_storage->used_params[$offset])

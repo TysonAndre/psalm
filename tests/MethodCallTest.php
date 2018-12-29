@@ -202,6 +202,25 @@ class MethodCallTest extends TestCase
                     $db = new PDO("sqlite:sqlitedb");
                     $db->sqliteCreateFunction("md5rev", "md5_and_reverse", 1);',
             ],
+            'dontConvertedMaybeMixedAfterCall' => [
+                '<?php
+                    class B {
+                        public function foo() : void {}
+                    }
+                    /**
+                     * @param array<B> $b
+                     */
+                    function foo(array $a, array $b) : void {
+                        $c = array_merge($b, $a);
+
+                        foreach ($c as $d) {
+                            $d->foo();
+                            if ($d instanceof B) {}
+                        }
+                    }',
+                [],
+                'error_levels' => ['MixedAssignment', 'MixedMethodCall'],
+            ],
         ];
     }
 
@@ -415,6 +434,15 @@ class MethodCallTest extends TestCase
                         $p->zugzug();
                     }',
                 'error_message' => 'UndefinedMethod - src/somefile.php:7 - Method (B&A)::zugzug does not exist'
+            ],
+            'noInstanceCallAsStatic' => [
+                '<?php
+                    class C {
+                        public function foo() : void {}
+                    }
+
+                    (new C)::foo();',
+                'error_message' => 'InvalidStaticInvocation',
             ],
         ];
     }

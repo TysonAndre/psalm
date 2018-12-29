@@ -504,6 +504,10 @@ class Scanner
                     $this->reflection->registerClass($reflected_class);
                     $this->reflected_classlikes_lc[$fq_classlike_name_lc] = true;
                 } elseif ($this->fileExistsForClassLike($classlikes, $fq_classlike_name)) {
+                    $fq_classlike_name_lc = strtolower($classlikes->getUnAliasedName(
+                        $fq_classlike_name_lc
+                    ));
+
                     // even though we've checked this above, calling the method invalidates it
                     if (isset($this->classlike_files[$fq_classlike_name_lc])) {
                         /** @var string */
@@ -718,7 +722,13 @@ class Scanner
             return false;
         }
 
-        $fq_class_name = $reflected_class->getName();
+        $new_fq_class_name = $reflected_class->getName();
+
+        if (strtolower($new_fq_class_name) !== strtolower($fq_class_name)) {
+            $classlikes->addClassAlias($new_fq_class_name, strtolower($fq_class_name));
+        }
+
+        $fq_class_name = $new_fq_class_name;
         $classlikes->addFullyQualifiedClassLikeName($fq_class_name_lc);
 
         if ($reflected_class->isInterface()) {

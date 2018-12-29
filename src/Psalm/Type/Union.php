@@ -586,9 +586,17 @@ class Union
     /**
      * @return bool
      */
-    public function isMixed()
+    public function hasMixed()
     {
         return isset($this->types['mixed']);
+    }
+
+    /**
+     * @return bool
+     */
+    public function isMixed()
+    {
+        return isset($this->types['mixed']) && count($this->types) === 1;
     }
 
     /**
@@ -609,8 +617,8 @@ class Union
          * @psalm-suppress UndefinedPropertyFetch
          */
         return isset($this->types['mixed'])
-            && !$this->types['mixed']->from_isset
-            && !$this->types['mixed'] instanceof Type\Atomic\TEmptyMixed;
+            && !$this->types['mixed']->from_loop_isset
+            && get_class($this->types['mixed']) === Type\Atomic\TMixed::class;
     }
 
     /**
@@ -658,7 +666,7 @@ class Union
      */
     public function substitute(Union $old_type, Union $new_type = null)
     {
-        if ($this->isMixed() && !$this->isEmptyMixed()) {
+        if ($this->hasMixed() && !$this->isEmptyMixed()) {
             return;
         }
 
@@ -738,7 +746,9 @@ class Union
         $keys_to_unset = [];
 
         foreach ($this->types as $key => $atomic_type) {
-            if (isset($template_types[$key])) {
+            if ($atomic_type instanceof Type\Atomic\TGenericParam
+                && isset($template_types[$key])
+            ) {
                 if ($template_types[$key]->getId() !== $key) {
                     $keys_to_unset[] = $key;
                     $first_atomic_type = array_values($template_types[$key]->getTypes())[0];
@@ -747,6 +757,29 @@ class Union
                     if ($input_type) {
                         $generic_params[$key] = clone $input_type;
                         $generic_params[$key]->setFromDocblock();
+                    }
+                }
+            } elseif ($atomic_type instanceof Type\Atomic\TGenericParamClass
+                && isset($template_types[$atomic_type->param_name])
+            ) {
+                $keys_to_unset[] = $key;
+                $class_string = new Type\Atomic\TClassString();
+                $this->types[$class_string->getKey()] = $class_string;
+
+                if ($input_type) {
+                    $valid_input_atomic_types = [];
+
+                    foreach ($input_type->getTypes() as $input_atomic_type) {
+                        if ($input_atomic_type instanceof Type\Atomic\TLiteralClassString) {
+                            $valid_input_atomic_types[] = new Type\Atomic\TNamedObject($input_atomic_type->value);
+                        }
+                    }
+
+                    if ($valid_input_atomic_types) {
+                        $generic_params[$atomic_type->param_name] = new Union($valid_input_atomic_types);
+                        $generic_params[$atomic_type->param_name]->setFromDocblock();
+                    } else {
+                        $generic_params[$atomic_type->param_name] = Type::getMixed();
                     }
                 }
             } else {
@@ -817,7 +850,9 @@ class Union
         $is_mixed = false;
 
         foreach ($this->types as $key => $atomic_type) {
-            if (isset($template_types[$key])) {
+            if ($atomic_type instanceof Type\Atomic\TGenericParam
+                && isset($template_types[$key])
+            ) {
                 $keys_to_unset[] = $key;
                 $template_type = clone $template_types[$key];
 

@@ -123,8 +123,35 @@ class AssertionFinder
             return;
         }
 
-        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Greater) {
+        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Greater
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\GreaterOrEqual
+        ) {
+            $count_equality_position = self::hasNonEmptyCountEqualityCheck($conditional);
             $typed_value_position = self::hasTypedValueComparison($conditional);
+
+            if ($count_equality_position) {
+                if ($count_equality_position === self::ASSIGNMENT_TO_RIGHT) {
+                    $count_expr = $conditional->left;
+                } elseif ($count_equality_position === self::ASSIGNMENT_TO_LEFT) {
+                    $count_expr = $conditional->right;
+                } else {
+                    throw new \UnexpectedValueException('$count_equality_position value');
+                }
+
+                /** @var PhpParser\Node\Expr\FuncCall $count_expr */
+                $var_name = ExpressionAnalyzer::getArrayVarId(
+                    $count_expr->args[0]->value,
+                    $this_class_name,
+                    $source
+                );
+
+                if ($var_name) {
+                    $if_types[$var_name] = [['=non-empty-countable']];
+                }
+
+                $conditional->assertions = $if_types;
+                return;
+            }
 
             if ($typed_value_position) {
                 if ($typed_value_position === self::ASSIGNMENT_TO_RIGHT) {
@@ -152,8 +179,35 @@ class AssertionFinder
             return;
         }
 
-        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Smaller) {
+        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Smaller
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\SmallerOrEqual
+        ) {
+            $count_equality_position = self::hasNonEmptyCountEqualityCheck($conditional);
             $typed_value_position = self::hasTypedValueComparison($conditional);
+
+            if ($count_equality_position) {
+                if ($count_equality_position === self::ASSIGNMENT_TO_RIGHT) {
+                    $count_expr = $conditional->left;
+                } elseif ($count_equality_position === self::ASSIGNMENT_TO_LEFT) {
+                    $count_expr = $conditional->right;
+                } else {
+                    throw new \UnexpectedValueException('$count_equality_position value');
+                }
+
+                /** @var PhpParser\Node\Expr\FuncCall $count_expr */
+                $var_name = ExpressionAnalyzer::getArrayVarId(
+                    $count_expr->args[0]->value,
+                    $this_class_name,
+                    $source
+                );
+
+                if ($var_name) {
+                    $if_types[$var_name] = [['=non-empty-countable']];
+                }
+
+                $conditional->assertions = $if_types;
+                return;
+            }
 
             if ($typed_value_position) {
                 if ($typed_value_position === self::ASSIGNMENT_TO_RIGHT) {
@@ -312,6 +366,7 @@ class AssertionFinder
         $true_position = self::hasTrueVariable($conditional);
         $gettype_position = self::hasGetTypeCheck($conditional);
         $getclass_position = self::hasGetClassCheck($conditional);
+        $count_equality_position = self::hasNonEmptyCountEqualityCheck($conditional);
         $typed_value_position = self::hasTypedValueComparison($conditional);
 
         if ($null_position !== null) {
@@ -598,6 +653,30 @@ class AssertionFinder
             return;
         }
 
+        if ($count_equality_position) {
+            if ($count_equality_position === self::ASSIGNMENT_TO_RIGHT) {
+                $count_expr = $conditional->left;
+            } elseif ($count_equality_position === self::ASSIGNMENT_TO_LEFT) {
+                $count_expr = $conditional->right;
+            } else {
+                throw new \UnexpectedValueException('$count_equality_position value');
+            }
+
+            /** @var PhpParser\Node\Expr\FuncCall $count_expr */
+            $var_name = ExpressionAnalyzer::getArrayVarId(
+                $count_expr->args[0]->value,
+                $this_class_name,
+                $source
+            );
+
+            if ($var_name) {
+                $if_types[$var_name] = [['=non-empty-countable']];
+            }
+
+            $conditional->assertions = $if_types;
+            return;
+        }
+
         if ($getclass_position) {
             if ($getclass_position === self::ASSIGNMENT_TO_RIGHT) {
                 $whichclass_expr = $conditional->left;
@@ -725,7 +804,7 @@ class AssertionFinder
                     } else {
                         if (IssueBuffer::accepts(
                             new TypeDoesNotContainType(
-                                $var_type->getId() . ' does not contain ' . $other_type->getId(),
+                                $var_type->getId() . ' cannot be identical to ' . $other_type->getId(),
                                 new CodeLocation($source, $conditional)
                             ),
                             $source->getSuppressedIssues()
@@ -752,7 +831,7 @@ class AssertionFinder
             if (!TypeAnalyzer::canExpressionTypesBeIdentical($codebase, $var_type, $other_type)) {
                 if (IssueBuffer::accepts(
                     new TypeDoesNotContainType(
-                        $var_type . ' does not contain ' . $other_type,
+                        $var_type->getId() . ' cannot be identical to ' . $other_type->getId(),
                         new CodeLocation($source, $conditional)
                     ),
                     $source->getSuppressedIssues()
@@ -1446,6 +1525,10 @@ class AssertionFinder
             ) {
                 $if_types[$array_root . '[' . $first_var_name . ']'] = [[$prefix . 'array-key-exists']];
             }
+        } elseif (self::hasNonEmptyCountCheck($expr)) {
+            if ($first_var_name) {
+                $if_types[$first_var_name] = [[$prefix . 'non-empty-countable']];
+            }
         } else {
             $if_types = self::processCustomAssertion($expr, $this_class_name, $source, $negate);
         }
@@ -1711,16 +1794,64 @@ class AssertionFinder
      *
      * @return  false|int
      */
+    protected static function hasNonEmptyCountEqualityCheck(PhpParser\Node\Expr\BinaryOp $conditional)
+    {
+        $left_count = $conditional->left instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->left->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->left->name->parts[0]) === 'count';
+
+        $right_number = $conditional->right instanceof PhpParser\Node\Scalar\LNumber
+            && $conditional->right->value >= (
+                $conditional instanceof PhpParser\Node\Expr\BinaryOp\Greater ? 0 : 1);
+
+        $operator_greater_than_or_equal =
+            $conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Equal
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Greater
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\GreaterOrEqual;
+
+        if ($left_count && $right_number && $operator_greater_than_or_equal) {
+            return self::ASSIGNMENT_TO_RIGHT;
+        }
+
+        $right_count = $conditional->right instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->right->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->right->name->parts[0]) === 'count';
+
+        $left_number = $conditional->left instanceof PhpParser\Node\Scalar\LNumber
+            && $conditional->left->value >= (
+                $conditional instanceof PhpParser\Node\Expr\BinaryOp\Smaller ? 0 : 1);
+
+        $operator_less_than_or_equal =
+            $conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Equal
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Smaller
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\SmallerOrEqual;
+
+        if ($right_count && $left_number && $operator_less_than_or_equal) {
+            return self::ASSIGNMENT_TO_LEFT;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
+     *
+     * @return  false|int
+     */
     protected static function hasTypedValueComparison(PhpParser\Node\Expr\BinaryOp $conditional)
     {
         if (isset($conditional->right->inferredType)
             && count($conditional->right->inferredType->getTypes()) === 1
+            && !$conditional->right->inferredType->hasMixed()
         ) {
             return self::ASSIGNMENT_TO_RIGHT;
         }
 
         if (isset($conditional->left->inferredType)
             && count($conditional->left->inferredType->getTypes()) === 1
+            && !$conditional->left->inferredType->hasMixed()
         ) {
             return self::ASSIGNMENT_TO_LEFT;
         }
@@ -1965,6 +2096,22 @@ class AssertionFinder
             ) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param   PhpParser\Node\Expr\FuncCall    $stmt
+     *
+     * @return  bool
+     */
+    protected static function hasNonEmptyCountCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    {
+        if ($stmt->name instanceof PhpParser\Node\Name
+            && $stmt->name->parts === ['count']
+        ) {
+            return true;
         }
 
         return false;

@@ -129,7 +129,7 @@ class ExpressionAnalyzer
                     break;
 
                 case '__class__':
-                    $stmt->inferredType = Type::getClassString();
+                    $stmt->inferredType = Type::getClassString($context->self);
                     break;
 
                 case '__file__':
@@ -389,7 +389,7 @@ class ExpressionAnalyzer
             $container_type = Type::getString();
 
             if (isset($stmt->expr->inferredType)
-                && !$stmt->expr->inferredType->isMixed()
+                && !$stmt->expr->inferredType->hasMixed()
                 && !isset($stmt->expr->inferredType->getTypes()['resource'])
                 && !TypeAnalyzer::isContainedBy(
                     $statements_analyzer->getCodebase(),
@@ -611,7 +611,7 @@ class ExpressionAnalyzer
         );
 
         if ($var_id) {
-            if (!$by_ref_type->isMixed() && $constrain_type) {
+            if (!$by_ref_type->hasMixed() && $constrain_type) {
                 $context->byref_constraints[$var_id] = new \Psalm\Internal\ReferenceConstraint($by_ref_type);
             }
 
@@ -640,7 +640,7 @@ class ExpressionAnalyzer
                 );
 
                 if ($existing_type->getId() !== 'array<empty, empty>') {
-                    $context->vars_in_scope[$var_id] = $by_ref_type;
+                    $context->vars_in_scope[$var_id] = clone $by_ref_type;
 
                     if (!isset($stmt->inferredType) || $stmt->inferredType->isEmpty()) {
                         $stmt->inferredType = clone $by_ref_type;
@@ -883,7 +883,9 @@ class ExpressionAnalyzer
         $self_class,
         $static_class_type = null
     ) {
-        if ($return_type instanceof TNamedObject) {
+        if ($return_type instanceof TNamedObject
+            || $return_type instanceof TGenericParam
+        ) {
             if ($return_type->extra_types) {
                 $new_intersection_types = [];
 
@@ -909,30 +911,32 @@ class ExpressionAnalyzer
                 }
             }
 
-            $return_type_lc = strtolower($return_type->value);
+            if ($return_type instanceof TNamedObject) {
+                $return_type_lc = strtolower($return_type->value);
 
-            if ($return_type_lc === 'static' || $return_type_lc === '$this') {
-                if (!$static_class_type) {
-                    throw new \UnexpectedValueException(
-                        'Cannot handle ' . $return_type->value . ' when $static_class is empty'
-                    );
-                }
+                if ($return_type_lc === 'static' || $return_type_lc === '$this') {
+                    if (!$static_class_type) {
+                        throw new \UnexpectedValueException(
+                            'Cannot handle ' . $return_type->value . ' when $static_class is empty'
+                        );
+                    }
 
-                if (is_string($static_class_type)) {
-                    $return_type->value = $static_class_type;
+                    if (is_string($static_class_type)) {
+                        $return_type->value = $static_class_type;
+                    } else {
+                        $return_type = clone $static_class_type;
+                    }
+                } elseif ($return_type_lc === 'self') {
+                    if (!$self_class) {
+                        throw new \UnexpectedValueException(
+                            'Cannot handle ' . $return_type->value . ' when $self_class is empty'
+                        );
+                    }
+
+                    $return_type->value = $self_class;
                 } else {
-                    $return_type = clone $static_class_type;
+                    $return_type->value = $codebase->classlikes->getUnAliasedName($return_type->value);
                 }
-            } elseif ($return_type_lc === 'self') {
-                if (!$self_class) {
-                    throw new \UnexpectedValueException(
-                        'Cannot handle ' . $return_type->value . ' when $self_class is empty'
-                    );
-                }
-
-                $return_type->value = $self_class;
-            } else {
-                $return_type->value = $codebase->classlikes->getUnAliasedName($return_type->value);
             }
         }
 
@@ -1383,6 +1387,6 @@ class ExpressionAnalyzer
      */
     public static function isMock($fq_class_name)
     {
-        return in_array($fq_class_name, Config::getInstance()->getMockClasses(), true);
+        return in_array(strtolower($fq_class_name), Config::getInstance()->getMockClasses(), true);
     }
 }

@@ -108,19 +108,23 @@ class BinaryOpAnalyzer
 
             $changed_var_ids = [];
 
-            // while in an and, we allow scope to boil over to support
-            // statements of the form if ($x && $x->foo())
-            $op_vars_in_scope = Reconciler::reconcileKeyedTypes(
-                $left_type_assertions,
-                $context->vars_in_scope,
-                $changed_var_ids,
-                $new_referenced_var_ids,
-                $statements_analyzer,
-                new CodeLocation($statements_analyzer->getSource(), $stmt)
-            );
-
             $op_context = clone $context;
-            $op_context->vars_in_scope = $op_vars_in_scope;
+
+            if ($left_type_assertions) {
+                // while in an and, we allow scope to boil over to support
+                // statements of the form if ($x && $x->foo())
+                $op_vars_in_scope = Reconciler::reconcileKeyedTypes(
+                    $left_type_assertions,
+                    $context->vars_in_scope,
+                    $changed_var_ids,
+                    $new_referenced_var_ids,
+                    $statements_analyzer,
+                    $context->inside_loop,
+                    new CodeLocation($statements_analyzer->getSource(), $stmt)
+                );
+
+                $op_context->vars_in_scope = $op_vars_in_scope;
+            }
 
             $op_context->removeReconciledClauses($changed_var_ids);
 
@@ -145,9 +149,8 @@ class BinaryOpAnalyzer
 
             if ($context->inside_conditional) {
                 foreach ($op_context->vars_in_scope as $var => $type) {
-                    if (!isset($context->vars_in_scope[$var])) {
+                    if (!isset($context->vars_in_scope[$var]) && !$type->possibly_undefined) {
                         $context->vars_in_scope[$var] = $type;
-                        continue;
                     }
                 }
 
@@ -216,20 +219,25 @@ class BinaryOpAnalyzer
 
             $changed_var_ids = [];
 
-            // while in an or, we allow scope to boil over to support
-            // statements of the form if ($x === null || $x->foo())
-            $op_vars_in_scope = Reconciler::reconcileKeyedTypes(
-                $negated_type_assertions,
-                $pre_op_context->vars_in_scope,
-                $changed_var_ids,
-                $new_referenced_var_ids,
-                $statements_analyzer,
-                new CodeLocation($statements_analyzer->getSource(), $stmt)
-            );
-
             $op_context = clone $pre_op_context;
+
+            if ($negated_type_assertions) {
+                // while in an or, we allow scope to boil over to support
+                // statements of the form if ($x === null || $x->foo())
+                $op_vars_in_scope = Reconciler::reconcileKeyedTypes(
+                    $negated_type_assertions,
+                    $pre_op_context->vars_in_scope,
+                    $changed_var_ids,
+                    $new_referenced_var_ids,
+                    $statements_analyzer,
+                    $pre_op_context->inside_loop,
+                    new CodeLocation($statements_analyzer->getSource(), $stmt)
+                );
+                $op_context->vars_in_scope = $op_vars_in_scope;
+            }
+
             $op_context->clauses = $clauses_for_right_analysis;
-            $op_context->vars_in_scope = $op_vars_in_scope;
+
 
             if ($changed_var_ids) {
                 $op_context->removeReconciledClauses($changed_var_ids);
@@ -258,6 +266,7 @@ class BinaryOpAnalyzer
                         $pre_op_context->vars_in_scope[$var_id],
                         '',
                         $statements_analyzer,
+                        $context->inside_loop,
                         new CodeLocation($statements_analyzer->getSource(), $stmt->left),
                         $statements_analyzer->getSuppressedIssues()
                     );
@@ -314,7 +323,7 @@ class BinaryOpAnalyzer
             $mixed_var_ids = [];
 
             foreach ($context->vars_in_scope as $var_id => $type) {
-                if ($type->isMixed()) {
+                if ($type->hasMixed()) {
                     $mixed_var_ids[] = $var_id;
                 }
             }
@@ -357,16 +366,20 @@ class BinaryOpAnalyzer
 
             $changed_var_ids = [];
 
-            $t_if_vars_in_scope_reconciled = Reconciler::reconcileKeyedTypes(
-                $reconcilable_if_types,
-                $t_if_context->vars_in_scope,
-                $changed_var_ids,
-                [],
-                $statements_analyzer,
-                new CodeLocation($statements_analyzer->getSource(), $stmt->left)
-            );
+            if ($reconcilable_if_types) {
+                $t_if_vars_in_scope_reconciled = Reconciler::reconcileKeyedTypes(
+                    $reconcilable_if_types,
+                    $t_if_context->vars_in_scope,
+                    $changed_var_ids,
+                    [],
+                    $statements_analyzer,
+                    $t_if_context->inside_loop,
+                    new CodeLocation($statements_analyzer->getSource(), $stmt->left)
+                );
 
-            $t_if_context->vars_in_scope = $t_if_vars_in_scope_reconciled;
+                $t_if_context->vars_in_scope = $t_if_vars_in_scope_reconciled;
+            }
+
             $t_if_context->inside_isset = true;
 
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->left, $t_if_context) === false) {
@@ -404,6 +417,7 @@ class BinaryOpAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
+                    $t_else_context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $stmt->right)
                 );
 
@@ -434,6 +448,7 @@ class BinaryOpAnalyzer
                     $stmt->left->inferredType,
                     '',
                     $statements_analyzer,
+                    $context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $stmt),
                     $statements_analyzer->getSuppressedIssues()
                 );
@@ -884,7 +899,7 @@ class BinaryOpAnalyzer
             }
 
             if ($left_type_part instanceof TMixed
-                && $left_type_part->from_isset
+                && $left_type_part->from_loop_isset
                 && $parent instanceof PhpParser\Node\Expr\AssignOp\Plus
                 && !$right_type_part instanceof TMixed
             ) {
@@ -899,10 +914,10 @@ class BinaryOpAnalyzer
                 return;
             }
 
-            $from_isset = (!($left_type_part instanceof TMixed) || $left_type_part->from_isset)
-                && (!($right_type_part instanceof TMixed) || $right_type_part->from_isset);
+            $from_loop_isset = (!($left_type_part instanceof TMixed) || $left_type_part->from_loop_isset)
+                && (!($right_type_part instanceof TMixed) || $right_type_part->from_loop_isset);
 
-            $result_type = Type::getMixed($from_isset);
+            $result_type = Type::getMixed($from_loop_isset);
 
             return $result_type;
         }
@@ -1164,10 +1179,10 @@ class BinaryOpAnalyzer
         if ($left_type && $right_type) {
             $result_type = Type::getString();
 
-            if ($left_type->isMixed() || $right_type->isMixed()) {
+            if ($left_type->hasMixed() || $right_type->hasMixed()) {
                 $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
-                if ($left_type->isMixed()) {
+                if ($left_type->hasMixed()) {
                     if (IssueBuffer::accepts(
                         new MixedOperand(
                             'Left operand cannot be mixed',

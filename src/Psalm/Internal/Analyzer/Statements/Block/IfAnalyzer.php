@@ -190,13 +190,7 @@ class IfAnalyzer
         $mixed_var_ids = [];
 
         foreach ($if_context->vars_in_scope as $var_id => $type) {
-            if ($type->isMixed()) {
-                $mixed_var_ids[] = $var_id;
-            }
-        }
-
-        foreach ($if_context->vars_possibly_in_scope as $var_id => $_) {
-            if (!isset($if_context->vars_in_scope[$var_id])) {
+            if ($type->hasMixed()) {
                 $mixed_var_ids[] = $var_id;
             }
         }
@@ -273,6 +267,7 @@ class IfAnalyzer
                     $changed_var_ids,
                     $cond_referenced_var_ids,
                     $statements_analyzer,
+                    $if_context->inside_loop,
                     $context->check_variables
                         ? new CodeLocation(
                             $statements_analyzer->getSource(),
@@ -316,6 +311,7 @@ class IfAnalyzer
                 $changed_var_ids,
                 $stmt->else || $stmt->elseifs ? $cond_referenced_var_ids : [],
                 $statements_analyzer,
+                $context->inside_loop,
                 $context->check_variables
                     ? new CodeLocation(
                         $statements_analyzer->getSource(),
@@ -673,6 +669,7 @@ class IfAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
+                    $outer_context->inside_loop,
                     new CodeLocation(
                         $statements_analyzer->getSource(),
                         $stmt->cond,
@@ -832,6 +829,7 @@ class IfAnalyzer
                 $changed_var_ids,
                 [],
                 $statements_analyzer,
+                $elseif_context->inside_loop,
                 new CodeLocation(
                     $statements_analyzer->getSource(),
                     $elseif->cond,
@@ -894,7 +892,7 @@ class IfAnalyzer
         $mixed_var_ids = [];
 
         foreach ($elseif_context->vars_in_scope as $var_id => $type) {
-            if ($type->isMixed()) {
+            if ($type->hasMixed()) {
                 $mixed_var_ids[] = $var_id;
             }
         }
@@ -995,6 +993,7 @@ class IfAnalyzer
                 $changed_var_ids,
                 $new_referenced_var_ids,
                 $statements_analyzer,
+                $elseif_context->inside_loop,
                 new CodeLocation($statements_analyzer->getSource(), $elseif->cond, $outer_context->include_location)
             );
 
@@ -1133,7 +1132,7 @@ class IfAnalyzer
                 }
 
                 foreach ($possibly_redefined_vars as $var => $type) {
-                    if ($type->isMixed()) {
+                    if ($type->hasMixed()) {
                         $if_scope->possibly_redefined_vars[$var] = $type;
                     } elseif (isset($if_scope->possibly_redefined_vars[$var])) {
                         $if_scope->possibly_redefined_vars[$var] = Type::combineUnionTypes(
@@ -1193,6 +1192,7 @@ class IfAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
+                    $elseif_context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $elseif, $outer_context->include_location)
                 );
 
@@ -1353,6 +1353,7 @@ class IfAnalyzer
                 $changed_var_ids,
                 [],
                 $statements_analyzer,
+                $else_context->inside_loop,
                 $else
                     ? new CodeLocation($statements_analyzer->getSource(), $else, $outer_context->include_location)
                     : null
@@ -1482,7 +1483,7 @@ class IfAnalyzer
                 }
 
                 foreach ($else_redefined_vars as $var => $type) {
-                    if ($type->isMixed()) {
+                    if ($type->hasMixed()) {
                         $if_scope->possibly_redefined_vars[$var] = $type;
                     } elseif (isset($if_scope->possibly_redefined_vars[$var])) {
                         $if_scope->possibly_redefined_vars[$var] = Type::combineUnionTypes(

@@ -74,12 +74,14 @@ class AssignmentAnalyzer
 
             $file_storage = $file_storage_provider->get($file_path);
 
+            $template_type_map = $statements_analyzer->getTemplateTypeMap();
+
             try {
                 $var_comments = CommentAnalyzer::getTypeFromComment(
                     $doc_comment,
                     $statements_analyzer->getSource(),
                     $statements_analyzer->getAliases(),
-                    null,
+                    $template_type_map,
                     $came_from_line_number,
                     null,
                     $file_storage->type_aliases
@@ -198,7 +200,7 @@ class AssignmentAnalyzer
         $project_analyzer = $statements_analyzer->getFileAnalyzer()->project_analyzer;
         $codebase = $statements_analyzer->getCodebase();
 
-        if ($assign_value_type->isMixed()) {
+        if ($assign_value_type->hasMixed()) {
             $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
             if (!$assign_var instanceof PhpParser\Node\Expr\PropertyFetch) {
@@ -636,7 +638,7 @@ class AssignmentAnalyzer
                     $statements_analyzer,
                     $stmt->var,
                     $context,
-                    $result_type ?: Type::getMixed(true)
+                    $result_type ?: Type::getMixed($context->inside_loop)
                 );
             } elseif ($result_type && $array_var_id) {
                 $context->vars_in_scope[$array_var_id] = $result_type;

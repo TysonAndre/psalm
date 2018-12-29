@@ -22,6 +22,7 @@ use Psalm\Type\Atomic\THtmlEscapedString;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Atomic\TNonEmptyArray;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
@@ -54,14 +55,14 @@ abstract class Atomic
     /**
      * @param  string $value
      * @param  bool   $php_compatible
-     * @param  array<string, string> $template_type_names
+     * @param  array<string, string> $template_type_map
      *
      * @return Atomic
      */
     public static function create(
         $value,
         $php_compatible = false,
-        array $template_type_names = []
+        array $template_type_map = []
     ) {
         switch ($value) {
             case 'int':
@@ -87,6 +88,9 @@ abstract class Atomic
 
             case 'array':
                 return new TArray([new Union([new TMixed]), new Union([new TMixed])]);
+
+            case 'non-empty-array':
+                return new TNonEmptyArray([new Union([new TMixed]), new Union([new TMixed])]);
 
             case 'resource':
                 return $php_compatible ? new TNamedObject($value) : new TResource();
@@ -133,8 +137,8 @@ abstract class Atomic
                     throw new \Psalm\Exception\TypeParseTreeException('First character of type cannot be numeric');
                 }
 
-                if (isset($template_type_names[$value])) {
-                    return new TGenericParam($value);
+                if (isset($template_type_map[$value])) {
+                    return new TGenericParam($value, $template_type_map[$value]);
                 }
 
                 return new TNamedObject($value);
@@ -228,6 +232,10 @@ abstract class Atomic
 
             if ($this->extra_types) {
                 foreach ($this->extra_types as $extra_type) {
+                    if ($extra_type instanceof TGenericParam) {
+                        continue;
+                    }
+
                     if (!isset($phantom_classes[strtolower($extra_type->value)]) &&
                         ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
                             $source,

@@ -129,18 +129,22 @@ class ProjectAnalyzer
      */
     public $onchange_line_limit;
 
+    const TYPE_COMPACT = 'compact';
     const TYPE_CONSOLE = 'console';
     const TYPE_PYLINT = 'pylint';
     const TYPE_JSON = 'json';
     const TYPE_EMACS = 'emacs';
     const TYPE_XML = 'xml';
+    const TYPE_TEXT = 'text';
 
     const SUPPORTED_OUTPUT_TYPES = [
+        self::TYPE_COMPACT,
         self::TYPE_CONSOLE,
         self::TYPE_PYLINT,
         self::TYPE_JSON,
         self::TYPE_EMACS,
         self::TYPE_XML,
+        self::TYPE_TEXT,
     ];
 
     /**
@@ -192,7 +196,7 @@ class ProjectAnalyzer
             $mapping = [
                 '.xml' => self::TYPE_XML,
                 '.json' => self::TYPE_JSON,
-                '.txt' => self::TYPE_EMACS,
+                '.txt' => self::TYPE_TEXT,
                 '.emacs' => self::TYPE_EMACS,
                 '.pylint' => self::TYPE_PYLINT,
             ];
@@ -429,7 +433,7 @@ class ProjectAnalyzer
             throw new \UnexpectedValueException('Should not be checking references');
         }
 
-        $this->codebase->classlikes->checkClassReferences();
+        $this->codebase->classlikes->checkClassReferences($this->codebase->methods);
     }
 
     /**

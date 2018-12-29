@@ -32,16 +32,39 @@ use function explode;
 class MethodAnalyzer extends FunctionLikeAnalyzer
 {
     /**
-     * @param PhpParser\Node\FunctionLike $function
      * @psalm-suppress MixedAssignment
      */
-    public function __construct($function, SourceAnalyzer $source)
-    {
-        if (!$function instanceof PhpParser\Node\Stmt\ClassMethod) {
-            throw new \InvalidArgumentException('Must be called with a ClassMethod');
+    public function __construct(
+        PhpParser\Node\Stmt\ClassMethod $function,
+        SourceAnalyzer $source,
+        MethodStorage $storage = null
+    ) {
+        $codebase = $source->getCodebase();
+
+        $real_method_id = $source->getFQCLN() . '::' . strtolower((string) $function->name);
+
+        if (!$storage) {
+            try {
+                $storage = $codebase->methods->getStorage($real_method_id);
+            } catch (\UnexpectedValueException $e) {
+                $class_storage = $codebase->classlike_storage_provider->get((string) $source->getFQCLN());
+
+                if (!$class_storage->parent_classes) {
+                    throw $e;
+                }
+
+                $declaring_method_id = $codebase->methods->getDeclaringMethodId($real_method_id);
+
+                if (!$declaring_method_id) {
+                    throw $e;
+                }
+
+                // happens for fake constructors
+                $storage = $codebase->methods->getStorage($declaring_method_id);
+            }
         }
 
-        parent::__construct($function, $source);
+        parent::__construct($function, $source, $storage);
     }
 
     /**
@@ -525,10 +548,10 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 if ($type_coerced) {
                     if (IssueBuffer::accepts(
                         new LessSpecificImplementedReturnType(
-                            'The return type \'' . $guide_method_storage->return_type
+                            'The return type \'' . $guide_method_storage->return_type->getId()
                             . '\' for ' . $cased_guide_method_id . ' is more specific than the implemented '
                             . 'return type for ' . $implementer_declaring_method_id . ' \''
-                            . $implementer_method_storage->return_type . '\'',
+                            . $implementer_method_storage->return_type->getId() . '\'',
                             $implementer_method_storage->return_type_location ?: $code_location
                         ),
                         $suppressed_issues
@@ -538,10 +561,10 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 } else {
                     if (IssueBuffer::accepts(
                         new ImplementedReturnTypeMismatch(
-                            'The return type \'' . $guide_method_storage->return_type
+                            'The return type \'' . $guide_method_storage->return_type->getId()
                             . '\' for ' . $cased_guide_method_id . ' is different to the implemented '
                             . 'return type for ' . $implementer_declaring_method_id . ' \''
-                            . $implementer_method_storage->return_type . '\'',
+                            . $implementer_method_storage->return_type->getId() . '\'',
                             $implementer_method_storage->return_type_location ?: $code_location
                         ),
                         $suppressed_issues
@@ -609,8 +632,8 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                     if (IssueBuffer::accepts(
                         new MoreSpecificImplementedParamType(
                             'Argument ' . ($i + 1) . ' of ' . $cased_implementer_method_id . ' has wrong type \'' .
-                                $implementer_param->type . '\', expecting \'' .
-                                $guide_param->type . '\' as defined by ' .
+                                $implementer_param->type->getId() . '\', expecting \'' .
+                                $guide_param->type->getId() . '\' as defined by ' .
                                 $cased_guide_method_id,
                             $implementer_method_storage->params[$i]->location
                                 ?: $code_location
@@ -650,7 +673,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
 
             if (!$guide_classlike_storage->user_defined
                 && $guide_param->type
-                && !$guide_param->type->isMixed()
+                && !$guide_param->type->hasMixed()
                 && !$guide_param->type->from_docblock
                 && (
                     !$implemeneter_param_type
@@ -682,7 +705,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
         }
 
         if ($guide_classlike_storage->user_defined
-            && $implementer_method_storage->cased_name !== '__construct'
+            && ($guide_classlike_storage->is_interface || $implementer_method_storage->cased_name !== '__construct')
             && $implementer_method_storage->required_param_count > $guide_method_storage->required_param_count
         ) {
             if (IssueBuffer::accepts(

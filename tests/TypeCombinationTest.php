@@ -59,6 +59,34 @@ class TypeCombinationTest extends TestCase
                     'string',
                 ],
             ],
+            'mixedOrNull' => [
+                'mixed|null',
+                [
+                    'mixed',
+                    'null',
+                ],
+            ],
+            'mixedOrEmpty' => [
+                'mixed',
+                [
+                    'empty',
+                    'mixed',
+                ],
+            ],
+            'mixedOrObject' => [
+                'mixed|object',
+                [
+                    'mixed',
+                    'object',
+                ],
+            ],
+            'mixedOrEmptyArray' => [
+                'array<empty, empty>|mixed',
+                [
+                    'mixed',
+                    'array<empty, empty>',
+                ],
+            ],
             'falseTrueToBool' => [
                 'bool',
                 [
@@ -140,14 +168,14 @@ class TypeCombinationTest extends TestCase
                 ],
             ],
             'arrayMixedOrString' => [
-                'array<mixed, mixed>',
+                'array<mixed, mixed|string>',
                 [
                     'array<mixed>',
                     'array<string>',
                 ],
             ],
             'arrayMixedOrStringKeys' => [
-                'array<mixed, string>',
+                'array<int|string|mixed, string>',
                 [
                     'array<int|string,string>',
                     'array<mixed,string>',

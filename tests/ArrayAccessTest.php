@@ -56,6 +56,15 @@ class ArrayAccessTest extends TestCase
                     $a = new A();
                     if (!isset($a->arr["bat"]) || strlen($a->arr["bat"])) { }',
             ],
+            'issetPropertyStringOffsetUndefinedClass' => [
+                '<?php
+                    /** @psalm-suppress UndefinedClass */
+                    $a = new A();
+                    /** @psalm-suppress UndefinedClass */
+                    if (!isset($a->arr["bat"]) || strlen($a->arr["bat"])) { }',
+                'assertions' => [],
+                'error_levels' => ['MixedArgument'],
+            ],
             'notEmptyIntOffset' => [
                 '<?php
                     /**
@@ -163,9 +172,91 @@ class ArrayAccessTest extends TestCase
                     $entry = ["a"];
 
                     ["a" => $elt] = $entry;
-                    strlen($elt);',
+                    strlen($elt);
+                    strlen($entry["a"]);',
                 'assertions' => [],
                 'error_levels' => ['PossiblyUndefinedArrayOffset'],
+            ],
+            'noRedundantConditionOnMixedArrayAccess' => [
+                '<?php
+                    /** @var array<int, int> */
+                    $b = [];
+
+                    /** @var array<int, int> */
+                    $c = [];
+
+                    /** @var array<int, mixed> */
+                    $d = [];
+
+                    if (!empty($d[0]) && !isset($c[$d[0]])) {
+                        if (isset($b[$d[0]])) {}
+                    }',
+                [],
+                'error_levels' => ['MixedArrayOffset'],
+            ],
+            'noEmptyArrayAccessInLoop' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedAssignment
+                     * @psalm-suppress MixedArrayAccess
+                     * @psalm-suppress MixedOperand
+                     * @param mixed[] $line
+                     */
+                    function _renderCells(array $line): void {
+                      foreach ($line as $cell) {
+                        $cellOptions = [];
+                        if (is_array($cell)) {
+                          $cellOptions = $cell[1];
+                        }
+                        if (isset($cellOptions[0])) {
+                          $cellOptions[0] = $cellOptions[0] . "b";
+                        } else {
+                          $cellOptions[0] = "b";
+                        }
+                      }
+                    }'
+            ],
+            'arrayAccessPropertyAssertion' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                        /** @var array<int, string> */
+                        public $arr = [];
+                    }
+
+                    /** @var array<A> */
+                    $as = [];
+
+                    if (!$as
+                        || !$as[0] instanceof B
+                        || !$as[0]->arr
+                    ) {
+                        return null;
+                    }
+
+                    $b = $as[0]->arr;',
+            ],
+            'arrayAccessAfterPassByref' => [
+                '<?php
+                    class Arr {
+                        /**
+                         * @param mixed $c
+                         * @return mixed
+                         */
+                        public static function pull(array &$a, string $b, $c = null) {
+                            return $a[$b] ?? $c;
+                        }
+                    }
+
+                    function _renderButton(array $settings): void {
+                        Arr::pull($settings, "a", true);
+
+                        if (isset($settings["b"])) {
+                            Arr::pull($settings, "b");
+                        }
+
+                        if (isset($settings["c"])) {}
+                    }'
             ],
         ];
     }
@@ -302,6 +393,27 @@ class ArrayAccessTest extends TestCase
 
                     ["a" => $elt] = $entry;',
                 'error_message' => 'PossiblyUndefinedArrayOffset',
+            ],
+            'possiblyInvalidMixedArrayOffset' => [
+                '<?php
+                    /**
+                     * @param string|array $key
+                     */
+                    function foo(array $a, $key) : void {
+                        echo $a[$key];
+                    }',
+                'error_message' => 'PossiblyInvalidArrayOffset',
+            ],
+            'possiblyInvalidMixedUnionArrayOffset' => [
+                '<?php
+                    function foo(?array $index): void {
+                        if (!$index) {
+                            $index = ["foo", []];
+                        }
+                        $index[1][] = "bar";
+                    }',
+                'error_message' => 'PossiblyInvalidArrayOffset',
+                'error_level' => ['MixedArrayAssignment'],
             ],
         ];
     }

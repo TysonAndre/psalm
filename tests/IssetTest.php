@@ -43,7 +43,7 @@ class IssetTest extends TestCase
                 '<?php
                     $a = isset($b) ? $b : null;',
                 'assertions' => [
-                    '$a' => 'mixed',
+                    '$a' => 'mixed|null',
                 ],
                 'error_levels' => ['MixedAssignment'],
             ],
@@ -51,7 +51,7 @@ class IssetTest extends TestCase
                 '<?php
                     $a = $b ?? null;',
                 'assertions' => [
-                    '$a' => 'mixed',
+                    '$a' => 'mixed|null',
                 ],
                 'error_levels' => ['MixedAssignment'],
             ],
@@ -69,7 +69,7 @@ class IssetTest extends TestCase
                         $foo["a"] = "hello";
                     }',
                 'assertions' => [
-                    '$foo[\'a\']' => 'mixed',
+                    '$foo[\'a\']' => 'string|mixed',
                 ],
                 'error_levels' => [],
                 'scope_vars' => [
@@ -93,7 +93,7 @@ class IssetTest extends TestCase
                 '<?php
                     $foo["a"] = $foo["a"] ?? "hello";',
                 'assertions' => [
-                    '$foo[\'a\']' => 'mixed',
+                    '$foo[\'a\']' => 'string|mixed',
                 ],
                 'error_levels' => ['MixedAssignment'],
                 'scope_vars' => [
@@ -104,7 +104,7 @@ class IssetTest extends TestCase
                 '<?php
                     function testarray(array $data): void {
                         foreach ($data as $item) {
-                            if (isset($item["a"]) && isset($item["b"]) && isset($item["b"]["c"])) {
+                            if (isset($item["a"]) && isset($item["b"]["c"])) {
                                 echo "Found\n";
                             }
                         }
@@ -440,6 +440,70 @@ class IssetTest extends TestCase
                     echo $foo["one"]->format("Y");',
                 'assertions' => [],
                 'error_levels' => ['PossiblyNullReference'],
+            ],
+            'assertArrayAfterIssetStringOffset' => [
+                '<?php
+                    /**
+                     * @param string|array $a
+                     */
+                    function _renderInput($a) : array {
+                        if (isset($a["foo"], $a["bar"])) {
+                            return $a;
+                        }
+
+                        return [];
+                    }'
+            ],
+            'assertMoreComplicatedArrayAfterIssetStringOffset' => [
+                '<?php
+                    /**
+                     * @param string|int $val
+                     * @param string|array $text
+                     * @param array $data
+                     */
+                    function _renderInput($val, $text, $data) : array {
+                        if (is_int($val) && isset($text["foo"], $text["bar"])) {
+                            $radio = $text;
+                        } else {
+                            $radio = ["value" => $val, "text" => $text];
+                        }
+                        return $radio;
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment'],
+            ],
+            'assertAfterIsset' => [
+                '<?php
+                    /**
+                     * @param mixed $arr
+                     */
+                    function foo($arr) : void {
+                        if (empty($arr)) {
+                            return;
+                        }
+
+                        if (isset($arr["a"]) && isset($arr["b"])) {}
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment'],
+            ],
+            'noCrashAfterIsset' => [
+                '<?php
+                    /**
+                     * @param string[] $columns
+                     * @param mixed[]  $options
+                     */
+                    function foo(array $columns, array $options) : void {
+                        $arr = $options["b"];
+
+                        foreach ($arr as $a) {
+                            if (isset($columns[$a]["c"])) {
+                                return;
+                            }
+                        }
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedAssignment', 'MixedArrayOffset', 'InvalidArrayOffset'],
             ],
         ];
     }

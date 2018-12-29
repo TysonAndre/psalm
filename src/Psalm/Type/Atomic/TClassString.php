@@ -28,7 +28,7 @@ class TClassString extends TString
      * @param  int           $php_major_version
      * @param  int           $php_minor_version
      *
-     * @return string
+     * @return string|null
      */
     public function toPhpString(
         $namespace,

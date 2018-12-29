@@ -350,7 +350,7 @@ class LoopAnalyzer
         }
 
         foreach ($loop_scope->loop_parent_context->vars_in_scope as $var_id => $type) {
-            if ($type->isMixed() || !isset($loop_scope->loop_context->vars_in_scope[$var_id])) {
+            if ($type->hasMixed() || !isset($loop_scope->loop_context->vars_in_scope[$var_id])) {
                 continue;
             }
 
@@ -366,7 +366,7 @@ class LoopAnalyzer
 
         if (!$does_always_break) {
             foreach ($loop_scope->loop_parent_context->vars_in_scope as $var_id => $type) {
-                if ($type->isMixed()) {
+                if ($type->hasMixed()) {
                     continue;
                 }
 
@@ -375,7 +375,7 @@ class LoopAnalyzer
                     continue;
                 }
 
-                if ($inner_context->vars_in_scope[$var_id]->isMixed()) {
+                if ($inner_context->vars_in_scope[$var_id]->hasMixed()) {
                     $loop_scope->loop_parent_context->vars_in_scope[$var_id] =
                         $inner_context->vars_in_scope[$var_id];
                     $loop_scope->loop_parent_context->removeVarFromConflictingClauses($var_id);
@@ -409,6 +409,7 @@ class LoopAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
+                    true,
                     new CodeLocation($statements_analyzer->getSource(), $pre_conditions[0])
                 );
 
@@ -545,16 +546,19 @@ class LoopAnalyzer
 
         $changed_var_ids = [];
 
-        $pre_condition_vars_in_scope_reconciled = Reconciler::reconcileKeyedTypes(
-            $reconcilable_while_types,
-            $loop_context->vars_in_scope,
-            $changed_var_ids,
-            $new_referenced_var_ids,
-            $statements_analyzer,
-            new CodeLocation($statements_analyzer->getSource(), $pre_condition)
-        );
+        if ($reconcilable_while_types) {
+            $pre_condition_vars_in_scope_reconciled = Reconciler::reconcileKeyedTypes(
+                $reconcilable_while_types,
+                $loop_context->vars_in_scope,
+                $changed_var_ids,
+                $new_referenced_var_ids,
+                $statements_analyzer,
+                true,
+                new CodeLocation($statements_analyzer->getSource(), $pre_condition)
+            );
 
-        $loop_context->vars_in_scope = $pre_condition_vars_in_scope_reconciled;
+            $loop_context->vars_in_scope = $pre_condition_vars_in_scope_reconciled;
+        }
 
         foreach ($asserted_var_ids as $var_id) {
             $loop_context->clauses = Context::filterClauses(

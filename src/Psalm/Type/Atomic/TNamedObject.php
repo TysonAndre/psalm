@@ -42,6 +42,11 @@ class TNamedObject extends Atomic
         return $this->value;
     }
 
+    public function getId()
+    {
+        return $this->getKey();
+    }
+
     /**
      * @param  string|null   $namespace
      * @param  array<string> $aliased_classes
@@ -52,9 +57,6 @@ class TNamedObject extends Atomic
      */
     public function toNamespacedString($namespace, array $aliased_classes, $this_class, $use_phpdoc_format)
     {
-        $class_parts = explode('\\', $this->value);
-        $class_name = array_pop($class_parts);
-
         $intersection_types = $this->getNamespacedIntersectionTypes(
             $namespace,
             $aliased_classes,
@@ -62,12 +64,24 @@ class TNamedObject extends Atomic
             $use_phpdoc_format
         );
 
+        if ($this->value === 'static') {
+            return 'static';
+        }
+
+        if ($this->value === 'iterable') {
+            return 'iterable';
+        }
+
         if ($this->value === $this_class) {
             return 'self' . $intersection_types;
         }
 
-        if ($namespace && preg_match('/^' . preg_quote($namespace) . '\\\\' . $class_name . '$/i', $this->value)) {
-            return $class_name . $intersection_types;
+        if ($namespace && stripos($this->value, $namespace . '\\') === 0) {
+            return preg_replace(
+                '/^' . preg_quote($namespace . '\\') . '/i',
+                '',
+                $this->value
+            ) . $intersection_types;
         }
 
         if (!$namespace && stripos($this->value, '\\') === false) {
@@ -88,7 +102,7 @@ class TNamedObject extends Atomic
      * @param  int           $php_major_version
      * @param  int           $php_minor_version
      *
-     * @return string
+     * @return string|null
      */
     public function toPhpString(
         $namespace,
@@ -97,12 +111,16 @@ class TNamedObject extends Atomic
         $php_major_version,
         $php_minor_version
     ) {
+        if ($this->value === 'static') {
+            return null;
+        }
+
         return $this->toNamespacedString($namespace, $aliased_classes, $this_class, false);
     }
 
     public function canBeFullyExpressedInPhp()
     {
-        return true;
+        return $this->value !== 'static';
     }
 
     /**

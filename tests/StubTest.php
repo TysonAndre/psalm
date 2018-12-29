@@ -344,6 +344,8 @@ class StubTest extends TestCase
         $this->addFile(
             $file_path,
             '<?php
+                namespace ClassAliasStubTest;
+
                 function foo(A $a) : void {}
 
                 foo(new B());
@@ -357,7 +359,22 @@ class StubTest extends TestCase
 
                 echo $a->foo;
 
-                echo $a->bar("hello");'
+                echo $a->bar("hello");
+
+                function f(): A {
+                    return new A;
+                }
+
+                function getAliased(): B {
+                    return f();
+                }
+
+                $d = new D();
+
+                D::bat();
+                $d::bat();
+
+                class E implements IAlias {}'
         );
 
         $this->analyzeFile($file_path, new Context());
