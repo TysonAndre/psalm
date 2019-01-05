@@ -387,7 +387,7 @@ class FileManipulationTest extends TestCase
                     /**
                      * @return string[]
                      *
-                     * @psalm-return array<mixed, string>
+                     * @psalm-return array<array-key, string>
                      */
                     function bar(): array {
                         return foo();
@@ -415,7 +415,7 @@ class FileManipulationTest extends TestCase
                     /**
                      * @return string[]
                      *
-                     * @psalm-return array<mixed, string>
+                     * @psalm-return array<array-key, string>
                      */
                     function bar() {
                         return foo();
@@ -463,7 +463,7 @@ class FileManipulationTest extends TestCase
                     }',
                 '<?php
                     /**
-                     * @return stdClass|null
+                     * @return null|stdClass
                      */
                     function foo() {
                       if (rand(0, 1)) return new stdClass;
@@ -513,6 +513,55 @@ class FileManipulationTest extends TestCase
                         public function foo(): self {
                             return $this;
                         }
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                false,
+            ],
+            'addIterableReturnType' => [
+                '<?php
+                    function foo() {
+                        return bar();
+                    }
+
+                    function bar(): iterable {
+                        return [1, 2, 3];
+                    }',
+                '<?php
+                    function foo(): iterable {
+                        return bar();
+                    }
+
+                    function bar(): iterable {
+                        return [1, 2, 3];
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                false,
+            ],
+            'addGenericIterableReturnType' => [
+                '<?php
+                    function foo() {
+                        return bar();
+                    }
+
+                    /** @return iterable<int> */
+                    function bar(): iterable {
+                        return [1, 2, 3];
+                    }',
+                '<?php
+                    /**
+                     * @return iterable
+                     *
+                     * @psalm-return iterable<mixed, int>
+                     */
+                    function foo(): iterable {
+                        return bar();
+                    }
+
+                    /** @return iterable<int> */
+                    function bar(): iterable {
+                        return [1, 2, 3];
                     }',
                 '7.1',
                 ['MissingReturnType'],

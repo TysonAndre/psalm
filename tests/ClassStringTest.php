@@ -203,6 +203,8 @@ class ClassStringTest extends TestCase
                     function bar(string $s) : void {
                         new $s();
                     }',
+                'assertions' => [],
+                'error_levels' => ['MixedMethodCall'],
             ],
             'constantArrayOffset' => [
                 '<?php
@@ -268,6 +270,87 @@ class ClassStringTest extends TestCase
                     $a = bat();
                     $a ? 1 : 0;
                     bar($a);',
+            ],
+            'allowTraitClassComparison' => [
+                '<?php
+                    trait T {
+                        public function foo() : void {
+                            if (self::class === A::class) {}
+                            if (self::class !== A::class) {}
+                        }
+                    }
+
+                    class A {
+                        use T;
+                    }
+
+                    class B {
+                        use T;
+                    }'
+            ],
+            'refineStringToClassString' => [
+                '<?php
+                    class A {}
+
+                    function foo(string $s) : ?A {
+                        if ($s !== A::class) {
+                            return null;
+                        }
+                        return new $s();
+                    }',
+            ],
+            'takesChildOfClass' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+
+                    /**
+                     * @param class-string<A> $s
+                     */
+                    function foo(string $s) : void {}
+
+                    foo(AChild::class);',
+            ],
+            'returnClassConstantClassStringParameterized' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string<A> $s
+                     */
+                    function foo(A $a) : string {
+                        return $a::class;
+                    }',
+            ],
+            'returnGetClassClassStringParameterized' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string<A> $s
+                     */
+                    function foo(A $a) : string {
+                        return get_class($a);
+                    }',
+            ],
+            'createClassOfTypeFromString' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string<A> $s
+                     */
+                    function foo(string $s) : string {
+                        if (!class_exists($s)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        if (!is_a($s, A::class, true)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        return $s;
+                    }',
             ],
         ];
     }
@@ -345,6 +428,67 @@ class ClassStringTest extends TestCase
                     }',
                 'error_message' => 'UndefinedClass',
                 'error_levels' => ['LessSpecificReturnStatement', 'MoreSpecificReturnType'],
+            ],
+            'badClassStringConstructor' => [
+                '<?php
+                    class Foo
+                    {
+                        public function __construct(int $_)
+                        {
+                        }
+                    }
+
+                    /**
+                     * @return Foo
+                     */
+                    function makeFoo()
+                    {
+                        $fooClass = Foo::class;
+                        return new $fooClass;
+                    }',
+                'error_message' => 'TooFewArguments',
+            ],
+            'unknownConstructorCall' => [
+                '<?php
+                    /** @param class-string $s */
+                    function bar(string $s) : void {
+                        new $s();
+                    }',
+                'error_message' => 'MixedMethodCall',
+            ],
+            'doesNotTakeChildOfClass' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+
+                    /**
+                     * @param A::class $s
+                     */
+                    function foo(string $s) : void {}
+
+                    foo(AChild::class);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'createClassOfWrongTypeFromString' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    /**
+                     * @return class-string<A> $s
+                     */
+                    function foo(string $s) : string {
+                        if (!class_exists($s)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        if (!is_a($s, B::class, true)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        return $s;
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

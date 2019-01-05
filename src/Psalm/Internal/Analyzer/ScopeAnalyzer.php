@@ -100,6 +100,13 @@ class ScopeAnalyzer
                     return [self::ACTION_END];
                 }
 
+                // This allows calls to functions that always exit to act as exit statements themselves
+                if (isset($stmt->expr->inferredType)
+                    && $stmt->expr->inferredType->isNever()
+                ) {
+                    return [self::ACTION_END];
+                }
+
                 if ($exit_functions) {
                     if ($stmt->expr instanceof PhpParser\Node\Expr\FuncCall
                         || $stmt->expr instanceof PhpParser\Node\Expr\StaticCall

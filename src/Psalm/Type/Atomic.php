@@ -11,17 +11,24 @@ use Psalm\Storage\FileStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
+use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TCallableObject;
+use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TGenericParamClass;
 use Psalm\Type\Atomic\THtmlEscapedString;
+use Psalm\Type\Atomic\TIterable;
 use Psalm\Type\Atomic\TInt;
+use Psalm\Type\Atomic\TLiteralClassString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Atomic\TNever;
 use Psalm\Type\Atomic\TNonEmptyArray;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
@@ -55,7 +62,7 @@ abstract class Atomic
     /**
      * @param  string $value
      * @param  bool   $php_compatible
-     * @param  array<string, string> $template_type_map
+     * @param  array<string, Union> $template_type_map
      *
      * @return Atomic
      */
@@ -80,6 +87,17 @@ abstract class Atomic
             case 'void':
                 return new TVoid();
 
+            case 'array-key':
+                return new TArrayKey();
+
+            case 'iterable':
+                return new TIterable();
+
+            case 'never-return':
+            case 'never-returns':
+            case 'no-return':
+                return new TNever();
+
             case 'object':
                 return new TObject();
 
@@ -87,7 +105,7 @@ abstract class Atomic
                 return new TCallable();
 
             case 'array':
-                return new TArray([new Union([new TMixed]), new Union([new TMixed])]);
+                return new TArray([new Union([new TArrayKey]), new Union([new TMixed])]);
 
             case 'non-empty-array':
                 return new TNonEmptyArray([new Union([new TMixed]), new Union([new TMixed])]);
@@ -172,9 +190,20 @@ abstract class Atomic
     /**
      * @return bool
      */
+    public function isCallableType()
+    {
+        return $this instanceof TCallable
+            || $this instanceof TCallableObject
+            || $this instanceof TCallableString
+            || (($this instanceof TArray || $this instanceof ObjectLike) && $this->callable);
+    }
+
+    /**
+     * @return bool
+     */
     public function isIterable(Codebase $codebase)
     {
-        return $this instanceof TNamedObject && (strtolower($this->value) === 'iterable')
+        return $this instanceof TIterable
             || $this->isTraversable($codebase)
             || $this instanceof TArray
             || $this instanceof ObjectLike;
@@ -187,13 +216,14 @@ abstract class Atomic
     {
         return $this instanceof TNamedObject
             && (strtolower($this->value) === 'traversable'
-                || $codebase->classExtendsOrImplements(
-                    $this->value,
-                    'Traversable'
-                ) || $codebase->interfaceExtends(
-                    $this->value,
-                    'Traversable'
-                )
+                || ($codebase->classOrInterfaceExists($this->value)
+                    && ($codebase->classExtendsOrImplements(
+                        $this->value,
+                        'Traversable'
+                    ) || $codebase->interfaceExtends(
+                        $this->value,
+                        'Traversable'
+                    )))
             );
     }
 
@@ -251,6 +281,36 @@ abstract class Atomic
             }
         }
 
+        if ($this instanceof TLiteralClassString) {
+            if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                $source,
+                $this->value,
+                $code_location,
+                $suppressed_issues,
+                $inferred
+            ) === false
+            ) {
+                return false;
+            }
+        }
+
+        if ($this instanceof TClassString && $this->as !== 'object' && $this->as !== 'mixed') {
+            if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                $source,
+                $this->as,
+                $code_location,
+                $suppressed_issues,
+                $inferred
+            ) === false
+            ) {
+                return false;
+            }
+        }
+
+        if ($this instanceof TGenericParam) {
+            $this->as->check($source, $code_location, $suppressed_issues, $phantom_classes, $inferred);
+        }
+
         if ($this instanceof TScalarClassConstant) {
             if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
                 $source,
@@ -279,7 +339,15 @@ abstract class Atomic
 
         if ($this instanceof Type\Atomic\TArray || $this instanceof Type\Atomic\TGenericObject) {
             foreach ($this->type_params as $type_param) {
-                $type_param->check($source, $code_location, $suppressed_issues, $phantom_classes, $inferred);
+                if ($type_param->check(
+                    $source,
+                    $code_location,
+                    $suppressed_issues,
+                    $phantom_classes,
+                    $inferred
+                ) === false) {
+                    return false;
+                }
             }
         }
 
@@ -323,6 +391,38 @@ abstract class Atomic
             }
         }
 
+        if ($this instanceof TClassString && $this->as !== 'object') {
+            $codebase->scanner->queueClassLikeForScanning(
+                $this->as,
+                $file_storage ? $file_storage->file_path : null,
+                false,
+                !$this->from_docblock
+            );
+            if ($file_storage) {
+                $file_storage->referenced_classlikes[] = $this->as;
+            }
+        }
+
+        if ($this instanceof TGenericParam) {
+            $this->as->queueClassLikesForScanning(
+                $codebase,
+                $file_storage,
+                $phantom_classes
+            );
+        }
+
+        if ($this instanceof TLiteralClassString) {
+            $codebase->scanner->queueClassLikeForScanning(
+                $this->value,
+                $file_storage ? $file_storage->file_path : null,
+                false,
+                !$this->from_docblock
+            );
+            if ($file_storage) {
+                $file_storage->referenced_classlikes[] = $this->value;
+            }
+        }
+
         if ($this instanceof Type\Atomic\TArray || $this instanceof Type\Atomic\TGenericObject) {
             foreach ($this->type_params as $type_param) {
                 $type_param->queueClassLikesForScanning(
@@ -356,6 +456,14 @@ abstract class Atomic
     public function getId()
     {
         return $this->__toString();
+    }
+
+    /**
+     * @return string
+     */
+    public function getAssertionString()
+    {
+        return $this->getId();
     }
 
     /**

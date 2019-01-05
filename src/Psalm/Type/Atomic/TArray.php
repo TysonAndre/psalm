@@ -16,6 +16,11 @@ class TArray extends \Psalm\Type\Atomic
     public $value = 'array';
 
     /**
+     * @var bool
+     */
+    public $callable = false;
+
+    /**
      * Constructs a new instance of a generic type
      *
      * @param array<int, \Psalm\Type\Union> $type_params
@@ -84,6 +89,18 @@ class TArray extends \Psalm\Type\Atomic
             }
         }
 
+        if ($this->callable !== $other_type->callable) {
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * @return string
+     */
+    public function getAssertionString()
+    {
+        return $this->getKey();
     }
 }

@@ -1,22 +1,11 @@
 <?php
 namespace Psalm\Type\Atomic;
 
-class TMixed extends \Psalm\Type\Atomic
+class TCallableObject extends TObject
 {
-    /** @var bool */
-    public $from_loop_isset = false;
-
-    /**
-     * @param bool $from_loop_isset
-     */
-    public function __construct($from_loop_isset = false)
-    {
-        $this->from_loop_isset = $from_loop_isset;
-    }
-
     public function __toString()
     {
-        return 'mixed';
+        return 'callable-object';
     }
 
     /**
@@ -24,7 +13,7 @@ class TMixed extends \Psalm\Type\Atomic
      */
     public function getKey()
     {
-        return 'mixed';
+        return 'callable-object';
     }
 
     /**
@@ -43,9 +32,12 @@ class TMixed extends \Psalm\Type\Atomic
         $php_major_version,
         $php_minor_version
     ) {
-        return null;
+        return $php_major_version >= 7 && $php_minor_version >= 2 ? 'object' : null;
     }
 
+    /**
+     * @return bool
+     */
     public function canBeFullyExpressedInPhp()
     {
         return false;
@@ -56,6 +48,6 @@ class TMixed extends \Psalm\Type\Atomic
      */
     public function getAssertionString()
     {
-        return 'mixed';
+        return 'object';
     }
 }

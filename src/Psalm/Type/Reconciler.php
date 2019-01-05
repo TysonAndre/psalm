@@ -19,11 +19,13 @@ use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
+use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
@@ -200,7 +202,11 @@ class Reconciler
                     }
 
                     $orred_type = $orred_type
-                        ? Type::combineUnionTypes($result_type_candidate, $orred_type)
+                        ? Type::combineUnionTypes(
+                            $result_type_candidate,
+                            $orred_type,
+                            $codebase
+                        )
                         : $result_type_candidate;
                 }
 
@@ -554,10 +560,6 @@ class Reconciler
                     || $type instanceof TResource
                     || $type instanceof TCallable
                 ) {
-                    if ($type instanceof TNamedObject && $type->value === 'iterable') {
-                        continue;
-                    }
-
                     $did_remove_type = true;
 
                     $existing_var_type->removeType($type_key);
@@ -594,6 +596,9 @@ class Reconciler
             foreach ($existing_var_atomic_types as $type) {
                 if ($type->isObjectType()) {
                     $object_types[] = $type;
+                } elseif ($type instanceof TCallable) {
+                    $object_types[] = new Type\Atomic\TCallableObject();
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -615,6 +620,58 @@ class Reconciler
 
             if ($object_types) {
                 return new Type\Union($object_types);
+            }
+
+            $failed_reconciliation = true;
+
+            return Type::getMixed();
+        }
+
+        if ($new_var_type === 'callable' && !$existing_var_type->hasMixed()) {
+            $callable_types = [];
+            $did_remove_type = false;
+
+            foreach ($existing_var_atomic_types as $type) {
+                if ($type->isCallableType()) {
+                    $callable_types[] = $type;
+                } elseif ($type instanceof TObject) {
+                    $callable_types[] = new Type\Atomic\TCallableObject();
+                    $did_remove_type = true;
+                } elseif ($type instanceof TNamedObject
+                    && $codebase->classExists($type->value)
+                    && $codebase->methodExists($type->value . '::__invoke')
+                ) {
+                    $callable_types[] = $type;
+                } elseif (get_class($type) === TString::class) {
+                    $callable_types[] = new Type\Atomic\TCallableString();
+                    $did_remove_type = true;
+                } elseif ($type instanceof TArray || $type instanceof ObjectLike) {
+                    $type = clone $type;
+                    $type->callable = true;
+
+                    $callable_types[] = $type;
+                    $did_remove_type = true;
+                } else {
+                    $did_remove_type = true;
+                }
+            }
+
+            if ((!$callable_types || !$did_remove_type) && !$is_equality) {
+                if ($key && $code_location) {
+                    self::triggerIssueForImpossible(
+                        $existing_var_type,
+                        $old_var_type_string,
+                        $key,
+                        $new_var_type,
+                        !$did_remove_type,
+                        $code_location,
+                        $suppressed_issues
+                    );
+                }
+            }
+
+            if ($callable_types) {
+                return new Type\Union($callable_types);
             }
 
             $failed_reconciliation = true;
@@ -985,22 +1042,6 @@ class Reconciler
 
                     if ($scalar_type_match_found) {
                         $any_scalar_type_match_found = true;
-                    }
-
-                    if ($new_type_part instanceof TCallable &&
-                        (
-                            $existing_var_type_part instanceof TString ||
-                            $existing_var_type_part instanceof TArray ||
-                            $existing_var_type_part instanceof ObjectLike ||
-                            (
-                                $existing_var_type_part instanceof TNamedObject &&
-                                $codebase->classExists($existing_var_type_part->value) &&
-                                $codebase->methodExists($existing_var_type_part->value . '::__invoke')
-                            )
-                        )
-                    ) {
-                        $has_local_match = true;
-                        continue;
                     }
                 }
 
@@ -1527,7 +1568,7 @@ class Reconciler
             $existing_var_type->removeType('iterable');
             $existing_var_type->addType(new TArray(
                 [
-                    new Type\Union([new TMixed]),
+                    new Type\Union([new TArrayKey]),
                     new Type\Union([new TMixed]),
                 ]
             ));
@@ -1536,6 +1577,16 @@ class Reconciler
         ) {
             $existing_var_type->removeType('iterable');
             $existing_var_type->addType(new TNamedObject('Traversable'));
+        } elseif (strtolower($new_var_type) === 'string'
+            && isset($existing_var_type->getTypes()['array-key'])
+        ) {
+            $existing_var_type->removeType('array-key');
+            $existing_var_type->addType(new TInt);
+        } elseif (strtolower($new_var_type) === 'int'
+            && isset($existing_var_type->getTypes()['array-key'])
+        ) {
+            $existing_var_type->removeType('array-key');
+            $existing_var_type->addType(new TString);
         } elseif (substr($new_var_type, 0, 9) === 'getclass-') {
             $new_var_type = substr($new_var_type, 9);
         } elseif (!$is_equality) {
@@ -2260,7 +2311,8 @@ class Reconciler
                         } else {
                             $new_base_type = Type::combineUnionTypes(
                                 $new_base_type,
-                                $new_base_type_candidate
+                                $new_base_type_candidate,
+                                $codebase
                             );
                         }
 
@@ -2315,7 +2367,11 @@ class Reconciler
                         }
 
                         if ($new_base_type instanceof Type\Union) {
-                            $new_base_type = Type::combineUnionTypes($new_base_type, $class_property_type);
+                            $new_base_type = Type::combineUnionTypes(
+                                $new_base_type,
+                                $class_property_type,
+                                $codebase
+                            );
                         } else {
                             $new_base_type = $class_property_type;
                         }

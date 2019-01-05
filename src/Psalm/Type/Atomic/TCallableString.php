@@ -1,14 +1,14 @@
 <?php
 namespace Psalm\Type\Atomic;
 
-class TNumericString extends TString
+class TCallableString extends TString
 {
     /**
      * @return string
      */
     public function getKey()
     {
-        return 'numeric-string';
+        return 'callable-string';
     }
 
     public function getId()

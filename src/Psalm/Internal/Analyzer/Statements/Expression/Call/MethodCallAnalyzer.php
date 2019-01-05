@@ -188,12 +188,12 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
             foreach ($lhs_types as $lhs_type_part) {
                 if ($lhs_type_part instanceof Type\Atomic\TGenericParam
-                    && $lhs_type_part->extends !== 'mixed'
+                    && !$lhs_type_part->as->isMixed()
                 ) {
                     $extra_types = $lhs_type_part->extra_types;
 
                     $lhs_type_part = array_values(
-                        Type::parseString($lhs_type_part->extends)->getTypes()
+                        $lhs_type_part->as->getTypes()
                     )[0];
 
                     $lhs_type_part->from_docblock = true;
@@ -230,6 +230,8 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         case Type\Atomic\THtmlEscapedString::class:
                         case Type\Atomic\TClassString::class:
                         case Type\Atomic\TEmptyMixed::class:
+                        case Type\Atomic\TIterable::class:
+                        case Type\Atomic\TGenericIterable::class:
                             $invalid_method_call_types[] = (string)$lhs_type_part;
                             break;
 
@@ -304,22 +306,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                 if (!$does_class_exist) {
                     return $does_class_exist;
-                }
-
-                if ($fq_class_name === 'iterable') {
-                    if (IssueBuffer::accepts(
-                        new UndefinedMethod(
-                            $fq_class_name . ' has no defined methods',
-                            new CodeLocation($source, $stmt->var),
-                            $fq_class_name . '::'
-                                . (!$stmt->name instanceof PhpParser\Node\Identifier ? '$method' : $stmt->name->name)
-                        ),
-                        $statements_analyzer->getSuppressedIssues()
-                    )) {
-                        return false;
-                    }
-
-                    return;
                 }
 
                 if (!$stmt->name instanceof PhpParser\Node\Identifier) {
@@ -470,11 +456,11 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                     foreach ($intersection_types as $intersection_type) {
                         if ($intersection_type instanceof Type\Atomic\TGenericParam) {
-                            if ($intersection_type->extends !== 'mixed'
-                                && $intersection_type->extends !== 'object'
+                            if (!$intersection_type->as->isMixed()
+                                && !$intersection_type->as->hasObject()
                             ) {
                                 $intersection_type = array_values(
-                                    Type::parseString($intersection_type->extends)->getTypes()
+                                    $intersection_type->as->getTypes()
                                 )[0];
 
                                 if (!$intersection_type instanceof TNamedObject) {
@@ -785,7 +771,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                     $method_storage->assertions,
                                     $args,
                                     $class_template_params ?: [],
-                                    $method_storage->template_typeof_params ?: [],
                                     $context,
                                     $statements_analyzer
                                 );

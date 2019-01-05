@@ -539,6 +539,54 @@ class ReturnTypeTest extends TestCase
                         return false;
                     }',
             ],
+            'neverReturnsSimple' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                        exit();
+                    }',
+            ],
+            'neverReturnsCovariance' => [
+                '<?php
+                    namespace Foo;
+                    class A {
+                        /**
+                         * @return string
+                         */
+                        public function foo() {
+                            return "hello";
+                        }
+                    }
+
+                    class B extends A {
+                        /**
+                         * @return no-return
+                         */
+                        public function foo() {
+                            exit();
+                        }
+                    }',
+            ],
+            'noReturnCallReturns' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                        exit();
+                    }
+
+                    /**
+                     * @return never-returns
+                     */
+                    function bar() : void {
+                        foo();
+                    }',
+            ],
         ];
     }
 
@@ -837,6 +885,70 @@ class ReturnTypeTest extends TestCase
                         public function __invoke(): int {}
                     }',
                 'error_message' => 'InvalidReturnType',
+            ],
+            'callNeverReturns' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                        exit();
+                    }
+
+                    $a = foo();',
+                'error_message' => 'NoValue',
+            ],
+            'returnNeverReturns' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                        exit();
+                    }
+
+                    function bar() : void {
+                        return foo();
+                    }',
+                'error_message' => 'NoValue',
+            ],
+            'useNeverReturnsAsArg' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                        exit();
+                    }
+
+                    function bar(string $s) : void {}
+
+                    bar(foo());',
+                'error_message' => 'NoValue',
+            ],
+            'invalidNoReturnType' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                    }',
+                'error_message' => 'InvalidReturnType',
+            ],
+            'invalidNoReturnStatement' => [
+                '<?php
+                    namespace Foo;
+                    /**
+                     * @return never-returns
+                     */
+                    function foo() : void {
+                        return 5;
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

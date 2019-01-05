@@ -27,6 +27,11 @@ class ObjectLike extends \Psalm\Type\Atomic
     public $sealed = false;
 
     /**
+     * @var bool
+     */
+    public $callable = false;
+
+    /**
      * Constructs a new instance of a generic type
      *
      * @param array<string|int, Union> $properties
@@ -290,6 +295,18 @@ class ObjectLike extends \Psalm\Type\Atomic
             }
         }
 
+        if ($this->callable !== $other_type->callable) {
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * @return string
+     */
+    public function getAssertionString()
+    {
+        return $this->getKey();
     }
 }

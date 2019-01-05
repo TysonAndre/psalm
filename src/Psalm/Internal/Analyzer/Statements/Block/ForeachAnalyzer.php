@@ -290,6 +290,10 @@ class ForeachAnalyzer
         $invalid_iterator_types = [];
 
         foreach ($iterator_type->getTypes() as $iterator_atomic_type) {
+            if ($iterator_atomic_type instanceof Type\Atomic\TGenericParam) {
+                $iterator_atomic_type = array_values($iterator_atomic_type->as->getTypes())[0];
+            }
+
             // if it's an empty array, we cannot iterate over it
             if ($iterator_atomic_type instanceof Type\Atomic\TArray
                 && $iterator_atomic_type->type_params[1]->isEmpty()
@@ -350,6 +354,28 @@ class ForeachAnalyzer
             ) {
                 $has_valid_iterator = true;
                 $value_type = Type::getMixed();
+            } elseif ($iterator_atomic_type instanceof Type\Atomic\TIterable) {
+                if ($iterator_atomic_type instanceof Type\Atomic\TGenericIterable) {
+                    $value_type_part = $iterator_atomic_type->type_params[1];
+                    $key_type_part = $iterator_atomic_type->type_params[0];
+                } else {
+                    $value_type_part = Type::getMixed();
+                    $key_type_part = Type::getMixed();
+                }
+
+                if (!$value_type) {
+                    $value_type = $value_type_part;
+                } else {
+                    $value_type = Type::combineUnionTypes($value_type, $value_type_part);
+                }
+
+                if (!$key_type) {
+                    $key_type = $key_type_part;
+                } else {
+                    $key_type = Type::combineUnionTypes($key_type, $key_type_part);
+                }
+
+                $has_valid_iterator = true;
             } elseif ($iterator_atomic_type instanceof Type\Atomic\TNamedObject) {
                 if ($iterator_atomic_type->value !== 'Traversable' &&
                     $iterator_atomic_type->value !== $statements_analyzer->getClassName()
@@ -367,7 +393,7 @@ class ForeachAnalyzer
                 if (TypeAnalyzer::isAtomicContainedBy(
                     $codebase,
                     $iterator_atomic_type,
-                    new Type\Atomic\TNamedObject('iterable')
+                    new Type\Atomic\TIterable
                 )) {
                     self::handleIterable(
                         $statements_analyzer,
@@ -449,10 +475,11 @@ class ForeachAnalyzer
 
             $has_valid_iterator = true;
 
-            if ($iterator_atomic_type instanceof Type\Atomic\TGenericObject
-                && (strtolower($iterator_atomic_type->value) === 'iterable'
-                    || strtolower($iterator_atomic_type->value) === 'traversable'
-                    || $codebase->classImplements(
+            if (($iterator_atomic_type instanceof Type\Atomic\TGenericIterable)
+                || ($iterator_atomic_type instanceof Type\Atomic\TGenericObject
+                    && strtolower($iterator_atomic_type->value) === 'traversable')
+                || ($iterator_atomic_type instanceof Type\Atomic\TGenericObject
+                    && $codebase->classImplements(
                         $iterator_atomic_type->value,
                         'Traversable'
                     ))

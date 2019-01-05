@@ -19,6 +19,7 @@ use Psalm\Issue\InvalidScalarArgument;
 use Psalm\Issue\InvalidScalarInComplexArgument;
 use Psalm\Issue\MixedArgument;
 use Psalm\Issue\MixedTypeCoercion;
+use Psalm\Issue\NoValue;
 use Psalm\Issue\NullArgument;
 use Psalm\Issue\PossiblyFalseArgument;
 use Psalm\Issue\PossiblyInvalidArgument;
@@ -663,7 +664,7 @@ class CallAnalyzer
                                 $context->vars_in_scope[$var_id]->removeType('array');
                                 $context->vars_in_scope[$var_id]->addType(
                                     new TArray(
-                                        [Type::getMixed(), Type::getMixed()]
+                                        [Type::getArrayKey(), Type::getMixed()]
                                     )
                                 );
                             }
@@ -952,18 +953,6 @@ class CallAnalyzer
                     }
 
                     if ($function_storage) {
-                        if (isset($function_storage->template_typeof_params[$argument_offset])) {
-                            $param_type_nullable = $param_type->isNullable();
-                            $param_type = new Type\Union([
-                                new Type\Atomic\TGenericParamClass(
-                                    $function_storage->template_typeof_params[$argument_offset]
-                                )
-                            ]);
-                            if ($param_type_nullable) {
-                                $param_type->addType(new Type\Atomic\TNull);
-                            }
-                        }
-
                         if ($existing_generic_params_to_strings) {
                             $empty_generic_params = [];
 
@@ -1649,6 +1638,20 @@ class CallAnalyzer
             return null;
         }
 
+        if ($input_type->isNever()) {
+            if (IssueBuffer::accepts(
+                new NoValue(
+                    'This function or method call never returns output',
+                    $code_location
+                ),
+                $statements_analyzer->getSuppressedIssues()
+            )) {
+                return false;
+            }
+
+            return null;
+        }
+
         $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
 
         $param_type = TypeAnalyzer::simplifyUnionType(
@@ -1732,7 +1735,7 @@ class CallAnalyzer
                         if (IssueBuffer::accepts(
                             new InvalidScalarInComplexArgument(
                                 'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                    $param_type . ', ' . $input_type . ' provided',
+                                    $param_type . ', ' . $input_type->getId() . ' provided',
                                 $code_location
                             ),
                             $statements_analyzer->getSuppressedIssues()
@@ -1743,7 +1746,7 @@ class CallAnalyzer
                         if (IssueBuffer::accepts(
                             new InvalidScalarArgument(
                                 'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                    $param_type . ', ' . $input_type . ' provided',
+                                    $param_type . ', ' . $input_type->getId() . ' provided',
                                 $code_location
                             ),
                             $statements_analyzer->getSuppressedIssues()
@@ -2112,47 +2115,11 @@ class CallAnalyzer
     }
 
     /**
-     * @param  StatementsAnalyzer    $statements_analyzer
-     * @param  string               $function_id
-     * @param  bool                 $can_be_in_root_scope if true, the function can be shortened to the root version
-     *
-     * @return string
-     */
-    protected static function getExistingFunctionId(
-        StatementsAnalyzer $statements_analyzer,
-        $function_id,
-        $can_be_in_root_scope
-    ) {
-        $function_id = strtolower($function_id);
-
-        $codebase = $statements_analyzer->getCodebase();
-
-        if ($codebase->functions->functionExists($statements_analyzer, $function_id)) {
-            return $function_id;
-        }
-
-        if (!$can_be_in_root_scope) {
-            return $function_id;
-        }
-
-        $root_function_id = preg_replace('/.*\\\/', '', $function_id);
-
-        if ($function_id !== $root_function_id
-            && $codebase->functions->functionExists($statements_analyzer, $root_function_id)
-        ) {
-            return $root_function_id;
-        }
-
-        return $function_id;
-    }
-
-    /**
      * @param PhpParser\Node\Identifier|PhpParser\Node\Name $expr
      * @param  \Psalm\Storage\Assertion[] $assertions
      * @param  array<int, PhpParser\Node\Arg> $args
      * @param  Context           $context
      * @param  array<string, Type\Union> $generic_params,
-     * @param  array<int, string> $template_typeof_params
      * @param  StatementsAnalyzer $statements_analyzer
      *
      * @return void
@@ -2162,7 +2129,6 @@ class CallAnalyzer
         array $assertions,
         array $args,
         array $generic_params,
-        array $template_typeof_params,
         Context $context,
         StatementsAnalyzer $statements_analyzer
     ) {
@@ -2172,6 +2138,8 @@ class CallAnalyzer
 
         foreach ($assertions as $assertion) {
             $assertion_var_id = null;
+
+            $arg_value = null;
 
             if (is_int($assertion->var_id)) {
                 if (!isset($args[$assertion->var_id])) {
@@ -2206,17 +2174,7 @@ class CallAnalyzer
                     $rule = substr($rule, 1);
                 }
 
-                if (($offset = array_search($rule, $template_typeof_params, true)) !== false) {
-                    if (isset($args[$offset]->value->inferredType)) {
-                        $templated_type = $args[$offset]->value->inferredType;
-
-                        if ($templated_type->isSingleStringLiteral()) {
-                            $type_assertions[$assertion_var_id] = [
-                                [$prefix . $templated_type->getSingleStringLiteral()->value]
-                            ];
-                        }
-                    }
-                } elseif (isset($generic_params[$rule])) {
+                if (isset($generic_params[$rule])) {
                     if ($generic_params[$rule]->hasMixed()) {
                         continue;
                     }
@@ -2253,6 +2211,23 @@ class CallAnalyzer
                 } else {
                     $type_assertions[$assertion_var_id] = $assertion->rule;
                 }
+            } elseif ($arg_value && $assertion->rule === [['!falsy']]) {
+                $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                    $arg_value,
+                    $statements_analyzer->getFQCLN(),
+                    $statements_analyzer,
+                    $statements_analyzer->getCodebase()
+                );
+
+                $simplified_clauses = \Psalm\Type\Algebra::simplifyCNF(
+                    array_merge($context->clauses, $assert_clauses)
+                );
+
+                $assert_type_assertions = \Psalm\Type\Algebra::getTruthsFromFormula(
+                    $simplified_clauses
+                );
+
+                $type_assertions = array_merge($type_assertions, $assert_type_assertions);
             }
         }
 

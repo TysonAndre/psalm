@@ -1022,7 +1022,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 }
 
                 if (strtolower($stmt->name->name) === 'class') {
-                    return Type::getClassString($const_fq_class_name);
+                    return Type::getLiteralClassString($const_fq_class_name);
                 }
 
                 if ($existing_class_constants === null) {
@@ -1097,6 +1097,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                             $item_key_type = Type::combineUnionTypes(
                                 $single_item_key_type,
                                 $item_key_type,
+                                $codebase,
                                 false,
                                 true,
                                 30
@@ -1167,6 +1168,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     $item_value_type = Type::combineUnionTypes(
                         $single_item_value_type,
                         $item_value_type,
+                        $codebase,
                         false,
                         true,
                         30

@@ -7,7 +7,9 @@ use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Config\IssueHandler;
 use Psalm\Config\ProjectFileFilter;
 use Psalm\Exception\ConfigException;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Scanner\FileScanner;
+use Psalm\Plugin\Hook;
 use Psalm\PluginRegistrationSocket;
 use SimpleXMLElement;
 
@@ -113,12 +115,12 @@ class Config
     private $file_extensions = ['php'];
 
     /**
-     * @var array<string, class-string>
+     * @var array<string, class-string<FileScanner>>
      */
     private $filetype_scanners = [];
 
     /**
-     * @var array<string, class-string>
+     * @var array<string, class-string<FileAnalyzer>>
      */
     private $filetype_analyzers = [];
 
@@ -252,42 +254,42 @@ class Config
     /**
      * Static methods to be called after method checks have completed
      *
-     * @var class-string[]
+     * @var class-string<Hook\AfterMethodCallAnalysisInterface>[]
      */
     public $after_method_checks = [];
 
     /**
      * Static methods to be called after function checks have completed
      *
-     * @var class-string[]
+     * @var class-string<Hook\AfterFunctionCallAnalysisInterface>[]
      */
     public $after_function_checks = [];
 
     /**
      * Static methods to be called after expression checks have completed
      *
-     * @var class-string[]
+     * @var class-string<Hook\AfterExpressionAnalysisInterface>[]
      */
     public $after_expression_checks = [];
 
     /**
      * Static methods to be called after statement checks have completed
      *
-     * @var class-string[]
+     * @var class-string<Hook\AfterStatementAnalysisInterface>[]
      */
     public $after_statement_checks = [];
 
     /**
      * Static methods to be called after classlike exists checks have completed
      *
-     * @var class-string[]
+     * @var class-string<Hook\AfterClassLikeExistenceCheckInterface>[]
      */
     public $after_classlike_exists_checks = [];
 
     /**
      * Static methods to be called after classlikes have been scanned
      *
-     * @var class-string[]
+     * @var class-string<Hook\AfterClassLikeVisitInterface>[]
      */
     public $after_visit_classlikes = [];
 
@@ -502,7 +504,13 @@ class Config
         }
 
         if (isset($config_xml['autoloader'])) {
-            $config->autoloader = (string) $config_xml['autoloader'];
+            $autoloader_path = $config->base_dir . DIRECTORY_SEPARATOR . $config_xml['autoloader'];
+
+            if (!file_exists($autoloader_path)) {
+                throw new ConfigException('Cannot locate config schema');
+            }
+
+            $config->autoloader = realpath($autoloader_path);
         }
 
         if (isset($config_xml['cacheDirectory'])) {
@@ -857,15 +865,11 @@ class Config
             $fq_class_name = $this->getPluginClassForPath(
                 $codebase,
                 $path,
-                \Psalm\Internal\Scanner\FileScanner::class
+                FileScanner::class
             );
 
             /** @psalm-suppress UnresolvableInclude */
             require_once($path);
-
-            if (!class_exists($fq_class_name)) {
-                throw new \UnexpectedValueException($fq_class_name . ' is expected in ' . $path);
-            }
 
             $this->filetype_scanners[$extension] = $fq_class_name;
         }
@@ -874,15 +878,11 @@ class Config
             $fq_class_name = $this->getPluginClassForPath(
                 $codebase,
                 $path,
-                \Psalm\Internal\Analyzer\FileAnalyzer::class
+                FileAnalyzer::class
             );
 
             /** @psalm-suppress UnresolvableInclude */
             require_once($path);
-
-            if (!class_exists($fq_class_name)) {
-                throw new \UnexpectedValueException($fq_class_name . ' is expected in ' . $path);
-            }
 
             $this->filetype_analyzers[$extension] = $fq_class_name;
         }
@@ -898,10 +898,12 @@ class Config
     }
 
     /**
-     * @param  string $path
-     * @param  string $must_extend
+     * @template T
      *
-     * @return string
+     * @param  string $path
+     * @param  T::class $must_extend
+     *
+     * @return class-string<T>
      */
     private function getPluginClassForPath(Codebase $codebase, $path, $must_extend)
     {
@@ -1133,7 +1135,7 @@ class Config
     }
 
     /**
-     * @return array<string, class-string>
+     * @return array<string, class-string<FileScanner>>
      */
     public function getFiletypeScanners()
     {
@@ -1141,7 +1143,7 @@ class Config
     }
 
     /**
-     * @return array<string, class-string>
+     * @return array<string, class-string<FileAnalyzer>>
      */
     public function getFiletypeAnalyzers()
     {
@@ -1342,7 +1344,7 @@ class Config
 
         if ($this->autoloader) {
             // do this in a separate method so scope does not leak
-            $this->requireAutoloader($this->base_dir . DIRECTORY_SEPARATOR . $this->autoloader);
+            $this->requireAutoloader($this->autoloader);
 
             $this->collectPredefinedConstants();
             $this->collectPredefinedFunctions();

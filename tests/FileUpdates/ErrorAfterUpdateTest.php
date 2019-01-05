@@ -79,13 +79,6 @@ class ErrorAfterUpdateTest extends \Psalm\Tests\TestCase
 
             $codebase->reloadFiles($this->project_analyzer, array_keys($files));
 
-            foreach ($files as $file_path => $contents) {
-                $this->file_provider->registerFile($file_path, $contents);
-                $codebase->addFilesToAnalyze([$file_path => $file_path]);
-            }
-
-            $codebase->scanFiles();
-
             $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
         }
 
@@ -93,16 +86,14 @@ class ErrorAfterUpdateTest extends \Psalm\Tests\TestCase
             $this->file_provider->registerFile($file_path, $contents);
         }
 
+        $this->expectException('\Psalm\Exception\CodeException');
+        $this->expectExceptionMessageRegexp('/\b' . preg_quote($error_message, '/') . '\b/');
+
         $codebase->reloadFiles($this->project_analyzer, array_keys($end_files));
 
         foreach ($end_files as $file_path => $_) {
             $codebase->addFilesToAnalyze([$file_path => $file_path]);
         }
-
-        $codebase->scanFiles();
-
-        $this->expectException('\Psalm\Exception\CodeException');
-        $this->expectExceptionMessageRegexp('/\b' . preg_quote($error_message, '/') . '\b/');
 
         $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
     }
@@ -555,6 +546,46 @@ class ErrorAfterUpdateTest extends \Psalm\Tests\TestCase
                     ],
                 ],
                 'error_message' => 'PropertyNotSetInConstructor'
+            ],
+            'duplicateClass' => [
+                'file_stages' => [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {}',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {}
+                            class A {}',
+                    ],
+                ],
+                'error_message' => 'DuplicateClass'
+            ],
+            'duplicateMethod' => [
+                'file_stages' => [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                public function foo() : void {}
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                public function foo() : void {}
+                                public function foo() : void {}
+                            }',
+                    ],
+                ],
+                'error_message' => 'DuplicateMethod'
             ],
         ];
     }

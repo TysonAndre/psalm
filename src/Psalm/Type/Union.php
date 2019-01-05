@@ -255,6 +255,18 @@ class Union
     }
 
     /**
+     * @return string
+     */
+    public function getAssertionString()
+    {
+        foreach ($this->types as $type) {
+            return $type->getAssertionString();
+        }
+
+        throw new \UnexpectedValueException('Should only be one type per assertion');
+    }
+
+    /**
      * @param  string|null   $namespace
      * @param  array<string> $aliased_classes
      * @param  string|null   $this_class
@@ -469,6 +481,14 @@ class Union
     /**
      * @return bool
      */
+    public function hasObject()
+    {
+        return isset($this->types['object']);
+    }
+
+    /**
+     * @return bool
+     */
     public function hasObjectType()
     {
         foreach ($this->types as $type) {
@@ -512,6 +532,7 @@ class Union
         return isset($this->types['string'])
             || isset($this->types['class-string'])
             || isset($this->types['numeric-string'])
+            || isset($this->types['array-key'])
             || $this->literal_string_types;
     }
 
@@ -520,7 +541,15 @@ class Union
      */
     public function hasInt()
     {
-        return isset($this->types['int']) || $this->literal_int_types;
+        return isset($this->types['int']) || isset($this->types['array-key']) || $this->literal_int_types;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasArrayKey()
+    {
+        return isset($this->types['array-key']);
     }
 
     /**
@@ -648,6 +677,14 @@ class Union
     /**
      * @return bool
      */
+    public function isNever()
+    {
+        return isset($this->types['never-return']);
+    }
+
+    /**
+     * @return bool
+     */
     public function isGenerator()
     {
         return count($this->types) === 1 && isset($this->types['Generator']);
@@ -698,7 +735,7 @@ class Union
                         && !isset($this->types['array'])
                     ) {
                         $this->removeType('iterable');
-                        $this->types['array'] = new Type\Atomic\TArray([Type::getMixed(), Type::getMixed()]);
+                        $this->types['array'] = new Type\Atomic\TArray([Type::getArrayKey(), Type::getMixed()]);
                     }
 
                     if ($old_type_part instanceof Type\Atomic\TArray
@@ -706,6 +743,20 @@ class Union
                     ) {
                         $this->removeType('iterable');
                         $this->types['traversable'] = new Type\Atomic\TNamedObject('Traversable');
+                    }
+                } elseif (isset($this->types['array-key'])) {
+                    if ($old_type_part instanceof Type\Atomic\TString
+                        && !isset($this->types['int'])
+                    ) {
+                        $this->removeType('array-key');
+                        $this->types['int'] = new Type\Atomic\TInt();
+                    }
+
+                    if ($old_type_part instanceof Type\Atomic\TInt
+                        && !isset($this->types['string'])
+                    ) {
+                        $this->removeType('array-key');
+                        $this->types['string'] = new Type\Atomic\TString();
                     }
                 }
             }
@@ -750,9 +801,11 @@ class Union
                 && isset($template_types[$key])
             ) {
                 if ($template_types[$key]->getId() !== $key) {
-                    $keys_to_unset[] = $key;
                     $first_atomic_type = array_values($template_types[$key]->getTypes())[0];
                     $this->types[$first_atomic_type->getKey()] = clone $first_atomic_type;
+                    if ($first_atomic_type->getKey() !== $key) {
+                        $keys_to_unset[] = $key;
+                    }
 
                     if ($input_type) {
                         $generic_params[$key] = clone $input_type;
@@ -763,7 +816,7 @@ class Union
                 && isset($template_types[$atomic_type->param_name])
             ) {
                 $keys_to_unset[] = $key;
-                $class_string = new Type\Atomic\TClassString();
+                $class_string = new Type\Atomic\TClassString($atomic_type->as, $atomic_type->as_type);
                 $this->types[$class_string->getKey()] = $class_string;
 
                 if ($input_type) {
@@ -771,7 +824,9 @@ class Union
 
                     foreach ($input_type->getTypes() as $input_atomic_type) {
                         if ($input_atomic_type instanceof Type\Atomic\TLiteralClassString) {
-                            $valid_input_atomic_types[] = new Type\Atomic\TNamedObject($input_atomic_type->value);
+                            $valid_input_atomic_types[] = new Type\Atomic\TNamedObject(
+                                $input_atomic_type->value
+                            );
                         }
                     }
 
@@ -833,6 +888,10 @@ class Union
             unset($this->types[$key]);
         }
 
+        if (!$this->types) {
+            throw new \UnexpectedValueException('Cannot remove all keys');
+        }
+
         $this->id = null;
     }
 
@@ -862,6 +921,25 @@ class Union
                     }
 
                     $new_types[$template_type_part->getKey()] = $template_type_part;
+                }
+            } elseif ($atomic_type instanceof Type\Atomic\TGenericParamClass
+                && isset($template_types[$atomic_type->param_name])
+            ) {
+                $keys_to_unset[] = $key;
+                $template_type = clone $template_types[$atomic_type->param_name];
+
+                foreach ($template_type->types as $template_type_part) {
+                    if ($template_type_part instanceof Type\Atomic\TMixed) {
+                        $is_mixed = true;
+
+                        $unknown_class_string = new Type\Atomic\TClassString();
+
+                        $new_types[$unknown_class_string->getKey()] = $unknown_class_string;
+                    } elseif ($template_type_part instanceof Type\Atomic\TNamedObject) {
+                        $literal_class_string = new Type\Atomic\TLiteralClassString($template_type_part->value);
+
+                        $new_types[$literal_class_string->getKey()] = $literal_class_string;
+                    }
                 }
             } else {
                 $atomic_type->replaceTemplateTypesWithArgTypes($template_types);
@@ -1027,7 +1105,7 @@ class Union
      * @param  array<string, bool> $phantom_classes
      * @param  bool             $inferred
      *
-     * @return void
+     * @return null|false
      */
     public function check(
         StatementsSource $source,
@@ -1040,11 +1118,25 @@ class Union
             return;
         }
 
+        $all_good = true;
+
         foreach ($this->types as $atomic_type) {
-            $atomic_type->check($source, $code_location, $suppressed_issues, $phantom_classes, $inferred);
+            if ($atomic_type->check(
+                $source,
+                $code_location,
+                $suppressed_issues,
+                $phantom_classes,
+                $inferred
+            ) === false) {
+                $all_good = false;
+            }
         }
 
-        $this->checked = true;
+        if (!$all_good) {
+            return false;
+        } else {
+            $this->checked = true;
+        }
     }
 
     /**

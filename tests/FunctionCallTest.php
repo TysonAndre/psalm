@@ -176,7 +176,7 @@ class FunctionCallTest extends TestCase
                     $b = ["a" => 5];
                     $a = array_keys($b);',
                 'assertions' => [
-                    '$a' => 'array<int, mixed>',
+                    '$a' => 'array<int, array-key>',
                 ],
                 'error_levels' => ['MixedArgument'],
             ],
@@ -616,7 +616,7 @@ class FunctionCallTest extends TestCase
                     $a = getenv();
                     $b = getenv("some_key");',
                 'assertions' => [
-                    '$a' => 'array<mixed, string>',
+                    '$a' => 'array<array-key, string>',
                     '$b' => 'string|false',
                 ],
             ],
@@ -625,7 +625,7 @@ class FunctionCallTest extends TestCase
                     function expectsInt(int $a) : void {}
 
                     /**
-                     * @param array<mixed, array{item:int}> $list
+                     * @param array<array-key, array{item:int}> $list
                      */
                     function test(array $list) : void
                     {
@@ -860,7 +860,9 @@ class FunctionCallTest extends TestCase
                         if (class_exists($s)) {
                             new $s();
                         }
-                    }'
+                    }',
+                'assertions' => [],
+                'error_levels' => ['MixedMethodCall'],
             ],
             'next' => [
                 '<?php
@@ -905,14 +907,14 @@ class FunctionCallTest extends TestCase
                     $h = array_column(makeUnionArray(), 0);
                 ',
                 'assertions' => [
-                    '$a' => 'array<mixed, int>',
-                    '$b' => 'array<mixed, int>',
+                    '$a' => 'array<array-key, int>',
+                    '$b' => 'array<array-key, int>',
                     '$c' => 'array<string, int>',
-                    '$d' => 'array<mixed, mixed>',
-                    '$e' => 'array<mixed, mixed>',
-                    '$f' => 'array<mixed, mixed>',
-                    '$g' => 'array<mixed, string>',
-                    '$h' => 'array<mixed, mixed>',
+                    '$d' => 'array<array-key, mixed>',
+                    '$e' => 'array<array-key, mixed>',
+                    '$f' => 'array<array-key, mixed>',
+                    '$g' => 'array<array-key, string>',
+                    '$h' => 'array<array-key, mixed>',
                 ],
             ],
             'strtrWithPossiblyFalseFirstArg' => [
@@ -1128,6 +1130,8 @@ class FunctionCallTest extends TestCase
                     $b = get_parent_class(new A());
                     if ($b === false) {}
                     $c = new $b();',
+                'assertions' => [],
+                'error_levels' => ['MixedMethodCall'],
             ],
             'arraySplice' => [
                 '<?php
@@ -1213,10 +1217,10 @@ class FunctionCallTest extends TestCase
                         return $filtered;
                     }
                     function filterNullableInt(string $s) : ?int {
-                        return filter_var($s, FILTER_VALIDATE_INT, ["default" => null]);
+                        return filter_var($s, FILTER_VALIDATE_INT, ["options" => ["default" => null]]);
                     }
                     function filterIntWithDefault(string $s) : int {
-                        return filter_var($s, FILTER_VALIDATE_INT, ["default" => 5]);
+                        return filter_var($s, FILTER_VALIDATE_INT, ["options" => ["default" => 5]]);
                     }
                     function filterBool(string $s) : bool {
                         return filter_var($s, FILTER_VALIDATE_BOOLEAN);
@@ -1235,8 +1239,50 @@ class FunctionCallTest extends TestCase
                         return $filtered;
                     }
                     function filterFloatWithDefault(string $s) : float {
-                        return filter_var($s, FILTER_VALIDATE_FLOAT, ["default" => 5.0]);
+                        return filter_var($s, FILTER_VALIDATE_FLOAT, ["options" => ["default" => 5.0]]);
                     }',
+            ],
+            'callVariableVar' => [
+                '<?php
+                    class Foo
+                    {
+                        public static function someInt(): int
+                        {
+                            return 1;
+                        }
+                    }
+
+                    /**
+                     * @return int
+                     */
+                    function makeInt()
+                    {
+                        $fooClass = Foo::class;
+                        return $fooClass::someInt();
+                    }',
+            ],
+            'expectsIterable' => [
+                '<?php
+                    function foo(iterable $i) : void {}
+                    function bar(array $a) : void {
+                        foo($a);
+                    }',
+            ],
+            'SKIPPED-getTypeHasValues' => [
+                '<?php
+                    /**
+                     * @param mixed $maybe
+                     */
+                    function matchesTypes($maybe) : void {
+                        $t = gettype($maybe);
+                        if ($t === "object") {}
+                    }'
+            ],
+            'functionResolutionInNamespace' => [
+                '<?php
+                    namespace Foo;
+                    function sort(int $_) : void {}
+                    sort(5);'
             ],
         ];
     }
@@ -1592,7 +1638,7 @@ class FunctionCallTest extends TestCase
                     function expectsInt(int $a) : void {}
 
                     /**
-                     * @param array<mixed, array{item:int}> $list
+                     * @param array<array-key, array{item:int}> $list
                      */
                     function test(array $list) : void
                     {

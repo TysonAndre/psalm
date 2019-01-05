@@ -2,6 +2,7 @@
 namespace Psalm\Type\Atomic;
 
 use Psalm\Type\Atomic;
+use Psalm\Type\Union;
 
 class TGenericParamClass extends TClassString
 {
@@ -13,15 +14,21 @@ class TGenericParamClass extends TClassString
     /**
      * @var string
      */
-    public $extends;
+    public $as;
+
+    /**
+     * @var ?Union
+     */
+    public $as_type;
 
     /**
      * @param string $param_name
      */
-    public function __construct($param_name, string $extends = 'object')
+    public function __construct(string $param_name, string $as = 'object', Union $as_type = null)
     {
         $this->param_name = $param_name;
-        $this->extends = $extends;
+        $this->as = $as;
+        $this->as_type = $as_type;
     }
 
     /**

@@ -308,6 +308,69 @@ class ClassTest extends TestCase
                         }
                     }',
             ],
+            'noCrashWhenIgnoringUndefinedClass' => [
+                '<?php
+                    class A extends B {
+                        public function foo() {
+                            parent::bar();
+                        }
+                    }',
+                'assertions' => [],
+                'error_levels' => [
+                    'UndefinedClass'
+                ],
+            ],
+            'noCrashWhenIgnoringUndefinedParam' => [
+                '<?php
+                    function bar(iterable $_i) : void {}
+                    function foo(C $c) : void {
+                        bar($c);
+                    }',
+                'assertions' => [],
+                'error_levels' => [
+                    'UndefinedClass',
+                    'InvalidArgument',
+                ],
+            ],
+            'noCrashWhenIgnoringUndefinedReturnIterableArg' => [
+                '<?php
+                    function bar(iterable $_i) : void {}
+                    function foo() : D {
+                        return new D();
+                    }
+                    bar(foo());',
+                'assertions' => [],
+                'error_levels' => [
+                    'UndefinedClass',
+                    'MixedInferredReturnType',
+                    'InvalidArgument',
+                ],
+            ],
+            'noCrashWhenIgnoringUndefinedReturnClassArg' => [
+                '<?php
+                    class Exists {}
+                    function bar(Exists $_i) : void {}
+                    function foo() : D {
+                        return new D();
+                    }
+                    bar(foo());',
+                'assertions' => [],
+                'error_levels' => [
+                    'UndefinedClass',
+                    'MixedInferredReturnType',
+                    'InvalidArgument',
+                ],
+            ],
+            'allowAbstractInstantiationOnPossibleChild' => [
+                '<?php
+                    abstract class A {}
+
+                    function foo(string $a_class) : void {
+                        if (is_a($a_class, A::class, true)) {
+                            new $a_class();
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -495,6 +558,17 @@ class ClassTest extends TestCase
                 '<?php
                     class A extends A {}',
                 'error_message' => 'CircularReference',
+            ],
+            'preventAbstractInstantiationDefiniteClasss' => [
+                '<?php
+                    abstract class A {}
+
+                    function foo(string $a_class) : void {
+                        if ($a_class === A::class) {
+                            new $a_class();
+                        }
+                    }',
+                'error_message' => 'AbstractInstantiation',
             ],
         ];
     }

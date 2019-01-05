@@ -19,6 +19,8 @@ use Psalm\Issue\PossiblyNullFunctionCall;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TCallableObject;
+use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
@@ -117,6 +119,11 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     } elseif ($var_type_part instanceof TMixed || $var_type_part instanceof TGenericParam) {
                         $has_valid_function_call_type = true;
                         // @todo maybe emit issue here
+                    } elseif ($var_type_part instanceof TCallableObject
+                        || $var_type_part instanceof TCallableString
+                    ) {
+                        // this is fine
+                        $has_valid_function_call_type = true;
                     } elseif (($var_type_part instanceof TNamedObject && $var_type_part->value === 'Closure')) {
                         // this is fine
                         $has_valid_function_call_type = true;
@@ -193,10 +200,39 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 $stmt->inferredType = Type::getMixed();
             }
         } else {
-            $function_id = implode('\\', $stmt->name->parts);
+            $original_function_id = implode('\\', $stmt->name->parts);
 
-            $in_call_map = CallMap::inCallMap($function_id);
-            $is_stubbed = $codebase_functions->hasStubbedFunction($function_id);
+            if (!$stmt->name instanceof PhpParser\Node\Name\FullyQualified) {
+                $function_id = $codebase_functions->getFullyQualifiedFunctionNameFromString(
+                    $original_function_id,
+                    $statements_analyzer
+                );
+            } else {
+                $function_id = $original_function_id;
+            }
+
+            $namespaced_function_exists = $codebase_functions->functionExists(
+                $statements_analyzer,
+                strtolower($function_id)
+            );
+
+            if (!$namespaced_function_exists
+                && !$stmt->name instanceof PhpParser\Node\Name\FullyQualified
+            ) {
+                $in_call_map = CallMap::inCallMap($original_function_id);
+                $is_stubbed = $codebase_functions->hasStubbedFunction($original_function_id);
+
+                if ($is_stubbed || $in_call_map) {
+                    $function_id = $original_function_id;
+                }
+            } else {
+                $in_call_map = CallMap::inCallMap($function_id);
+                $is_stubbed = $codebase_functions->hasStubbedFunction($function_id);
+            }
+
+            if ($is_stubbed || $in_call_map || $namespaced_function_exists) {
+                $function_exists = true;
+            }
 
             $is_predefined = true;
 
@@ -205,17 +241,9 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
             if (!$in_call_map) {
                 $predefined_functions = $config->getPredefinedFunctions();
-                $is_predefined = isset($predefined_functions[$function_id]);
-            }
+                $is_predefined = isset($predefined_functions[strtolower($original_function_id)])
+                    || isset($predefined_functions[strtolower($function_id)]);
 
-            if (!$in_call_map && !$stmt->name instanceof PhpParser\Node\Name\FullyQualified) {
-                $function_id = $codebase_functions->getFullyQualifiedFunctionNameFromString(
-                    $function_id,
-                    $statements_analyzer
-                );
-            }
-
-            if (!$in_call_map) {
                 if ($context->check_functions) {
                     if (self::checkFunctionExists(
                         $statements_analyzer,
@@ -226,18 +254,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     ) {
                         return false;
                     }
-                } else {
-                    $function_id = self::getExistingFunctionId(
-                        $statements_analyzer,
-                        $function_id,
-                        $is_maybe_root_function
-                    );
                 }
-
-                $function_exists = $is_stubbed || $codebase_functions->functionExists(
-                    $statements_analyzer,
-                    strtolower($function_id)
-                );
             } else {
                 $function_exists = true;
             }
@@ -349,13 +366,13 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                                         $function_id,
                                         $context,
                                         $statements_analyzer->getSource(),
+                                        $codebase,
                                         $file_manipulations,
                                         $return_type
                                     );
                                 }
 
                                 if ($file_manipulations) {
-                                    /** @psalm-suppress MixedTypeCoercion */
                                     FileManipulationBuffer::add(
                                         $statements_analyzer->getFilePath(),
                                         $file_manipulations
@@ -363,6 +380,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                                 }
                             }
 
+                            /** @var Type\Union $return_type */
                             $stmt->inferredType = $return_type;
                             $return_type->by_ref = $function_storage->returns_by_ref;
 
@@ -460,12 +478,18 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
         ) {
             $var = $stmt->args[0]->value;
 
-            if ($var instanceof PhpParser\Node\Expr\Variable && is_string($var->name)) {
-                $atomic_type = $stmt->name->parts === ['get_class']
-                    ? new Type\Atomic\GetClassT('$' . $var->name)
-                    : new Type\Atomic\GetTypeT('$' . $var->name);
+            if ($var instanceof PhpParser\Node\Expr\Variable
+                && is_string($var->name)
+            ) {
+                $var_id = '$' . $var->name;
 
-                $stmt->inferredType = new Type\Union([$atomic_type]);
+                if (isset($context->vars_in_scope[$var_id])) {
+                    $atomic_type = $stmt->name->parts === ['get_class']
+                        ? new Type\Atomic\GetClassT($var_id, $context->vars_in_scope[$var_id])
+                        : new Type\Atomic\GetTypeT($var_id);
+
+                    $stmt->inferredType = new Type\Union([$atomic_type]);
+                }
             }
         }
 
@@ -488,7 +512,6 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     $function_storage->assertions,
                     $stmt->args,
                     $generic_params ?: [],
-                    $function_storage->template_typeof_params ?: [],
                     $context,
                     $statements_analyzer
                 );

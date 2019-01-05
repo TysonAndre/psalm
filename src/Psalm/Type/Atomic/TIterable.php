@@ -1,22 +1,18 @@
 <?php
 namespace Psalm\Type\Atomic;
 
-class TMixed extends \Psalm\Type\Atomic
+class TIterable extends \Psalm\Type\Atomic
 {
-    /** @var bool */
-    public $from_loop_isset = false;
+    use HasIntersectionTrait;
 
     /**
-     * @param bool $from_loop_isset
+     * @var string
      */
-    public function __construct($from_loop_isset = false)
-    {
-        $this->from_loop_isset = $from_loop_isset;
-    }
+    public $value = 'iterable';
 
     public function __toString()
     {
-        return 'mixed';
+        return 'iterable';
     }
 
     /**
@@ -24,7 +20,15 @@ class TMixed extends \Psalm\Type\Atomic
      */
     public function getKey()
     {
-        return 'mixed';
+        return 'iterable';
+    }
+
+    /**
+     * @return bool
+     */
+    public function canBeFullyExpressedInPhp()
+    {
+        return true;
     }
 
     /**
@@ -34,7 +38,7 @@ class TMixed extends \Psalm\Type\Atomic
      * @param  int           $php_major_version
      * @param  int           $php_minor_version
      *
-     * @return null|string
+     * @return string|null
      */
     public function toPhpString(
         $namespace,
@@ -43,19 +47,6 @@ class TMixed extends \Psalm\Type\Atomic
         $php_major_version,
         $php_minor_version
     ) {
-        return null;
-    }
-
-    public function canBeFullyExpressedInPhp()
-    {
-        return false;
-    }
-
-    /**
-     * @return string
-     */
-    public function getAssertionString()
-    {
-        return 'mixed';
+        return $php_major_version >= 7 && $php_minor_version >= 1 ? 'iterable' : null;
     }
 }

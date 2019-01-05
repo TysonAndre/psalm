@@ -535,7 +535,7 @@ class Scanner
 
     /**
      * @param  string $file_path
-     * @param  array<string, class-string>  $filetype_scanners
+     * @param  array<string, class-string<FileScanner>>  $filetype_scanners
      * @param  bool   $will_analyze
      *
      * @return FileScanner
@@ -625,7 +625,7 @@ class Scanner
 
     /**
      * @param  string $file_path
-     * @param  array<string, class-string>  $filetype_scanners
+     * @param  array<string, class-string<FileScanner>>  $filetype_scanners
      * @param  bool   $will_analyze
      *
      * @return FileScanner
@@ -642,7 +642,6 @@ class Scanner
         $file_name = $this->config->shortenFileName($file_path);
 
         if (isset($filetype_scanners[$extension])) {
-            /** @var FileScanner */
             return new $filetype_scanners[$extension]($file_path, $file_name, $will_analyze);
         }
 
@@ -726,6 +725,7 @@ class Scanner
 
         if (strtolower($new_fq_class_name) !== strtolower($fq_class_name)) {
             $classlikes->addClassAlias($new_fq_class_name, strtolower($fq_class_name));
+            $fq_class_name_lc = strtolower($new_fq_class_name);
         }
 
         $fq_class_name = $new_fq_class_name;

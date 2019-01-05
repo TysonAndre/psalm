@@ -1,22 +1,11 @@
 <?php
 namespace Psalm\Type\Atomic;
 
-class TMixed extends \Psalm\Type\Atomic
+class TArrayKey extends Scalar
 {
-    /** @var bool */
-    public $from_loop_isset = false;
-
-    /**
-     * @param bool $from_loop_isset
-     */
-    public function __construct($from_loop_isset = false)
-    {
-        $this->from_loop_isset = $from_loop_isset;
-    }
-
     public function __toString()
     {
-        return 'mixed';
+        return 'array-key';
     }
 
     /**
@@ -24,7 +13,7 @@ class TMixed extends \Psalm\Type\Atomic
      */
     public function getKey()
     {
-        return 'mixed';
+        return 'array-key';
     }
 
     /**
@@ -49,13 +38,5 @@ class TMixed extends \Psalm\Type\Atomic
     public function canBeFullyExpressedInPhp()
     {
         return false;
-    }
-
-    /**
-     * @return string
-     */
-    public function getAssertionString()
-    {
-        return 'mixed';
     }
 }
