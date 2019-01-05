@@ -163,6 +163,7 @@ return [
         'DuplicateArrayKeyPlugin',
         'PregRegexCheckerPlugin',
         'PrintfCheckerPlugin',
+        'DuplicateExpressionPlugin',
     ],
 
 ];
