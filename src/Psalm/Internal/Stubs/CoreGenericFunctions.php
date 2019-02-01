@@ -113,6 +113,14 @@ function array_flip(array $arr) {}
 function key($arr) {}
 
 /**
+ * @psalm-template TValue
+ *
+ * @param TValue $value
+ * @return array<int, TValue>
+ */
+function array_fill( int $start_index, int $num, $value) : array {}
+
+/**
  * @psalm-template T
  *
  * @param mixed           $needle
@@ -121,3 +129,20 @@ function key($arr) {}
  * @return T|false
  */
 function array_search($needle, array $haystack, bool $strict = false) {}
+
+/**
+ * @template T
+ * @param array<mixed,T> $arr
+ * @param callable(T,T):int $callback
+ * @param-out array<int,T> $arr
+ */
+function usort(array &$arr, callable $callback): bool {}
+
+/**
+ * @psalm-template T
+ *
+ * @param array<string, T> $arr
+ * @return array<string, T>
+ */
+function array_change_key_case(array $arr) {}
+

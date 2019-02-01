@@ -322,6 +322,17 @@ class ClassStringTest extends TestCase
                         return $a::class;
                     }',
             ],
+            'returnGetCalledClassClassStringParameterized' => [
+                '<?php
+                    class A {
+                        /**
+                         * @return class-string<A> $s
+                         */
+                        function foo() : string {
+                            return get_called_class();
+                        }
+                    }',
+            ],
             'returnGetClassClassStringParameterized' => [
                 '<?php
                     class A {}
@@ -331,6 +342,19 @@ class ClassStringTest extends TestCase
                      */
                     function foo(A $a) : string {
                         return get_class($a);
+                    }',
+            ],
+            'returnGetParentClassClassStringParameterizedNoArg' => [
+                '<?php
+                    class A {}
+
+                    class B extends A {
+                        /**
+                         * @return class-string<A> $s
+                         */
+                        function foo() : string {
+                            return get_parent_class();
+                        }
                     }',
             ],
             'createClassOfTypeFromString' => [
@@ -351,6 +375,115 @@ class ClassStringTest extends TestCase
 
                         return $s;
                     }',
+            ],
+            'createClassOfTypeFromStringUsingIsSubclassOf' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string<A> $s
+                     */
+                    function foo(string $s) : string {
+                        if (!class_exists($s)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        if (!is_subclass_of($s, A::class)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        return $s;
+                    }',
+            ],
+            'createClassOfTypeFromStringUsingIsSubclassOfString' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @return class-string<A> $s
+                     */
+                    function foo(string $s) : string {
+                        if (!class_exists($s)) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        if (!is_subclass_of($s, "\A")) {
+                            throw new \UnexpectedValueException("bad");
+                        }
+
+                        return $s;
+                    }',
+            ],
+            'checkSubclassOfAbstract' => [
+                '<?php
+                    interface Foo {
+                        public static function Bar() : bool;
+                    };
+
+                    class FooClass implements Foo {
+                        public static function Bar() : bool {
+                            return true;
+                        }
+                    }
+
+                    function foo(string $className) : bool {
+                        if (is_subclass_of($className, Foo::class, true)) {
+                            return $className::Bar();
+                        }
+
+                        return false;
+                    }',
+            ],
+            'explicitIntersectionClassString' => [
+                '<?php
+                    interface Foo {
+                        public static function one() : void;
+                    };
+
+                    interface Bar {
+                        public static function two() : void;
+                    }
+
+                    /**
+                     * @param class-string<Foo&Bar> $className
+                     */
+                    function foo($className) : void {
+                        $className::one();
+                        $className::two();
+                    }'
+            ],
+            'implicitIntersectionClassString' => [
+                '<?php
+                    interface Foo {
+                        public static function one() : bool;
+                    };
+
+                    interface Bar {
+                        public static function two() : bool;
+                    }
+
+                    /**
+                     * @param class-string<Bar> $className
+                     */
+                    function foo($className) : void {
+                        $className::two();
+
+                        if (is_subclass_of($className, Foo::class, true)) {
+                            $className::one();
+                            $className::two();
+                        }
+                    }'
+            ],
+            'instanceofClassString' => [
+                '<?php
+                    function f(Exception $e): ?InvalidArgumentException {
+                        $type = InvalidArgumentException::class;
+                        if ($e instanceof $type) {
+                            return $e;
+                        } else {
+                            return null;
+                        }
+                    }'
             ],
         ];
     }

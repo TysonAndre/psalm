@@ -250,7 +250,7 @@ class MethodSignatureTest extends TestCase
                         /** @var int */
                         private $id = 1;
 
-                        public function unserialize($serialized) : void
+                        public function unserialize(string $serialized) : void
                         {
                             [
                                 $this->id,
@@ -347,6 +347,52 @@ class MethodSignatureTest extends TestCase
                     class C implements I {
                         public function foo(I $i) : I {
                             return new C();
+                        }
+                    }'
+            ],
+            'allowInterfaceImplementation' => [
+                '<?php
+                    abstract class A {
+                        /** @return static */
+                        public function foo() {
+                            return $this;
+                        }
+                    }
+
+                    interface I {
+                        /** @return I */
+                        public function foo();
+                    }
+
+                    class C extends A implements I {}',
+            ],
+            'enforceParameterInheritanceWithInheritDocAndParam' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    class X {
+                        /**
+                         * @param B $class
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    class Y extends X {
+                        /**
+                         * @inheritdoc
+                         * @param A $class
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    (new Y())->boo(new A());',
+            ],
+            'allowMixedExtensionOfIteratorAggregate' => [
+                '<?php
+                    class C implements IteratorAggregate {
+                        public function getIterator(): Iterator {
+                            return new ArrayIterator([]);
                         }
                     }'
             ],
@@ -530,7 +576,25 @@ class MethodSignatureTest extends TestCase
                     class B extends A {
                         use T;
                     }',
-                'error_message' => 'MethodSignatureMismatch',
+                'error_message' => 'ImplementedReturnTypeMismatch',
+            ],
+            'abstractTraitMethodWithDifferentReturnType' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    trait T {
+                        abstract public function foo() : A;
+                    }
+
+                    class C {
+                        use T;
+
+                        public function foo() : B{
+                            return new B();
+                        }
+                    }',
+                'error_message' => 'ImplementedReturnTypeMismatch'
             ],
             'mustOmitReturnType' => [
                 '<?php
@@ -584,6 +648,90 @@ class MethodSignatureTest extends TestCase
                         public function __construct(bool $foo) {}
                     }',
                 'error_message' => 'MethodSignatureMismatch',
+            ],
+            'enforceParameterInheritanceWithInheritDoc' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    class X {
+                        /**
+                         * @param B $class
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    class Y extends X {
+                        /**
+                         * @inheritdoc
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    (new Y())->boo(new A());',
+                'error_message' => 'TypeCoercion',
+            ],
+            'warnAboutMismatchingClassParamDoc' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    class X {
+                        /**
+                         * @param B $class
+                         */
+                        public function boo(A $class): void {}
+                    }',
+                'error_message' => 'MismatchingDocblockParamType',
+            ],
+            'warnAboutMismatchingInterfaceParamDoc' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    interface X {
+                        /**
+                         * @param B $class
+                         */
+                        public function boo(A $class): void {}
+                    }',
+                'error_message' => 'MismatchingDocblockParamType',
+            ],
+            'interfaceInsertDocblockTypes' => [
+                '<?php
+                    class Foo {}
+                    class Bar {}
+
+                    interface I {
+                      /** @return array<int, Foo> */
+                      public function getFoos() : array;
+                    }
+
+                    class A implements I {
+                        public function getFoos() : array {
+                            return [new Bar()];
+                        }
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
+            'classInsertDocblockTypesFromParent' => [
+                '<?php
+                    class Foo {}
+                    class Bar {}
+
+                    class B {
+                        /** @return array<int, Foo> */
+                        public function getFoos() : array {
+                            return [new Foo()];
+                        }
+                    }
+
+                    class A extends B {
+                        public function getFoos() : array {
+                            return [new Bar()];
+                        }
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

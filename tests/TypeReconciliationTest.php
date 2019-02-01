@@ -49,7 +49,8 @@ class TypeReconciliationTest extends TestCase
             Type::parseString($string),
             null,
             $this->statements_analyzer,
-            false
+            false,
+            []
         );
 
         $this->assertSame(
@@ -225,6 +226,9 @@ class TypeReconciliationTest extends TestCase
             'nullableClassString' => ['null', 'falsy', '?class-string'],
             'mixedOrNullNotFalsy' => ['non-empty-mixed', '!falsy', 'mixed|null'],
             'mixedOrNullFalsy' => ['null|empty-mixed', 'falsy', 'mixed|null'],
+            'nullableClassStringFalsy' => ['null', 'falsy', 'class-string<A>|null'],
+            'nullableClassStringEqualsNull' => ['null', '=null', 'class-string<A>|null'],
+            'nullableClassStringTruthy' => ['class-string<A>', '!falsy', 'class-string<A>|null'],
         ];
     }
 
@@ -406,9 +410,9 @@ class TypeReconciliationTest extends TestCase
                     '$a' => 'int',
                     '$b' => 'int',
                     '$c' => 'string',
-                    '$hours' => 'string|int|float',
-                    '$minutes' => 'string|int|float',
-                    '$seconds' => 'string|int|float',
+                    '$hours' => 'string|int|float|null',
+                    '$minutes' => 'string|int|float|null',
+                    '$seconds' => 'string|int|float|null',
                 ],
             ],
             'typeRefinementWithIsNumericOnIntOrFalse' => [
@@ -872,7 +876,7 @@ class TypeReconciliationTest extends TestCase
                         if ($i == 0.0) {}
                         if (0.0 == $i) {}
                     }
-                    function foo(float $i) : void {
+                    function bar(float $i) : void {
                         $i = $i / 100.0;
                         if ($i == "5") {}
                         if ("5" == $i) {}
@@ -883,7 +887,7 @@ class TypeReconciliationTest extends TestCase
                         if ($i == 0) {}
                         if (0 == $i) {}
                     }
-                    function foo(string $i) : void {
+                    function bat(string $i) : void {
                         if ($i == 5) {}
                         if (5 == $i) {}
                         if ($i == 5.0) {}
@@ -1140,6 +1144,21 @@ class TypeReconciliationTest extends TestCase
                 'assertions' => [
                     '$a' => 'A',
                 ]
+            ],
+            'isNumericCanBeScalar' => [
+                '<?php
+                    /** @param scalar $val */
+                    function foo($val) : void {
+                        if (!is_numeric($val)) {}
+                    }',
+            ],
+            'classStringCanBeFalsy' => [
+                '<?php
+                    /** @param class-string<stdClass>|null $val */
+                    function foo(?string $val) : void {
+                        if (!$val) {}
+                        if ($val) {}
+                    }',
             ],
         ];
     }

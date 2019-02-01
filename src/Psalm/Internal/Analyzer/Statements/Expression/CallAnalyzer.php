@@ -103,7 +103,45 @@ class CallAnalyzer
         ) {
             $method_id = $fq_class_name . '::' . strtolower($method_name);
 
-            $declaring_method_id = (string) $codebase->methods->getDeclaringMethodId($method_id);
+            $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+
+            if (!$declaring_method_id) {
+                if (isset($context->vars_in_scope['$this'])) {
+                    foreach ($context->vars_in_scope['$this']->getTypes() as $atomic_type) {
+                        if ($atomic_type instanceof TNamedObject) {
+                            $fq_class_name = $atomic_type->value;
+                            $method_id = $fq_class_name . '::' . strtolower($method_name);
+
+                            $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+
+                            if ($declaring_method_id) {
+                                break;
+                            }
+
+                            if (!$atomic_type->extra_types) {
+                                continue;
+                            }
+
+                            foreach ($atomic_type->extra_types as $intersection_type) {
+                                if ($intersection_type instanceof TNamedObject) {
+                                    $fq_class_name = $intersection_type->value;
+                                    $method_id = $fq_class_name . '::' . strtolower($method_name);
+
+                                    $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+
+                                    if ($declaring_method_id) {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!$declaring_method_id) {
+                    throw new \UnexpectedValueException('Could not find declaring method for ' . $method_id);
+                }
+            }
 
             if (isset($context->initialized_methods[$declaring_method_id])) {
                 return;
@@ -153,7 +191,7 @@ class CallAnalyzer
     /**
      * @param  string|null                      $method_id
      * @param  array<int, PhpParser\Node\Arg>   $args
-     * @param  array<string, Type\Union>|null   &$generic_params
+     * @param  array<string, array{Type\Union, ?string}>|null   &$generic_params
      * @param  Context                          $context
      * @param  CodeLocation                     $code_location
      * @param  StatementsAnalyzer                $statements_analyzer
@@ -482,6 +520,7 @@ class CallAnalyzer
                         || $arg->value instanceof PhpParser\Node\Expr\ConstFetch
                         || $arg->value instanceof PhpParser\Node\Expr\FuncCall
                         || $arg->value instanceof PhpParser\Node\Expr\MethodCall
+                        || $arg->value instanceof PhpParser\Node\Expr\Assign
                     )
                 ) {
                     $var_id = ExpressionAnalyzer::getVarId(
@@ -609,11 +648,13 @@ class CallAnalyzer
                     }
                 }
             } else {
-                // if it's a closure, we want to evaluate it anyway
+                // there are a bunch of things we want to evaluate anyway
                 if ($arg->value instanceof PhpParser\Node\Expr\Closure
                     || $arg->value instanceof PhpParser\Node\Expr\ConstFetch
                     || $arg->value instanceof PhpParser\Node\Expr\FuncCall
-                    || $arg->value instanceof PhpParser\Node\Expr\MethodCall) {
+                    || $arg->value instanceof PhpParser\Node\Expr\MethodCall
+                    || $arg->value instanceof PhpParser\Node\Expr\Assign
+                ) {
                     if (ExpressionAnalyzer::analyze($statements_analyzer, $arg->value, $context) === false) {
                         return false;
                     }
@@ -753,7 +794,7 @@ class CallAnalyzer
      * @param   array<int,FunctionLikeParameter>        $function_params
      * @param   FunctionLikeStorage|null                $function_storage
      * @param   ClassLikeStorage|null                   $class_storage
-     * @param   array<string, Type\Union>|null          $generic_params
+     * @param   array<string, array{Type\Union, ?string}>|null          $generic_params
      * @param   CodeLocation                            $code_location
      * @param   Context                                 $context
      *
@@ -799,6 +840,8 @@ class CallAnalyzer
             $cased_method_id = $function_storage->cased_name;
         }
 
+        $calling_class_storage = $class_storage;
+
         if ($method_id && strpos($method_id, '::')) {
             $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
@@ -827,17 +870,43 @@ class CallAnalyzer
         $template_types = null;
 
         if ($function_storage) {
-            $template_types = [];
+            $template_types = self::getTemplateTypesForFunction(
+                $function_storage,
+                $class_storage,
+                $calling_class_storage
+            );
 
-            if ($function_storage->template_types) {
-                $template_types = $function_storage->template_types;
-            }
-            if ($class_storage && $class_storage->template_types) {
-                $template_types = array_merge($template_types, $class_storage->template_types);
+            if ($template_types) {
+                foreach ($args as $argument_offset => $arg) {
+                    $function_param = count($function_params) > $argument_offset
+                        ? $function_params[$argument_offset]
+                        : ($last_param && $last_param->is_variadic ? $last_param : null);
+
+                    if (!$function_param
+                        || !$function_param->type
+                        || !isset($arg->value->inferredType)
+                    ) {
+                        continue;
+                    }
+
+                    $empty_generic_params = [];
+
+                    $function_param->type->replaceTemplateTypesWithStandins(
+                        $template_types,
+                        $empty_generic_params,
+                        $codebase,
+                        $arg->value->inferredType,
+                        false
+                    );
+                }
             }
         }
 
-        $existing_generic_params_to_strings = $generic_params ?: [];
+        $existing_generic_params = $generic_params ?: [];
+
+        foreach ($existing_generic_params as $key => $type) {
+            $existing_generic_params[$key][0] = clone $type[0];
+        }
 
         foreach ($args as $argument_offset => $arg) {
             $function_param = count($function_params) > $argument_offset
@@ -865,7 +934,7 @@ class CallAnalyzer
                     if (IssueBuffer::accepts(
                         new InvalidPassByReference(
                             'Parameter ' . ($argument_offset + 1) . ' of ' . $method_id . ' expects a variable',
-                            $code_location
+                            new CodeLocation($statements_analyzer->getSource(), $arg->value)
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -890,6 +959,9 @@ class CallAnalyzer
                     if ($last_param) {
                         if ($argument_offset < count($function_params)) {
                             $by_ref_type = $function_params[$argument_offset]->type;
+                            if (isset($function_storage->param_out_types[$argument_offset])) {
+                                $by_ref_type = $function_storage->param_out_types[$argument_offset];
+                            }
                         } else {
                             $by_ref_type = $last_param->type;
                         }
@@ -908,7 +980,7 @@ class CallAnalyzer
                                 $generic_params,
                                 $codebase,
                                 isset($arg->value->inferredType)
-                                    ? clone $arg->value->inferredType
+                                    ? $arg->value->inferredType
                                     : null
                             );
 
@@ -953,11 +1025,11 @@ class CallAnalyzer
                     }
 
                     if ($function_storage) {
-                        if ($existing_generic_params_to_strings) {
+                        if ($existing_generic_params) {
                             $empty_generic_params = [];
 
                             $param_type->replaceTemplateTypesWithStandins(
-                                $existing_generic_params_to_strings,
+                                $existing_generic_params,
                                 $empty_generic_params,
                                 $codebase,
                                 $arg->value->inferredType
@@ -1036,7 +1108,7 @@ class CallAnalyzer
                                 new MixedArgument(
                                     'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
                                         . ' cannot be mixed, expecting array',
-                                    $code_location
+                                    new CodeLocation($statements_analyzer->getSource(), $arg->value)
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
@@ -1049,7 +1121,7 @@ class CallAnalyzer
                                         new InvalidArgument(
                                             'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
                                                 . ' expects array, ' . $atomic_type->getId() . ' provided',
-                                            $code_location
+                                            new CodeLocation($statements_analyzer->getSource(), $arg->value)
                                         ),
                                         $statements_analyzer->getSuppressedIssues()
                                     )) {
@@ -1080,11 +1152,23 @@ class CallAnalyzer
             } elseif ($function_param) {
                 $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
-                if ($function_param->type && !$function_param->type->hasMixed()) {
+                $param_type = $function_param->type;
+
+                if ($function_param->is_variadic
+                    && $param_type
+                    && $param_type->hasArray()
+                ) {
+                    /** @var TArray */
+                    $array_type = $param_type->getTypes()['array'];
+
+                    $param_type = $array_type->type_params[1];
+                }
+
+                if ($param_type && !$param_type->hasMixed()) {
                     if (IssueBuffer::accepts(
                         new MixedArgument(
                             'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
-                                . ' cannot be mixed, expecting ' . $function_param->type,
+                                . ' cannot be mixed, expecting ' . $param_type,
                             new CodeLocation($statements_analyzer->getSource(), $arg->value)
                         ),
                         $statements_analyzer->getSuppressedIssues()
@@ -1123,7 +1207,8 @@ class CallAnalyzer
             if (self::checkArrayFunctionArgumentsMatch(
                 $statements_analyzer,
                 $args,
-                $method_id
+                $method_id,
+                $context->check_functions
             ) === false
             ) {
                 return false;
@@ -1173,6 +1258,63 @@ class CallAnalyzer
     }
 
     /**
+     * @return array<string, array{Type\Union, ?string}>
+     */
+    private static function getTemplateTypesForFunction(
+        FunctionLikeStorage $function_storage,
+        ClassLikeStorage $class_storage = null,
+        ClassLikeStorage $calling_class_storage = null
+    ) : array {
+        $template_types = [];
+
+        if ($function_storage->template_types) {
+            $template_types = $function_storage->template_types;
+        }
+
+        if ($class_storage) {
+            if ($calling_class_storage
+                && $class_storage !== $calling_class_storage
+                && $calling_class_storage->template_type_extends
+            ) {
+                foreach ($calling_class_storage->template_type_extends as $class_name_lc => $type_map) {
+                    foreach ($type_map as $template_name => $type) {
+                        if (is_string($template_name)
+                            && $class_name_lc === strtolower($class_storage->name)
+                        ) {
+                            if ($type instanceof Type\Atomic\TGenericParam
+                                && $type->defining_class
+                                && isset(
+                                    $calling_class_storage
+                                        ->template_type_extends
+                                        [strtolower($type->defining_class)]
+                                        [$type->param_name]
+                                )
+                            ) {
+                                $type = $calling_class_storage
+                                    ->template_type_extends
+                                    [strtolower($type->defining_class)]
+                                    [$type->param_name];
+                            }
+
+                            $template_types[$template_name] = [new Type\Union([$type]), $class_storage->name];
+                        }
+                    }
+                }
+            } elseif ($class_storage->template_types) {
+                foreach ($class_storage->template_types as $template_name => $type) {
+                    $template_types[$template_name] = $type;
+                }
+            }
+        }
+
+        foreach ($template_types as $key => $type) {
+            $template_types[$key][0] = clone $type[0];
+        }
+
+        return $template_types;
+    }
+
+    /**
      * @param   StatementsAnalyzer              $statements_analyzer
      * @param   array<int, PhpParser\Node\Arg> $args
      * @param   string                         $method_id
@@ -1182,7 +1324,8 @@ class CallAnalyzer
     protected static function checkArrayFunctionArgumentsMatch(
         StatementsAnalyzer $statements_analyzer,
         array $args,
-        $method_id
+        $method_id,
+        bool $check_functions
     ) {
         $closure_index = $method_id === 'array_map' ? 0 : 1;
 
@@ -1236,7 +1379,8 @@ class CallAnalyzer
                     $closure_arg,
                     $min_closure_param_count,
                     $max_closure_param_count,
-                    $array_arg_types
+                    $array_arg_types,
+                    $check_functions
                 ) === false) {
                     return false;
                 }
@@ -1259,7 +1403,8 @@ class CallAnalyzer
         PhpParser\Node\Arg $closure_arg,
         $min_closure_param_count,
         $max_closure_param_count,
-        array $array_arg_types
+        array $array_arg_types,
+        bool $check_functions
     ) {
         $project_analyzer = $statements_analyzer->getFileAnalyzer()->project_analyzer;
 
@@ -1326,6 +1471,14 @@ class CallAnalyzer
                         );
                     }
                 } else {
+                    if (!$check_functions) {
+                        continue;
+                    }
+
+                    if (!$codebase->functions->functionExists($statements_analyzer, $function_id)) {
+                        continue;
+                    }
+
                     $function_storage = $codebase->functions->getStorage(
                         $statements_analyzer,
                         $function_id
@@ -1623,7 +1776,6 @@ class CallAnalyzer
 
         if ($input_type->hasMixed()) {
             $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
-
             if (IssueBuffer::accepts(
                 new MixedArgument(
                     'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be mixed, expecting ' .
@@ -1950,6 +2102,7 @@ class CallAnalyzer
             && !$param_type->from_docblock
             && !$variadic
             && !$by_ref
+            && $cased_method_id !== 'echo'
         ) {
             $var_id = ExpressionAnalyzer::getVarId(
                 $input_expr,
@@ -2119,7 +2272,7 @@ class CallAnalyzer
      * @param  \Psalm\Storage\Assertion[] $assertions
      * @param  array<int, PhpParser\Node\Arg> $args
      * @param  Context           $context
-     * @param  array<string, Type\Union> $generic_params,
+     * @param  array<string, array{Type\Union, ?string}> $template_type_map,
      * @param  StatementsAnalyzer $statements_analyzer
      *
      * @return void
@@ -2128,7 +2281,7 @@ class CallAnalyzer
         $expr,
         array $assertions,
         array $args,
-        array $generic_params,
+        array $template_type_map,
         Context $context,
         StatementsAnalyzer $statements_analyzer
     ) {
@@ -2174,12 +2327,12 @@ class CallAnalyzer
                     $rule = substr($rule, 1);
                 }
 
-                if (isset($generic_params[$rule])) {
-                    if ($generic_params[$rule]->hasMixed()) {
+                if (isset($template_type_map[$rule])) {
+                    if ($template_type_map[$rule][0]->hasMixed()) {
                         continue;
                     }
 
-                    $replacement_atomic_types = $generic_params[$rule]->getTypes();
+                    $replacement_atomic_types = $template_type_map[$rule][0]->getTypes();
 
                     if (count($replacement_atomic_types) > 1) {
                         continue;
@@ -2246,6 +2399,7 @@ class CallAnalyzer
                 $changed_vars,
                 $asserted_keys,
                 $statements_analyzer,
+                $template_type_map,
                 $context->inside_loop,
                 new CodeLocation($statements_analyzer->getSource(), $expr)
             );

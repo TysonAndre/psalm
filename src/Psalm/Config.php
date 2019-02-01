@@ -234,6 +234,11 @@ class Config
     /**
      * @var array<string, bool>
      */
+    public $ignored_exceptions_and_descendants = [];
+
+    /**
+     * @var array<string, bool>
+     */
     public $forbidden_functions = [];
 
     /**
@@ -285,6 +290,13 @@ class Config
      * @var class-string<Hook\AfterClassLikeExistenceCheckInterface>[]
      */
     public $after_classlike_exists_checks = [];
+
+    /**
+     * Static methods to be called after classlike checks have completed
+     *
+     * @var class-string<Hook\AfterClassLikeAnalysisInterface>[]
+     */
+    public $after_classlike_checks = [];
 
     /**
      * Static methods to be called after classlikes have been scanned
@@ -463,7 +475,7 @@ class Config
 
             $old_dom_document = $dom_document;
             $dom_document = new \DOMDocument();
-            $dom_document->loadXML($old_dom_document->saveXml());
+            $dom_document->loadXML($old_dom_document->saveXML());
         }
 
         // Enable user error handling
@@ -507,7 +519,7 @@ class Config
             $autoloader_path = $config->base_dir . DIRECTORY_SEPARATOR . $config_xml['autoloader'];
 
             if (!file_exists($autoloader_path)) {
-                throw new ConfigException('Cannot locate config schema');
+                throw new ConfigException('Cannot locate autoloader');
             }
 
             $config->autoloader = realpath($autoloader_path);
@@ -570,7 +582,7 @@ class Config
         }
 
         if (isset($config_xml['allowStringToStandInForClass'])) {
-            $attribute_text = (string) $config_xml['allowCoercionFromStringToClassConst'];
+            $attribute_text = (string) $config_xml['allowStringToStandInForClass'];
             $config->allow_string_standin_for_class = $attribute_text === 'true' || $attribute_text === '1';
         }
 
@@ -636,10 +648,18 @@ class Config
             }
         }
 
-        if (isset($config_xml->ignoreExceptions) && isset($config_xml->ignoreExceptions->class)) {
-            /** @var \SimpleXMLElement $exception_class */
-            foreach ($config_xml->ignoreExceptions->class as $exception_class) {
-                $config->ignored_exceptions[(string) $exception_class['name']] = true;
+        if (isset($config_xml->ignoreExceptions)) {
+            if (isset($config_xml->ignoreExceptions->class)) {
+                /** @var \SimpleXMLElement $exception_class */
+                foreach ($config_xml->ignoreExceptions->class as $exception_class) {
+                    $config->ignored_exceptions[(string) $exception_class['name']] = true;
+                }
+            }
+            if (isset($config_xml->ignoreExceptions->classAndDescendants)) {
+                /** @var \SimpleXMLElement $exception_class */
+                foreach ($config_xml->ignoreExceptions->classAndDescendants as $exception_class) {
+                    $config->ignored_exceptions_and_descendants[(string) $exception_class['name']] = true;
+                }
             }
         }
 
@@ -702,8 +722,20 @@ class Config
         if (isset($config_xml->issueHandlers)) {
             /** @var \SimpleXMLElement $issue_handler */
             foreach ($config_xml->issueHandlers->children() as $key => $issue_handler) {
-                /** @var string $key */
-                $config->issue_handlers[$key] = IssueHandler::loadFromXMLElement($issue_handler, $base_dir);
+                if ($key === 'PluginIssue') {
+                    $custom_class_name = (string) $issue_handler['name'];
+                    /** @var string $key */
+                    $config->issue_handlers[$custom_class_name] = IssueHandler::loadFromXMLElement(
+                        $issue_handler,
+                        $base_dir
+                    );
+                } else {
+                    /** @var string $key */
+                    $config->issue_handlers[$key] = IssueHandler::loadFromXMLElement(
+                        $issue_handler,
+                        $base_dir
+                    );
+                }
             }
         }
 
@@ -917,10 +949,11 @@ class Config
         $declared_classes = ClassLikeAnalyzer::getClassesForFile($codebase, $path);
         $declared_plugin_classes = [];
 
-        foreach ($declared_classes as $fq_class_name_in_file) {
-            if ($codebase->classExtends($fq_class_name_in_file, $must_extend)) {
-                $declared_plugin_classes[] = $fq_class_name_in_file;
-            }
+        if (!count($declared_classes)) {
+            throw new \InvalidArgumentException(
+                'Plugins must have at least one class in the file - ' . $path . ' has ' .
+                    count($declared_classes)
+            );
         }
         if (count($declared_plugin_classes) !== 1) {
             if (count($declared_classes) === 1) {

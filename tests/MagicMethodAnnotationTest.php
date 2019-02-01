@@ -198,6 +198,24 @@ class MagicMethodAnnotationTest extends TestCase
                     $child->setArray(["boo"]);
                     $child->setArray(["boo"], 8);',
             ],
+            'validStaticAnnotationWithDefault' => [
+                '<?php
+                    class ParentClass {
+                        public static function __callStatic(string $name, array $args) {}
+                    }
+
+                    /**
+                     * @method static string getString(int $foo) with some more text
+                     */
+                    class Child extends ParentClass {}
+
+                    $child = new Child();
+
+                    $a = $child::getString(5);',
+                'assertions' => [
+                    '$a' => 'string',
+                ],
+            ],
             'validAnnotationWithVariadic' => [
                 '<?php
                     class ParentClass {
@@ -333,6 +351,40 @@ class MagicMethodAnnotationTest extends TestCase
                             return $query;
                         }
                     }',
+            ],
+            'magicMethodReturnSelf' => [
+                '<?php
+                    /**
+                     * @method static self getSelf()
+                     * @method $this getThis()
+                     */
+                    class C {
+                        public static function __callStatic(string $c, array $args) {}
+                        public function __call(string $c, array $args) {}
+                    }
+
+                    $a = C::getSelf();
+                    $b = (new C)->getThis();',
+                [
+                    '$a' => 'C',
+                    '$b' => 'C',
+                ]
+            ],
+            'allowMagicMethodStatic' => [
+                '<?php
+                    /** @method static getStatic() */
+                    class C {
+                        public function __call(string $c, array $args) {}
+                    }
+
+                    class D extends C {}
+
+                    $c = (new C)->getStatic();
+                    $d = (new D)->getStatic();',
+                [
+                    '$c' => 'C',
+                    '$d' => 'D',
+                ]
             ],
         ];
     }

@@ -6,6 +6,7 @@ use Psalm\Internal\Analyzer\MethodAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
+use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
@@ -188,16 +189,26 @@ class Methods
      */
     public function getMethodParams($method_id)
     {
-        if ($method_id = $this->getDeclaringMethodId($method_id)) {
-            $storage = $this->getStorage($method_id);
+        if ($declaring_method_id = $this->getDeclaringMethodId($method_id)) {
+            $storage = $this->getStorage($declaring_method_id);
 
-            $non_null_param_types = array_filter(
-                $storage->params,
-                /** @return bool */
-                function (FunctionLikeParameter $p) {
-                    return $p->type !== null;
-                }
-            );
+            if ($storage->inheritdoc) {
+                $non_null_param_types = array_filter(
+                    $storage->params,
+                    /** @return bool */
+                    function (FunctionLikeParameter $p) {
+                        return $p->type !== null && $p->has_docblock_type;
+                    }
+                );
+            } else {
+                $non_null_param_types = array_filter(
+                    $storage->params,
+                    /** @return bool */
+                    function (FunctionLikeParameter $p) {
+                        return $p->type !== null;
+                    }
+                );
+            }
 
             $params = $storage->params;
 
@@ -205,7 +216,7 @@ class Methods
                 return $params;
             }
 
-            $appearing_method_id = $this->getAppearingMethodId($method_id);
+            $appearing_method_id = $this->getAppearingMethodId($declaring_method_id);
 
             if (!$appearing_method_id) {
                 return $params;
@@ -335,13 +346,27 @@ class Methods
                 && $args[0]->value->inferredType->isSingle()
             ) {
                 foreach ($args[0]->value->inferredType->getTypes() as $atomic_type) {
-                    if ($atomic_type instanceof Type\Atomic\TCallable || $atomic_type instanceof Type\Atomic\Fn) {
+                    if ($atomic_type instanceof Type\Atomic\TCallable
+                        || $atomic_type instanceof Type\Atomic\Fn
+                    ) {
                         $callable_type = clone $atomic_type;
 
                         return new Type\Union([new Type\Atomic\Fn(
                             'Closure',
                             $callable_type->params,
                             $callable_type->return_type
+                        )]);
+                    }
+
+                    if ($atomic_type instanceof Type\Atomic\TNamedObject
+                        && $this->methodExists($atomic_type->value . '::__invoke')
+                    ) {
+                        $invokable_storage = $this->getStorage($atomic_type->value . '::__invoke');
+
+                        return new Type\Union([new Type\Atomic\Fn(
+                            'Closure',
+                            $invokable_storage->params,
+                            $invokable_storage->return_type
                         )]);
                     }
                 }
@@ -377,14 +402,6 @@ class Methods
                     $this->classlike_storage_provider->get($fq_overridden_class);
 
                 $overridden_return_type = clone $overridden_storage->return_type;
-
-                if ($overridden_class_storage->template_types) {
-                    $generic_types = [];
-                    $overridden_return_type->replaceTemplateTypesWithStandins(
-                        $overridden_class_storage->template_types,
-                        $generic_types
-                    );
-                }
 
                 $self_class = $overridden_class_storage->name;
 
@@ -593,6 +610,28 @@ class Methods
         }
 
         return $storage;
+    }
+
+    /**
+     * @param  string $method_id
+     *
+     * @return ClassLikeStorage
+     */
+    public function getClassLikeStorageForMethod($method_id)
+    {
+        $declaring_method_id = $this->getDeclaringMethodId($method_id);
+
+        if (!$declaring_method_id) {
+            if (CallMap::inCallMap($method_id)) {
+                $declaring_method_id = $method_id;
+            } else {
+                throw new \UnexpectedValueException('$storage should not be null for ' . $method_id);
+            }
+        }
+
+        list($declaring_fq_class_name) = explode('::', $declaring_method_id);
+
+        return $this->classlike_storage_provider->get($declaring_fq_class_name);
     }
 
     /**

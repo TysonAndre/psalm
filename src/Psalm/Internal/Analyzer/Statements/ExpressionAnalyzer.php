@@ -30,6 +30,7 @@ use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\FileSource;
+use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\ForbiddenCode;
 use Psalm\Issue\InvalidCast;
 use Psalm\Issue\InvalidClone;
@@ -824,6 +825,17 @@ class ExpressionAnalyzer
             }
         }
 
+        if ($stmt instanceof PhpParser\Node\Expr\ClassConstFetch
+            && $stmt->name instanceof PhpParser\Node\Identifier
+        ) {
+            /** @var string|null */
+            $resolved_name = $stmt->class->getAttribute('resolvedName');
+
+            if ($resolved_name) {
+                return $resolved_name . '::' . $stmt->name;
+            }
+        }
+
         if ($stmt instanceof PhpParser\Node\Expr\MethodCall
             && $stmt->name instanceof PhpParser\Node\Identifier
             && !$stmt->args
@@ -982,7 +994,7 @@ class ExpressionAnalyzer
                 }
             }
 
-            return new TMixed();
+            return $return_type;
         }
 
         if ($return_type instanceof Type\Atomic\TArray || $return_type instanceof Type\Atomic\TGenericObject) {
@@ -1020,12 +1032,36 @@ class ExpressionAnalyzer
         PhpParser\Node\Expr\Closure $stmt,
         Context $context
     ) {
+        $param_names = array_map(
+            function (PhpParser\Node\Param $p) : string {
+                if (!$p->var instanceof PhpParser\Node\Expr\Variable
+                    || !is_string($p->var->name)
+                ) {
+                    return '';
+                }
+                return $p->var->name;
+            },
+            $stmt->params
+        );
+
         foreach ($stmt->uses as $use) {
             if (!is_string($use->var->name)) {
                 continue;
             }
 
             $use_var_id = '$' . $use->var->name;
+
+            if (in_array($use->var->name, $param_names)) {
+                if (IssueBuffer::accepts(
+                    new DuplicateParam(
+                        'Closure use duplicates param name ' . $use_var_id,
+                        new CodeLocation($statements_analyzer->getSource(), $use->var)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    return false;
+                }
+            }
 
             if (!$context->hasVariable($use_var_id, $statements_analyzer)) {
                 if ($use_var_id === '$argv' || $use_var_id === '$argc') {

@@ -118,6 +118,12 @@ class AssignmentAnalyzer
 
                     $var_comment_type->setFromDocblock();
 
+                    $var_comment_type->check(
+                        $statements_analyzer,
+                        new CodeLocation($statements_analyzer->getSource(), $assign_var),
+                        $statements_analyzer->getSuppressedIssues()
+                    );
+
                     if (!$var_comment->var_id || $var_comment->var_id === $var_id) {
                         $comment_type = $var_comment_type;
                         continue;
@@ -495,6 +501,7 @@ class AssignmentAnalyzer
                 $statements_analyzer,
                 $assign_var,
                 $context,
+                $assign_value,
                 $assign_value_type
             );
         } elseif ($assign_var instanceof PhpParser\Node\Expr\PropertyFetch) {
@@ -657,6 +664,7 @@ class AssignmentAnalyzer
                     $statements_analyzer,
                     $stmt->var,
                     $context,
+                    $stmt->expr,
                     $result_type ?: Type::getMixed($context->inside_loop)
                 );
             } elseif ($result_type && $array_var_id) {

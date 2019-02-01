@@ -1132,6 +1132,128 @@ class PropertyTypeTest extends TestCase
 
                     class B extends A {}',
             ],
+            'noCrashForAbstractConstructorWithInstanceofInterface' => [
+                '<?php
+                    abstract class A {
+                        /** @var int */
+                        public $a;
+
+                        public function __construct() {
+                            if ($this instanceof I) {
+                                $this->a = $this->bar();
+                            } else {
+                                $this->a = 6;
+                            }
+                        }
+                    }
+
+                    interface I {
+                        public function bar() : int;
+                    }',
+            ],
+            'SKIPPED-abstractConstructorWithInstanceofClass' => [
+                '<?php
+                    abstract class A {
+                        /** @var int */
+                        public $a;
+
+                        public function __construct() {
+                            if ($this instanceof B) {
+                                $this->a = $this->bar();
+                            } else {
+                                $this->a = 6;
+                            }
+                        }
+                    }
+
+                    class B extends A {
+                        public function bar() : int {
+                            return 3;
+                        }
+                    }',
+                [],
+                'error_levels' => []
+            ],
+            'inheritDocPropertyTypes' => [
+                '<?php
+                    class X {
+                        /**
+                         * @var string|null
+                         */
+                        public $a;
+
+                        /**
+                         * @var string|null
+                         */
+                        public static $b;
+                    }
+
+                    class Y extends X {
+                        public $a = "foo";
+                        public static $b = "foo";
+                    }
+
+                    (new Y)->a = "hello";
+                    echo (new Y)->a;
+                    Y::$b = "bar";
+                    echo Y::$b;',
+            ],
+            'subclassPropertySetInParentConstructor' => [
+                '<?php
+                    class Base {
+                        /** @var string */
+                        protected $prop;
+                        public function __construct(string $s) {
+                            $this->prop = $s;
+                        }
+                    }
+
+                    class Child extends Base {
+                        /** @var string */
+                        protected $prop;
+                    }',
+            ],
+            'callInParentContext' => [
+                '<?php
+                    class A {
+                        /** @var int */
+                        public $i = 1;
+                    }
+
+                    abstract class B
+                    {
+                        /**
+                         * @var string
+                         */
+                        protected $foo;
+
+                        /**
+                         * @var A[]
+                         */
+                        private $as = [];
+
+                        public function __construct()
+                        {
+                            $this->foo = "";
+                            $this->bar();
+                        }
+
+                        public function bar(): void
+                        {
+                            \usort($this->as, function (A $a, A $b): int {
+                                return $b->i <=> $a->i;
+                            });
+                        }
+                    }
+
+                    class C extends B
+                    {
+                        public function __construct()
+                        {
+                            parent::__construct();
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -1837,6 +1959,41 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'UndefinedThisPropertyFetch',
+            ],
+            'inheritDocPropertyTypesIncorrectAssignmentToInstanceProperty' => [
+                '<?php
+                    class X {
+                        /**
+                         * @var string|null
+                         */
+                        public $a;
+                    }
+
+                    class Y extends X {
+                        public $a = "foo";
+                    }
+
+                    (new Y)->a = 5;
+                    echo (new Y)->a;
+                    Y::$b = "bar";
+                    echo Y::$b;',
+                'error_message' => 'InvalidPropertyAssignmentValue',
+            ],
+            'inheritDocPropertyTypesIncorrectAssignmentToStaticProperty' => [
+                '<?php
+                    class X {
+                        /**
+                         * @var string|null
+                         */
+                        public static $b;
+                    }
+
+                    class Y extends X {
+                        public static $b = "foo";
+                    }
+
+                    Y::$b = 5;',
+                'error_message' => 'InvalidPropertyAssignmentValue',
             ],
         ];
     }

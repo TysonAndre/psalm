@@ -19,6 +19,7 @@ use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\UndefinedClass;
 use Psalm\Issue\UndefinedMethod;
 use Psalm\IssueBuffer;
+use Psalm\Storage\Assertion;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
 
@@ -240,7 +241,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             $lhs_type = $stmt->class->inferredType;
         }
 
-        if (!$context->check_methods || !$lhs_type) {
+        if (!$lhs_type) {
             if (self::checkFunctionArguments(
                 $statements_analyzer,
                 $stmt->args,
@@ -257,14 +258,50 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         $has_mock = false;
 
         foreach ($lhs_type->getTypes() as $lhs_type_part) {
+            $intersection_types = [];
+
             if ($lhs_type_part instanceof TNamedObject) {
                 $fq_class_name = $lhs_type_part->value;
+
+                if (!ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                    $statements_analyzer,
+                    $fq_class_name,
+                    new CodeLocation($source, $stmt->class),
+                    $statements_analyzer->getSuppressedIssues(),
+                    false
+                )) {
+                    return false;
+                }
+
+                $intersection_types = $lhs_type_part->extra_types;
             } elseif ($lhs_type_part instanceof Type\Atomic\TClassString
-                && $lhs_type_part->as !== 'object'
+                && $lhs_type_part->as_type
             ) {
-                $fq_class_name = $lhs_type_part->as;
+                $fq_class_name = $lhs_type_part->as_type->value;
+
+                if (!ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                    $statements_analyzer,
+                    $fq_class_name,
+                    new CodeLocation($source, $stmt->class),
+                    $statements_analyzer->getSuppressedIssues(),
+                    false
+                )) {
+                    return false;
+                }
+
+                $intersection_types = $lhs_type_part->as_type->extra_types;
             } elseif ($lhs_type_part instanceof Type\Atomic\TLiteralClassString) {
                 $fq_class_name = $lhs_type_part->value;
+
+                if (!ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                    $statements_analyzer,
+                    $fq_class_name,
+                    new CodeLocation($source, $stmt->class),
+                    $statements_analyzer->getSuppressedIssues(),
+                    false
+                )) {
+                    return false;
+                }
             } elseif ($lhs_type_part instanceof Type\Atomic\TGenericParam
                 && !$lhs_type_part->as->isMixed()
                 && !$lhs_type_part->as->hasObject()
@@ -301,7 +338,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 ) {
                     if (IssueBuffer::accepts(
                         new MixedMethodCall(
-                            'Cannot call constructor on an unknown class',
+                            'Cannot call method on an unknown class',
                             new CodeLocation($statements_analyzer->getSource(), $stmt)
                         ),
                         $statements_analyzer->getSuppressedIssues()
@@ -359,10 +396,30 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             $has_mock = $has_mock || $is_mock;
 
             if ($stmt->name instanceof PhpParser\Node\Identifier && !$is_mock) {
-                $method_id = $fq_class_name . '::' . strtolower($stmt->name->name);
+                $method_name_lc = strtolower($stmt->name->name);
+                $method_id = $fq_class_name . '::' . $method_name_lc;
                 $cased_method_id = $fq_class_name . '::' . $stmt->name->name;
 
                 $args = $stmt->args;
+
+                if ($intersection_types
+                    && !$codebase->methods->methodExists($method_id)
+                ) {
+                    foreach ($intersection_types as $intersection_type) {
+                        if (!$intersection_type instanceof TNamedObject) {
+                            continue;
+                        }
+
+                        $intersection_method_id = $intersection_type->value . '::' . $method_name_lc;
+
+                        if ($codebase->methods->methodExists($intersection_method_id)) {
+                            $method_id = $intersection_method_id;
+                            $fq_class_name = $intersection_type->value;
+                            $cased_method_id = $fq_class_name . '::' . $stmt->name->name;
+                            break;
+                        }
+                    }
+                }
 
                 if (!$codebase->methods->methodExists($method_id)
                     || !MethodAnalyzer::isMethodVisible(
@@ -375,6 +432,70 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $fq_class_name . '::__callStatic',
                         $context->calling_method_id
                     )) {
+                        $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
+
+                        if (isset($class_storage->pseudo_static_methods[$method_name_lc])) {
+                            $pseudo_method_storage = $class_storage->pseudo_static_methods[$method_name_lc];
+
+                            if (self::checkFunctionArguments(
+                                $statements_analyzer,
+                                $args,
+                                $pseudo_method_storage->params,
+                                $method_id,
+                                $context
+                            ) === false) {
+                                return false;
+                            }
+
+                            $generic_params = [];
+
+                            if (self::checkFunctionLikeArgumentsMatch(
+                                $statements_analyzer,
+                                $args,
+                                null,
+                                $pseudo_method_storage->params,
+                                $pseudo_method_storage,
+                                null,
+                                $generic_params,
+                                new CodeLocation($source, $stmt),
+                                $context
+                            ) === false) {
+                                return false;
+                            }
+
+                            if ($pseudo_method_storage->return_type) {
+                                $return_type_candidate = clone $pseudo_method_storage->return_type;
+
+                                $return_type_candidate = ExpressionAnalyzer::fleshOutType(
+                                    $codebase,
+                                    $return_type_candidate,
+                                    $fq_class_name,
+                                    $fq_class_name
+                                );
+
+                                if (!isset($stmt->inferredType)) {
+                                    $stmt->inferredType = $return_type_candidate;
+                                } else {
+                                    $stmt->inferredType = Type::combineUnionTypes(
+                                        $return_type_candidate,
+                                        $stmt->inferredType
+                                    );
+                                }
+
+                                return;
+                            }
+                        } else {
+                            if (self::checkFunctionArguments(
+                                $statements_analyzer,
+                                $args,
+                                null,
+                                null,
+                                $context
+                            ) === false) {
+                                return false;
+                            }
+                        }
+
                         $array_values = array_map(
                             /**
                              * @return PhpParser\Node\Expr\ArrayItem
@@ -391,20 +512,33 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         ];
 
                         $method_id = $fq_class_name . '::__callstatic';
-                        $cased_method_id = $fq_class_name . '::__callStatic';
+                    }
+
+                    if (!$context->check_methods) {
+                        if (self::checkFunctionArguments(
+                            $statements_analyzer,
+                            $stmt->args,
+                            null,
+                            null,
+                            $context
+                        ) === false) {
+                            return false;
+                        }
+
+                        return null;
                     }
                 }
 
                 $does_method_exist = MethodAnalyzer::checkMethodExists(
                     $codebase,
-                    $cased_method_id,
+                    $method_id,
                     new CodeLocation($source, $stmt),
                     $statements_analyzer->getSuppressedIssues(),
                     $context->calling_method_id
                 );
 
                 if (!$does_method_exist) {
-                    return $does_method_exist;
+                    return false;
                 }
 
                 $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
@@ -586,11 +720,21 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
 
                     if ($method_storage->if_true_assertions) {
-                        $stmt->ifTrueAssertions = $method_storage->if_true_assertions;
+                        $stmt->ifTrueAssertions = array_map(
+                            function (Assertion $assertion) use ($found_generic_params) : Assertion {
+                                return $assertion->getUntemplatedCopy($found_generic_params ?: []);
+                            },
+                            $method_storage->if_true_assertions
+                        );
                     }
 
                     if ($method_storage->if_false_assertions) {
-                        $stmt->ifFalseAssertions = $method_storage->if_false_assertions;
+                        $stmt->ifFalseAssertions = array_map(
+                            function (Assertion $assertion) use ($found_generic_params) : Assertion {
+                                return $assertion->getUntemplatedCopy($found_generic_params ?: []);
+                            },
+                            $method_storage->if_false_assertions
+                        );
                     }
                 }
 

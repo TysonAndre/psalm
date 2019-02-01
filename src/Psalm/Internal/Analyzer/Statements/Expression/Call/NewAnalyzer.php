@@ -122,7 +122,9 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         if (!isset($stmt->inferredType)) {
                             $new_type_part = new Type\Atomic\TGenericParam(
                                 $lhs_type_part->param_name,
-                                $lhs_type_part->as_type ?: Type::parseString($lhs_type_part->as)
+                                $lhs_type_part->as_type
+                                    ? new Type\Union([$lhs_type_part->as_type])
+                                    : Type::parseString($lhs_type_part->as)
                             );
 
                             if ($new_type) {
@@ -323,8 +325,6 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     }
                 }
 
-                $has_generic_object = false;
-
                 if ($codebase->methods->methodExists(
                     $fq_class_name . '::__construct',
                     $context->calling_method_id,
@@ -359,64 +359,31 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         foreach ($storage->template_types as $template_name => $_) {
                             if (isset($found_generic_params[$template_name])) {
                                 $generic_params[] = $found_generic_params[$template_name];
+                            } elseif ($storage->template_type_extends && $found_generic_params) {
+                                $generic_params[] = self::getGenericParamForOffset(
+                                    $template_name,
+                                    $storage->template_type_extends,
+                                    $found_generic_params
+                                );
                             } else {
-                                $generic_params[] = Type::getMixed();
+                                $generic_params[] = [Type::getMixed(), null];
                             }
                         }
                     }
 
-                    if ($fq_class_name === 'ArrayIterator' && isset($stmt->args[0]->value->inferredType)) {
-                        $first_arg_type = $stmt->args[0]->value->inferredType;
-
-                        if ($first_arg_type->hasGeneric()) {
-                            $key_type = null;
-                            $value_type = null;
-
-                            foreach ($first_arg_type->getTypes() as $type) {
-                                if ($type instanceof Type\Atomic\TArray) {
-                                    $first_type_param = count($type->type_params) ? $type->type_params[0] : null;
-                                    $last_type_param = $type->type_params[count($type->type_params) - 1];
-
-                                    if ($value_type === null) {
-                                        $value_type = clone $last_type_param;
-                                    } else {
-                                        $value_type = Type::combineUnionTypes($value_type, $last_type_param);
-                                    }
-
-                                    if (!$key_type || !$first_type_param) {
-                                        $key_type = $first_type_param ? clone $first_type_param : Type::getMixed();
-                                    } else {
-                                        $key_type = Type::combineUnionTypes($key_type, $first_type_param);
-                                    }
-                                }
-                            }
-
-                            if ($key_type === null) {
-                                throw new \UnexpectedValueException('$key_type cannot be null');
-                            }
-
-                            if ($value_type === null) {
-                                throw new \UnexpectedValueException('$value_type cannot be null');
-                            }
-
-                            $has_generic_object = true;
-
-                            $stmt->inferredType = new Type\Union([
-                                new Type\Atomic\TGenericObject(
-                                    $fq_class_name,
-                                    [
-                                        $key_type,
-                                        $value_type,
-                                    ]
-                                ),
-                            ]);
-                        }
-                    } elseif ($generic_params) {
-                        $has_generic_object = true;
+                    if ($generic_params) {
                         $stmt->inferredType = new Type\Union([
                             new Type\Atomic\TGenericObject(
                                 $fq_class_name,
-                                $generic_params
+                                array_map(
+                                    /**
+                                     * @param array{Type\Union, ?string} $i
+                                     */
+                                    function (array $i) : Type\Union {
+                                        return $i[0];
+                                    },
+                                    $generic_params
+                                )
                             ),
                         ]);
                     }
@@ -432,35 +399,6 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         // fall through
                     }
                 }
-
-                if (!$has_generic_object
-                    && $codebase->classlikes->classImplements(
-                        $fq_class_name,
-                        'IteratorAggregate'
-                    )
-                    && $codebase->methods->methodExists(
-                        $fq_class_name . '::getIterator',
-                        $context->calling_method_id
-                    )
-                ) {
-                    $return_type_candidate = $codebase->methods->getMethodReturnType(
-                        $fq_class_name . '::getIterator',
-                        $self_fq_class_name
-                    );
-
-                    if ($return_type_candidate && $return_type_candidate->isSingle()) {
-                        $return_type_atomic_candidate = array_values($return_type_candidate->getTypes())[0];
-
-                        if ($return_type_atomic_candidate instanceof Type\Atomic\TGenericObject) {
-                            $stmt->inferredType = new Type\Union([
-                                new Type\Atomic\TGenericObject(
-                                    $fq_class_name,
-                                    $return_type_atomic_candidate->type_params
-                                ),
-                            ]);
-                        }
-                    }
-                }
             }
         }
 
@@ -469,5 +407,38 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
         }
 
         return null;
+    }
+
+    /**
+     * @param  string $template_name
+     * @param  array<string, array<int|string, Type\Atomic>>  $template_type_extends
+     * @param  array<string, array{Type\Union, ?string}>  $found_generic_params
+     * @return array{Type\Union, ?string}
+     */
+    private static function getGenericParamForOffset(
+        string $template_name,
+        array $template_type_extends,
+        array $found_generic_params
+    ) {
+        if (isset($found_generic_params[$template_name])) {
+            return $found_generic_params[$template_name];
+        }
+
+        foreach ($template_type_extends as $type_map) {
+            foreach ($type_map as $extended_template_name => $extended_type) {
+                if (is_string($extended_template_name)
+                    && $extended_type instanceof Type\Atomic\TGenericParam
+                    && $extended_type->param_name === $template_name
+                ) {
+                    return self::getGenericParamForOffset(
+                        $extended_template_name,
+                        $template_type_extends,
+                        $found_generic_params
+                    );
+                }
+            }
+        }
+
+        return [Type::getMixed(), null];
     }
 }

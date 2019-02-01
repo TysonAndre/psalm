@@ -339,6 +339,75 @@ class MagicPropertyTest extends TestCase
                 'assertions' => [],
                 'error_level' => ['MixedReturnStatement', 'MixedInferredReturnType'],
             ],
+            'overrideInheritedProperty' => [
+                '<?php
+                    interface ServiceInterface {}
+
+                    class ConcreteService implements ServiceInterface {
+                        public function getById(int $i) : void {}
+                    }
+
+                    class Foo
+                    {
+                        /** @var ServiceInterface */
+                        protected $service;
+
+                        public function __construct(ServiceInterface $service)
+                        {
+                            $this->service = $service;
+                        }
+                    }
+
+                    /** @property ConcreteService $service */
+                    class FooBar extends Foo
+                    {
+                        public function __construct(ConcreteService $concreteService)
+                        {
+                            parent::__construct($concreteService);
+                        }
+
+                        public function doSomething(): void
+                        {
+                            $this->service->getById(123);
+                        }
+                    }'
+            ],
+            'magicInterfacePropertyRead' => [
+                '<?php
+                    /**
+                     * @property-read string $foo
+                     * @psalm-seal-properties
+                     */
+                    interface GetterSetter {
+                        /** @return mixed */
+                        public function __get(string $key);
+                        /** @param mixed $value */
+                        public function __set(string $key, $value) : void;
+                    }
+
+                    /** @psalm-suppress NoInterfaceProperties */
+                    function getFoo(GetterSetter $o) : string {
+                        return $o->foo;
+                    }',
+            ],
+            'magicInterfacePropertyWrite' => [
+                '<?php
+                    /**
+                     * @property-write string $foo
+                     * @psalm-seal-properties
+                     */
+                    interface GetterSetter {
+                        /** @return mixed */
+                        public function __get(string $key);
+                        /** @param mixed $value */
+                        public function __set(string $key, $value) : void;
+                    }
+
+                    /** @psalm-suppress NoInterfaceProperties */
+                    function getFoo(GetterSetter $o) : void {
+                        $o->foo = "hello";
+                    }',
+            ],
         ];
     }
 
@@ -627,6 +696,44 @@ class MagicPropertyTest extends TestCase
                     }',
                 'error_message' => 'MixedTypeCoercion',
                 'error_levels' => ['MixedAssignment'],
+            ],
+            'magicInterfacePropertyWrongProperty' => [
+                '<?php
+                    /**
+                     * @property-read string $foo
+                     * @psalm-seal-properties
+                     */
+                    interface GetterSetter {
+                        /** @return mixed */
+                        public function __get(string $key);
+                        /** @param mixed $value */
+                        public function __set(string $key, $value) : void;
+                    }
+
+                    /** @psalm-suppress NoInterfaceProperties */
+                    function getBar(GetterSetter $o) : string {
+                        return $o->bar;
+                    }',
+                'error_message' => 'UndefinedPropertyFetch',
+            ],
+            'magicInterfaceWrongPropertyWrite' => [
+                '<?php
+                    /**
+                     * @property-write string $foo
+                     * @psalm-seal-properties
+                     */
+                    interface GetterSetter {
+                        /** @return mixed */
+                        public function __get(string $key);
+                        /** @param mixed $value */
+                        public function __set(string $key, $value) : void;
+                    }
+
+                    /** @psalm-suppress NoInterfaceProperties */
+                    function getFoo(GetterSetter $o) : void {
+                        $o->bar = "hello";
+                    }',
+                'error_message' => 'UndefinedPropertyAssignment',
             ],
         ];
     }

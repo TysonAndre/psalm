@@ -148,11 +148,17 @@ class Functions
             return true;
         }
 
-        if ($this->reflection->registerFunction($function_id) === false) {
-            return false;
+        $predefined_functions = $statements_analyzer->getCodebase()->config->getPredefinedFunctions();
+
+        if (isset($predefined_functions[$function_id])) {
+            if ($this->reflection->registerFunction($function_id) === false) {
+                return false;
+            }
+
+            return true;
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -191,8 +197,6 @@ class Functions
                 return $imported_function_namespaces[$first_namespace_lcase] . '\\' .
                     implode('\\', $function_name_parts);
             }
-        } elseif (isset($imported_namespaces[$function_name_lcase])) {
-            return $imported_namespaces[$function_name_lcase];
         } elseif (isset($imported_function_namespaces[$function_name_lcase])) {
             return $imported_function_namespaces[$function_name_lcase];
         }

@@ -43,6 +43,15 @@ class TypeCombinationTest extends TestCase
                     $var[] = new A();
                     $var[] = new B();',
             ],
+            'preventLiteralAndClassString' => [
+                '<?php
+                    /**
+                     * @param "array"|class-string $type_name
+                     */
+                    function foo(string $type_name) : bool {
+                        return $type_name === "array";
+                    }',
+            ],
         ];
     }
 
@@ -193,6 +202,90 @@ class TypeCombinationTest extends TestCase
                 [
                     'array<int|float>',
                     'array<string>',
+                ],
+            ],
+            'arrayTraversableToIterable' => [
+                'iterable<array-key|mixed, mixed>',
+                [
+                    'array',
+                    'Traversable',
+                ],
+            ],
+            'arrayIterableToIterable' => [
+                'iterable<mixed, mixed>',
+                [
+                    'array',
+                    'iterable',
+                ],
+            ],
+            'iterableArrayToIterable' => [
+                'iterable<mixed, mixed>',
+                [
+                    'iterable',
+                    'array',
+                ],
+            ],
+            'traversableIterableToIterable' => [
+                'iterable<mixed, mixed>',
+                [
+                    'Traversable',
+                    'iterable',
+                ],
+            ],
+            'iterableTraversableToIterable' => [
+                'iterable<mixed, mixed>',
+                [
+                    'iterable',
+                    'Traversable',
+                ],
+            ],
+            'arrayTraversableToIterableWithParams' => [
+                'iterable<int, string|bool>',
+                [
+                    'array<int, string>',
+                    'Traversable<int, bool>',
+                ],
+            ],
+            'arrayIterableToIterableWithParams' => [
+                'iterable<int, string|bool>',
+                [
+                    'array<int, string>',
+                    'iterable<int, bool>',
+                ],
+            ],
+            'iterableArrayToIterableWithParams' => [
+                'iterable<int, string|bool>',
+                [
+                    'iterable<int, string>',
+                    'array<int, bool>',
+                ],
+            ],
+            'traversableIterableToIterableWithParams' => [
+                'iterable<int, string|bool>',
+                [
+                    'Traversable<int, string>',
+                    'iterable<int, bool>',
+                ],
+            ],
+            'iterableTraversableToIterableWithParams' => [
+                'iterable<int, string|bool>',
+                [
+                    'iterable<int, string>',
+                    'Traversable<int, bool>',
+                ],
+            ],
+            'arrayObjectAndParamsWithEmptyArray' => [
+                'ArrayObject<int, string>|array<empty, empty>',
+                [
+                    'ArrayObject<int, string>',
+                    'array<empty, empty>',
+                ],
+            ],
+            'emptyArrayWithArrayObjectAndParams' => [
+                'array<empty, empty>|ArrayObject<int, string>',
+                [
+                    'array<empty, empty>',
+                    'ArrayObject<int, string>',
                 ],
             ],
             'falseDestruction' => [

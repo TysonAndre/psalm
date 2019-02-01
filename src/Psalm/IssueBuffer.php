@@ -126,6 +126,10 @@ class IssueBuffer
             return preg_replace('/^(False|Null)/', 'Invalid', $issue_type);
         }
 
+        if ($issue_type === 'UndefinedInterfaceMethod') {
+            return 'UndefinedMethod';
+        }
+
         return null;
     }
 
@@ -276,6 +280,7 @@ class IssueBuffer
                 // Set severity for issues in baseline to INFO
                 foreach (self::$issues_data as $key => $issue_data) {
                     $file = $issue_data['file_name'];
+                    $file = str_replace('\\', '/', $file);
                     $type = $issue_data['type'];
 
                     if (isset($issue_baseline[$file][$type]) && $issue_baseline[$file][$type]['o'] > 0) {

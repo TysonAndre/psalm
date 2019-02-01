@@ -27,6 +27,7 @@ use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
+use Psalm\Type\Atomic\TObjectWithProperties;
 
 /**
  * @internal
@@ -231,6 +232,20 @@ class PropertyFetchAnalyzer
                 continue;
             }
 
+            if ($lhs_type_part instanceof Type\Atomic\TGenericParam) {
+                $extra_types = $lhs_type_part->extra_types;
+
+                $lhs_type_part = array_values(
+                    $lhs_type_part->as->getTypes()
+                )[0];
+
+                $lhs_type_part->from_docblock = true;
+
+                if ($lhs_type_part instanceof TNamedObject) {
+                    $lhs_type_part->extra_types = $extra_types;
+                }
+            }
+
             if ($lhs_type_part instanceof Type\Atomic\TMixed) {
                 $stmt->inferredType = Type::getMixed();
                 continue;
@@ -248,6 +263,21 @@ class PropertyFetchAnalyzer
 
             $has_valid_fetch_type = true;
 
+            if ($lhs_type_part instanceof TObjectWithProperties
+                && isset($lhs_type_part->properties[$prop_name])
+            ) {
+                if (isset($stmt->inferredType)) {
+                    $stmt->inferredType = Type::combineUnionTypes(
+                        $lhs_type_part->properties[$prop_name],
+                        $stmt->inferredType
+                    );
+                } else {
+                    $stmt->inferredType = $lhs_type_part->properties[$prop_name];
+                }
+
+                continue;
+            }
+
             // stdClass and SimpleXMLElement are special cases where we cannot infer the return types
             // but we don't want to throw an error
             // Hack has a similar issue: https://github.com/facebook/hhvm/issues/5164
@@ -255,6 +285,7 @@ class PropertyFetchAnalyzer
                 || in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement'], true)
             ) {
                 $stmt->inferredType = Type::getMixed();
+
                 continue;
             }
 
@@ -269,10 +300,12 @@ class PropertyFetchAnalyzer
 
             $override_property_visibility = false;
 
-            if (!$codebase->classExists($lhs_type_part->value)) {
-                $class_exists = false;
+            $class_exists = false;
+            $interface_exists = false;
 
+            if (!$codebase->classExists($lhs_type_part->value)) {
                 if ($codebase->interfaceExists($lhs_type_part->value)) {
+                    $interface_exists = true;
                     $interface_storage = $codebase->classlike_storage_provider->get($lhs_type_part->value);
 
                     $override_property_visibility = $interface_storage->override_property_visibility;
@@ -291,18 +324,21 @@ class PropertyFetchAnalyzer
                         if (IssueBuffer::accepts(
                             new NoInterfaceProperties(
                                 'Interfaces cannot have properties',
-                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $lhs_type_part->value
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            // fall through
+                            return null;
                         }
 
-                        return null;
+                        if (!$codebase->methodExists($fq_class_name . '::__set')) {
+                            return null;
+                        }
                     }
                 }
 
-                if (!$class_exists) {
+                if (!$class_exists && !$interface_exists) {
                     if (IssueBuffer::accepts(
                         new UndefinedClass(
                             'Cannot set properties of undefined class ' . $lhs_type_part->value,
@@ -316,17 +352,11 @@ class PropertyFetchAnalyzer
 
                     return null;
                 }
+            } else {
+                $class_exists = true;
             }
 
             $property_id = $fq_class_name . '::$' . $prop_name;
-
-            if ($codebase->server_mode) {
-                $codebase->analyzer->addNodeReference(
-                    $statements_analyzer->getFilePath(),
-                    $stmt->name,
-                    $property_id
-                );
-            }
 
             if ($codebase->methodExists($fq_class_name . '::__get')
                 && (!$codebase->properties->propertyExists($property_id)
@@ -357,34 +387,8 @@ class PropertyFetchAnalyzer
                 if (!$class_storage->sealed_properties && !$override_property_visibility) {
                     continue;
                 }
-            }
 
-            if (!$codebase->properties->propertyExists(
-                $property_id,
-                $context->calling_method_id,
-                $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
-            )
-            ) {
-                if ($context->inside_isset) {
-                    return;
-                }
-
-                if ($stmt_var_id === '$this') {
-                    if ($context->collect_mutations) {
-                        return;
-                    }
-
-                    if (IssueBuffer::accepts(
-                        new UndefinedThisPropertyFetch(
-                            'Instance property ' . $property_id . ' is not defined',
-                            new CodeLocation($statements_analyzer->getSource(), $stmt),
-                            $property_id
-                        ),
-                        $statements_analyzer->getSuppressedIssues()
-                    )) {
-                        // fall through
-                    }
-                } else {
+                if (!$class_exists) {
                     if (IssueBuffer::accepts(
                         new UndefinedPropertyFetch(
                             'Instance property ' . $property_id . ' is not defined',
@@ -396,14 +400,72 @@ class PropertyFetchAnalyzer
                         // fall through
                     }
                 }
+            }
 
-                $stmt->inferredType = Type::getMixed();
+            if (!$class_exists) {
+                continue;
+            }
 
-                if ($var_id) {
-                    $context->vars_in_scope[$var_id] = $stmt->inferredType;
+            if ($codebase->server_mode) {
+                $codebase->analyzer->addNodeReference(
+                    $statements_analyzer->getFilePath(),
+                    $stmt->name,
+                    $property_id
+                );
+            }
+
+            if (!$codebase->properties->propertyExists(
+                $property_id,
+                $context->calling_method_id,
+                $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
+            )
+            ) {
+                if ($fq_class_name !== $context->self
+                    && $context->self
+                    && $codebase->properties->propertyExists(
+                        $context->self . '::$' . $prop_name,
+                        $context->calling_method_id,
+                        $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
+                    )
+                ) {
+                    $property_id = $context->self . '::$' . $prop_name;
+                } else {
+                    if ($context->inside_isset) {
+                        return;
+                    }
+
+                    if ($stmt_var_id === '$this') {
+                        if (IssueBuffer::accepts(
+                            new UndefinedThisPropertyFetch(
+                                'Instance property ' . $property_id . ' is not defined',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $property_id
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new UndefinedPropertyFetch(
+                                'Instance property ' . $property_id . ' is not defined',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $property_id
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
+
+                    $stmt->inferredType = Type::getMixed();
+
+                    if ($var_id) {
+                        $context->vars_in_scope[$var_id] = $stmt->inferredType;
+                    }
+
+                    return;
                 }
-
-                return null;
             }
 
             if (!$override_property_visibility) {
@@ -457,9 +519,9 @@ class PropertyFetchAnalyzer
                 }
             }
 
-            $class_property_type = $property_storage->type;
+            $class_property_type = $codebase->properties->getPropertyType($property_id);
 
-            if ($class_property_type === false) {
+            if (!$class_property_type) {
                 if (IssueBuffer::accepts(
                     new MissingPropertyType(
                         'Property ' . $fq_class_name . '::$' . $prop_name

@@ -21,6 +21,7 @@ use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\FileSource;
 use Psalm\Issue\DuplicateClass;
+use Psalm\Issue\DuplicateFunction;
 use Psalm\Issue\DuplicateMethod;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
@@ -69,10 +70,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     /** @var Config */
     private $config;
 
-    /** @var array<string, Type\Union> */
+    /** @var array<string, array{Type\Union, ?string}> */
     private $class_template_types = [];
 
-    /** @var array<string, Type\Union> */
+    /** @var array<string, array{Type\Union, ?string}> */
     private $function_template_types = [];
 
     /** @var FunctionLikeStorage[] */
@@ -258,132 +259,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         } elseif ($node instanceof PhpParser\Node\Expr\FuncCall && $node->name instanceof PhpParser\Node\Name) {
             $function_id = implode('\\', $node->name->parts);
             if (CallMap::inCallMap($function_id)) {
-                $function_params = CallMap::getParamsFromCallMap($function_id);
-
-                if ($function_params) {
-                    foreach ($function_params as $function_param_group) {
-                        foreach ($function_param_group as $function_param) {
-                            if ($function_param->type) {
-                                $function_param->type->queueClassLikesForScanning(
-                                    $this->codebase,
-                                    $this->file_storage
-                                );
-                            }
-                        }
-                    }
-                }
-
-                $return_type = CallMap::getReturnTypeFromCallMap($function_id);
-
-                $return_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
-
-                if ($function_id === 'define') {
-                    $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
-                    $second_arg_value = isset($node->args[1]) ? $node->args[1]->value : null;
-                    if ($first_arg_value instanceof PhpParser\Node\Scalar\String_ && $second_arg_value) {
-                        $const_type = StatementsAnalyzer::getSimpleType(
-                            $this->codebase,
-                            $second_arg_value,
-                            $this->aliases
-                        ) ?: Type::getMixed();
-                        $const_name = $first_arg_value->value;
-
-                        if ($this->functionlike_storages && !$this->config->hoist_constants) {
-                            $functionlike_storage =
-                                $this->functionlike_storages[count($this->functionlike_storages) - 1];
-                            $functionlike_storage->defined_constants[$const_name] = $const_type;
-                        } else {
-                            $this->file_storage->constants[$const_name] = $const_type;
-                            $this->file_storage->declaring_constants[$const_name] = $this->file_path;
-                        }
-                    }
-                }
-
-                $mapping_function_ids = [];
-
-                if (($function_id === 'array_map' && isset($node->args[0]))
-                    || ($function_id === 'array_filter' && isset($node->args[1]))
-                ) {
-                    $node_arg_value = $function_id = 'array_map' ? $node->args[0]->value : $node->args[1]->value;
-
-                    if ($node_arg_value instanceof PhpParser\Node\Scalar\String_
-                        || $node_arg_value instanceof PhpParser\Node\Expr\Array_
-                        || $node_arg_value instanceof PhpParser\Node\Expr\BinaryOp\Concat
-                    ) {
-                        $mapping_function_ids = CallAnalyzer::getFunctionIdsFromCallableArg(
-                            $this->file_scanner,
-                            $node_arg_value
-                        );
-                    }
-
-                    foreach ($mapping_function_ids as $potential_method_id) {
-                        if (strpos($potential_method_id, '::') === false) {
-                            continue;
-                        }
-
-                        list($callable_fqcln) = explode('::', $potential_method_id);
-
-                        if (!in_array(strtolower($callable_fqcln), ['self', 'parent', 'static'], true)) {
-                            $this->codebase->scanner->queueClassLikeForScanning(
-                                $callable_fqcln,
-                                $this->file_path
-                            );
-                        }
-                    }
-                }
-
-                if ($function_id === 'func_get_arg'
-                    || $function_id === 'func_get_args'
-                    || $function_id === 'func_num_args'
-                ) {
-                    $function_like_storage = end($this->functionlike_storages);
-
-                    if ($function_like_storage) {
-                        $function_like_storage->variadic = true;
-                    }
-                }
-
-                if ($function_id === 'class_alias') {
-                    $first_arg = $node->args[0]->value ?? null;
-                    $second_arg = $node->args[1]->value ?? null;
-
-                    if ($first_arg instanceof PhpParser\Node\Scalar\String_) {
-                        $first_arg_value = $first_arg->value;
-                    } elseif ($first_arg instanceof PhpParser\Node\Expr\ClassConstFetch
-                        && $first_arg->class instanceof PhpParser\Node\Name
-                        && $first_arg->name instanceof PhpParser\Node\Identifier
-                        && strtolower($first_arg->name->name) === 'class'
-                    ) {
-                        /** @var string */
-                        $first_arg_value = $first_arg->class->getAttribute('resolvedName');
-                    } else {
-                        $first_arg_value = null;
-                    }
-
-                    if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
-                        $second_arg_value = $second_arg->value;
-                    } elseif ($second_arg instanceof PhpParser\Node\Expr\ClassConstFetch
-                        && $second_arg->class instanceof PhpParser\Node\Name
-                        && $second_arg->name instanceof PhpParser\Node\Identifier
-                        && strtolower($second_arg->name->name) === 'class'
-                    ) {
-                        /** @var string */
-                        $second_arg_value = $second_arg->class->getAttribute('resolvedName');
-                    } else {
-                        $second_arg_value = null;
-                    }
-
-                    if ($first_arg_value && $second_arg_value) {
-                        if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
-                            $this->codebase->classlikes->addClassAlias(
-                                $first_arg_value,
-                                $second_arg_value
-                            );
-                        }
-
-                        $this->file_storage->classlike_aliases[strtolower($second_arg_value)] = $first_arg_value;
-                    }
-                }
+                $this->registerClassMapFunctionCall($function_id, $node);
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\TraitUse) {
             if (!$this->classlike_storages) {
@@ -393,22 +269,78 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage = $this->classlike_storages[count($this->classlike_storages) - 1];
 
             $method_map = $storage->trait_alias_map ?: [];
+            $visibility_map = $storage->trait_visibility_map ?: [];
 
             foreach ($node->adaptations as $adaptation) {
                 if ($adaptation instanceof PhpParser\Node\Stmt\TraitUseAdaptation\Alias) {
+                    $old_name = strtolower($adaptation->method->name);
+                    $new_name = $old_name;
+
                     if ($adaptation->newName) {
-                        $method_map[strtolower($adaptation->newName->name)] = strtolower($adaptation->method->name);
+                        $new_name = strtolower($adaptation->newName->name);
+
+                        if ($new_name !== $old_name) {
+                            $method_map[$new_name] = $old_name;
+                        }
+                    }
+
+                    if ($adaptation->newModifier) {
+                        switch ($adaptation->newModifier) {
+                            case 1:
+                                $visibility_map[$new_name] = ClassLikeAnalyzer::VISIBILITY_PUBLIC;
+                                break;
+
+                            case 2:
+                                $visibility_map[$new_name] = ClassLikeAnalyzer::VISIBILITY_PROTECTED;
+                                break;
+
+                            case 4:
+                                $visibility_map[$new_name] = ClassLikeAnalyzer::VISIBILITY_PRIVATE;
+                                break;
+                        }
                     }
                 }
             }
 
             $storage->trait_alias_map = $method_map;
+            $storage->trait_visibility_map = $visibility_map;
 
             foreach ($node->traits as $trait) {
                 $trait_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($trait, $this->aliases);
                 $this->codebase->scanner->queueClassLikeForScanning($trait_fqcln, $this->file_path, $this->scan_deep);
                 $storage->used_traits[strtolower($trait_fqcln)] = $trait_fqcln;
                 $this->file_storage->required_classes[strtolower($trait_fqcln)] = $trait_fqcln;
+            }
+
+            if ($node_comment = $node->getDocComment()) {
+                $comments = DocComment::parse((string) $node_comment, 0);
+
+                if (isset($comments['specials']['template-use'])
+                    || isset($comments['specials']['use'])
+                ) {
+                    $all_inheritance = array_merge(
+                        $comments['specials']['template-use'] ?? [],
+                        $comments['specials']['use'] ?? []
+                    );
+
+                    foreach ($all_inheritance as $template_line) {
+                        $this->useTemplatedType($storage, $node, $template_line);
+                    }
+                }
+
+                if (isset($comments['specials']['template-extends'])
+                    || isset($comments['specials']['extends'])
+                    || isset($comments['specials']['template-implements'])
+                    || isset($comments['specials']['implements'])
+                ) {
+                    if (IssueBuffer::accepts(
+                        new InvalidDocblock(
+                            'You must use @use or @template-use to parameterize traits',
+                            new CodeLocation($this->file_scanner, $node, null, true)
+                        )
+                    )) {
+                    }
+                }
             }
         } elseif ($node instanceof PhpParser\Node\Expr\Include_) {
             $this->visitInclude($node);
@@ -602,6 +534,150 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     }
 
     /**
+     * @return void
+     */
+    private function registerClassMapFunctionCall(
+        string $function_id,
+        PhpParser\Node\Expr\FuncCall $node
+    ) {
+        $function_params = CallMap::getParamsFromCallMap($function_id);
+
+        if ($function_params) {
+            foreach ($function_params as $function_param_group) {
+                foreach ($function_param_group as $function_param) {
+                    if ($function_param->type) {
+                        $function_param->type->queueClassLikesForScanning(
+                            $this->codebase,
+                            $this->file_storage
+                        );
+                    }
+                }
+            }
+        }
+
+        $return_type = CallMap::getReturnTypeFromCallMap($function_id);
+
+        $return_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
+
+        if ($function_id === 'define') {
+            $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
+            $second_arg_value = isset($node->args[1]) ? $node->args[1]->value : null;
+            if ($first_arg_value instanceof PhpParser\Node\Scalar\String_ && $second_arg_value) {
+                $const_type = StatementsAnalyzer::getSimpleType(
+                    $this->codebase,
+                    $second_arg_value,
+                    $this->aliases
+                ) ?: Type::getMixed();
+                $const_name = $first_arg_value->value;
+
+                if ($this->functionlike_storages && !$this->config->hoist_constants) {
+                    $functionlike_storage =
+                        $this->functionlike_storages[count($this->functionlike_storages) - 1];
+                    $functionlike_storage->defined_constants[$const_name] = $const_type;
+                } else {
+                    $this->file_storage->constants[$const_name] = $const_type;
+                    $this->file_storage->declaring_constants[$const_name] = $this->file_path;
+                }
+            }
+        }
+
+        $mapping_function_ids = [];
+
+        if (($function_id === 'array_map' && isset($node->args[0]))
+            || ($function_id === 'array_filter' && isset($node->args[1]))
+        ) {
+            $node_arg_value = $function_id = 'array_map' ? $node->args[0]->value : $node->args[1]->value;
+
+            if ($node_arg_value instanceof PhpParser\Node\Scalar\String_
+                || $node_arg_value instanceof PhpParser\Node\Expr\Array_
+                || $node_arg_value instanceof PhpParser\Node\Expr\BinaryOp\Concat
+            ) {
+                $mapping_function_ids = CallAnalyzer::getFunctionIdsFromCallableArg(
+                    $this->file_scanner,
+                    $node_arg_value
+                );
+            }
+
+            foreach ($mapping_function_ids as $potential_method_id) {
+                if (strpos($potential_method_id, '::') === false) {
+                    continue;
+                }
+
+                list($callable_fqcln) = explode('::', $potential_method_id);
+
+                if (!in_array(strtolower($callable_fqcln), ['self', 'parent', 'static'], true)) {
+                    $this->codebase->scanner->queueClassLikeForScanning(
+                        $callable_fqcln,
+                        $this->file_path
+                    );
+                }
+            }
+        }
+
+        if ($function_id === 'func_get_arg'
+            || $function_id === 'func_get_args'
+            || $function_id === 'func_num_args'
+        ) {
+            $function_like_storage = end($this->functionlike_storages);
+
+            if ($function_like_storage) {
+                $function_like_storage->variadic = true;
+            }
+        }
+
+        if ($function_id === 'is_a' || $function_id === 'is_subclass_of') {
+            $second_arg = $node->args[1]->value ?? null;
+
+            if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
+                $this->codebase->scanner->queueClassLikeForScanning(
+                    $second_arg->value,
+                    $this->file_path
+                );
+            }
+        }
+
+        if ($function_id === 'class_alias') {
+            $first_arg = $node->args[0]->value ?? null;
+            $second_arg = $node->args[1]->value ?? null;
+
+            if ($first_arg instanceof PhpParser\Node\Scalar\String_) {
+                $first_arg_value = $first_arg->value;
+            } elseif ($first_arg instanceof PhpParser\Node\Expr\ClassConstFetch
+                && $first_arg->class instanceof PhpParser\Node\Name
+                && $first_arg->name instanceof PhpParser\Node\Identifier
+                && strtolower($first_arg->name->name) === 'class'
+            ) {
+                /** @var string */
+                $first_arg_value = $first_arg->class->getAttribute('resolvedName');
+            } else {
+                $first_arg_value = null;
+            }
+
+            if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
+                $second_arg_value = $second_arg->value;
+            } elseif ($second_arg instanceof PhpParser\Node\Expr\ClassConstFetch
+                && $second_arg->class instanceof PhpParser\Node\Name
+                && $second_arg->name instanceof PhpParser\Node\Identifier
+                && strtolower($second_arg->name->name) === 'class'
+            ) {
+                /** @var string */
+                $second_arg_value = $second_arg->class->getAttribute('resolvedName');
+            } else {
+                $second_arg_value = null;
+            }
+
+            if ($first_arg_value && $second_arg_value) {
+                $this->codebase->classlikes->addClassAlias(
+                    $first_arg_value,
+                    $second_arg_value
+                );
+
+                $this->file_storage->classlike_aliases[strtolower($second_arg_value)] = $first_arg_value;
+            }
+        }
+    }
+
+    /**
      * @return false|null
      */
     private function registerClassLike(PhpParser\Node\Stmt\ClassLike $node)
@@ -609,6 +685,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         $class_location = new CodeLocation($this->file_scanner, $node, null, true);
 
         $storage = null;
+
+        $class_name = null;
 
         if ($node->name === null) {
             if (!$node instanceof PhpParser\Node\Stmt\Class_) {
@@ -619,6 +697,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         } else {
             $fq_classlike_name =
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $node->name->name;
+
+            $class_name = $node->name->name;
 
             if ($this->codebase->classlike_storage_provider->has($fq_classlike_name)) {
                 $duplicate_storage = $this->codebase->classlike_storage_provider->get($fq_classlike_name);
@@ -651,6 +731,16 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 ) {
                     // we're overwriting some methods
                     $storage = $duplicate_storage;
+                    $this->codebase->classlike_storage_provider->makeNew(strtolower($fq_classlike_name));
+                    $storage->populated = false;
+                    $storage->class_implements = []; // we do this because reflection reports
+                    $storage->parent_interfaces = [];
+
+                    foreach ($storage->dependent_classlikes as $dependent_name_lc => $_) {
+                        $dependent_storage = $this->codebase->classlike_storage_provider->get($dependent_name_lc);
+                        $dependent_storage->populated = false;
+                        $this->codebase->classlike_storage_provider->makeNew($dependent_name_lc);
+                    }
                 }
             }
         }
@@ -662,7 +752,22 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         $this->fq_classlike_names[] = $fq_classlike_name;
 
         if (!$storage) {
-            $storage = $this->codebase->createClassLikeStorage($fq_classlike_name);
+            $storage = $this->codebase->classlike_storage_provider->create($fq_classlike_name);
+        }
+
+        if ($class_name
+            && isset($this->aliases->uses[strtolower($class_name)])
+            && $this->aliases->uses[strtolower($class_name)] !== $fq_classlike_name
+        ) {
+            IssueBuffer::add(
+                new \Psalm\Issue\ParseError(
+                    'Class name ' . $class_name . ' clashes with a use statement alias',
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            );
+
+            $storage->has_visitor_issues = true;
+            $this->file_storage->has_visitor_issues = true;
         }
 
         $storage->location = $class_location;
@@ -672,6 +777,51 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         $doc_comment = $node->getDocComment();
 
         $this->classlike_storages[] = $storage;
+
+        if ($node instanceof PhpParser\Node\Stmt\Class_) {
+            $storage->abstract = (bool)$node->isAbstract();
+            $storage->final = (bool)$node->isFinal();
+
+            $this->codebase->classlikes->addFullyQualifiedClassName($fq_classlike_name, $this->file_path);
+
+            if ($node->extends) {
+                $parent_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($node->extends, $this->aliases);
+                $this->codebase->scanner->queueClassLikeForScanning(
+                    $parent_fqcln,
+                    $this->file_path,
+                    $this->scan_deep
+                );
+                $parent_fqcln_lc = strtolower($parent_fqcln);
+                $storage->parent_classes[$parent_fqcln_lc] = $parent_fqcln_lc;
+                $this->file_storage->required_classes[strtolower($parent_fqcln)] = $parent_fqcln;
+            }
+
+            foreach ($node->implements as $interface) {
+                $interface_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($interface, $this->aliases);
+                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln, $this->file_path);
+                $storage->class_implements[strtolower($interface_fqcln)] = $interface_fqcln;
+                $this->file_storage->required_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
+            }
+        } elseif ($node instanceof PhpParser\Node\Stmt\Interface_) {
+            $storage->is_interface = true;
+            $this->codebase->classlikes->addFullyQualifiedInterfaceName($fq_classlike_name, $this->file_path);
+
+            foreach ($node->extends as $interface) {
+                $interface_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($interface, $this->aliases);
+                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln, $this->file_path);
+                $storage->parent_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
+                $this->file_storage->required_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
+            }
+        } elseif ($node instanceof PhpParser\Node\Stmt\Trait_) {
+            $storage->is_trait = true;
+            $this->file_storage->has_trait = true;
+            $this->codebase->classlikes->addFullyQualifiedTraitName($fq_classlike_name, $this->file_path);
+            $this->codebase->classlikes->addTraitNode(
+                $fq_classlike_name,
+                $node,
+                $this->aliases
+            );
+        }
 
         if ($doc_comment) {
             $docblock_info = null;
@@ -697,29 +847,59 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $storage->template_types = [];
 
                     foreach ($docblock_info->templates as $template_type) {
+                        $template_name = $template_type[0];
                         if (count($template_type) === 3) {
-                            $storage->template_types[$template_type[0]] = Type::parseTokens(
-                                Type::fixUpLocalType(
-                                    $template_type[2],
-                                    $this->aliases,
-                                    null,
-                                    $this->type_aliases
-                                )
-                            );
+                            if (trim($template_type[2])) {
+                                try {
+                                    $template_type = Type::parseTokens(
+                                        Type::fixUpLocalType(
+                                            $template_type[2],
+                                            $this->aliases,
+                                            null,
+                                            $this->type_aliases
+                                        )
+                                    );
+                                } catch (TypeParseTreeException $e) {
+                                    if (IssueBuffer::accepts(
+                                        new InvalidDocblock(
+                                            $e->getMessage() . ' in docblock for '
+                                                . implode('.', $this->fq_classlike_names),
+                                            new CodeLocation($this->file_scanner, $node, null, true)
+                                        )
+                                    )) {
+                                    }
+
+                                    $storage->has_docblock_issues = true;
+                                    continue;
+                                }
+
+                                $storage->template_types[$template_name] = [
+                                    $template_type,
+                                    $fq_classlike_name
+                                ];
+                            } else {
+                                if (IssueBuffer::accepts(
+                                    new InvalidDocblock(
+                                        'Template missing as type',
+                                        new CodeLocation($this->file_scanner, $node, null, true)
+                                    )
+                                )) {
+                                }
+                            }
                         } else {
-                            $storage->template_types[$template_type[0]] = Type::getMixed();
+                            $storage->template_types[$template_name] = [Type::getMixed(), $fq_classlike_name];
                         }
                     }
 
                     $this->class_template_types = $storage->template_types;
+                }
 
-                    if ($docblock_info->template_parents) {
-                        $storage->template_parents = [];
+                foreach ($docblock_info->template_extends as $extended_class_name) {
+                    $this->extendTemplatedType($storage, $node, $extended_class_name);
+                }
 
-                        foreach ($docblock_info->template_parents as $template_parent) {
-                            $storage->template_parents[$template_parent] = $template_parent;
-                        }
-                    }
+                foreach ($docblock_info->template_implements as $implemented_class_name) {
+                    $this->implementTemplatedType($storage, $node, $implemented_class_name);
                 }
 
                 if ($docblock_info->properties) {
@@ -772,54 +952,13 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     /** @var MethodStorage */
                     $pseudo_method_storage = $this->registerFunctionLike($method, true);
 
-                    $storage->pseudo_methods[strtolower($method->name->name)] = $pseudo_method_storage;
+                    if ($pseudo_method_storage->is_static) {
+                        $storage->pseudo_static_methods[strtolower($method->name->name)] = $pseudo_method_storage;
+                    } else {
+                        $storage->pseudo_methods[strtolower($method->name->name)] = $pseudo_method_storage;
+                    }
                 }
             }
-        }
-
-        if ($node instanceof PhpParser\Node\Stmt\Class_) {
-            $storage->abstract = (bool)$node->isAbstract();
-            $storage->final = (bool)$node->isFinal();
-
-            $this->codebase->classlikes->addFullyQualifiedClassName($fq_classlike_name, $this->file_path);
-
-            if ($node->extends) {
-                $parent_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($node->extends, $this->aliases);
-                $this->codebase->scanner->queueClassLikeForScanning(
-                    $parent_fqcln,
-                    $this->file_path,
-                    $this->scan_deep
-                );
-                $parent_fqcln_lc = strtolower($parent_fqcln);
-                $storage->parent_classes[$parent_fqcln_lc] = $parent_fqcln_lc;
-                $this->file_storage->required_classes[strtolower($parent_fqcln)] = $parent_fqcln;
-            }
-
-            foreach ($node->implements as $interface) {
-                $interface_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($interface, $this->aliases);
-                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln, $this->file_path);
-                $storage->class_implements[strtolower($interface_fqcln)] = $interface_fqcln;
-                $this->file_storage->required_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
-            }
-        } elseif ($node instanceof PhpParser\Node\Stmt\Interface_) {
-            $storage->is_interface = true;
-            $this->codebase->classlikes->addFullyQualifiedInterfaceName($fq_classlike_name, $this->file_path);
-
-            foreach ($node->extends as $interface) {
-                $interface_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($interface, $this->aliases);
-                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln, $this->file_path);
-                $storage->parent_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
-                $this->file_storage->required_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
-            }
-        } elseif ($node instanceof PhpParser\Node\Stmt\Trait_) {
-            $storage->is_trait = true;
-            $this->file_storage->has_trait = true;
-            $this->codebase->classlikes->addFullyQualifiedTraitName($fq_classlike_name, $this->file_path);
-            $this->codebase->classlikes->addTraitNode(
-                $fq_classlike_name,
-                $node,
-                $this->aliases
-            );
         }
 
         foreach ($node->stmts as $node_stmt) {
@@ -836,6 +975,293 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     }
 
     /**
+     * @return void
+     */
+    private function extendTemplatedType(
+        ClassLikeStorage $storage,
+        PhpParser\Node\Stmt\ClassLike $node,
+        string $extended_class_name
+    ) {
+        try {
+            $extended_union_type = Type::parseTokens(
+                Type::fixUpLocalType(
+                    $extended_class_name,
+                    $this->aliases,
+                    $this->class_template_types,
+                    $this->type_aliases
+                ),
+                false,
+                $this->class_template_types
+            );
+        } catch (TypeParseTreeException $e) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    $e->getMessage() . ' in docblock for ' . implode('.', $this->fq_classlike_names),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+
+            $storage->has_docblock_issues = true;
+            return;
+        }
+
+        if (!$extended_union_type->isSingle()) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    '@template-extends cannot be a union type',
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+        }
+
+        foreach ($extended_union_type->getTypes() as $atomic_type) {
+            if (!$atomic_type instanceof Type\Atomic\TGenericObject) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        '@template-extends has invalid class ' . $atomic_type->getId(),
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    )
+                )) {
+                }
+
+                return;
+            }
+
+            $generic_class_lc = strtolower($atomic_type->value);
+
+            if (!isset($storage->parent_classes[$generic_class_lc])
+                && !isset($storage->parent_interfaces[$generic_class_lc])
+            ) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        '@template-extends must include the name of an extended class,'
+                            . ' got ' . $atomic_type->getId(),
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    )
+                )) {
+                }
+            }
+
+            $extended_type_parameters = [];
+
+            $storage->template_type_extends_count = count($atomic_type->type_params);
+
+            foreach ($atomic_type->type_params as $type_param) {
+                if (!$type_param->isSingle()) {
+                    if (IssueBuffer::accepts(
+                        new InvalidDocblock(
+                            '@template-extends type parameter cannot be a union type',
+                            new CodeLocation($this->file_scanner, $node, null, true)
+                        )
+                    )) {
+                    }
+                    return;
+                }
+
+                foreach ($type_param->getTypes() as $type_param_atomic) {
+                    $extended_type_parameters[] = $type_param_atomic;
+                }
+            }
+
+            if ($extended_type_parameters) {
+                $storage->template_type_extends[$generic_class_lc] = $extended_type_parameters;
+            }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    private function implementTemplatedType(
+        ClassLikeStorage $storage,
+        PhpParser\Node\Stmt\ClassLike $node,
+        string $implemented_class_name
+    ) {
+        try {
+            $implemented_union_type = Type::parseTokens(
+                Type::fixUpLocalType(
+                    $implemented_class_name,
+                    $this->aliases,
+                    $this->class_template_types,
+                    $this->type_aliases
+                ),
+                false,
+                $this->class_template_types
+            );
+        } catch (TypeParseTreeException $e) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    $e->getMessage() . ' in docblock for ' . implode('.', $this->fq_classlike_names),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+
+            $storage->has_docblock_issues = true;
+            return;
+        }
+
+        if (!$implemented_union_type->isSingle()) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    '@template-implements cannot be a union type',
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+        }
+
+        foreach ($implemented_union_type->getTypes() as $atomic_type) {
+            if (!$atomic_type instanceof Type\Atomic\TGenericObject) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        '@template-implements has invalid class ' . $atomic_type->getId(),
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    )
+                )) {
+                }
+
+                return;
+            }
+
+            $generic_class_lc = strtolower($atomic_type->value);
+
+            if (!isset($storage->class_implements[$generic_class_lc])) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        '@template-implements must include the name of an implemented class,'
+                            . ' got ' . $atomic_type->getId(),
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    )
+                )) {
+                }
+            }
+
+            $implemented_type_parameters = [];
+
+            $storage->template_type_implements_count[$generic_class_lc] = count($atomic_type->type_params);
+
+            foreach ($atomic_type->type_params as $type_param) {
+                if (!$type_param->isSingle()) {
+                    if (IssueBuffer::accepts(
+                        new InvalidDocblock(
+                            '@template-implements type parameter cannot be a union type',
+                            new CodeLocation($this->file_scanner, $node, null, true)
+                        )
+                    )) {
+                    }
+                    return;
+                }
+
+                foreach ($type_param->getTypes() as $type_param_atomic) {
+                    $implemented_type_parameters[] = $type_param_atomic;
+                }
+            }
+
+            if ($implemented_type_parameters) {
+                $storage->template_type_extends[$generic_class_lc] = $implemented_type_parameters;
+            }
+        }
+    }
+
+    /**
+     * @return void
+     */
+    private function useTemplatedType(
+        ClassLikeStorage $storage,
+        PhpParser\Node\Stmt\TraitUse $node,
+        string $used_class_name
+    ) {
+        try {
+            $used_union_type = Type::parseTokens(
+                Type::fixUpLocalType(
+                    $used_class_name,
+                    $this->aliases,
+                    $this->class_template_types,
+                    $this->type_aliases
+                ),
+                false,
+                $this->class_template_types
+            );
+        } catch (TypeParseTreeException $e) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    $e->getMessage() . ' in docblock for ' . implode('.', $this->fq_classlike_names),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+
+            $storage->has_docblock_issues = true;
+            return;
+        }
+
+        if (!$used_union_type->isSingle()) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    '@template-use cannot be a union type',
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+        }
+
+        foreach ($used_union_type->getTypes() as $atomic_type) {
+            if (!$atomic_type instanceof Type\Atomic\TGenericObject) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        '@template-use has invalid class ' . $atomic_type->getId(),
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    )
+                )) {
+                }
+
+                return;
+            }
+
+            $generic_class_lc = strtolower($atomic_type->value);
+
+            if (!isset($storage->used_traits[$generic_class_lc])) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        '@template-use must include the name of an used class,'
+                            . ' got ' . $atomic_type->getId(),
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    )
+                )) {
+                }
+            }
+
+            $used_type_parameters = [];
+
+            $storage->template_type_uses_count[$generic_class_lc] = count($atomic_type->type_params);
+
+            foreach ($atomic_type->type_params as $type_param) {
+                if (!$type_param->isSingle()) {
+                    if (IssueBuffer::accepts(
+                        new InvalidDocblock(
+                            '@template-uses type parameter cannot be a union type',
+                            new CodeLocation($this->file_scanner, $node, null, true)
+                        )
+                    )) {
+                    }
+                    return;
+                }
+
+                foreach ($type_param->getTypes() as $type_param_atomic) {
+                    $used_type_parameters[] = $type_param_atomic;
+                }
+            }
+
+            if ($used_type_parameters) {
+                $storage->template_type_extends[$generic_class_lc] = $used_type_parameters;
+            }
+        }
+    }
+
+    /**
      * @param  PhpParser\Node\FunctionLike $stmt
      * @param  bool $fake_method in the case of @method annotations we do something a little strange
      *
@@ -844,28 +1270,72 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     private function registerFunctionLike(PhpParser\Node\FunctionLike $stmt, $fake_method = false)
     {
         $class_storage = null;
+        $fq_classlike_name = null;
 
         if ($fake_method && $stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
             $cased_function_id = '@method ' . $stmt->name->name;
 
             $storage = new MethodStorage();
+            $storage->defining_fqcln = '';
+            $storage->is_static = (bool) $stmt->isStatic();
         } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
             $cased_function_id =
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $stmt->name->name;
             $function_id = strtolower($cased_function_id);
 
-            if (isset($this->file_storage->functions[$function_id])) {
-                if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
+            $storage = new FunctionLikeStorage();
+
+            if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
+                if (isset($this->file_storage->functions[$function_id])) {
                     $this->codebase->functions->addGlobalFunction(
                         $function_id,
                         $this->file_storage->functions[$function_id]
                     );
+
+                    return $this->file_storage->functions[$function_id];
                 }
+            } else {
+                if (isset($this->file_storage->functions[$function_id])) {
+                    $duplicate_function_storage = $this->file_storage->functions[$function_id];
 
-                return $this->file_storage->functions[$function_id];
+                    if ($duplicate_function_storage->location
+                        && $duplicate_function_storage->location->getLineNumber() === $stmt->getLine()
+                    ) {
+                        return $this->file_storage->functions[$function_id];
+                    }
+
+                    if (IssueBuffer::accepts(
+                        new DuplicateFunction(
+                            'Method ' . $function_id . ' has already been defined'
+                                . ($duplicate_function_storage->location
+                                    ? ' in ' . $duplicate_function_storage->location->file_path
+                                    : ''),
+                            new CodeLocation($this->file_scanner, $stmt, null, true)
+                        )
+                    )) {
+                        // fall through
+                    }
+
+                    $this->file_storage->has_visitor_issues = true;
+
+                    $duplicate_function_storage->has_visitor_issues = true;
+
+                    return $this->file_storage->functions[$function_id];
+                } elseif (isset($this->config->getPredefinedFunctions()[$function_id])) {
+                    $reflection_function = new \ReflectionFunction($function_id);
+
+                    if ($reflection_function->getFileName() !== $this->file_path) {
+                        if (IssueBuffer::accepts(
+                            new DuplicateFunction(
+                                'Method ' . $function_id . ' has already been defined as a core function',
+                                new CodeLocation($this->file_scanner, $stmt, null, true)
+                            )
+                        )) {
+                            // fall through
+                        }
+                    }
+                }
             }
-
-            $storage = new FunctionLikeStorage();
 
             if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
                 $this->codebase->functions->addGlobalFunction($function_id, $storage);
@@ -920,6 +1390,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             if (!$storage) {
                 $storage = $class_storage->methods[strtolower($stmt->name->name)] = new MethodStorage();
             }
+
+            $storage->defining_fqcln = $fq_classlike_name;
 
             $class_name_parts = explode('\\', $fq_classlike_name);
             $class_name = array_pop($class_name_parts);
@@ -1283,16 +1755,29 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             foreach ($docblock_info->templates as $template_type) {
                 if (count($template_type) === 3) {
-                    $storage->template_types[$template_type[0]] = Type::parseTokens(
-                        Type::fixUpLocalType(
-                            $template_type[2],
-                            $this->aliases,
-                            null,
-                            $this->type_aliases
-                        )
-                    );
+                    if (trim($template_type[2])) {
+                        $storage->template_types[$template_type[0]] = [
+                            Type::parseTokens(
+                                Type::fixUpLocalType(
+                                    $template_type[2],
+                                    $this->aliases,
+                                    null,
+                                    $this->type_aliases
+                                )
+                            ),
+                            $fq_classlike_name
+                        ];
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new InvalidDocblock(
+                                'Template missing as type',
+                                new CodeLocation($this->file_scanner, $stmt, null, true)
+                            )
+                        )) {
+                        }
+                    }
                 } else {
-                    $storage->template_types[$template_type[0]] = Type::getMixed();
+                    $storage->template_types[$template_type[0]] = [Type::getMixed(), $fq_classlike_name];
                 }
             }
 
@@ -1305,11 +1790,33 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->assertions = [];
 
             foreach ($docblock_info->assertions as $assertion) {
+                $assertion_type = $assertion['type'];
+                $prefix = '';
+                if ($assertion_type[0] === '!') {
+                    $prefix = '!';
+                    $assertion_type = substr($assertion_type, 1);
+                }
+                if ($assertion_type[0] === '~') {
+                    $prefix .= '~';
+                    $assertion_type = substr($assertion_type, 1);
+                }
+                if ($assertion_type[0] === '=') {
+                    $prefix .= '=';
+                    $assertion_type = substr($assertion_type, 1);
+                }
+
+                if ($assertion_type !== 'falsy'
+                    && !isset($template_types[$assertion_type])
+                    && !isset(Type::PSALM_RESERVED_WORDS[$assertion_type])
+                ) {
+                    $assertion_type = Type::getFQCLNFromString($assertion_type, $this->aliases);
+                }
+
                 foreach ($storage->params as $i => $param) {
                     if ($param->name === $assertion['param_name']) {
                         $storage->assertions[] = new \Psalm\Storage\Assertion(
                             $i,
-                            [[$assertion['type']]]
+                            [[$prefix . $assertion_type]]
                         );
                         continue 2;
                     }
@@ -1317,7 +1824,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->assertions[] = new \Psalm\Storage\Assertion(
                     '$' . $assertion['param_name'],
-                    [[$assertion['type']]]
+                    [[$prefix . $assertion_type]]
                 );
             }
         }
@@ -1495,13 +2002,56 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             );
         }
 
+        foreach ($docblock_info->params_out as $docblock_param_out) {
+            $param_name = substr($docblock_param_out['name'], 1);
+
+            foreach ($storage->params as $i => $param_storage) {
+                if ($param_storage->name === $param_name) {
+                    $out_type = Type::parseTokens(
+                        Type::fixUpLocalType(
+                            $docblock_param_out['type'],
+                            $this->aliases,
+                            $this->function_template_types + $this->class_template_types,
+                            $this->type_aliases
+                        ),
+                        false,
+                        $this->function_template_types + $this->class_template_types
+                    );
+
+                    $out_type->queueClassLikesForScanning(
+                        $this->codebase,
+                        $this->file_storage,
+                        $storage->template_types ?: []
+                    );
+
+                    $storage->param_out_types[$i] = $out_type;
+                }
+            }
+        }
+
         if ($docblock_info->template_typeofs) {
             foreach ($docblock_info->template_typeofs as $template_typeof) {
                 foreach ($storage->params as $i => $param) {
                     if ($param->name === $template_typeof['param_name']) {
                         $param_type_nullable = $param->type && $param->type->isNullable();
 
-                        $template_type = $template_types[$template_typeof['template_type']] ?? null;
+                        $template_type = isset($template_types[$template_typeof['template_type']])
+                            ? $template_types[$template_typeof['template_type']][0]
+                            : null;
+
+                        $template_class = isset($template_types[$template_typeof['template_type']])
+                            ? $template_types[$template_typeof['template_type']][1]
+                            : null;
+
+                        $template_atomic_type = null;
+
+                        if ($template_type) {
+                            foreach ($template_type->getTypes() as $tat) {
+                                if ($tat instanceof Type\Atomic\TNamedObject) {
+                                    $template_atomic_type = $tat;
+                                }
+                            }
+                        }
 
                         $param->type = new Type\Union([
                             new Type\Atomic\TGenericParamClass(
@@ -1509,9 +2059,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                                 $template_type && !$template_type->isMixed()
                                     ? (string)$template_type
                                     : 'object',
-                                $template_type && $template_type->isMixed()
-                                    ? null
-                                    : $template_type
+                                $template_atomic_type,
+                                $template_class
                             )
                         ]);
 
@@ -1708,6 +2257,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 // FIXME warn
             }
 
+            $storage_param->has_docblock_type = true;
             $new_param_type->setFromDocblock();
 
             $new_param_type->queueClassLikesForScanning(
@@ -1854,20 +2404,67 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
         }
 
-        $property_group_type = $var_comment ? $var_comment->type : null;
+        $signature_type = null;
+        $signature_type_location = null;
 
-        if ($property_group_type) {
-            $property_group_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
-            $property_group_type->setFromDocblock();
+        /** @var null|PhpParser\Node\Identifier|PhpParser\Node\Name|PhpParser\Node\NullableType */
+        $parser_property_type = isset($stmt->type) ? $stmt->type : null;
+
+        if ($parser_property_type) {
+            $suffix = '';
+
+            if ($parser_property_type instanceof PhpParser\Node\NullableType) {
+                $suffix = '|null';
+                $parser_property_type = $parser_property_type->type;
+            }
+
+            if ($parser_property_type instanceof PhpParser\Node\Identifier) {
+                $property_type_string = $parser_property_type->name . $suffix;
+            } else {
+                $property_type_fq_classlike_name = ClassLikeAnalyzer::getFQCLNFromNameObject(
+                    $parser_property_type,
+                    $this->aliases
+                );
+
+                $property_type_string = $property_type_fq_classlike_name . $suffix;
+            }
+
+            $signature_type = Type::parseString($property_type_string, true);
+            $signature_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
+
+            $signature_type_location = new CodeLocation(
+                $this->file_scanner,
+                $parser_property_type,
+                null,
+                false,
+                CodeLocation::FUNCTION_RETURN_TYPE
+            );
+        }
+
+        $doc_var_group_type = $var_comment ? $var_comment->type : null;
+
+        if ($doc_var_group_type) {
+            $doc_var_group_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
+            $doc_var_group_type->setFromDocblock();
         }
 
         foreach ($stmt->props as $property) {
-            $property_type_location = null;
-            $default_type = null;
+            $doc_var_location = null;
 
-            if (!$property_group_type) {
+            $property_storage = $storage->properties[$property->name->name] = new PropertyStorage();
+            $property_storage->is_static = (bool)$stmt->isStatic();
+            $property_storage->type = $signature_type;
+            $property_storage->signature_type = $signature_type;
+            $property_storage->signature_type_location = $signature_type_location;
+            $property_storage->type_location = $signature_type_location;
+            $property_storage->location = new CodeLocation($this->file_scanner, $property->name);
+            $property_storage->has_default = $property->default ? true : false;
+            $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
+            $property_storage->internal = $var_comment ? $var_comment->internal : false;
+
+            if (!$signature_type && !$doc_var_group_type) {
                 if ($property->default) {
-                    $default_type = StatementsAnalyzer::getSimpleType(
+                    $property_storage->suggested_type = StatementsAnalyzer::getSimpleType(
                         $this->codebase,
                         $property->default,
                         $this->aliases,
@@ -1877,10 +2474,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     );
                 }
 
-                $property_type = false;
+                $property_storage->type = null;
             } else {
                 if ($var_comment && $var_comment->line_number) {
-                    $property_type_location = new CodeLocation(
+                    $doc_var_location = new CodeLocation(
                         $this->file_scanner,
                         $stmt,
                         null,
@@ -1888,21 +2485,50 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         CodeLocation::VAR_TYPE,
                         $var_comment->original_type
                     );
-                    $property_type_location->setCommentLine($var_comment->line_number);
+                    $doc_var_location->setCommentLine($var_comment->line_number);
                 }
 
-                $property_type = count($stmt->props) === 1 ? $property_group_type : clone $property_group_type;
+                if ($doc_var_group_type) {
+                    $property_storage->type = count($stmt->props) === 1
+                        ? $doc_var_group_type
+                        : clone $doc_var_group_type;
+                }
             }
 
-            $property_storage = $storage->properties[$property->name->name] = new PropertyStorage();
-            $property_storage->is_static = (bool)$stmt->isStatic();
-            $property_storage->type = $property_type;
-            $property_storage->location = new CodeLocation($this->file_scanner, $property->name);
-            $property_storage->type_location = $property_type_location;
-            $property_storage->has_default = $property->default ? true : false;
-            $property_storage->suggested_type = $property_group_type ? null : $default_type;
-            $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
-            $property_storage->internal = $var_comment ? $var_comment->internal : false;
+            if ($property_storage->type
+                && $property_storage->type !== $property_storage->signature_type
+                && (!$property_storage->signature_type
+                    || $doc_var_group_type !== $property_storage->signature_type->getId())
+            ) {
+                if (!$property_storage->signature_type) {
+                    $property_storage->type_location = $doc_var_location;
+                }
+
+                if ($property_storage->signature_type) {
+                    $all_typehint_types_match = true;
+                    $signature_atomic_types = $property_storage->signature_type->getTypes();
+
+                    foreach ($property_storage->type->getTypes() as $key => $type) {
+                        if (isset($signature_atomic_types[$key])) {
+                            $type->from_docblock = false;
+                        } else {
+                            $all_typehint_types_match = false;
+                        }
+                    }
+
+                    if ($all_typehint_types_match) {
+                        $property_storage->type->from_docblock = false;
+                    }
+
+                    if ($property_storage->signature_type->isNullable()
+                        && !$property_storage->type->isNullable()
+                    ) {
+                        $property_storage->type->addType(new Type\Atomic\TNull());
+                    }
+                }
+
+                $property_storage->type->queueClassLikesForScanning($this->codebase, $this->file_storage);
+            }
 
             if ($stmt->isPublic()) {
                 $property_storage->visibility = ClassLikeAnalyzer::VISIBILITY_PUBLIC;

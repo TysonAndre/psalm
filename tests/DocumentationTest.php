@@ -91,6 +91,7 @@ class DocumentationTest extends TestCase
         // these cannot have code
         $code_blocks['UnrecognizedExpression'] = true;
         $code_blocks['UnrecognizedStatement'] = true;
+        $code_blocks['PluginIssue'] = true;
 
         $documented_issues = array_keys($code_blocks);
         sort($documented_issues);
@@ -124,7 +125,7 @@ class DocumentationTest extends TestCase
         }
 
         $this->expectException('\Psalm\Exception\CodeException');
-        $this->expectExceptionMessageRegexp('/\b' . preg_quote($error_message, '/') . '\b/');
+        $this->expectExceptionMessageRegExp('/\b' . preg_quote($error_message, '/') . '\b/');
 
         $file_path = self::$src_dir_path . 'somefile.php';
 
@@ -156,6 +157,9 @@ class DocumentationTest extends TestCase
                     continue 2;
 
                 case 'ForbiddenEcho':
+                    continue 2;
+
+                case 'PluginClass':
                     continue 2;
 
                 case 'InvalidFalsableReturnType':

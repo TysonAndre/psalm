@@ -281,6 +281,52 @@ class ConstantTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedArgument'],
             ],
+            'arrayAccessAfterIsset' => [
+                '<?php
+                    class C {
+                        const A = [
+                            "b" => ["c" => false],
+                            "c" => ["c" => true],
+                            "d" => ["c" => true]
+                        ];
+                    }
+
+                    /** @var string */
+                    $s = "b";
+
+                    if (isset(C::A[$s]["c"]) && C::A[$s]["c"] === false) {}',
+            ],
+            'namespacedConstantInsideClosure' => [
+                '<?php
+                    namespace Foo;
+
+                    const FOO_BAR = 1;
+
+                    function foo(): \Closure {
+                        return function (): int {
+                            return FOO_BAR;
+                        };
+                    }
+
+                    function foo2(): int {
+                        return FOO_BAR;
+                    }
+
+                    $a = function (): \Closure {
+                        return function (): int {
+                            return FOO_BAR;
+                        };
+                    };
+
+                    $b = function (): int {
+                        return FOO_BAR;
+                    };',
+            ],
+            'rootConstantReferencedInNamespace' => [
+                '<?php
+                    namespace Foo;
+                    echo DIRECTORY_SEPARATOR;',
+            ],
         ];
     }
 

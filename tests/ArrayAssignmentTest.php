@@ -1010,6 +1010,13 @@ class ArrayAssignmentTest extends TestCase
                     $arr = [1 => 0, 1, 2, 3];
                     $arr = [1 => "one", 2 => "two", "three"];',
             ],
+            'noDuplicateImplicitIntArrayKeyLargeOffset' => [
+                '<?php
+                    $arr = [
+                        48 => "A",
+                        95 => "a", "b",
+                    ];',
+            ],
             'constArrayAssignment' => [
                 '<?php
                     const BAR = 2;
@@ -1048,6 +1055,24 @@ class ArrayAssignmentTest extends TestCase
                     }',
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment'],
+            ],
+            'implementsArrayAccessAllowNullOffset' => [
+                '<?php
+                    /**
+                     * @template-implements ArrayAccess<int, string>
+                     */
+                    class C implements ArrayAccess {
+                        public function offsetExists(int $offset) : bool { return true; }
+
+                        public function offsetGet($offset) : string { return "";}
+
+                        public function offsetSet(?int $offset, string $value) : void {}
+
+                        public function offsetUnset(int $offset) : void { }
+                    }
+
+                    $c = new C();
+                    $c[] = "hello";',
             ],
         ];
     }
@@ -1188,6 +1213,25 @@ class ArrayAssignmentTest extends TestCase
                 '<?php
                     $_GET["foo"][0] = "5";',
                 'error_message' => 'MixedArrayAssignment',
+            ],
+            'implementsArrayAccessAllowNullOffset' => [
+                '<?php
+                    /**
+                     * @template-implements ArrayAccess<int, string>
+                     */
+                    class C implements ArrayAccess {
+                        public function offsetExists(int $offset) : bool { return true; }
+
+                        public function offsetGet($offset) : string { return "";}
+
+                        public function offsetSet(int $offset, string $value) : void {}
+
+                        public function offsetUnset(int $offset) : void { }
+                    }
+
+                    $c = new C();
+                    $c[] = "hello";',
+                 'error_message' => 'NullArgument',
             ],
         ];
     }

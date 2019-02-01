@@ -13,7 +13,6 @@ use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
-use Psalm\Type\Atomic\TGenericIterable;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\TInt;
@@ -27,6 +26,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TObject;
+use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
@@ -50,7 +50,7 @@ abstract class Type
     /**
      * @var array<string, bool>
      */
-    public static $PSALM_RESERVED_WORDS = [
+    const PSALM_RESERVED_WORDS = [
         'int' => true,
         'string' => true,
         'float' => true,
@@ -94,7 +94,7 @@ abstract class Type
      *
      * @param  string $type_string
      * @param  bool   $php_compatible
-     * @param  array<string, Union> $template_type_map
+     * @param  array<string, array{Union, ?string}> $template_type_map
      *
      * @return Union
      * @throws TypeParseTreeException
@@ -112,7 +112,7 @@ abstract class Type
      *
      * @param  array<int, string> $type_tokens
      * @param  bool   $php_compatible
-     * @param  array<string, Union> $template_type_map
+     * @param  array<string, array{Union, ?string}> $template_type_map
      *
      * @return Union
      */
@@ -197,7 +197,7 @@ abstract class Type
     /**
      * @param  ParseTree $parse_tree
      * @param  bool      $php_compatible
-     * @param  array<string, Union> $template_type_map
+     * @param  array<string, array{Union, ?string}> $template_type_map
      *
      * @return  Atomic|TArray|TGenericObject|ObjectLike|Union
      */
@@ -225,14 +225,22 @@ abstract class Type
 
             if ($generic_type_value === 'array' && count($generic_params) === 1) {
                 array_unshift($generic_params, new Union([new TArrayKey]));
-            } elseif (($generic_type_value === 'Generator' || $generic_type_value === 'iterable')
+            } elseif (($generic_type_value === 'iterable' || $generic_type_value === 'Traversable')
                 && count($generic_params) === 1
             ) {
                 array_unshift($generic_params, new Union([new TMixed]));
+            } elseif ($generic_type_value === 'Generator') {
+                if (count($generic_params) === 1) {
+                    array_unshift($generic_params, new Union([new TMixed]));
+                }
+
+                for ($i = 0, $l = 4 - count($generic_params); $i < $l; $i++) {
+                    $generic_params[] = new Union([new TMixed]);
+                }
             }
 
             if (!$generic_params) {
-                throw new \InvalidArgumentException('No generic params provided for type');
+                throw new TypeParseTreeException('No generic params provided for type');
             }
 
             if ($generic_type_value === 'array') {
@@ -240,17 +248,35 @@ abstract class Type
             }
 
             if ($generic_type_value === 'iterable') {
-                return new TGenericIterable($generic_params);
+                return new TIterable($generic_params);
             }
 
             if ($generic_type_value === 'class-string') {
                 $class_name = (string) $generic_params[0];
 
                 if (isset($template_type_map[$class_name])) {
-                    return self::getGenericParamClass($class_name, $template_type_map[$class_name]);
+                    return self::getGenericParamClass(
+                        $class_name,
+                        $template_type_map[$class_name][0],
+                        $template_type_map[$class_name][1]
+                    );
                 }
 
-                return new TClassString($class_name);
+                $param_union_types = array_values($generic_params[0]->getTypes());
+
+                if (count($param_union_types) > 1) {
+                    throw new TypeParseTreeException('Union types are not allowed in class string param');
+                }
+
+                if (!$param_union_types[0] instanceof TNamedObject) {
+                    throw new TypeParseTreeException('Class string param should be a named object');
+                }
+
+                return new TClassString($class_name, $param_union_types[0]);
+            }
+
+            if (isset(self::PSALM_RESERVED_WORDS[$generic_type_value])) {
+                throw new TypeParseTreeException('Cannot create generic object with reserved word');
             }
 
             return new TGenericObject($generic_type_value, $generic_params);
@@ -357,8 +383,16 @@ abstract class Type
                 $properties[$property_key] = $property_type;
             }
 
-            if ($type !== 'array') {
+            if ($type !== 'array' && $type !== 'object') {
                 throw new TypeParseTreeException('Unexpected brace character');
+            }
+
+            if (!$properties) {
+                throw new TypeParseTreeException('No properties supplied for ObjectLike');
+            }
+
+            if ($type === 'object') {
+                return new TObjectWithProperties($properties);
             }
 
             return new ObjectLike($properties);
@@ -427,6 +461,10 @@ abstract class Type
         }
 
         if ($parse_tree instanceof ParseTree\NullableTree) {
+            if (!isset($parse_tree->children[0])) {
+                throw new TypeParseTreeException('Misplaced question mark');
+            }
+
             $non_nullable_type = self::getTypeFromTree($parse_tree->children[0], false, $template_type_map);
 
             if ($non_nullable_type instanceof Union) {
@@ -464,7 +502,11 @@ abstract class Type
             list($fq_classlike_name, $const_name) = explode('::', $parse_tree->value);
 
             if (isset($template_type_map[$fq_classlike_name]) && $const_name === 'class') {
-                return self::getGenericParamClass($fq_classlike_name, $template_type_map[$fq_classlike_name]);
+                return self::getGenericParamClass(
+                    $fq_classlike_name,
+                    $template_type_map[$fq_classlike_name][0],
+                    $template_type_map[$fq_classlike_name][1]
+                );
             }
 
             if ($const_name === 'class') {
@@ -472,6 +514,10 @@ abstract class Type
             }
 
             return new Atomic\TScalarClassConstant($fq_classlike_name, $const_name);
+        }
+
+        if (preg_match('/^\-?(0|[1-9][0-9]*)(\.[0-9]{1,})$/', $parse_tree->value)) {
+            return new TLiteralFloat((float) $parse_tree->value);
         }
 
         if (preg_match('/^\-?(0|[1-9][0-9]*)$/', $parse_tree->value)) {
@@ -487,12 +533,17 @@ abstract class Type
         return Atomic::create($atomic_type, $php_compatible, $template_type_map);
     }
 
-    private static function getGenericParamClass(string $param_name, Union $as) : Atomic\TGenericParamClass
-    {
+    private static function getGenericParamClass(
+        string $param_name,
+        Union $as,
+        string $defining_class = null
+    ) : Atomic\TGenericParamClass {
         if ($as->hasMixed()) {
             return new Atomic\TGenericParamClass(
                 $param_name,
-                'object'
+                'object',
+                null,
+                $defining_class
             );
         }
 
@@ -505,32 +556,25 @@ abstract class Type
         foreach ($as->getTypes() as $t) {
             if ($t instanceof TObject) {
                 return new Atomic\TGenericParamClass(
-                    $param_name
+                    $param_name,
+                    'object',
+                    null,
+                    $defining_class
                 );
             }
 
             if ($t instanceof TIterable) {
-                if ($t instanceof TGenericIterable) {
-                    $traversable = new TGenericObject(
-                        'Traversable',
-                        $t->type_params
-                    );
+                $traversable = new TGenericObject(
+                    'Traversable',
+                    $t->type_params
+                );
 
-                    $as->substitute(new Union([$t]), new Union([$traversable]));
-                    return new Atomic\TGenericParamClass(
-                        $param_name,
-                        $traversable->value,
-                        new Union([$traversable])
-                    );
-                }
-
-                $traversable = new TNamedObject('Traversable');
                 $as->substitute(new Union([$t]), new Union([$traversable]));
-
                 return new Atomic\TGenericParamClass(
                     $param_name,
                     $traversable->value,
-                    new Union([$traversable])
+                    $traversable,
+                    $defining_class
                 );
             }
 
@@ -543,7 +587,8 @@ abstract class Type
             return new Atomic\TGenericParamClass(
                 $param_name,
                 $t->value,
-                new Union([$t])
+                $t,
+                $defining_class
             );
         }
 
@@ -679,6 +724,17 @@ abstract class Type
             }
 
             if ($char === '.') {
+                if ($i + 1 < $c
+                    && is_numeric($chars[$i + 1])
+                    && $i > 0
+                    && is_numeric($chars[$i - 1])
+                ) {
+                    $type_tokens[$rtc] .= $char;
+                    $was_char = false;
+
+                    continue;
+                }
+
                 if ($i + 2 > $c || $chars[$i + 1] !== '.' || $chars[$i + 2] !== '.') {
                     throw new TypeParseTreeException('Unexpected token ' . $char);
                 }
@@ -708,7 +764,7 @@ abstract class Type
     /**
      * @param  string                       $string_type
      * @param  Aliases                      $aliases
-     * @param  array<string, string>|null   $template_type_map
+     * @param  array<string, mixed>|null    $template_type_map
      * @param  array<string, array<int, string>>|null   $type_aliases
      *
      * @return array<int, string>
@@ -750,7 +806,7 @@ abstract class Type
 
             $type_tokens[$i] = $string_type_token = self::fixScalarTerms($string_type_token);
 
-            if (isset(self::$PSALM_RESERVED_WORDS[$string_type_token])) {
+            if (isset(self::PSALM_RESERVED_WORDS[$string_type_token])) {
                 continue;
             }
 
@@ -892,7 +948,14 @@ abstract class Type
      */
     public static function getClassString($extends = 'object')
     {
-        return new Union([new TClassString($extends)]);
+        return new Union([
+            new TClassString(
+                $extends,
+                $extends === 'object'
+                    ? null
+                    : new TNamedObject($extends)
+            )
+        ]);
     }
 
     /**

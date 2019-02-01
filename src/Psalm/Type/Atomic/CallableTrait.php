@@ -159,23 +159,25 @@ trait CallableTrait
     }
 
     /**
-     * @param  array<string, Union>     $template_types
-     * @param  array<string, Union>     $generic_params
+     * @param  array<string, array{Union, ?string}>     $template_types
+     * @param  array<string, array{Union, ?string}>     $generic_params
      * @param  Atomic|null              $input_type
      *
      * @return void
      */
     public function replaceTemplateTypesWithStandins(
-        array $template_types,
+        array &$template_types,
         array &$generic_params,
         Codebase $codebase = null,
-        Atomic $input_type = null
+        Atomic $input_type = null,
+        bool $replace = true,
+        bool $add_upper_bound = false
     ) {
         if ($this->params) {
             foreach ($this->params as $offset => $param) {
                 $input_param_type = null;
 
-                if ($input_type instanceof Atomic\Fn
+                if (($input_type instanceof Atomic\Fn || $input_type instanceof Atomic\TCallable)
                     && isset($input_type->params[$offset])
                 ) {
                     $input_param_type = $input_type->params[$offset]->type;
@@ -189,7 +191,9 @@ trait CallableTrait
                     $template_types,
                     $generic_params,
                     $codebase,
-                    $input_param_type
+                    $input_param_type,
+                    $replace,
+                    !$add_upper_bound
                 );
             }
         }
@@ -202,13 +206,15 @@ trait CallableTrait
                 $template_types,
                 $generic_params,
                 $codebase,
-                $input_type->return_type
+                $input_type->return_type,
+                $replace,
+                $add_upper_bound
             );
         }
     }
 
     /**
-     * @param  array<string, Union>     $template_types
+     * @param  array<string, array{Union, ?string}>  $template_types
      *
      * @return void
      */

@@ -975,6 +975,116 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                 ],
                 'error_positions' => [[], [238], [], [238], []],
             ],
+            'duplicateMethodThenRemove' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            class A {
+                                /**
+                                 * @return void
+                                 */
+                                public static function foo() {}
+
+                                /**
+                                 * @return void
+                                 */
+                                public static function bar(
+                                    string $function_id
+                                ) {}
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            class A {
+                                /**
+                                 * @return void
+                                 */
+                                public static function foo() {}
+
+                                /**
+                                 * @return void
+                                 */
+                                public static function foo() {}
+
+                                /**
+                                 * @return void
+                                 */
+                                public static function bar(
+                                    string $function_id
+                                ) {}
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            class A {
+                                /**
+                                 * @return void
+                                 */
+                                public static function foo() {}
+
+                                /**
+                                 * @return void
+                                 */
+                                public static function bar(
+                                    string $function_id
+                                ) {}
+                            }',
+                    ],
+                ],
+                'error_positions' => [[], [381], []],
+            ],
+            'classCopiesUse' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {}',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            use B\A;
+
+                            class A {}',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {}',
+                    ],
+                ],
+                'error_positions' => [[], [116], []],
+            ],
+            'addMissingArgs' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            function variadic_arguments(string $_foo, ...$bars ) : void {}
+
+                            function foo() : void {
+                                variadic_arguments(
+                                    $baz,
+                                    $qux
+                                );
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            function variadic_arguments(string $_foo, ...$bars ) : void {}
+
+                            function foo(string $baz, string $qux) : void {
+                                variadic_arguments(
+                                    $baz,
+                                    $qux
+                                );
+                            }',
+                    ],
+                ],
+                'error_positions' => [[238, 238], []],
+            ],
         ];
     }
 }

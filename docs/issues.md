@@ -180,6 +180,16 @@ class A {}
 class A {}
 ```
 
+### DuplicateFunction
+
+Emitted when a function is defined twice
+
+```php
+function foo() : void {}
+function bar() : void {}
+function foo() : void {}
+```
+
 ### DuplicateMethod
 
 Emitted when a method is defined twice
@@ -703,6 +713,20 @@ class A {
 A::bar();
 ```
 
+### InvalidTemplateParam
+
+Emitted when using the `@extends`/`@implements` annotation to extend a class that has a template type constraint, where that extended value does not satisfy the parent class/interface's constraints.
+
+```php
+/**
+ * @template T as object
+ */
+class Base {}
+
+/** @template-extends Base<int> */
+class SpecializedByInheritance extends Base {}
+```
+
 ### InvalidThrow
 
 Emitted when trying to throw a class that doesn't extend `Exception` or implement `Throwable`
@@ -956,6 +980,23 @@ Emitted when a function doesn't have a return type defined
 ```php
 function foo() {
     return "foo";
+}
+```
+
+### MissingTemplateParam
+
+Emitted when using the `@extends`/`@implements` annotation to extend a class without
+extending all its template params.
+
+```php
+/**
+ * @template-implements IteratorAggregate<int>
+ */
+class SomeIterator implements IteratorAggregate
+{
+    public function getIterator() {
+        yield 5;
+    }
 }
 ```
 
@@ -1333,6 +1374,10 @@ class A {
   }
 }
 ```
+
+### PluginIssue
+
+Can be emitted by plugins.
 
 ### PossiblyFalseArgument
 
@@ -1858,6 +1903,23 @@ function foo(string $a) : void {}
 foo("hello", 4);
 ```
 
+### TooManyTemplateParams
+
+Emitted when using the `@extends`/`@implements` annotation to extend a class and adds too
+many types.
+
+```php
+/**
+ * @template-implements IteratorAggregate<int, string, int>
+ */
+class SomeIterator implements IteratorAggregate
+{
+    public function getIterator() {
+        yield 5;
+    }
+}
+```
+
 ### TypeCoercion
 
 Emitted when calling a function with an argument which has a less specific type than the function expects
@@ -1929,6 +1991,18 @@ Emitted when calling a method that doesn’t exist
 ```php
 class A {}
 A::foo();
+```
+
+### UndefinedInterfaceMethod
+
+Emitted when calling a method that doesn’t exist on an interface
+
+```php
+interface I {}
+
+function foo(I $i) {
+    $i->bar();
+}
 ```
 
 ### UndefinedPropertyAssignment

@@ -725,9 +725,9 @@ class FunctionCallTest extends TestCase
                      * @psalm-return array{key1:int,key2:int}
                      */
                     function foo(): array {
-                      $v = ["key1"=> 1, "key2"=> "2"];
-                      $r = array_map("intval", $v);
-                      return $r;
+                        $v = ["key1"=> 1, "key2"=> "2"];
+                        $r = array_map("intval", $v);
+                        return $r;
                     }',
             ],
             'arrayMapObjectLikeAndClosure' => [
@@ -833,6 +833,19 @@ class FunctionCallTest extends TestCase
                     '$a' => 'string',
                 ],
             ],
+            'varExportConstFetch' => [
+                '<?php
+                    class Foo {
+                        const BOOL_VAR_EXPORT_RETURN = true;
+
+                        /**
+                         * @param mixed $mixed
+                         */
+                        public static function Baz($mixed) : string {
+                            return var_export($mixed, self::BOOL_VAR_EXPORT_RETURN);
+                        }
+                    }',
+            ],
             'key' => [
                 '<?php
                     $a = ["one" => 1, "two" => 3];
@@ -881,12 +894,25 @@ class FunctionCallTest extends TestCase
                         yield new stdClass;
                     }
 
-                    /**
-                     * @return array<stdClass>
-                     */
-                    function foo(callable $filter): array {
-                        return array_filter(iterator_to_array(generator()), $filter);
-                    }'
+                    $a = iterator_to_array(generator());',
+                'assertions' => [
+                    '$a' => 'array<mixed, stdClass>',
+                ],
+            ],
+            'iteratorToArrayWithGetIterator' => [
+                '<?php
+                    class C implements IteratorAggregate {
+                        /**
+                         * @return Traversable<int,string>
+                         */
+                        public function getIterator() {
+                            yield 1 => "1";
+                        }
+                    }
+                    $a = iterator_to_array(new C);',
+                'assertions' => [
+                    '$a' => 'array<int, string>',
+                ],
             ],
             'arrayColumnInference' => [
                 '<?php
@@ -1268,7 +1294,7 @@ class FunctionCallTest extends TestCase
                         foo($a);
                     }',
             ],
-            'SKIPPED-getTypeHasValues' => [
+            'getTypeHasValues' => [
                 '<?php
                     /**
                      * @param mixed $maybe
@@ -1284,6 +1310,100 @@ class FunctionCallTest extends TestCase
                     function sort(int $_) : void {}
                     sort(5);'
             ],
+            'rangeWithIntStep' => [
+                '<?php
+
+                    function foo(int $bar) : string {
+                        return (string) $bar;
+                    }
+
+                    foreach (range(1, 10, 1) as $x) {
+                        foo($x);
+                    }',
+            ],
+            'rangeWithNoStep' => [
+                '<?php
+
+                    function foo(int $bar) : string {
+                        return (string) $bar;
+                    }
+
+                    foreach (range(1, 10) as $x) {
+                        foo($x);
+                    }',
+            ],
+            'rangeWithFloatStep' => [
+                '<?php
+
+                    function foo(float $bar) : string {
+                        return (string) $bar;
+                    }
+
+                    foreach (range(1, 10, .3) as $x) {
+                        foo($x);
+                    }',
+            ],
+            'rangeWithFloatStart' => [
+                '<?php
+
+                    function foo(float $bar) : string {
+                        return (string) $bar;
+                    }
+
+                    foreach (range(1.5, 10) as $x) {
+                        foo($x);
+                    }',
+            ],
+            'duplicateNamespacedFunction' => [
+                '<?php
+                    namespace Bar;
+
+                    function sort() : void {}',
+            ],
+            'arrayMapAfterFunctionMissingFile' => [
+                '<?php
+                    require_once(FOO);
+                    $urls = array_map("strval", [1, 2, 3]);',
+                [],
+                'error_levels' => ['UndefinedConstant', 'UnresolvableInclude'],
+            ],
+            'noNamespaceClash' => [
+                '<?php
+                    namespace FunctionNamespace {
+                        function foo() : void {}
+                    }
+
+                    namespace ClassNamespace {
+                        class Foo {}
+                    }
+
+                    namespace {
+                        use ClassNamespace\Foo;
+                        use function FunctionNamespace\foo;
+
+                        new Foo();
+
+                        foo();
+                    }',
+            ],
+            'round' => [
+                '<?php
+                    $a = round(4.6);
+                    $b = round(3.6, 0);
+                    $c = round(3.0, 1);
+                    $d = round(3.1, 2);
+
+                    /** @var int */
+                    $sig = 1;
+                    $e = round(3.1, $sig);',
+                'assertions' => [
+                    '$a' => 'int',
+                    '$b' => 'int',
+                    '$c' => 'float',
+                    '$d' => 'float',
+                    '$e' => 'int|float',
+                ],
+            ]
         ];
     }
 
@@ -1648,6 +1768,70 @@ class FunctionCallTest extends TestCase
                         }
                     }',
                 'error_message' => 'DocblockTypeContradiction',
+            ],
+            'getTypeInvalidValue' => [
+                '<?php
+                    /**
+                     * @param mixed $maybe
+                     */
+                    function matchesTypes($maybe) : void {
+                        $t = gettype($maybe);
+                        if ($t === "bool") {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'rangeWithFloatStep' => [
+                '<?php
+
+                    function foo(int $bar) : string {
+                        return (string) $bar;
+                    }
+
+                    foreach (range(1, 10, .3) as $x) {
+                        foo($x);
+                    }',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'rangeWithFloatStart' => [
+                '<?php
+
+                    function foo(int $bar) : string {
+                        return (string) $bar;
+                    }
+
+                    foreach (range(1.4, 10) as $x) {
+                        foo($x);
+                    }',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'duplicateFunction' => [
+                '<?php
+                    function f() : void {}
+                    function f() : void {}',
+                'error_message' => 'DuplicateFunction',
+            ],
+            'duplicateCoreFunction' => [
+                '<?php
+                    function sort() : void {}',
+                'error_message' => 'DuplicateFunction',
+            ],
+            'usortInvalidComparison' => [
+                '<?php
+                    $arr = [["one"], ["two"], ["three"]];
+
+                    usort(
+                        $arr,
+                        function (string $a, string $b): int {
+                            return strcmp($a, $b);
+                        }
+                    );',
+                'error_message' => 'InvalidArgument',
+            ],
+            'usortInvalidCallableString' => [
+                '<?php
+                    $a = [[1], [2], [3]];
+                    usort($a, "strcmp");',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

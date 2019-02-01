@@ -109,8 +109,16 @@ class ClassLikeStorageProvider
      */
     public function addMore(array $more)
     {
-        self::$new_storage = array_merge($more, self::$new_storage);
-        self::$storage = array_merge($more, self::$storage);
+        self::$new_storage = array_merge(self::$new_storage, $more);
+        self::$storage = array_merge(self::$storage, $more);
+    }
+
+    /**
+     * @return void
+     */
+    public function makeNew(string $fq_classlike_name_lc)
+    {
+        self::$new_storage[$fq_classlike_name_lc] = self::$storage[$fq_classlike_name_lc];
     }
 
     /**

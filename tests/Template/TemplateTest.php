@@ -1,5 +1,8 @@
 <?php
-namespace Psalm\Tests;
+namespace Psalm\Tests\Template;
+
+use Psalm\Tests\TestCase;
+use Psalm\Tests\Traits;
 
 class TemplateTest extends TestCase
 {
@@ -231,131 +234,6 @@ class TemplateTest extends TestCase
                 ],
                 'error_levels' => ['MixedOperand'],
             ],
-            'phanTuple' => [
-                '<?php
-                    namespace Phan\Library;
-
-                    /**
-                     * An abstract tuple.
-                     */
-                    abstract class Tuple
-                    {
-                        const ARITY = 0;
-
-                        /**
-                         * @return int
-                         * The arity of this tuple
-                         */
-                        public function arity(): int
-                        {
-                            return (int)static::ARITY;
-                        }
-
-                        /**
-                         * @return array
-                         * An array of all elements in this tuple.
-                         */
-                        abstract public function toArray(): array;
-                    }
-
-                    /**
-                     * A tuple of 1 element.
-                     *
-                     * @template T0
-                     * The type of element zero
-                     */
-                    class Tuple1 extends Tuple
-                    {
-                        /** @var int */
-                        const ARITY = 1;
-
-                        /** @var T0 */
-                        public $_0;
-
-                        /**
-                         * @param T0 $_0
-                         * The 0th element
-                         */
-                        public function __construct($_0) {
-                            $this->_0 = $_0;
-                        }
-
-                        /**
-                         * @return int
-                         * The arity of this tuple
-                         */
-                        public function arity(): int
-                        {
-                            return (int)static::ARITY;
-                        }
-
-                        /**
-                         * @return array
-                         * An array of all elements in this tuple.
-                         */
-                        public function toArray(): array
-                        {
-                            return [
-                                $this->_0,
-                            ];
-                        }
-                    }
-
-                    /**
-                     * A tuple of 2 elements.
-                     *
-                     * @template T0
-                     * The type of element zero
-                     *
-                     * @template T1
-                     * The type of element one
-                     *
-                     * @inherits Tuple1<T0>
-                     */
-                    class Tuple2 extends Tuple1
-                    {
-                        /** @var int */
-                        const ARITY = 2;
-
-                        /** @var T1 */
-                        public $_1;
-
-                        /**
-                         * @param T0 $_0
-                         * The 0th element
-                         *
-                         * @param T1 $_1
-                         * The 1st element
-                         */
-                        public function __construct($_0, $_1) {
-                            parent::__construct($_0);
-                            $this->_1 = $_1;
-                        }
-
-                        /**
-                         * @return array
-                         * An array of all elements in this tuple.
-                         */
-                        public function toArray(): array
-                        {
-                            return [
-                                $this->_0,
-                                $this->_1,
-                            ];
-                        }
-                    }
-
-                    $a = new Tuple2("cool", 5);
-
-                    /** @return void */
-                    function takes_int(int $i) {}
-
-                    /** @return void */
-                    function takes_string(string $s) {}
-
-                    takes_string($a->_0);
-                    takes_int($a->_1);',
-            ],
             'validTemplatedType' => [
                 '<?php
                     namespace FooFoo;
@@ -449,7 +327,7 @@ class TemplateTest extends TestCase
                 '<?php
                     /**
                      * @template TKey as array-key
-                     * @template TValue
+                     * @template TValue as array-key
                      *
                      * @param array<TKey, TValue> $arr
                      * @return array<TValue, TKey>
@@ -629,7 +507,7 @@ class TemplateTest extends TestCase
 
                     class Item {}
                     /**
-                     * @param ArrayCollection<mixed,Item> $i
+                     * @param ArrayCollection<array-key,Item> $i
                      */
                     function takesCollectionOfItems(ArrayCollection $i): void {}
 
@@ -638,7 +516,7 @@ class TemplateTest extends TestCase
                     takesCollectionOfItems($c->map(function(Item $i): Item { return $i;}));
                     takesCollectionOfItems($c->map(function(Item $i): Item { return $i;}));'
             ],
-            'replaceChildType' => [
+            'replaceChildTypeWithGenerator' => [
                 '<?php
                     /**
                      * @template TKey as array-key
@@ -710,7 +588,7 @@ class TemplateTest extends TestCase
                          * @param  array<mixed,T> $items
                          * @return Foo<T>
                          */
-                        private function ensureFoo(array $items): EntitySeries
+                        private function ensureFoo(array $items): Foo
                         {
                             $type = $items[0] instanceof A ? A::class : B::class;
                             return new Foo($type);
@@ -730,8 +608,11 @@ class TemplateTest extends TestCase
                         /**
                          * @param Closure(TValue):bool $p
                          * @return Collection<TKey,TValue>
+                         * @psalm-suppress MixedTypeCoercion
                          */
-                        public function filter(Closure $p);
+                        public function filter(Closure $p) {
+                            return $this;
+                        }
                     }
                     class I {}
 
@@ -867,11 +748,11 @@ class TemplateTest extends TestCase
             ],
             'implictIteratorTemplating' => [
                 '<?php
+                    /**
+                     * @template-implements IteratorAggregate<int, int>
+                     */
                     class SomeIterator implements IteratorAggregate
                     {
-                        /**
-                         * @return Generator<int, int>
-                         */
                         function getIterator()
                         {
                             yield 1;
@@ -969,6 +850,23 @@ class TemplateTest extends TestCase
 
                     /**
                      * @template T as Foo
+                     * @param T $x
+                     * @return T
+                     */
+                    function bar($x) {
+                        return $x;
+                    }
+
+                    bar(new Foo());
+                    bar(new FooChild());',
+            ],
+            'classTemplateOfCorrect' => [
+                '<?php
+                    class Foo {}
+                    class FooChild extends Foo {}
+
+                    /**
+                     * @template T of Foo
                      * @param T $x
                      * @return T
                      */
@@ -1113,6 +1011,34 @@ class TemplateTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedMethodCall'],
             ],
+            'returnTemplatedClassClassName' => [
+                '<?php
+                    class I {
+                        /**
+                         * @template T as Foo
+                         * @param class-string $class
+                         * @template-typeof T $class
+                         * @return T|null
+                         */
+                        public function loader(string $class) {
+                            return $class::load();
+                        }
+                    }
+
+                    class Foo {
+                        /** @return static */
+                        public static function load() {
+                            return new static();
+                        }
+                    }
+
+                    class FooChild extends Foo{}
+
+                    $a = (new I)->loader(FooChild::class);',
+                'assertions' => [
+                    '$a' => 'null|FooChild',
+                ],
+            ],
             'upcastIterableToTraversable' => [
                 '<?php
                     /**
@@ -1140,6 +1066,432 @@ class TemplateTest extends TestCase
                     }',
                 'assertions' => [],
                 'error_levels' => [],
+            ],
+            'bindFirstTemplatedClosureParameter' => [
+                '<?php
+                    /**
+                     * @template T
+                     *
+                     * @param Closure(T):void $t1
+                     * @param T $t2
+                     */
+                    function apply(Closure $t1, $t2) : void
+                    {
+                        $t1($t2);
+                    }
+
+                    apply(function(int $_i) : void {}, 5);
+                    apply(function(string $_i) : void {}, "hello");
+                    apply(function(stdClass $_i) : void {}, new stdClass);
+
+                    class A {}
+                    class AChild extends A {}
+
+                    apply(function(A $_i) : void {}, new AChild());',
+            ],
+            'getPropertyOnClass' => [
+                '<?php
+                    class Foo {
+                        /** @var int */
+                        public $id = 0;
+                    }
+
+                    /**
+                     * @template T as Foo
+                     */
+                    class Collection {
+                        /**
+                         * @var class-string<T>
+                         */
+                        private $type;
+
+                        /**
+                         * @param class-string<T> $type
+                         */
+                        public function __construct(string $type) {
+                            $this->type = $type;
+                        }
+
+                        /**
+                         * @return class-string<T>
+                         */
+                        public function getType()
+                        {
+                           return $this->type;
+                        }
+
+                        /**
+                         * @param T $object
+                         */
+                        public function bar(Foo $object) : void
+                        {
+                            if ($this->getType() !== get_class($object)) {
+                                return;
+                            }
+
+                            echo $object->id;
+                        }
+                    }
+
+                    class FooChild extends Foo {}
+
+                    /** @param Collection<Foo> $c */
+                    function handleCollectionOfFoo(Collection $c) : void {
+                        if ($c->getType() === FooChild::class) {}
+                    }',
+            ],
+            'getEquateClass' => [
+                '<?php
+                    class Foo {
+                        /** @var int */
+                        public $id = 0;
+                    }
+
+                    /**
+                     * @template T as Foo
+                     */
+                    class Container {
+                        /**
+                         * @var T
+                         */
+                        private $obj;
+
+                        /**
+                         * @param T $obj
+                         */
+                        public function __construct(Foo $obj) {
+                            $this->obj = $obj;
+                        }
+
+                        /**
+                         * @param T $object
+                         */
+                        public function bar(Foo $object) : void
+                        {
+                            if ($this->obj === $object) {}
+                        }
+                    }',
+            ],
+            'allowComparisonGetTypeResult' => [
+                '<?php
+                    class Foo {}
+
+                    /**
+                     * @template T as Foo
+                     */
+                    class Collection {
+                        /**
+                         * @var class-string<T>
+                         */
+                        private $type;
+
+                        /**
+                         * @param class-string<T> $type
+                         */
+                        public function __construct(string $type) {
+                            $this->type = $type;
+                        }
+
+                        /**
+                         * @return class-string<T>|null
+                         */
+                        public function getType()
+                        {
+                           return $this->type;
+                        }
+                    }
+
+                    function foo(Collection $c) : void {
+                        $val = $c->getType();
+                        if (!$val) {}
+                        if ($val) {}
+                    }',
+            ],
+            'mixedTemplatedParamOutWithNoExtendedTemplate' => [
+                '<?php
+                    /**
+                     * @template TValue
+                     */
+                    class ValueContainer
+                    {
+                        /**
+                         * @var TValue
+                         */
+                        private $v;
+                        /**
+                         * @param TValue $v
+                         */
+                        public function __construct($v)
+                        {
+                            $this->v = $v;
+                        }
+                        /**
+                         * @return TValue
+                         */
+                        public function getValue()
+                        {
+                            return $this->v;
+                        }
+                    }
+
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class KeyValueContainer extends ValueContainer
+                    {
+                        /**
+                         * @var TKey
+                         */
+                        private $k;
+                        /**
+                         * @param TKey $k
+                         * @param TValue $v
+                         */
+                        public function __construct($k, $v)
+                        {
+                            $this->k = $k;
+                            parent::__construct($v);
+                        }
+                        /**
+                         * @return TKey
+                         */
+                        public function getKey()
+                        {
+                            return $this->k;
+                        }
+                    }
+                    $a = new KeyValueContainer("hello", 15);
+                    $b = $a->getValue();',
+                [
+                    '$a' => 'KeyValueContainer<string, int>',
+                    '$b' => 'mixed'
+                ],
+                'error_levels' => ['MixedAssignment'],
+            ],
+            'mixedTemplatedParamOutDifferentParamName' => [
+                '<?php
+                    /**
+                     * @template TValue
+                     */
+                    class ValueContainer
+                    {
+                        /**
+                         * @var TValue
+                         */
+                        private $v;
+                        /**
+                         * @param TValue $v
+                         */
+                        public function __construct($v)
+                        {
+                            $this->v = $v;
+                        }
+                        /**
+                         * @return TValue
+                         */
+                        public function getValue()
+                        {
+                            return $this->v;
+                        }
+                    }
+
+                    /**
+                     * @template TKey
+                     * @template Tv
+                     */
+                    class KeyValueContainer extends ValueContainer
+                    {
+                        /**
+                         * @var TKey
+                         */
+                        private $k;
+                        /**
+                         * @param TKey $k
+                         * @param Tv $v
+                         */
+                        public function __construct($k, $v)
+                        {
+                            $this->k = $k;
+                            parent::__construct($v);
+                        }
+                        /**
+                         * @return TKey
+                         */
+                        public function getKey()
+                        {
+                            return $this->k;
+                        }
+                    }
+                    $a = new KeyValueContainer("hello", 15);
+                    $b = $a->getValue();',
+                [
+                    '$a' => 'KeyValueContainer<string, int>',
+                    '$b' => 'mixed'
+                ],
+                'error_levels' => ['MixedAssignment'],
+            ],
+
+            'doesntExtendTemplateAndDoesNotOverride' => [
+                '<?php
+                    /**
+                     * @template T as array-key
+                     */
+                    abstract class User
+                    {
+                        /**
+                         * @var T
+                         */
+                        private $id;
+                        /**
+                         * @param T $id
+                         */
+                        public function __construct($id)
+                        {
+                            $this->id = $id;
+                        }
+                        /**
+                         * @return T
+                         */
+                        public function getID()
+                        {
+                            return $this->id;
+                        }
+                    }
+
+                    class AppUser extends User {}
+
+                    $au = new AppUser(-1);
+                    $id = $au->getId();',
+                [
+                    '$au' => 'AppUser',
+                    '$id' => 'array-key',
+                ]
+            ],
+
+            'callableReturnsItself' => [
+                '<?php
+                    $a =
+                      /**
+                       * @param callable():string $s
+                       * @return string
+                       */
+                      function(callable $s) {
+                        return $s();
+                      };
+
+                    /**
+                     * @template T1
+                     * @param callable(callable():T1):T1 $s
+                     * @return void
+                     */
+                    function takesReturnTCallable(callable $s) {}
+
+                    takesReturnTCallable($a);'
+            ],
+            'nonBindingParamReturn' => [
+                '<?php
+                    /**
+                     * @template T
+                     *
+                     * @param Closure():T $t1
+                     * @param T $t2
+                     */
+                    function foo(Closure $t1, $t2) : void {}
+                    foo(
+                        function () : int {
+                            return 5;
+                        },
+                        "hello"
+                    );'
+            ],
+            'templatedInterfaceMethodInheritReturnType' => [
+                '<?php
+                    class Foo {}
+
+                    class SomeIterator implements IteratorAggregate
+                    {
+                        public function getIterator() {
+                            yield new Foo;
+                        }
+                    }
+
+                    $i = (new SomeIterator())->getIterator();',
+                [
+                    '$i' => 'Traversable<mixed, mixed>',
+                ]
+            ],
+            'upcastArrayToIterable' => [
+                '<?php
+                    /**
+                     * @template K
+                     * @template V
+                     * @param iterable<K,V> $collection
+                     * @return V
+                     * @psalm-suppress InvalidReturnType
+                     */
+                    function first($collection) {}
+
+                    $one = first([1,2,3]);',
+                [
+                    '$one' => 'int',
+                ]
+            ],
+            'templateObjectLikeValues' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class Collection {
+                        /**
+                         * @return array{0:Collection<TKey,TValue>,1:Collection<TKey,TValue>}
+                         * @psalm-suppress InvalidReturnType
+                         */
+                        public function partition() {}
+                    }
+
+                    /** @var Collection<int,string> $c */
+                    $c = new Collection;
+                    [$partA, $partB] = $c->partition();',
+                [
+                    '$partA' => 'Collection<int, string>',
+                    '$partB' => 'Collection<int, string>',
+                ]
+            ],
+            'understandTemplatedCalculationInOtherFunction' => [
+                '<?php
+                    /**
+                     * @template T as Exception
+                     * @param T::class $type
+                     * @return T
+                     */
+                    function a(string $type): Exception {
+                        return new $type;
+                    }
+
+                    /**
+                     * @template T as InvalidArgumentException
+                     * @param T::class $type
+                     * @return T
+                     */
+                    function b(string $type): InvalidArgumentException {
+                        return a($type);
+                    }',
+            ],
+            'doublyLinkedListConstructor' => [
+                '<?php
+                    $list = new SplDoublyLinkedList();
+                    $list->add(5, "hello");
+                    $list->add("hello", 5);
+
+                    /** @var SplDoublyLinkedList<int, string> */
+                    $templated_list = new SplDoublyLinkedList();
+                    $templated_list->add(5, "hello");
+                    $a = $templated_list->bottom();',
+                [
+                    '$a' => 'string',
+                ]
             ],
         ];
     }
@@ -1211,7 +1563,7 @@ class TemplateTest extends TestCase
             'replaceChildTypeNoHint' => [
                 '<?php
                     /**
-                     * @template TKey
+                     * @template TKey as array-key
                      * @template TValue
                      * @param Traversable<TKey, TValue> $t
                      * @return array<TKey, TValue>
@@ -1230,7 +1582,7 @@ class TemplateTest extends TestCase
                     function takesArrayOfStdClass(array $p): void {}',
                 'error_message' => 'MixedTypeCoercion',
             ],
-            'restrictTemplateInput' => [
+            'restrictTemplateInputWithClassString' => [
                 '<?php
                     /** @template T as object */
                     class Foo
@@ -1264,7 +1616,6 @@ class TemplateTest extends TestCase
 
                     class A {}
                     class B {}
-
 
                     $foo = new Foo(A::class);
                     $foo->add(new B);',
@@ -1392,7 +1743,6 @@ class TemplateTest extends TestCase
                     /**
                      * @template T
                      * @param T $some_t
-                     * @return T
                      */
                     function foo($some_t) : void {
                         $some_t->bar();
@@ -1411,6 +1761,196 @@ class TemplateTest extends TestCase
                         foo(get_class($t));
                     }',
                 'error_message' => 'MixedTypeCoercion',
+            ],
+            'bindFirstTemplatedClosureParameter' => [
+                '<?php
+                    /**
+                     * @template T
+                     *
+                     * @param Closure(T):void $t1
+                     * @param T $t2
+                     */
+                    function apply(Closure $t1, $t2) : void
+                    {
+                        $t1($t2);
+                    }
+
+                    apply(function(int $_i) : void {}, "hello");',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'bindFirstTemplatedClosureParameterTypeCoercion' => [
+                '<?php
+                    /**
+                     * @template T
+                     *
+                     * @param Closure(T):void $t1
+                     * @param T $t2
+                     */
+                    function apply(Closure $t1, $t2) : void
+                    {
+                        $t1($t2);
+                    }
+
+                    class A {}
+                    class AChild extends A {}
+
+                    apply(function(AChild $_i) : void {}, new A());',
+                'error_message' => 'TypeCoercion',
+            ],
+
+            'callableDoesNotReturnItself' => [
+                '<?php
+                    $b =
+                      /**
+                       * @param callable():int $s
+                       * @return string
+                       */
+                      function(callable $s) {
+                        return "#" . $s();
+                      };
+
+                    /**
+                     * @template T1
+                     * @param callable(callable():T1):T1 $s
+                     * @return void
+                     */
+                    function takesReturnTCallable(callable $s) {}
+
+                    takesReturnTCallable($b);',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'multipleArgConstraintWithMoreRestrictiveFirstArg' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+
+                    /**
+                     * @template T
+                     * @param callable(T):void $c1
+                     * @param callable(T):void $c2
+                     * @param T $a
+                     */
+                    function foo(callable $c1, callable $c2, $a): void {
+                      $c1($a);
+                      $c2($a);
+                    }
+
+                    foo(
+                      function(AChild $_a) : void {},
+                      function(A $_a) : void {},
+                      new A()
+                    );',
+                'error_message' => 'TypeCoercion',
+            ],
+            'multipleArgConstraintWithMoreRestrictiveSecondArg' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+
+                    /**
+                     * @template T
+                     * @param callable(T):void $c1
+                     * @param callable(T):void $c2
+                     * @param T $a
+                     */
+                    function foo(callable $c1, callable $c2, $a): void {
+                      $c1($a);
+                      $c2($a);
+                    }
+
+                    foo(
+                      function(A $_a) : void {},
+                      function(AChild $_a) : void {},
+                      new A()
+                    );',
+                'error_message' => 'TypeCoercion',
+            ],
+            'multipleArgConstraintWithLessRestrictiveThirdArg' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+
+                    /**
+                     * @template T
+                     * @param callable(T):void $c1
+                     * @param callable(T):void $c2
+                     * @param T $a
+                     */
+                    function foo(callable $c1, callable $c2, $a): void {
+                      $c1($a);
+                      $c2($a);
+                    }
+
+                    foo(
+                      function(AChild $_a) : void {},
+                      function(AChild $_a) : void {},
+                      new A()
+                    );',
+                'error_message' => 'TypeCoercion',
+            ],
+            'possiblyInvalidArgumentWithUnionFirstArg' => [
+                '<?php
+
+                    /**
+                     * @template T
+                     * @param T $a
+                     * @param T $b
+                     * @return T
+                     */
+                    function foo($a, $b) {
+                      return rand(0, 1) ? $a : $b;
+                    }
+
+                    echo foo([], "hello");',
+                'error_message' => 'PossiblyInvalidArgument',
+            ],
+            'possiblyInvalidArgumentWithUnionSecondArg' => [
+                '<?php
+
+                    /**
+                     * @template T
+                     * @param T $a
+                     * @param T $b
+                     * @return T
+                     */
+                    function foo($a, $b) {
+                      return rand(0, 1) ? $a : $b;
+                    }
+
+                    echo foo("hello", []);',
+                'error_message' => 'PossiblyInvalidArgument',
+            ],
+            'templateWithNoReturn' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class A {
+                        /** @return T */
+                        public function foo() {}
+                    }',
+                'error_message' => 'InvalidReturnType',
+            ],
+            'templateInvalidDocblockArgument' => [
+                '<?php
+                    /** @template T as object */
+                    class Generic {}
+
+                    /**
+                     * @template T
+                     * @param T $p
+                     * @return Generic<T>
+                     * @psalm-suppress InvalidReturnType
+                     */
+                    function violate($p) {}',
+                'error_message' => 'InvalidTemplateParam',
+            ],
+            'doublyLinkedListBadParam' => [
+                '<?php
+                    /** @var SplDoublyLinkedList<int, string> */
+                    $templated_list = new SplDoublyLinkedList();
+                    $templated_list->add(5, []);',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

@@ -23,6 +23,11 @@ class FileFilter
     /**
      * @var array<string>
      */
+    protected $fq_classlike_patterns = [];
+
+    /**
+     * @var array<string>
+     */
     protected $method_ids = [];
 
     /**
@@ -76,6 +81,8 @@ class FileFilter
         $base_dir,
         $inclusive
     ) {
+        $allow_missing_files = ((string) $e['allowMissingFiles']) === 'true';
+
         $filter = new static($inclusive);
 
         if ($e->directory) {
@@ -105,6 +112,10 @@ class FileFilter
                     );
 
                     if (empty($globs)) {
+                        if ($allow_missing_files) {
+                            continue;
+                        }
+
                         echo 'Could not resolve config path to ' . $base_dir . DIRECTORY_SEPARATOR .
                             (string)$directory['name'] . PHP_EOL;
                         exit(1);
@@ -112,9 +123,17 @@ class FileFilter
 
                     foreach ($globs as $glob_index => $directory_path) {
                         if (!$directory_path) {
+                            if ($allow_missing_files) {
+                                continue;
+                            }
+
                             echo 'Could not resolve config path to ' . $base_dir . DIRECTORY_SEPARATOR .
                                 (string)$directory['name'] . ':' . $glob_index . PHP_EOL;
                             exit(1);
+                        }
+
+                        if (!$directory_path) {
+                            continue;
                         }
 
                         if ($ignore_type_stats && $filter instanceof ProjectFileFilter) {
@@ -133,9 +152,45 @@ class FileFilter
                 $directory_path = realpath($prospective_directory_path);
 
                 if (!$directory_path) {
+                    if ($allow_missing_files) {
+                        continue;
+                    }
+
                     echo 'Could not resolve config path to ' . $base_dir . DIRECTORY_SEPARATOR .
                         (string)$directory['name'] . PHP_EOL;
                     exit(1);
+                }
+
+                if (!is_dir($directory_path)) {
+                    echo $base_dir . DIRECTORY_SEPARATOR . (string)$directory['name']
+                        . ' is not a directory ' . PHP_EOL;
+                    exit(1);
+                }
+
+                /** @var \RecursiveDirectoryIterator */
+                $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory_path));
+                $iterator->rewind();
+
+                while ($iterator->valid()) {
+                    if (!$iterator->isDot() && $iterator->isLink()) {
+                        $linked_path = readlink($iterator->getPathname());
+
+                        if (stripos($linked_path, $directory_path) !== 0) {
+                            if ($ignore_type_stats && $filter instanceof ProjectFileFilter) {
+                                $filter->ignore_type_stats[$directory_path] = true;
+                            }
+
+                            if ($declare_strict_types && $filter instanceof ProjectFileFilter) {
+                                $filter->declare_strict_types[$directory_path] = true;
+                            }
+
+                            if (is_dir($linked_path)) {
+                                $filter->addDirectory($linked_path);
+                            }
+                        }
+                    }
+
+                    $iterator->next();
                 }
 
                 if ($ignore_type_stats && $filter instanceof ProjectFileFilter) {
@@ -202,7 +257,14 @@ class FileFilter
         if ($e->referencedClass) {
             /** @var \SimpleXMLElement $referenced_class */
             foreach ($e->referencedClass as $referenced_class) {
-                $filter->fq_classlike_names[] = strtolower((string)$referenced_class['name']);
+                $class_name = strtolower((string)$referenced_class['name']);
+
+                if (strpos($class_name, '*')) {
+                    $regex = '/' . \str_replace('*', '.*', str_replace('\\', '\\\\', $class_name)) . '/i';
+                    $filter->fq_classlike_patterns[] = $regex;
+                } else {
+                    $filter->fq_classlike_names[] = $class_name;
+                }
             }
         }
 
@@ -314,6 +376,14 @@ class FileFilter
      */
     public function allowsClass($fq_classlike_name)
     {
+        if ($this->fq_classlike_patterns) {
+            foreach ($this->fq_classlike_patterns as $pattern) {
+                if (preg_match($pattern, $fq_classlike_name)) {
+                    return true;
+                }
+            }
+        }
+
         return in_array(strtolower($fq_classlike_name), $this->fq_classlike_names);
     }
 

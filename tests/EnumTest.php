@@ -31,13 +31,15 @@ class EnumTest extends TestCase
                 '<?php
                     namespace Ns;
 
-                    /** @psalm-param "foo\"with"|"bar"|1|2|3 $s */
+                    /** @psalm-param "foo\"with"|"bar"|1|2|3|4.0|4.1 $s */
                     function foo($s) : void {}
                     foo("foo\"with");
                     foo("bar");
                     foo(1);
                     foo(2);
-                    foo(3);',
+                    foo(3);
+                    foo(4.0);
+                    foo(4.1);',
             ],
             'noRedundantConditionWithSwitch' => [
                 '<?php
@@ -138,6 +140,15 @@ class EnumTest extends TestCase
                     foo(4);',
                 'error_message' => 'InvalidArgument',
             ],
+            'enumWrongFloat' => [
+                '<?php
+                    namespace Ns;
+
+                    /** @psalm-param 1.2|3.4|5.6 $s */
+                    function foo($s) : void {}
+                    foo(7.8);',
+                'error_message' => 'InvalidArgument',
+            ],
             'classConstantIncorrect' => [
                 '<?php
                     namespace Ns;
@@ -202,6 +213,36 @@ class EnumTest extends TestCase
                     namespace OtherNS {
                         class C {}
                     }',
+                'error_message' => 'InvalidArgument',
+            ],
+            'nonExistentConstantClass' => [
+                '<?php
+                    /**
+                     * @return Foo::HELLO|5
+                     */
+                    function getVal()
+                    {
+                        return 5;
+                    }',
+                'error_message' => 'UndefinedClass',
+            ],
+            'nonExistentClassConstant' => [
+                '<?php
+                    class Foo {}
+                    /**
+                     * @return Foo::HELLO|5
+                     */
+                    function getVal()
+                    {
+                        return 5;
+                    }',
+                'error_message' => 'UndefinedConstant',
+            ],
+            'noIntToFloatEnum' => [
+                '<?php
+                    /** @param 0.3|0.5 $p */
+                    function f($p): void {}
+                    f(1);',
                 'error_message' => 'InvalidArgument',
             ],
         ];

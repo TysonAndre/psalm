@@ -697,6 +697,89 @@ class TraitTest extends TestCase
 
                     $b->bad();'
             ],
+            'inheritedProtectedTraitMethodAccess' => [
+                '<?php
+                    trait T {
+                        private function bar() : void {}
+                    }
+
+                    class A {
+                        use T {
+                            bar as protected;
+                        }
+                    }
+
+                    class AChild extends A {
+                        public function foo() : void {
+                            $this->bar();
+                        }
+                    }'
+            ],
+            'inheritedPublicTraitMethodAccess' => [
+                '<?php
+                    trait T {
+                        private function bar() : void {}
+                    }
+
+                    class A {
+                        use T {
+                            bar as public;
+                        }
+                    }
+
+                    (new A)->bar();'
+            ],
+            'allowImplementMethodMadePublicInClass' => [
+                '<?php
+                    interface I {
+                        public function boo();
+                    }
+
+                    trait T {
+                        private function boo() : void {}
+                    }
+
+                    class A implements I {
+                        use T { boo as public; }
+                    }',
+            ],
+            'allowImplementMethodMadePublicInParent' => [
+                '<?php
+                    interface I {
+                        public function boo();
+                    }
+
+                    trait T {
+                        private function boo() : void {}
+                    }
+
+                    class B {
+                        use T { boo as public; }
+                    }
+
+                    class BChild extends B implements I {}',
+            ],
+            'allowTraitParentDefinition' => [
+                '<?php
+                    class A {}
+
+                    class C extends A
+                    {
+                        use T;
+                    }
+
+                    trait T
+                    {
+                        public function bar() : ?C
+                        {
+                            if ($this instanceof A) {
+                                return $this;
+                            }
+
+                            return null;
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -856,6 +939,31 @@ class TraitTest extends TestCase
                         protected function foo(string $s) : void {}
                     }',
                 'error_message' => 'TooFewArguments',
+            ],
+            'traitMethodMadePrivate' => [
+                '<?php
+                    trait T {
+                        public function foo() : void {
+                            echo "here";
+                        }
+                    }
+
+                    class C {
+                        use T {
+                            foo as private traitFoo;
+                        }
+
+                        public function bar() : void {
+                            $this->traitFoo();
+                        }
+                    }
+
+                    class D extends C {
+                        public function bar() : void {
+                            $this->traitFoo(); // should fail
+                        }
+                    }',
+                'error_message' => 'InaccessibleMethod'
             ],
         ];
     }

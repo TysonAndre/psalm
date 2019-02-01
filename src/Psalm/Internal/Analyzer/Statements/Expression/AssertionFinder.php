@@ -47,9 +47,9 @@ class AssertionFinder
         $if_types = [];
 
         if ($conditional instanceof PhpParser\Node\Expr\Instanceof_) {
-            $instanceof_type = self::getInstanceOfTypes($conditional, $this_class_name, $source);
+            $instanceof_types = self::getInstanceOfTypes($conditional, $this_class_name, $source);
 
-            if ($instanceof_type) {
+            if ($instanceof_types) {
                 $var_name = ExpressionAnalyzer::getArrayVarId(
                     $conditional->expr,
                     $this_class_name,
@@ -57,7 +57,7 @@ class AssertionFinder
                 );
 
                 if ($var_name) {
-                    $if_types[$var_name] = [[$instanceof_type]];
+                    $if_types[$var_name] = [$instanceof_types];
                 }
             }
 
@@ -632,7 +632,7 @@ class AssertionFinder
             /** @var PhpParser\Node\Scalar\String_ $string_expr */
             $var_type = $string_expr->value;
 
-            if (!isset(ClassLikeAnalyzer::$GETTYPE_TYPES[$var_type])
+            if (!isset(ClassLikeAnalyzer::GETTYPE_TYPES[$var_type])
                 && $source instanceof StatementsSource
             ) {
                 if (IssueBuffer::accepts(
@@ -804,7 +804,7 @@ class AssertionFinder
                     if ($var_type->from_docblock || $other_type->from_docblock) {
                         if (IssueBuffer::accepts(
                             new DocblockTypeContradiction(
-                                $var_type . ' does not contain ' . $other_type,
+                                $var_type->getId() . ' does not contain ' . $other_type->getId(),
                                 new CodeLocation($source, $conditional)
                             ),
                             $source->getSuppressedIssues()
@@ -1159,7 +1159,7 @@ class AssertionFinder
                 throw new \UnexpectedValueException('Shouldn’t get here');
             }
 
-            if (!isset(ClassLikeAnalyzer::$GETTYPE_TYPES[$var_type])) {
+            if (!isset(ClassLikeAnalyzer::GETTYPE_TYPES[$var_type])) {
                 if (IssueBuffer::accepts(
                     new UnevaluatedCode(
                         'gettype cannot return this value',
@@ -1386,22 +1386,29 @@ class AssertionFinder
             if ($first_var_name) {
                 $second_arg = $expr->args[1]->value;
 
-                $is_a_prefix = '';
+                $third_arg = isset($expr->args[2]->value) ? $expr->args[2]->value : null;
 
-                if (isset($expr->args[2]->value)) {
-                    $third_arg = $expr->args[2]->value;
-
-                    if (!$third_arg instanceof PhpParser\Node\Expr\ConstFetch
-                        || !in_array(strtolower($third_arg->name->parts[0]), ['true', 'false'])
-                    ) {
+                if ($third_arg instanceof PhpParser\Node\Expr\ConstFetch) {
+                    if (!in_array(strtolower($third_arg->name->parts[0]), ['true', 'false'])) {
                         return $if_types;
                     }
 
-                    $is_a_prefix = strtolower($third_arg->name->parts[0]) === 'true' ? 'isa-' : '';
+                    $third_arg_value = strtolower($third_arg->name->parts[0]);
+                } else {
+                    $third_arg_value = $expr->name instanceof PhpParser\Node\Name
+                        && strtolower($expr->name->parts[0]) === 'is_subclass_of'
+                        ? 'true'
+                        : 'false';
                 }
 
+                $is_a_prefix = $third_arg_value === 'true' ? 'isa-string-' : 'isa-';
+
                 if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
-                    $if_types[$first_var_name] = [[$prefix . $is_a_prefix . $second_arg->value]];
+                    $fq_class_name = $second_arg->value;
+                    if ($fq_class_name[0] === '\\') {
+                        $fq_class_name = substr($fq_class_name, 1);
+                    }
+                    $if_types[$first_var_name] = [[$prefix . $is_a_prefix . $fq_class_name]];
                 } elseif ($second_arg instanceof PhpParser\Node\Expr\ClassConstFetch
                     && $second_arg->class instanceof PhpParser\Node\Name
                     && $second_arg->name instanceof PhpParser\Node\Identifier
@@ -1646,7 +1653,7 @@ class AssertionFinder
      * @param  string|null                     $this_class_name
      * @param  FileSource                $source
      *
-     * @return string|null
+     * @return array<int, string>
      */
     protected static function getInstanceOfTypes(
         PhpParser\Node\Expr\Instanceof_ $stmt,
@@ -1660,15 +1667,25 @@ class AssertionFinder
                     $source->getAliases()
                 );
 
-                return $instanceof_class;
+                return [$instanceof_class];
             } elseif ($this_class_name
                 && (in_array(strtolower($stmt->class->parts[0]), ['self', 'static'], true))
             ) {
-                return $this_class_name;
+                return [$this_class_name];
             }
+        } elseif (isset($stmt->class->inferredType)) {
+            $literal_class_strings = [];
+
+            foreach ($stmt->class->inferredType->getTypes() as $atomic_type) {
+                if ($atomic_type instanceof Type\Atomic\TLiteralClassString) {
+                    $literal_class_strings[] = $atomic_type->value;
+                }
+            }
+
+            return $literal_class_strings;
         }
 
-        return null;
+        return [];
     }
 
     /**
@@ -1901,7 +1918,8 @@ class AssertionFinder
     protected static function hasIsACheck(PhpParser\Node\Expr\FuncCall $stmt)
     {
         if ($stmt->name instanceof PhpParser\Node\Name
-            && strtolower($stmt->name->parts[0]) === 'is_a'
+            && (strtolower($stmt->name->parts[0]) === 'is_a'
+                || strtolower($stmt->name->parts[0]) === 'is_subclass_of')
             && isset($stmt->args[1])
         ) {
             $second_arg = $stmt->args[1]->value;

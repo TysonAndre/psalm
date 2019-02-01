@@ -119,6 +119,7 @@ class BinaryOpAnalyzer
                     $changed_var_ids,
                     $new_referenced_var_ids,
                     $statements_analyzer,
+                    [],
                     $context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $stmt)
                 );
@@ -143,7 +144,11 @@ class BinaryOpAnalyzer
 
             foreach ($op_context->vars_in_scope as $var_id => $type) {
                 if (isset($context->vars_in_scope[$var_id])) {
-                    $context->vars_in_scope[$var_id] = Type::combineUnionTypes($context->vars_in_scope[$var_id], $type);
+                    $context->vars_in_scope[$var_id] = Type::combineUnionTypes(
+                        $context->vars_in_scope[$var_id],
+                        $type,
+                        $codebase
+                    );
                 }
             }
 
@@ -206,7 +211,11 @@ class BinaryOpAnalyzer
                 $codebase
             );
 
-            $negated_left_clauses = Algebra::negateFormula($left_clauses);
+            try {
+                $negated_left_clauses = Algebra::negateFormula($left_clauses);
+            } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+                return false;
+            }
 
             $clauses_for_right_analysis = Algebra::simplifyCNF(
                 array_merge(
@@ -230,6 +239,7 @@ class BinaryOpAnalyzer
                     $changed_var_ids,
                     $new_referenced_var_ids,
                     $statements_analyzer,
+                    [],
                     $pre_op_context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $stmt)
                 );
@@ -237,7 +247,6 @@ class BinaryOpAnalyzer
             }
 
             $op_context->clauses = $clauses_for_right_analysis;
-
 
             if ($changed_var_ids) {
                 $op_context->removeReconciledClauses($changed_var_ids);
@@ -267,6 +276,7 @@ class BinaryOpAnalyzer
                         '',
                         $statements_analyzer,
                         $context->inside_loop,
+                        [],
                         new CodeLocation($statements_analyzer->getSource(), $stmt->left),
                         $statements_analyzer->getSuppressedIssues()
                     );
@@ -373,6 +383,7 @@ class BinaryOpAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
+                    [],
                     $t_if_context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $stmt->left)
                 );
@@ -417,6 +428,7 @@ class BinaryOpAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
+                    [],
                     $t_else_context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $stmt->right)
                 );
@@ -449,6 +461,7 @@ class BinaryOpAnalyzer
                     '',
                     $statements_analyzer,
                     $context->inside_loop,
+                    [],
                     new CodeLocation($statements_analyzer->getSource(), $stmt),
                     $statements_analyzer->getSuppressedIssues()
                 );
@@ -571,6 +584,15 @@ class BinaryOpAnalyzer
                 if ($result_type) {
                     $stmt->inferredType = $result_type;
                 }
+            } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr) {
+                self::analyzeNonDivArithmenticOp(
+                    $statements_analyzer,
+                    $stmt->left,
+                    $stmt->right,
+                    $stmt,
+                    $result_type,
+                    $context
+                );
             }
         }
 
@@ -979,6 +1001,7 @@ class BinaryOpAnalyzer
                 ArrayAssignmentAnalyzer::updateArrayType(
                     $statements_source,
                     $left,
+                    $right,
                     $result_type,
                     $context
                 );

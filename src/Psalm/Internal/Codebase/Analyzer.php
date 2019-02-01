@@ -420,7 +420,6 @@ class Analyzer
             }
         }
 
-
         $this->shiftFileOffsets($diff_map);
 
         foreach ($this->files_to_analyze as $file_path) {
@@ -452,6 +451,7 @@ class Analyzer
 
             foreach ($file_issues as $i => &$issue_data) {
                 if ($issue_data['to'] < $first_diff_offset || $issue_data['from'] > $last_diff_offset) {
+                    unset($file_issues[$i]);
                     continue;
                 }
 
@@ -463,6 +463,8 @@ class Analyzer
                         $issue_data['snippet_to'] += $file_offset;
                         $issue_data['line_from'] += $line_offset;
                         $issue_data['line_to'] += $line_offset;
+                    } else {
+                        unset($file_issues[$i]);
                     }
                 }
             }

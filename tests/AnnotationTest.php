@@ -530,7 +530,7 @@ class AnnotationTest extends TestCase
 
                     $g = g();',
                 'assertions' => [
-                    '$g' => 'Generator<int, stdClass>',
+                    '$g' => 'Generator<int, stdClass, mixed, mixed>',
                 ],
             ],
             'returnTypeShouldBeNullable' => [
@@ -745,6 +745,105 @@ class AnnotationTest extends TestCase
                 [
                     'InvalidDocblock' => \Psalm\Config::REPORT_INFO,
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
+                ]
+            ],
+            'objectWithPropertiesAnnotation' => [
+                '<?php
+                    /** @param object{foo:string} $o */
+                    function foo(object $o) : string {
+                        return $o->foo;
+                    }
+
+                    $s = new \stdClass();
+                    $s->foo = "hello";
+                    foo($s);
+
+                    class A {
+                        /** @var string */
+                        public $foo = "hello";
+                    }
+
+                    foo(new A);',
+            ],
+            'refineTypeInNestedCall' => [
+                '<?php
+                    function foo(array $arr): \Generator {
+                        /** @var array<string, mixed> $arr */
+                        foreach (array_filter(array_keys($arr), function (string $key) : bool {
+                            return strpos($key, "BAR") === 0;
+                        }) as $envVar) {
+                            yield $envVar => [getenv($envVar)];
+                        }
+                    }'
+            ],
+            'allowAnnotationOnServer' => [
+                '<?php
+                    function foo(): \Generator {
+                        /** @var array<string, mixed> $_SERVER */
+                        foreach (array_filter(array_keys($_SERVER), function (string $key) : bool {
+                            return strpos($key, "BAR") === 0;
+                        }) as $envVar) {
+                            yield $envVar => [getenv($envVar)];
+                        }
+                    }'
+            ],
+            'paramOutChangeType' => [
+                '<?php
+                    /**
+                     * @param-out string $s
+                     */
+                    function addFoo(?string &$s) : void {
+                        if ($s === null) {
+                            $s = "hello";
+                        }
+                        $s .= "foo";
+                    }
+
+                    $a = null;
+                    addFoo($a);
+
+                    echo strlen($a);',
+            ],
+            'annotationOnForeachItems' => [
+                '<?php
+                    function foo(array $arr) : void {
+                        $item = null;
+
+                        /** @var string $item */
+                        foreach ($arr as $item) {}
+
+                        if (is_null($item)) {}
+                    }
+
+                    function bar(array $arr) : void {
+                        $item = null;
+
+                        /** @var string $item */
+                        foreach ($arr as $item => $_) {}
+
+                        if (is_null($item)) {}
+                    }
+
+                    function bat(array $arr) : void {
+                        $item = null;
+
+                        /** @var string $item */
+                        foreach ($arr as list($item)) {}
+
+                        if (is_null($item)) {}
+                    }
+
+                    function baz(array $arr) : void {
+                        $item = null;
+
+                        /** @var string $item */
+                        foreach ($arr as list($item => $_)) {}
+
+                        if (is_null($item)) {}
+                    }',
+                [],
+                [
+                    'MixedAssignment'
                 ]
             ],
         ];
@@ -1119,6 +1218,65 @@ class AnnotationTest extends TestCase
                         return [(bool)rand(0,1), rand(0,1) ? "z" : null];
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'noCrashOnHalfDoneArrayPropertyType' => [
+                '<?php
+                    class A {
+                        /** @var array< */
+                        private $foo = [];
+                    }',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'noCrashOnHalfDoneObjectLikeArrayPropertyType' => [
+                '<?php
+                    class A {
+                        /** @var array{ */
+                        private $foo = [];
+                    }',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'noCrashOnInvalidClassTemplateAsType' => [
+                '<?php
+                    /**
+                     * @template T as ' . '
+                     */
+                    class A {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'noCrashOnInvalidFunctionTemplateAsType' => [
+                '<?php
+                    /**
+                     * @template T as ' . '
+                     */
+                    function foo() : void {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'returnTypeNewLineIsIgnored' => [
+                '<?php
+                    /**
+                     * @return
+                     *     Some text
+                     */
+                    function foo() {}',
+                'error_message' => 'MissingReturnType',
+            ],
+            'objectWithPropertiesAnnotationNoMatchingProperty' => [
+                '<?php
+                    /** @param object{foo:string} $o */
+                    function foo(object $o) : string {
+                        return $o->foo;
+                    }
+
+                    class A {}
+
+                    foo(new A);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'badVar' => [
+                '<?php
+                    /** @var Foo */
+                    $a = $_GET["foo"];',
+                'error_message' => 'UndefinedClass',
             ],
         ];
     }

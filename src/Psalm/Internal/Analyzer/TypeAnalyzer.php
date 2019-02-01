@@ -3,8 +3,10 @@ namespace Psalm\Internal\Analyzer;
 
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Codebase;
+use Psalm\Internal\Codebase\CallMap;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
+use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
@@ -14,10 +16,10 @@ use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TEmptyMixed;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
-use Psalm\Type\Atomic\TGenericIterable;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TGenericParam;
 use Psalm\Type\Atomic\GetClassT;
+use Psalm\Type\Atomic\GetTypeT;
 use Psalm\Type\Atomic\THtmlEscapedString;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TIterable;
@@ -407,6 +409,7 @@ class TypeAnalyzer
                 }
 
                 if ($codebase->classExists($intersection_input_type_lower)
+                    && $codebase->classOrInterfaceExists($intersection_container_type_lower)
                     && $codebase->classExtendsOrImplements(
                         $intersection_input_type_lower,
                         $intersection_container_type_lower
@@ -539,17 +542,37 @@ class TypeAnalyzer
         }
 
         if ($container_type_part instanceof GetClassT) {
+            $first_type = array_values($container_type_part->as_type->getTypes())[0];
+
             $container_type_part = new TClassString(
                 'object',
-                $container_type_part->as_type
+                $first_type instanceof TNamedObject ? $first_type : null
             );
         }
 
         if ($input_type_part instanceof GetClassT) {
+            $first_type = array_values($input_type_part->as_type->getTypes())[0];
+
             $input_type_part = new TClassString(
                 'object',
-                $input_type_part->as_type
+                $first_type instanceof TNamedObject ? $first_type : null
             );
+        }
+
+        if ($input_type_part instanceof GetTypeT) {
+            $input_type_part = new TString();
+
+            if ($container_type_part instanceof TLiteralString) {
+                return isset(ClassLikeAnalyzer::GETTYPE_TYPES[$container_type_part->value]);
+            }
+        }
+
+        if ($container_type_part instanceof GetTypeT) {
+            $container_type_part = new TString();
+
+            if ($input_type_part instanceof TLiteralString) {
+                return isset(ClassLikeAnalyzer::GETTYPE_TYPES[$input_type_part->value]);
+            }
         }
 
         if ($input_type_part->shallowEquals($container_type_part)) {
@@ -584,6 +607,7 @@ class TypeAnalyzer
         // > int types can resolve a parameter type of float
         if ($input_type_part instanceof TInt
             && $container_type_part instanceof TFloat
+            && !$container_type_part instanceof TLiteralFloat
             && $allow_float_int_equality
         ) {
             return true;
@@ -653,7 +677,11 @@ class TypeAnalyzer
             return false;
         }
 
-        if ($container_type_part instanceof ObjectLike && $input_type_part instanceof ObjectLike) {
+        if (($container_type_part instanceof ObjectLike
+                && $input_type_part instanceof ObjectLike)
+            || ($container_type_part instanceof TObjectWithProperties
+                && $input_type_part instanceof TObjectWithProperties)
+        ) {
             $all_types_contain = true;
 
             foreach ($container_type_part->properties as $key => $container_property_type) {
@@ -720,10 +748,6 @@ class TypeAnalyzer
 
         if ($container_type_part instanceof TIterable) {
             if ($input_type_part instanceof TArray || $input_type_part instanceof ObjectLike) {
-                if (!$container_type_part instanceof TGenericIterable) {
-                    return true;
-                }
-
                 if ($input_type_part instanceof ObjectLike) {
                     $input_type_part = $input_type_part->getGenericArrayType();
                 }
@@ -836,14 +860,14 @@ class TypeAnalyzer
 
             if ($container_type_part instanceof TClassString
                 && $container_type_part->as === 'object'
-                && (!$container_type_part->as_type || $container_type_part->as_type->hasObject())
+                && !$container_type_part->as_type
             ) {
                 return true;
             }
 
             if ($input_type_part instanceof TClassString
                 && $input_type_part->as === 'object'
-                && (!$input_type_part->as_type || $input_type_part->as_type->hasObject())
+                && !$input_type_part->as_type
             ) {
                 $type_coerced = true;
                 $type_coerced_from_scalar = true;
@@ -853,7 +877,7 @@ class TypeAnalyzer
 
             $fake_container_object = $container_type_part instanceof TClassString
                 && $container_type_part->as_type
-                ? array_values($container_type_part->as_type->getTypes())[0]
+                ? $container_type_part->as_type
                 : new TNamedObject(
                     $container_type_part instanceof TClassString
                         ? $container_type_part->as
@@ -862,7 +886,7 @@ class TypeAnalyzer
 
             $fake_input_object = $input_type_part instanceof TClassString
                 && $input_type_part->as_type
-                ? array_values($input_type_part->as_type->getTypes())[0]
+                ? $input_type_part->as_type
                 : new TNamedObject(
                     $input_type_part instanceof TClassString
                         ? $input_type_part->as
@@ -884,13 +908,8 @@ class TypeAnalyzer
         if (($input_type_part instanceof TClassString
             || $input_type_part instanceof TLiteralClassString)
             && (get_class($container_type_part) === TString::class
-                || get_class($container_type_part) === TSingleLetter::class
-                || get_class($container_type_part) === GetClassT::class)
+                || get_class($container_type_part) === TSingleLetter::class)
         ) {
-            return true;
-        }
-
-        if ($container_type_part instanceof TClassString && $input_type_part instanceof GetClassT) {
             return true;
         }
 
@@ -956,7 +975,29 @@ class TypeAnalyzer
                 )
             )
         ) {
-            // @todo add value checks if possible here
+            $input_callable = self::getCallableFromAtomic($codebase, $input_type_part);
+
+            if ($input_callable) {
+                $all_types_contain = true;
+
+                if (self::compareCallable(
+                    $codebase,
+                    $input_callable,
+                    $container_type_part,
+                    $type_coerced,
+                    $type_coerced_from_mixed,
+                    $has_scalar_match,
+                    $all_types_contain
+                ) === false
+                ) {
+                    return false;
+                }
+
+                if (!$all_types_contain) {
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -974,10 +1015,80 @@ class TypeAnalyzer
             ) {
                 $has_scalar_match = true;
             }
-        } elseif ($container_type_part instanceof TObject &&
-            !$input_type_part instanceof TArray &&
-            !$input_type_part instanceof TResource
+        } elseif ($container_type_part instanceof TObject
+            && $input_type_part instanceof TNamedObject
         ) {
+            if ($container_type_part instanceof TObjectWithProperties
+                && $input_type_part->value !== 'stdClass'
+            ) {
+                $all_types_contain = true;
+
+                foreach ($container_type_part->properties as $property_name => $container_property_type) {
+                    if (!is_string($property_name)) {
+                        continue;
+                    }
+
+                    if (!$codebase->properties->propertyExists($input_type_part . '::$' . $property_name)) {
+                        $all_types_contain = false;
+
+                        continue;
+                    }
+
+                    $property_declaring_class = (string) $codebase->properties->getDeclaringClassForProperty(
+                        $input_type_part . '::$' . $property_name
+                    );
+
+                    $class_storage = $codebase->classlike_storage_provider->get($property_declaring_class);
+
+                    $input_property_storage = $class_storage->properties[$property_name];
+
+                    $input_property_type = $input_property_storage->type ?: Type::getMixed();
+
+                    if (!$input_property_type->isEmpty()
+                        && !self::isContainedBy(
+                            $codebase,
+                            $input_property_type,
+                            $container_property_type,
+                            false,
+                            false,
+                            $property_has_scalar_match,
+                            $property_type_coerced,
+                            $property_type_coerced_from_mixed,
+                            $property_type_to_string_cast,
+                            $property_type_coerced_from_scalar,
+                            $allow_interface_equality
+                        )
+                        && !$property_type_coerced_from_scalar
+                    ) {
+                        if (self::isContainedBy(
+                            $codebase,
+                            $container_property_type,
+                            $input_property_type,
+                            false,
+                            false,
+                            $inverse_property_has_scalar_match,
+                            $inverse_property_type_coerced,
+                            $inverse_property_type_coerced_from_mixed,
+                            $inverse_property_type_to_string_cast,
+                            $inverse_property_type_coerced_from_scalar,
+                            $allow_interface_equality
+                        )
+                        || $inverse_property_type_coerced_from_scalar
+                        ) {
+                            $type_coerced = true;
+                        }
+
+                        $all_types_contain = false;
+                    }
+                }
+
+                if ($all_types_contain === true) {
+                    return true;
+                }
+
+                return false;
+            }
+
             return true;
         } elseif ($input_type_part instanceof TObject && $container_type_part instanceof TNamedObject) {
             $type_coerced = true;
@@ -1009,6 +1120,76 @@ class TypeAnalyzer
     }
 
     /**
+     * @return ?TCallable
+     */
+    public static function getCallableFromAtomic(Codebase $codebase, Type\Atomic $input_type_part)
+    {
+        if ($input_type_part instanceof TLiteralString) {
+            try {
+                $function_storage = $codebase->functions->getStorage(null, $input_type_part->value);
+
+                return new TCallable(
+                    'callable',
+                    $function_storage->params,
+                    $function_storage->return_type
+                );
+            } catch (\Exception $e) {
+                if (CallMap::inCallMap($input_type_part->value)) {
+                    $function_params = FunctionLikeAnalyzer::getFunctionParamsFromCallMapById(
+                        $codebase,
+                        $input_type_part->value,
+                        []
+                    );
+
+                    return new TCallable(
+                        'callable',
+                        $function_params,
+                        CallMap::getReturnTypeFromCallMap($input_type_part->value)
+                    );
+                }
+            }
+        } elseif ($input_type_part instanceof ObjectLike) {
+            if (isset($input_type_part->properties[0])
+                && isset($input_type_part->properties[1])
+                && $input_type_part->properties[1]->isSingleStringLiteral()
+            ) {
+                $lhs = $input_type_part->properties[0];
+                $method_name = $input_type_part->properties[1]->getSingleStringLiteral()->value;
+
+                $class_name = null;
+
+                if ($lhs->isSingleStringLiteral()) {
+                    $class_name = $lhs->getSingleStringLiteral()->value;
+                } elseif ($lhs->isSingle()) {
+                    foreach ($lhs->getTypes() as $lhs_atomic_type) {
+                        if ($lhs_atomic_type instanceof TNamedObject) {
+                            $class_name = $lhs_atomic_type->value;
+                        }
+                    }
+                }
+
+                if ($class_name) {
+                    $method_id = $class_name . '::' . $method_name;
+
+                    try {
+                        $method_storage = $codebase->methods->getStorage($method_id);
+
+                        return new TCallable(
+                            'callable',
+                            $method_storage->params,
+                            $method_storage->return_type
+                        );
+                    } catch (\Exception $e) {
+                        // do nothing
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  Codebase    $codebase
      * @param  Type\Atomic $input_type_part
      * @param  Type\Atomic $container_type_part
@@ -1034,10 +1215,44 @@ class TypeAnalyzer
 
         if ($container_type_part instanceof TGenericObject) {
             if (!$input_type_part instanceof TGenericObject) {
-                $type_coerced = true;
-                $type_coerced_from_mixed = true;
+                if ($input_type_part instanceof TNamedObject
+                    && $codebase->classExists($input_type_part->value)
+                ) {
+                    $class_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
 
-                return false;
+                    $container_class_lc = strtolower($container_type_part->value);
+
+                    // attempt to transform it
+                    if (isset($class_storage->template_type_extends[$container_class_lc])) {
+                        $extends_list = $class_storage->template_type_extends[$container_class_lc];
+
+                        $generic_params = [];
+
+                        foreach ($extends_list as $key => $value) {
+                            if (is_int($key)) {
+                                $generic_params[] = new Type\Union([$value]);
+                            }
+                        }
+
+                        $input_type_part = new TGenericObject(
+                            $input_type_part->value,
+                            $generic_params
+                        );
+                    }
+                }
+
+                if (!$input_type_part instanceof TGenericObject) {
+                    if ($input_type_part instanceof TNamedObject) {
+                        $input_type_part = new TGenericObject(
+                            $input_type_part->value,
+                            array_fill(0, count($container_type_part->type_params), Type::getMixed())
+                        );
+                    } else {
+                        $type_coerced = true;
+                        $type_coerced_from_mixed = true;
+                        return false;
+                    }
+                }
             }
 
             foreach ($input_type_part->type_params as $i => $input_param) {

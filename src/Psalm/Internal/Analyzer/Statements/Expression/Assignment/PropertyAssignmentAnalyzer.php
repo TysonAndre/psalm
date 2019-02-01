@@ -84,11 +84,7 @@ class PropertyAssignmentAnalyzer
 
             $property_exists = true;
 
-            $declaring_property_class = $codebase->properties->getDeclaringClassForProperty($property_id);
-
-            $class_storage = $codebase->classlike_storage_provider->get((string)$declaring_property_class);
-
-            $class_property_type = $class_storage->properties[$prop_name]->type;
+            $class_property_type = $codebase->properties->getPropertyType($property_id, true);
 
             $class_property_types[] = $class_property_type ? clone $class_property_type : Type::getMixed();
 
@@ -234,10 +230,12 @@ class PropertyAssignmentAnalyzer
 
                 $override_property_visibility = false;
 
-                if (!$codebase->classExists($lhs_type_part->value)) {
-                    $class_exists = false;
+                $class_exists = false;
+                $interface_exists = false;
 
+                if (!$codebase->classExists($lhs_type_part->value)) {
                     if ($codebase->interfaceExists($lhs_type_part->value)) {
+                        $interface_exists = true;
                         $interface_storage = $codebase->classlike_storage_provider->get($lhs_type_part->value);
 
                         $override_property_visibility = $interface_storage->override_property_visibility;
@@ -256,18 +254,21 @@ class PropertyAssignmentAnalyzer
                             if (IssueBuffer::accepts(
                                 new NoInterfaceProperties(
                                     'Interfaces cannot have properties',
-                                    new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                    $lhs_type_part->value
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
-                                // fall through
+                                return null;
                             }
 
-                            return null;
+                            if (!$codebase->methodExists($fq_class_name . '::__set')) {
+                                return null;
+                            }
                         }
                     }
 
-                    if (!$class_exists) {
+                    if (!$class_exists && !$interface_exists) {
                         if (IssueBuffer::accepts(
                             new UndefinedClass(
                                 'Cannot set properties of undefined class ' . $lhs_type_part->value,
@@ -281,6 +282,8 @@ class PropertyAssignmentAnalyzer
 
                         return null;
                     }
+                } else {
+                    $class_exists = true;
                 }
 
                 $property_id = $fq_class_name . '::$' . $prop_name;
@@ -322,6 +325,23 @@ class PropertyAssignmentAnalyzer
                     if (!$var_id || !$class_storage->sealed_properties) {
                         continue;
                     }
+
+                    if (!$class_exists) {
+                        if (IssueBuffer::accepts(
+                            new UndefinedPropertyAssignment(
+                                'Instance property ' . $property_id . ' is not defined',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $property_id
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
+                }
+
+                if (!$class_exists) {
+                    continue;
                 }
 
                 $has_regular_setter = true;
@@ -339,7 +359,11 @@ class PropertyAssignmentAnalyzer
                     }
                 }
 
-                if (!$codebase->properties->propertyExists($property_id, $context->calling_method_id)) {
+                if (!$codebase->properties->propertyExists(
+                    $property_id,
+                    $context->calling_method_id,
+                    new CodeLocation($statements_analyzer->getSource(), $stmt)
+                )) {
                     if ($stmt->var instanceof PhpParser\Node\Expr\Variable && $stmt->var->name === 'this') {
                         // if this is a proper error, we'll see it on the first pass
                         if ($context->collect_mutations) {
@@ -450,9 +474,9 @@ class PropertyAssignmentAnalyzer
                     }
                 }
 
-                $class_property_type = $property_storage->type;
+                $class_property_type = $codebase->properties->getPropertyType($property_id, true);
 
-                if ($class_property_type === false) {
+                if (!$class_property_type) {
                     $class_property_type = Type::getMixed();
 
                     if (!$assignment_value_type->hasMixed()) {
@@ -797,9 +821,9 @@ class PropertyAssignmentAnalyzer
             $context->vars_in_scope[$var_id] = $assignment_value_type;
         }
 
-        $class_property_type = $property_storage->type;
+        $class_property_type = $codebase->properties->getPropertyType($property_id, true);
 
-        if ($class_property_type === false) {
+        if (!$class_property_type) {
             $class_property_type = Type::getMixed();
 
             if (!$assignment_value_type->hasMixed()) {

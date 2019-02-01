@@ -3,6 +3,7 @@ namespace Psalm\Internal\Analyzer;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
+use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
 use Psalm\Codebase;
 use Psalm\Context;
@@ -82,6 +83,24 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                 case 'microtime':
                     return Type::getString();
+
+                case 'get_called_class':
+                    return new Type\Union([new Type\Atomic\TClassString($context->self ?: 'object')]);
+
+                case 'get_parent_class':
+                    $codebase = $statements_analyzer->getCodebase();
+
+                    if ($context->self && $codebase->classExists($context->self)) {
+                        $classlike_storage = $codebase->classlike_storage_provider->get($context->self);
+
+                        if ($classlike_storage->parent_classes) {
+                            return new Type\Union([
+                                new Type\Atomic\TClassString(
+                                    array_values($classlike_storage->parent_classes)[0]
+                                )
+                            ]);
+                        }
+                    }
             }
         } else {
             switch ($call_map_key) {
@@ -297,23 +316,42 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                     if (isset($call_args[0]->value->inferredType)
                         && $call_args[0]->value->inferredType->hasObjectType()
                     ) {
+                        $key_type = null;
                         $value_type = null;
 
-                        foreach ($call_args[0]->value->inferredType->getTypes() as $call_arg_atomic_type) {
-                            if ($call_arg_atomic_type instanceof Type\Atomic\TGenericObject) {
-                                $type_params = $call_arg_atomic_type->type_params;
-                                $last_param_type = $type_params[count($type_params) - 1];
+                        $codebase = $statements_analyzer->getCodebase();
 
-                                $value_type = $value_type
-                                    ? Type::combineUnionTypes($value_type, $last_param_type)
-                                    : $last_param_type;
+                        foreach ($call_args[0]->value->inferredType->getTypes() as $call_arg_atomic_type) {
+                            if ($call_arg_atomic_type instanceof Type\Atomic\TNamedObject
+                                && TypeAnalyzer::isAtomicContainedBy(
+                                    $codebase,
+                                    $call_arg_atomic_type,
+                                    new Type\Atomic\TIterable([Type::getMixed(), Type::getMixed()])
+                                )
+                            ) {
+                                $has_valid_iterator = true;
+                                ForeachAnalyzer::handleIterable(
+                                    $statements_analyzer,
+                                    $call_arg_atomic_type,
+                                    $call_args[0]->value,
+                                    $codebase,
+                                    $context,
+                                    $key_type,
+                                    $value_type,
+                                    $has_valid_iterator
+                                );
                             }
                         }
 
                         if ($value_type) {
                             return new Type\Union([
                                 new Type\Atomic\TArray([
-                                    Type::getArrayKey(),
+                                    $key_type
+                                        && (!isset($call_args[1]->value)
+                                            || (isset($call_args[1]->value->inferredType)
+                                                && ((string) $call_args[1]->value->inferredType === 'true')))
+                                        ? $key_type
+                                        : Type::getArrayKey(),
                                     $value_type
                                 ])
                             ]);
@@ -586,8 +624,56 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                     break;
 
+                case 'round':
+                    if (isset($call_args[1])) {
+                        $second_arg = $call_args[1]->value;
+
+                        if (isset($second_arg->inferredType)
+                            && $second_arg->inferredType->isSingleIntLiteral()
+                        ) {
+                            switch ($second_arg->inferredType->getSingleIntLiteral()->value) {
+                                case 0:
+                                    return Type::getInt(true);
+                                default:
+                                    return Type::getFloat();
+                            }
+                        }
+
+                        return new Type\Union([new Type\Atomic\TInt, new Type\Atomic\TFloat]);
+                    }
+
+                    return Type::getInt(true);
+
                 case 'filter_var':
                     return self::getFilterVar($call_args);
+
+                case 'range':
+                    $all_ints = true;
+
+                    foreach ($call_args as $call_arg) {
+                        $all_ints = $all_ints
+                            && isset($call_arg->value->inferredType)
+                            && $call_arg->value->inferredType->isInt();
+                    }
+
+                    if ($all_ints) {
+                        return new Type\Union([new Type\Atomic\TArray([Type::getInt(), Type::getInt()])]);
+                    }
+
+                    return new Type\Union([new Type\Atomic\TArray([
+                        Type::getInt(),
+                        new Type\Union([new Type\Atomic\TInt, new Type\Atomic\TFloat])
+                    ])]);
+
+                case 'get_parent_class':
+                    // this is unreliable, as it's hard to know exactly what's wanted - attempted this in
+                    // https://github.com/vimeo/psalm/commit/355ed831e1c69c96bbf9bf2654ef64786cbe9fd7
+                    // but caused problems where it didn’t know exactly what level of child we
+                    // were receiving.
+                    //
+                    // Really this should only work on instances we've created with new Foo(),
+                    // but that requires more work
+                    break;
             }
         }
 
@@ -1558,6 +1644,7 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                                 $changed_var_ids,
                                 ['$inner_type' => true],
                                 $statements_analyzer,
+                                [],
                                 false,
                                 new CodeLocation($statements_analyzer->getSource(), $stmt)
                             );

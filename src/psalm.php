@@ -168,7 +168,7 @@ Options:
     --find-dead-code
         Look for dead code
 
-    --find-references-to=[class|method]
+    --find-references-to=[class|method|property]
         Searches the codebase for references to the given fully-qualified class or method,
         where method is in the format class::methodName
 
@@ -498,7 +498,7 @@ if ($find_dead_code) {
 
 /** @var string $plugin_path */
 foreach ($plugins as $plugin_path) {
-    Config::getInstance()->addPluginPath($current_dir . DIRECTORY_SEPARATOR . $plugin_path);
+    Config::getInstance()->addPluginPath($current_dir . $plugin_path);
 }
 
 if ($paths_to_check === null) {

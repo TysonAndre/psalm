@@ -334,7 +334,7 @@ class ReturnAnalyzer
             } else {
                 if ($storage->signature_return_type
                     && !$storage->signature_return_type->isVoid()
-                    && (!$storage->signature_return_type->isGenerator() || !$storage->has_yield)
+                    && !$storage->has_yield
                 ) {
                     if (IssueBuffer::accepts(
                         new InvalidReturnStatement(

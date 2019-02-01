@@ -78,7 +78,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     private $local_return_type;
 
     /**
-     * @var array<string, array>
+     * @var array<string, bool>
      */
     protected static $no_effects_hashes = [];
 
@@ -145,18 +145,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             $method_id = (string)$this->getMethodId($context->self);
 
             if ($add_mutations) {
-                $hash = $real_method_id . json_encode([
-                    $context->vars_in_scope,
-                    $context->vars_possibly_in_scope,
-                ]);
+                $hash = md5($real_method_id . '::' . $context->getScopeSummary());
 
                 // if we know that the function has no effects on vars, we don't bother rechecking
                 if (isset(self::$no_effects_hashes[$hash])) {
-                    list(
-                        $context->vars_in_scope,
-                        $context->vars_possibly_in_scope
-                    ) = self::$no_effects_hashes[$hash];
-
                     return null;
                 }
             } elseif ($context->self) {
@@ -199,15 +191,43 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
                     $parent_storage = $classlike_storage_provider->get($overridden_fq_class_name);
 
-                    MethodAnalyzer::compareMethods(
-                        $codebase,
-                        $class_storage,
-                        $parent_storage,
-                        $storage,
-                        $parent_method_storage,
-                        $codeLocation,
-                        $storage->suppressed_issues
-                    );
+                    $implementer_visibility = $storage->visibility;
+
+                    $implementer_appearing_method_id = $codebase->methods->getAppearingMethodId($cased_method_id);
+                    $implementer_declaring_method_id = $real_method_id;
+
+                    if ($implementer_appearing_method_id
+                        && $implementer_appearing_method_id !== $implementer_declaring_method_id
+                    ) {
+                        list($appearing_fq_class_name, $appearing_method_name) = explode(
+                            '::',
+                            $implementer_appearing_method_id
+                        );
+
+                        $appearing_class_storage = $classlike_storage_provider->get(
+                            $appearing_fq_class_name
+                        );
+
+                        if (isset($appearing_class_storage->trait_visibility_map[$appearing_method_name])) {
+                            $implementer_visibility
+                                = $appearing_class_storage->trait_visibility_map[$appearing_method_name];
+                        }
+                    }
+
+                    // we've already checked this in the class checker
+                    if (!isset($class_storage->class_implements[strtolower($overridden_fq_class_name)])) {
+                        MethodAnalyzer::compareMethods(
+                            $codebase,
+                            $class_storage,
+                            $parent_storage,
+                            $storage,
+                            $parent_method_storage,
+                            $fq_class_name,
+                            $implementer_visibility,
+                            $codeLocation,
+                            $storage->suppressed_issues
+                        );
+                    }
 
                     foreach ($parent_method_storage->params as $i => $guide_param) {
                         if ($guide_param->type
@@ -269,13 +289,23 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             $template_types = array_merge($template_types ?: [], $class_storage->template_types);
         }
 
-        $non_null_param_types = array_filter(
-            $storage->params,
-            /** @return bool */
-            function (FunctionLikeParameter $p) {
-                return $p->type !== null;
-            }
-        );
+        if ($storage instanceof MethodStorage && $storage->inheritdoc) {
+            $non_null_param_types = array_filter(
+                $storage->params,
+                /** @return bool */
+                function (FunctionLikeParameter $p) {
+                    return $p->type !== null && $p->has_docblock_type;
+                }
+            );
+        } else {
+            $non_null_param_types = array_filter(
+                $storage->params,
+                /** @return bool */
+                function (FunctionLikeParameter $p) {
+                    return $p->type !== null;
+                }
+            );
+        }
 
         $check_stmts = true;
 
@@ -505,7 +535,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             );
         }
 
-        if (ReturnTypeAnalyzer::checkSignatureReturnType(
+        if (ReturnTypeAnalyzer::checkReturnType(
             $this->function,
             $project_analyzer,
             $this,
@@ -543,7 +573,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                             'Parameter $' . $function_param->name . ' has no provided type' . $infer_text,
                             $function_param->location
                         ),
-                        $storage->suppressed_issues
+                        array_merge($this->suppressed_issues, $storage->suppressed_issues)
                     );
                 } else {
                     IssueBuffer::accepts(
@@ -551,7 +581,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                             'Parameter $' . $function_param->name . ' has no provided type' . $infer_text,
                             $function_param->location
                         ),
-                        $storage->suppressed_issues
+                        array_merge($this->suppressed_issues, $storage->suppressed_issues)
                     );
                 }
             }
@@ -694,7 +724,12 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
         if ($context->collect_exceptions) {
             if ($context->possibly_thrown_exceptions) {
-                $ignored_exceptions = array_change_key_case($codebase->config->ignored_exceptions);
+                $ignored_exceptions = array_change_key_case(
+                    $codebase->config->ignored_exceptions
+                );
+                $ignored_exceptions_and_descendants = array_change_key_case(
+                    $codebase->config->ignored_exceptions_and_descendants
+                );
 
                 $undocumented_throws = [];
 
@@ -702,6 +737,15 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     $is_expected = false;
 
                     foreach ($storage->throws as $expected_exception => $_) {
+                        if ($expected_exception === $possibly_thrown_exception
+                            || $codebase->classExtends($possibly_thrown_exception, $expected_exception)
+                        ) {
+                            $is_expected = true;
+                            break;
+                        }
+                    }
+
+                    foreach ($ignored_exceptions_and_descendants as $expected_exception => $_) {
                         if ($expected_exception === $possibly_thrown_exception
                             || $codebase->classExtends($possibly_thrown_exception, $expected_exception)
                         ) {
@@ -766,16 +810,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             }
 
             if ($hash && $real_method_id && $this instanceof MethodAnalyzer) {
-                $new_hash = $real_method_id . json_encode([
-                    $context->vars_in_scope,
-                    $context->vars_possibly_in_scope,
-                ]);
+                $new_hash = md5($real_method_id . '::' . $context->getScopeSummary());
 
                 if ($new_hash === $hash) {
-                    self::$no_effects_hashes[$hash] = [
-                        $context->vars_in_scope,
-                        $context->vars_possibly_in_scope,
-                    ];
+                    self::$no_effects_hashes[$hash] = true;
                 }
             }
         }
@@ -996,7 +1034,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     }
 
     /**
-     * @return array<string, Type\Union>|null
+     * @return array<string,array{Type\Union, ?string}>|null
      */
     public function getTemplateTypeMap()
     {

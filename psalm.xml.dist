@@ -21,9 +21,10 @@
             <directory name="tests/stubs"/>
             <directory name="tests/DummyProject"/>
             <file name="vendor/phpunit/phpunit/src/Framework/TestCase.php"/>
+            <file name="vendor/symfony/console/Command/Command.php" />
             <file name="src/Psalm/Internal/Traverser/CustomTraverser.php"/>
-            <directory name="tests/performance/a.test"/>
-            <directory name="tests/performance/b.test"/>
+            <file name="tests/performance/a.test"/>
+            <file name="tests/performance/b.test"/>
             <file name="tests/ErrorBaselineTest.php"/>
         </ignoreFiles>
     </projectFiles>
@@ -37,6 +38,10 @@
     <stubs>
         <file name="src/Psalm/Internal/Stubs/SabreEvent.php"/>
     </stubs>
+
+    <plugins>
+        <plugin filename="examples/plugins/FunctionCasingChecker.php" />
+    </plugins>
 
     <issueHandlers>
         <MisplacedRequiredParam errorLevel="suppress"/>
@@ -84,6 +89,7 @@
                 <file name="src/Psalm/Internal/LanguageServer/LanguageClient.php"/>
                 <file name="src/Psalm/Storage/FunctionLikeStorage.php"/>
                 <file name="src/Psalm/Type/Atomic/TNonEmptyArray.php"/>
+                <file name="src/Psalm/Storage/PropertyStorage.php" />
             </errorLevel>
         </PossiblyUnusedProperty>
 
@@ -103,6 +109,7 @@
                 <referencedMethod name="Psalm\Codebase::getAppearingMethodId"/>
                 <referencedMethod name="Psalm\Codebase::getOverriddenMethodIds"/>
                 <referencedMethod name="Psalm\Codebase::getCasedMethodId"/>
+                <referencedMethod name="Psalm\Codebase::createClassLikeStorage"/>
                 <referencedMethod name="Psalm\Codebase::isVariadic"/>
                 <referencedMethod name="Psalm\Codebase::getMethodReturnsByRef"/>
             </errorLevel>

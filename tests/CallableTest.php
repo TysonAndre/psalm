@@ -606,6 +606,63 @@ class CallableTest extends TestCase
                         }
                     }'
             ],
+            'goodCallableArgs' => [
+                '<?php
+                    /**
+                     * @param callable(string,string):int $_p
+                     */
+                    function f(callable $_p): void {}
+
+                    class C {
+                        public static function m(string $a, string $b): int { return $a <=> $b; }
+                    }
+
+                    f("strcmp");
+                    f([new C, "m"]);
+                    f([C::class, "m"]);'
+            ],
+            'fileExistsCallable' => [
+                '<?php
+                    /** @return string[] */
+                    function foo(string $prospective_file_path) : array {
+                        return array_filter(
+                            glob($prospective_file_path),
+                            "file_exists"
+                        );
+                    }'
+            ],
+            'PHP71-closureFromCallableInvokableNamedClass' => [
+                '<?php
+                    namespace NS;
+                    use Closure;
+
+                    /** @param Closure(int):bool $c */
+                    function acceptsIntToBool(Closure $c): void {}
+
+                    class NamedInvokable {
+                        public function __invoke(int $p): bool {
+                            return $p > 0;
+                        }
+                    }
+
+                    acceptsIntToBool(Closure::fromCallable(new NamedInvokable));'
+            ],
+            'PHP71-closureFromCallableInvokableAnonymousClass' => [
+                '<?php
+                    namespace NS;
+                    use Closure;
+
+                    /** @param Closure(int):bool $c */
+                    function acceptsIntToBool(Closure $c): void {}
+
+                    $anonInvokable = new class {
+                        public function __invoke(int $p):bool {
+                            return $p > 0;
+                        }
+                    };
+
+                    acceptsIntToBool(Closure::fromCallable($anonInvokable));'
+            ],
         ];
     }
 
@@ -953,6 +1010,78 @@ class CallableTest extends TestCase
                         if ($a) {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'checkCallableTypeString' => [
+                '<?php
+                    /**
+                     * @param callable(int,int):int $_p
+                     */
+                    function f(callable $_p): void {}
+
+                    f("strcmp");',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'checkCallableTypeArrayInstanceFirstArg' => [
+                '<?php
+                    /**
+                     * @param callable(int,int):int $_p
+                     */
+                    function f(callable $_p): void {}
+
+                    class C {
+                        public static function m(string $a, string $b): int { return $a <=> $b; }
+                    }
+
+                    f([new C, "m"]);',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'checkCallableTypeArrayClassStringFirstArg' => [
+                '<?php
+                    /**
+                     * @param callable(int,int):int $_p
+                     */
+                    function f(callable $_p): void {}
+
+                    class C {
+                        public static function m(string $a, string $b): int { return $a <=> $b; }
+                    }
+
+                    f([C::class, "m"]);',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'PHP71-closureFromCallableInvokableNamedClassWrongArgs' => [
+                '<?php
+                    namespace NS;
+                    use Closure;
+
+                    /** @param Closure(string):bool $c */
+                    function acceptsIntToBool(Closure $c): void {}
+
+                    class NamedInvokable {
+                        public function __invoke(int $p): bool {
+                            return $p > 0;
+                        }
+                    }
+
+                    acceptsIntToBool(Closure::fromCallable(new NamedInvokable));',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'undefinedClassForCallable' => [
+                '<?php
+                    class Foo {
+                        public function __construct(UndefinedClass $o) {}
+                    }
+                    new Foo(function() : void {});',
+                'error_message' => 'UndefinedClass',
+            ],
+            'useDuplicateName' => [
+                '<?php
+                    $foo = "bar";
+
+                    $a = function (string $foo) use ($foo) : string {
+                      return $foo;
+                    };',
+                'error_message' => 'DuplicateParam'
             ],
         ];
     }

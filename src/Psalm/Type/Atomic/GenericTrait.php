@@ -66,7 +66,7 @@ trait GenericTrait
         }
 
         if ($use_phpdoc_format) {
-            if ($this instanceof TNamedObject || $this instanceof TGenericIterable) {
+            if ($this instanceof TNamedObject || $this instanceof TIterable) {
                 return $base_value;
             }
 
@@ -139,23 +139,25 @@ trait GenericTrait
     }
 
     /**
-     * @param  array<string, Union>     $template_types
-     * @param  array<string, Union>     $generic_params
+     * @param  array<string, array{Union, ?string}>     $template_types
+     * @param  array<string, array{Union, ?string}>     $generic_params
      * @param  Atomic|null              $input_type
      *
      * @return void
      */
     public function replaceTemplateTypesWithStandins(
-        array $template_types,
+        array &$template_types,
         array &$generic_params,
         Codebase $codebase = null,
-        Atomic $input_type = null
+        Atomic $input_type = null,
+        bool $replace = true,
+        bool $add_upper_bound = false
     ) {
         foreach ($this->type_params as $offset => $type_param) {
             $input_type_param = null;
 
             if (($input_type instanceof Atomic\TGenericObject
-                    || $input_type instanceof Atomic\TGenericIterable
+                    || $input_type instanceof Atomic\TIterable
                     || $input_type instanceof Atomic\TArray)
                 &&
                     isset($input_type->type_params[$offset])
@@ -175,13 +177,15 @@ trait GenericTrait
                 $template_types,
                 $generic_params,
                 $codebase,
-                $input_type_param
+                $input_type_param,
+                $replace,
+                $add_upper_bound
             );
         }
     }
 
     /**
-     * @param  array<string, Union>     $template_types
+     * @param  array<string, array{Union, ?string}>  $template_types
      *
      * @return void
      */

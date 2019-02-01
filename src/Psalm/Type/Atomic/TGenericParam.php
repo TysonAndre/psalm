@@ -18,12 +18,18 @@ class TGenericParam extends \Psalm\Type\Atomic
     public $as;
 
     /**
+     * @var ?string
+     */
+    public $defining_class;
+
+    /**
      * @param string $param_name
      */
-    public function __construct($param_name, Union $extends)
+    public function __construct($param_name, Union $extends, string $defining_class = null)
     {
         $this->param_name = $param_name;
         $this->as = $extends;
+        $this->defining_class = $defining_class;
     }
 
     public function __toString()
@@ -41,6 +47,14 @@ class TGenericParam extends \Psalm\Type\Atomic
         }
 
         return $this->param_name;
+    }
+
+    /**
+     * @return string
+     */
+    public function getAssertionString()
+    {
+        return $this->as->getId();
     }
 
     public function getId()

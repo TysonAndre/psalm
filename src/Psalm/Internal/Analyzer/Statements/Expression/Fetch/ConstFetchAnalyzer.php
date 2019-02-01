@@ -252,6 +252,7 @@ class ConstFetchAnalyzer
 
                 if (isset($class_constants[$stmt->name->name]) && $first_part_lc !== 'static') {
                     $stmt->inferredType = clone $class_constants[$stmt->name->name];
+                    $context->vars_in_scope[$const_id] = $stmt->inferredType;
                 } else {
                     $stmt->inferredType = Type::getMixed();
                 }
@@ -262,9 +263,32 @@ class ConstFetchAnalyzer
             ExpressionAnalyzer::analyze($statements_analyzer, $stmt->class, $context);
             $lhs_type = $stmt->class->inferredType;
 
-            $stmt->inferredType = new Type\Union([
-                new Type\Atomic\TClassString('object', $lhs_type)
-            ]);
+            $class_string_types = [];
+
+            $has_mixed_or_object = false;
+
+            if ($lhs_type) {
+                foreach ($lhs_type->getTypes() as $lhs_atomic_type) {
+                    if ($lhs_atomic_type instanceof Type\Atomic\TNamedObject) {
+                        $class_string_types[] = new Type\Atomic\TClassString(
+                            $lhs_atomic_type->value,
+                            clone $lhs_atomic_type
+                        );
+                    } elseif ($lhs_atomic_type instanceof Type\Atomic\TObject
+                        || $lhs_atomic_type instanceof Type\Atomic\TMixed
+                    ) {
+                        $has_mixed_or_object = true;
+                    }
+                }
+            }
+
+            if ($has_mixed_or_object) {
+                $stmt->inferredType = new Type\Union([new Type\Atomic\TClassString()]);
+            } elseif ($class_string_types) {
+                $stmt->inferredType = new Type\Union($class_string_types);
+            } else {
+                $stmt->inferredType = Type::getMixed();
+            }
 
             return;
         }
@@ -301,8 +325,10 @@ class ConstFetchAnalyzer
 
         $predefined_constants = $codebase->config->getPredefinedConstants();
 
-        if (isset($predefined_constants[$fq_const_name ?: $const_name])) {
-            switch ($fq_const_name ?: $const_name) {
+        if (isset($predefined_constants[$fq_const_name])
+            || isset($predefined_constants[$const_name])
+        ) {
+            switch ($const_name) {
                 case 'PHP_VERSION':
                 case 'DIRECTORY_SEPARATOR':
                 case 'PATH_SEPARATOR':
@@ -345,8 +371,11 @@ class ConstFetchAnalyzer
                     return Type::getFloat();
             }
 
-            $type = ClassLikeAnalyzer::getTypeFromValue($predefined_constants[$fq_const_name ?: $const_name]);
-            return $type;
+            if (isset($predefined_constants[$fq_const_name])) {
+                return ClassLikeAnalyzer::getTypeFromValue($predefined_constants[$fq_const_name]);
+            }
+
+            return ClassLikeAnalyzer::getTypeFromValue($predefined_constants[$const_name]);
         }
 
         $stubbed_const_type = $codebase->getStubbedConstantType(

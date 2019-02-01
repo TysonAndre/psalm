@@ -674,6 +674,8 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         $context->strict_types = true;
                     }
                 }
+            } elseif ($stmt instanceof PhpParser\Node\Stmt\HaltCompiler) {
+                $has_returned = true;
             } else {
                 if (IssueBuffer::accepts(
                     new UnrecognizedStatement(
@@ -985,7 +987,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             if (strtolower($stmt->name->parts[0]) === 'false') {
                 return Type::getFalse();
             } elseif (strtolower($stmt->name->parts[0]) === 'true') {
-                return Type::getBool();
+                return Type::getTrue();
             } elseif (strtolower($stmt->name->parts[0]) === 'null') {
                 return Type::getNull();
             }
@@ -1289,15 +1291,13 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
         $is_fully_qualified,
         Context $context
     ) {
-        $fq_const_name = null;
-
         $aliased_constants = $this->getAliases()->constants;
 
         if (isset($aliased_constants[$const_name])) {
             $fq_const_name = $aliased_constants[$const_name];
         } elseif ($is_fully_qualified) {
             $fq_const_name = $const_name;
-        } elseif (strpos($const_name, '\\')) {
+        } else {
             $fq_const_name = Type::getFQCLNFromString($const_name, $this->getAliases());
         }
 

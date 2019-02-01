@@ -28,7 +28,12 @@ class ClassLikeDocblockComment
     /**
      * @var array<int, string>
      */
-    public $template_parents = [];
+    public $template_extends = [];
+
+    /**
+     * @var array<int, string>
+     */
+    public $template_implements = [];
 
     /**
      * @var array<int, array{name:string, type:string, tag:string, line_number:int}>

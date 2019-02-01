@@ -274,6 +274,10 @@ class Scanner
         $analyze_too = false,
         $store_failure = true
     ) {
+        if ($fq_classlike_name[0] === '\\') {
+            $fq_classlike_name = substr($fq_classlike_name, 1);
+        }
+
         $fq_classlike_name_lc = strtolower($fq_classlike_name);
 
         // avoid checking classes that we know will just end in failure
@@ -348,8 +352,6 @@ class Scanner
 
         $files_to_deep_scan = $this->files_to_deep_scan;
 
-        $baseMemory = memory_get_usage();
-
         $scanner_worker =
             /**
              * @param int $_
@@ -357,7 +359,7 @@ class Scanner
              *
              * @return void
              */
-            function ($_, $file_path) use ($filetype_scanners, $files_to_deep_scan, $baseMemory) {
+            function ($_, $file_path) use ($filetype_scanners, $files_to_deep_scan) {
                 $this->scanFile(
                     $file_path,
                     $filetype_scanners,
@@ -613,10 +615,10 @@ class Scanner
                 foreach ($file_storage->constants as $name => $type) {
                     $this->codebase->addGlobalConstantType($name, $type);
                 }
+            }
 
-                foreach ($file_storage->classlike_aliases as $aliased_name => $unaliased_name) {
-                    $this->codebase->classlikes->addClassAlias($unaliased_name, $aliased_name);
-                }
+            foreach ($file_storage->classlike_aliases as $aliased_name => $unaliased_name) {
+                $this->codebase->classlikes->addClassAlias($unaliased_name, $aliased_name);
             }
         }
 

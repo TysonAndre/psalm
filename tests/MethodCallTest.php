@@ -181,6 +181,18 @@ class MethodCallTest extends TestCase
                         return $b->getAttribute("bat");
                     }',
             ],
+            'domElementIteratorOrEmptyArray' => [
+                '<?php
+                    function foo(string $XML) : void {
+                        $dom = new DOMDocument();
+                        $dom->loadXML($XML);
+
+                        $elements = rand(0, 1) ? $dom->getElementsByTagName("bar") : [];
+                        foreach ($elements as $element) {
+                            $element->getElementsByTagName("bat");
+                        }
+                    }'
+            ],
             'reflectionParameter' => [
                 '<?php
                     function getTypeName(ReflectionParameter $parameter): string {
@@ -220,6 +232,54 @@ class MethodCallTest extends TestCase
                     }',
                 [],
                 'error_levels' => ['MixedAssignment', 'MixedMethodCall'],
+            ],
+            'methodResolution' => [
+                '<?php
+                    interface ReturnsString {
+                        public function getId(): string;
+                    }
+
+                    /**
+                     * @param mixed $a
+                     */
+                    function foo(ReturnsString $user, $a): string {
+                        strlen($user->getId());
+
+                        (is_object($a) && method_exists($a, "getS")) ? (string)$a->getS() : "";
+
+                        return $user->getId();
+                    }'
+            ],
+            'defineVariableCreatedInArgToMixed' => [
+                '<?php
+                    function bar($a) : void {
+                        if ($a->foo($b = (int) 5)) {
+                            echo $b;
+                        }
+                    }',
+                [],
+                'error_levels' => ['MixedMethodCall', 'MissingParamType'],
+            ],
+            'staticCallAfterMethodExists' => [
+                '<?php
+                    class A
+                    {
+                        protected static function existing() : string
+                        {
+                            return "hello";
+                        }
+
+                        protected static function foo() : string
+                        {
+                            if (!method_exists(static::class, "maybeExists")) {
+                                return "hello";
+                            }
+
+                            self::maybeExists();
+
+                            return static::existing();
+                        }
+                    }'
             ],
         ];
     }
@@ -433,7 +493,7 @@ class MethodCallTest extends TestCase
                     function f($p): void {
                         $p->zugzug();
                     }',
-                'error_message' => 'UndefinedMethod - src/somefile.php:7 - Method (B&A)::zugzug does not exist'
+                'error_message' => 'UndefinedInterfaceMethod - src/somefile.php:7 - Method (B&A)::zugzug does not exist'
             ],
             'noInstanceCallAsStatic' => [
                 '<?php
@@ -443,6 +503,22 @@ class MethodCallTest extends TestCase
 
                     (new C)::foo();',
                 'error_message' => 'InvalidStaticInvocation',
+            ],
+            'noExceptionOnMissingClass' => [
+                '<?php
+                    /** @psalm-suppress UndefinedClass */
+                    class A
+                    {
+                        /** @var class-string<Foo> */
+                        protected $bar;
+
+                        public function foo(string $s): void
+                        {
+                            $bar = $this->bar;
+                            $bar::baz();
+                        }
+                    }',
+                'error_message' => 'UndefinedClass'
             ],
         ];
     }

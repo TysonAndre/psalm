@@ -147,8 +147,8 @@ class ArrayFetchAnalyzer
                 $used_key_type,
                 false,
                 $array_var_id,
-                null,
-                $context->inside_isset
+                $context,
+                null
             );
 
             if ($context->inside_isset
@@ -241,7 +241,6 @@ class ArrayFetchAnalyzer
      * @param  Type\Union $offset_type
      * @param  bool       $in_assignment
      * @param  null|string    $array_var_id
-     * @param  bool       $inside_isset
      *
      * @return Type\Union
      */
@@ -252,8 +251,9 @@ class ArrayFetchAnalyzer
         Type\Union $offset_type,
         $in_assignment,
         $array_var_id,
-        Type\Union $replacement_type = null,
-        $inside_isset = false
+        Context $context,
+        PhpParser\Node\Expr $assign_value = null,
+        Type\Union $replacement_type = null
     ) {
         $codebase = $statements_analyzer->getCodebase();
 
@@ -305,7 +305,7 @@ class ArrayFetchAnalyzer
             return Type::getMixed();
         }
 
-        if ($offset_type->isNullable() && !$offset_type->ignore_nullable_issues && !$inside_isset) {
+        if ($offset_type->isNullable() && !$offset_type->ignore_nullable_issues && !$context->inside_isset) {
             if (IssueBuffer::accepts(
                 new PossiblyNullArrayOffset(
                     'Cannot access value on variable ' . $array_var_id
@@ -346,7 +346,7 @@ class ArrayFetchAnalyzer
                         $array_access_type = new Type\Union([new TEmpty]);
                     }
                 } else {
-                    if (!$inside_isset) {
+                    if (!$context->inside_isset) {
                         if (IssueBuffer::accepts(
                             new PossiblyNullArrayAccess(
                                 'Cannot access array value on possibly null variable ' . $array_var_id .
@@ -461,7 +461,7 @@ class ArrayFetchAnalyzer
                     if ($array_access_type->isEmpty()
                         && !$array_type->hasMixed()
                         && !$in_assignment
-                        && !$inside_isset
+                        && !$context->inside_isset
                     ) {
                         if (IssueBuffer::accepts(
                             new EmptyArrayAccess(
@@ -515,7 +515,7 @@ class ArrayFetchAnalyzer
                                 );
                             }
                         } else {
-                            if (!$inside_isset || $type->sealed) {
+                            if (!$context->inside_isset || $type->sealed) {
                                 $object_like_keys = array_keys($type->properties);
 
                                 if (count($object_like_keys) === 1) {
@@ -551,7 +551,7 @@ class ArrayFetchAnalyzer
                             $type_coerced_from_scalar
                         );
 
-                        if ($inside_isset && !$is_contained) {
+                        if ($context->inside_isset && !$is_contained) {
                             $is_contained = TypeAnalyzer::canBeContainedBy(
                                 $codebase,
                                 $offset_type,
@@ -615,7 +615,7 @@ class ArrayFetchAnalyzer
 
                             $has_valid_offset = true;
                         } else {
-                            if (!$inside_isset || $type->sealed) {
+                            if (!$context->inside_isset || $type->sealed) {
                                 $expected_offset_types[] = (string)$generic_key_type->getId();
                             }
 
@@ -650,7 +650,7 @@ class ArrayFetchAnalyzer
                 } elseif ($type instanceof TLiteralString) {
                     $valid_offsets = [];
 
-                    for ($i = 0, $l = strlen($type->value); $i < $l; $i++) {
+                    for ($i = -strlen($type->value), $l = strlen($type->value); $i < $l; $i++) {
                         $valid_offsets[] = new TLiteralInt($i);
                     }
 
@@ -687,7 +687,7 @@ class ArrayFetchAnalyzer
             if ($type instanceof TMixed || $type instanceof TGenericParam || $type instanceof TEmpty) {
                 $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
-                if (!$inside_isset) {
+                if (!$context->inside_isset) {
                     if ($in_assignment) {
                         if (IssueBuffer::accepts(
                             new MixedArrayAssignment(
@@ -723,17 +723,96 @@ class ArrayFetchAnalyzer
             }
 
             if ($type instanceof TNamedObject) {
-                if (strtolower($type->value) !== 'simplexmlelement'
-                    && strtolower($type->value) !== 'arrayaccess'
-                    && (($codebase->classExists($type->value)
-                            && !$codebase->classImplements($type->value, 'ArrayAccess'))
-                        || ($codebase->interfaceExists($type->value)
-                            && !$codebase->interfaceExtends($type->value, 'ArrayAccess'))
-                    )
-                ) {
-                    $non_array_types[] = (string)$type;
-                } else {
+                if (strtolower($type->value) === 'simplexmlelement') {
                     $array_access_type = Type::getMixed();
+                } elseif (strtolower($type->value) === 'domnodelist' && $stmt->dim) {
+                    $fake_method_call = new PhpParser\Node\Expr\MethodCall(
+                        $stmt->var,
+                        new PhpParser\Node\Identifier('item', $stmt->var->getAttributes()),
+                        [
+                            new PhpParser\Node\Arg($stmt->dim)
+                        ]
+                    );
+
+                    $suppressed_issues = $statements_analyzer->getSuppressedIssues();
+
+                    if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
+                        $statements_analyzer->addSuppressedIssues(['PossiblyInvalidMethodCall']);
+                    }
+
+                    \Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer::analyze(
+                        $statements_analyzer,
+                        $fake_method_call,
+                        $context
+                    );
+
+                    if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
+                        $statements_analyzer->removeSuppressedIssues(['PossiblyInvalidMethodCall']);
+                    }
+
+                    $iterator_class_type = $fake_method_call->inferredType ?? null;
+                    $array_access_type = $iterator_class_type ?: Type::getMixed();
+                } elseif ((strtolower($type->value) === 'arrayaccess'
+                        || (($codebase->classExists($type->value)
+                            && $codebase->classImplements($type->value, 'ArrayAccess'))
+                        || ($codebase->interfaceExists($type->value)
+                            && $codebase->interfaceExtends($type->value, 'ArrayAccess'))
+                        ))
+                    && ($stmt->dim || $in_assignment)
+                ) {
+                    if ($in_assignment) {
+                        $fake_method_call = new PhpParser\Node\Expr\MethodCall(
+                            $stmt->var,
+                            new PhpParser\Node\Identifier('offsetSet', $stmt->var->getAttributes()),
+                            [
+                                new PhpParser\Node\Arg(
+                                    $stmt->dim
+                                        ? $stmt->dim
+                                        : new PhpParser\Node\Expr\ConstFetch(
+                                            new PhpParser\Node\Name('null'),
+                                            $stmt->var->getAttributes()
+                                        )
+                                ),
+                                new PhpParser\Node\Arg(
+                                    $assign_value
+                                        ?: new PhpParser\Node\Expr\ConstFetch(
+                                            new PhpParser\Node\Name('null'),
+                                            $stmt->var->getAttributes()
+                                        )
+                                ),
+                            ]
+                        );
+                    } else {
+                        $fake_method_call = new PhpParser\Node\Expr\MethodCall(
+                            $stmt->var,
+                            new PhpParser\Node\Identifier('offsetGet', $stmt->var->getAttributes()),
+                            [
+                                new PhpParser\Node\Arg($stmt->dim)
+                            ]
+                        );
+                    }
+
+
+                    $suppressed_issues = $statements_analyzer->getSuppressedIssues();
+
+                    if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
+                        $statements_analyzer->addSuppressedIssues(['PossiblyInvalidMethodCall']);
+                    }
+
+                    \Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer::analyze(
+                        $statements_analyzer,
+                        $fake_method_call,
+                        $context
+                    );
+
+                    if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
+                        $statements_analyzer->removeSuppressedIssues(['PossiblyInvalidMethodCall']);
+                    }
+
+                    $iterator_class_type = $fake_method_call->inferredType ?? null;
+                    $array_access_type = $iterator_class_type ?: Type::getMixed();
+                } else {
+                    $non_array_types[] = (string)$type;
                 }
             } else {
                 $non_array_types[] = (string)$type;
@@ -821,7 +900,7 @@ class ArrayFetchAnalyzer
                         . (is_int($key_value) ? $key_value : '\'' . $key_value . '\'');
                 }
 
-                if ($has_valid_offset && $inside_isset) {
+                if ($has_valid_offset && $context->inside_isset) {
                     // do nothing
                 } elseif ($has_valid_offset) {
                     if (IssueBuffer::accepts(

@@ -1,6 +1,7 @@
 <?php
 namespace Psalm\Tests;
 
+use Psalm\Internal\Codebase\Reflection;
 use Psalm\Type;
 
 class TypeParseTest extends TestCase
@@ -292,6 +293,14 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testObjectWithSimpleArgs()
+    {
+        $this->assertSame('object{a:int, b:string}', (string) Type::parseString('object{a:int, b:string}'));
+    }
+
+    /**
+     * @return void
+     */
     public function testObjectLikeWithUnionArgs()
     {
         $this->assertSame(
@@ -512,6 +521,16 @@ class TypeParseTest extends TestCase
      *
      * @return void
      */
+    public function testBadGenericString()
+    {
+        Type::parseString('string<T>');
+    }
+
+    /**
+     * @expectedException \Psalm\Exception\TypeParseTreeException
+     *
+     * @return void
+     */
     public function testBadAmpersand()
     {
         Type::parseString('&array');
@@ -633,6 +652,28 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testCombineLiteralStringWithClassString()
+    {
+        $this->assertSame(
+            'string',
+            (string)Type::parseString('"array"|class-string')
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testCombineLiteralClassStringWithClassString()
+    {
+        $this->assertSame(
+            'class-string',
+            (string)Type::parseString('A::class|class-string')
+        );
+    }
+
+    /**
+     * @return void
+     */
     public function testVeryLargeType()
     {
         $very_large_type = 'array{a:Closure():(array<mixed, mixed>|null), b?:Closure():array<mixed, mixed>, c?:Closure():array<mixed, mixed>, d?:Closure():array<mixed, mixed>, e?:Closure():(array{f:null|string, g:null|string, h:null|string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), p?:Closure():(array{f:null|string, g:null|string, h:null|string, q:string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), r?:Closure():(array<mixed, mixed>|null), s:array<mixed, mixed>}|null';
@@ -648,7 +689,7 @@ class TypeParseTest extends TestCase
      */
     public function testEnum()
     {
-        $docblock_type = Type::parseString('( \'foo\\\'with\' | "bar\"bar" | "baz" | "bat\\\\" | \'bang bang\' | 1 | 2 | 3)');
+        $docblock_type = Type::parseString('( \'foo\\\'with\' | "bar\"bar" | "baz" | "bat\\\\" | \'bang bang\' | 1 | 2 | 3 | 4.5)');
 
         $resolved_type = new Type\Union([
             new Type\Atomic\TLiteralString('foo\'with'),
@@ -658,7 +699,8 @@ class TypeParseTest extends TestCase
             new Type\Atomic\TLiteralString('bang bang'),
             new Type\Atomic\TLiteralInt(1),
             new Type\Atomic\TLiteralInt(2),
-            new Type\Atomic\TLiteralInt(3)
+            new Type\Atomic\TLiteralInt(3),
+            new Type\Atomic\TLiteralFloat(4.5)
         ]);
 
         $this->assertSame($resolved_type->getId(), $docblock_type->getId());
@@ -669,7 +711,7 @@ class TypeParseTest extends TestCase
      */
     public function testEnumWithoutSpaces()
     {
-        $docblock_type = Type::parseString('\'foo\\\'with\'|"bar\"bar"|"baz"|"bat\\\\"|\'bang bang\'|1|2|3');
+        $docblock_type = Type::parseString('\'foo\\\'with\'|"bar\"bar"|"baz"|"bat\\\\"|\'bang bang\'|1|2|3|4.5');
 
         $resolved_type = new Type\Union([
             new Type\Atomic\TLiteralString('foo\'with'),
@@ -679,7 +721,8 @@ class TypeParseTest extends TestCase
             new Type\Atomic\TLiteralString('bang bang'),
             new Type\Atomic\TLiteralInt(1),
             new Type\Atomic\TLiteralInt(2),
-            new Type\Atomic\TLiteralInt(3)
+            new Type\Atomic\TLiteralInt(3),
+            new Type\Atomic\TLiteralFloat(4.5)
         ]);
 
         $this->assertSame($resolved_type->getId(), $docblock_type->getId());
@@ -703,6 +746,41 @@ class TypeParseTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testReflectionTypeParse()
+    {
+        /** @psalm-suppress UnusedParam */
+        function someFunction(string $param, array $param2, int $param3 = null) : string
+        {
+            return "hello";
+        }
+
+        $reflectionFunc = new \ReflectionFunction('Psalm\Tests\someFunction');
+        $reflectionParams = $reflectionFunc->getParameters();
+
+        $this->assertSame(
+            'string',
+            (string) \Psalm\Codebase::getPsalmTypeFromReflection($reflectionParams[0]->getType())
+        );
+
+        $this->assertSame(
+            'array<array-key, mixed>',
+            (string) \Psalm\Codebase::getPsalmTypeFromReflection($reflectionParams[1]->getType())
+        );
+
+        $this->assertSame(
+            'int|null',
+            (string) \Psalm\Codebase::getPsalmTypeFromReflection($reflectionParams[2]->getType())
+        );
+
+        $this->assertSame(
+            'string',
+            (string) \Psalm\Codebase::getPsalmTypeFromReflection($reflectionFunc->getReturnType())
+        );
+    }
+
+    /**
      * @dataProvider providerTestValidCallMapType
      *
      * @param string $return_type
@@ -721,11 +799,15 @@ class TypeParseTest extends TestCase
         $param_type_4 = ''
     ) {
         if ($return_type && $return_type !== 'void') {
+            if (stripos($return_type, 'oci-') !== false) {
+                return;
+            }
+
             \Psalm\Type::parseString($return_type);
         }
 
         if ($param_type_1 && $param_type_1 !== 'mixed') {
-            if (strpos($param_type_1, 'oci-') !== false) {
+            if (stripos($param_type_1, 'oci-') !== false) {
                 return;
             }
 

@@ -416,6 +416,14 @@ class Codebase
     }
 
     /**
+     * @param  ?\ReflectionType $type
+     */
+    public static function getPsalmTypeFromReflection($type) : Type\Union
+    {
+        return \Psalm\Internal\Codebase\Reflection::getPsalmTypeFromReflectionType($type);
+    }
+
+    /**
      * @param  string $file_path
      *
      * @return FileStorage
@@ -434,6 +442,10 @@ class Codebase
     {
         if (!$this->collect_references) {
             throw new \UnexpectedValueException('Should not be checking references');
+        }
+
+        if (strpos($symbol, '::$') !== false) {
+            return $this->findReferencesToProperty($symbol);
         }
 
         if (strpos($symbol, '::') !== false) {
@@ -471,6 +483,34 @@ class Codebase
         }
 
         return $method_storage->referencing_locations;
+    }
+
+    /**
+     * @param  string $property_id
+     *
+     * @return array<string, \Psalm\CodeLocation[]>
+     */
+    public function findReferencesToProperty($property_id)
+    {
+        list($fq_class_name, $property_name) = explode('::$', $property_id);
+
+        try {
+            $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        } catch (\InvalidArgumentException $e) {
+            die('Class ' . $fq_class_name . ' cannot be found' . PHP_EOL);
+        }
+
+        if (!isset($class_storage->properties[$property_name])) {
+            die('Property ' . $property_id . ' cannot be found' . PHP_EOL);
+        }
+
+        $property_storage = $class_storage->properties[$property_name];
+
+        if ($property_storage->referencing_locations === null) {
+            die('No references found for ' . $property_id . PHP_EOL);
+        }
+
+        return $property_storage->referencing_locations;
     }
 
     /**

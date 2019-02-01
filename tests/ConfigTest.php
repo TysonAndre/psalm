@@ -142,6 +142,65 @@ class ConfigTest extends TestCase
     /**
      * @return void
      */
+    public function testIgnoreMissingProjectDirectory()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            Config::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                        <ignoreFiles allowMissingFiles="true">
+                            <directory name="does/not/exist" />
+                        </ignoreFiles>
+                    </projectFiles>
+                </psalm>'
+            )
+        );
+
+        $config = $this->project_analyzer->getConfig();
+
+        $this->assertTrue($config->isInProjectDirs(realpath('src/Psalm/Type.php')));
+        $this->assertFalse($config->isInProjectDirs(realpath('does/not/exist/FileAnalyzer.php')));
+        $this->assertFalse($config->isInProjectDirs(realpath('examples/StringAnalyzer.php')));
+    }
+
+    /**
+     * @return void
+     */
+    public function testIgnoreSymlinkedProjectDirectory()
+    {
+        @unlink(__DIR__ . '/symlinktest/ignored/b');
+        symlink(__DIR__ . '/symlinktest/a', __DIR__ . '/symlinktest/ignored/b');
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            Config::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="tests" />
+                        <ignoreFiles>
+                            <directory name="tests/symlinktest/ignored" />
+                        </ignoreFiles>
+                    </projectFiles>
+                </psalm>'
+            )
+        );
+
+        $config = $this->project_analyzer->getConfig();
+
+        $this->assertTrue($config->isInProjectDirs(realpath('tests/AnnotationTest.php')));
+        $this->assertFalse($config->isInProjectDirs(realpath('tests/symlinktest/a/ignoreme.php')));
+        $this->assertFalse($config->isInProjectDirs(realpath('examples/StringAnalyzer.php')));
+
+        unlink(__DIR__ . '/symlinktest/ignored/b');
+    }
+
+    /**
+     * @return void
+     */
     public function testIgnoreWildcardProjectDirectory()
     {
         $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
@@ -312,6 +371,7 @@ class ConfigTest extends TestCase
                         <UndefinedClass>
                             <errorLevel type="suppress">
                                 <referencedClass name="Psalm\Badger" />
+                                <referencedClass name="Psalm\*Actor" />
                             </errorLevel>
                         </UndefinedClass>
                         <UndefinedMethod>
@@ -358,6 +418,22 @@ class ConfigTest extends TestCase
             $config->getReportingLevelForClass(
                 'UndefinedClass',
                 'Psalm\Badger'
+            )
+        );
+
+        $this->assertSame(
+            'suppress',
+            $config->getReportingLevelForClass(
+                'UndefinedClass',
+                'Psalm\BadActor'
+            )
+        );
+
+        $this->assertSame(
+            'suppress',
+            $config->getReportingLevelForClass(
+                'UndefinedClass',
+                'Psalm\GoodActor'
             )
         );
 
@@ -440,7 +516,7 @@ class ConfigTest extends TestCase
                  * @return string
                  */
                 function ($issue_name) {
-                    if ($issue_name === 'ParseError') {
+                    if ($issue_name === 'ParseError' || $issue_name === 'PluginIssue') {
                         return '';
                     }
 
@@ -596,6 +672,41 @@ class ConfigTest extends TestCase
                         $a->getFoo()->getBar()->bat();
                     }
                 }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testThing()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <mockClasses>
+                        <class name="MyMockClass" />
+                    </mockClasses>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                class MyMockClass {}
+
+                $a = new MyMockClass();
+                $a->foo($b = 5);
+                echo $b;'
         );
 
         $this->analyzeFile($file_path, new Context());

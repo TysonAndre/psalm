@@ -1,10 +1,16 @@
 <?php
 namespace Psalm\Type;
 
+use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\Issue\InvalidTemplateParam;
+use Psalm\Issue\MissingTemplateParam;
 use Psalm\Issue\ReservedWord;
+use Psalm\Issue\TooManyTemplateParams;
+use Psalm\Issue\UndefinedConstant;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Storage\FileStorage;
@@ -62,7 +68,7 @@ abstract class Atomic
     /**
      * @param  string $value
      * @param  bool   $php_compatible
-     * @param  array<string, Union> $template_type_map
+     * @param  array<string, array{Union, ?string}> $template_type_map
      *
      * @return Atomic
      */
@@ -147,7 +153,7 @@ abstract class Atomic
                 return new TNamedObject('static');
 
             default:
-                if (strpos($value, '-')) {
+                if (strpos($value, '-') && substr($value, 0, 4) !== 'OCI-') {
                     throw new \Psalm\Exception\TypeParseTreeException('no hyphens allowed');
                 }
 
@@ -156,7 +162,7 @@ abstract class Atomic
                 }
 
                 if (isset($template_type_map[$value])) {
-                    return new TGenericParam($value, $template_type_map[$value]);
+                    return new TGenericParam($value, $template_type_map[$value][0], $template_type_map[$value][1]);
                 }
 
                 return new TNamedObject($value);
@@ -295,15 +301,27 @@ abstract class Atomic
         }
 
         if ($this instanceof TClassString && $this->as !== 'object' && $this->as !== 'mixed') {
-            if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
-                $source,
-                $this->as,
-                $code_location,
-                $suppressed_issues,
-                $inferred
-            ) === false
-            ) {
-                return false;
+            if ($this->as_type) {
+                if ($this->as_type->check(
+                    $source,
+                    $code_location,
+                    $suppressed_issues,
+                    $phantom_classes,
+                    $inferred
+                ) === false) {
+                    return false;
+                }
+            } else {
+                if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                    $source,
+                    $this->as,
+                    $code_location,
+                    $suppressed_issues,
+                    $inferred
+                ) === false
+                ) {
+                    return false;
+                }
             }
         }
 
@@ -312,15 +330,40 @@ abstract class Atomic
         }
 
         if ($this instanceof TScalarClassConstant) {
+            $fq_classlike_name = $this->fq_classlike_name === 'self'
+                ? $source->getClassName()
+                : $this->fq_classlike_name;
+
+            if (!$fq_classlike_name) {
+                return;
+            }
+
             if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
                 $source,
-                $this->fq_classlike_name,
+                $fq_classlike_name,
                 $code_location,
                 $suppressed_issues,
                 $inferred
             ) === false
             ) {
                 return false;
+            }
+
+            $class_constants = $source->getCodebase()->classlikes->getConstantsForClass(
+                $fq_classlike_name,
+                \ReflectionProperty::IS_PRIVATE
+            );
+
+            if (!isset($class_constants[$this->const_name])) {
+                if (IssueBuffer::accepts(
+                    new UndefinedConstant(
+                        'Constant ' . $fq_classlike_name . '::' . $this->const_name . ' is not defined',
+                        $code_location
+                    ),
+                    $source->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
             }
         }
 
@@ -337,8 +380,52 @@ abstract class Atomic
             }
         }
 
-        if ($this instanceof Type\Atomic\TArray || $this instanceof Type\Atomic\TGenericObject) {
-            foreach ($this->type_params as $type_param) {
+        if ($this instanceof Type\Atomic\TArray
+            || $this instanceof Type\Atomic\TGenericObject
+            || $this instanceof Type\Atomic\TIterable
+        ) {
+            $codebase = $source->getCodebase();
+
+            if ($this instanceof Type\Atomic\TGenericObject) {
+                try {
+                    $class_storage = $codebase->classlike_storage_provider->get($this->value);
+                } catch (\InvalidArgumentException $e) {
+                    return;
+                }
+
+                $expected_type_params = $class_storage->template_types ?: [];
+            } else {
+                $expected_type_params = [[Type::getMixed(), null], [Type::getMixed(), null]];
+            }
+
+            $template_type_count = count($expected_type_params);
+            $template_param_count = count($this->type_params);
+
+            if ($template_type_count > $template_param_count) {
+                if (IssueBuffer::accepts(
+                    new MissingTemplateParam(
+                        $this->value . ' has missing template params, expecting '
+                            . $template_type_count,
+                        $code_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+            } elseif ($template_type_count < $template_param_count) {
+                if (IssueBuffer::accepts(
+                    new TooManyTemplateParams(
+                        $this->value . ' has too many template params, expecting '
+                            . $template_type_count,
+                        $code_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+            }
+
+            foreach ($this->type_params as $i => $type_param) {
                 if ($type_param->check(
                     $source,
                     $code_location,
@@ -347,6 +434,32 @@ abstract class Atomic
                     $inferred
                 ) === false) {
                     return false;
+                }
+
+                if (isset(array_values($expected_type_params)[$i])) {
+                    $expected_type_param = array_values($expected_type_params)[$i][0];
+                    $template_name = array_keys($expected_type_params)[$i];
+
+                    $type_param = ExpressionAnalyzer::fleshOutType(
+                        $codebase,
+                        $type_param,
+                        $source->getFQCLN(),
+                        $source->getFQCLN()
+                    );
+
+                    if (!TypeAnalyzer::isContainedBy($codebase, $type_param, $expected_type_param)) {
+                        if (IssueBuffer::accepts(
+                            new InvalidTemplateParam(
+                                'Extended template param ' . $template_name . ' expects type '
+                                    . $expected_type_param->getId()
+                                    . ', type ' . $type_param->getId() . ' given',
+                                $code_location
+                            ),
+                            $suppressed_issues
+                        )) {
+                            // fall through
+                        }
+                    }
                 }
             }
         }
@@ -374,7 +487,7 @@ abstract class Atomic
                 );
 
                 if ($file_storage) {
-                    $file_storage->referenced_classlikes[] = $this->value;
+                    $file_storage->referenced_classlikes[strtolower($this->value)] = $this->value;
                 }
             }
         }
@@ -387,7 +500,7 @@ abstract class Atomic
                 !$this->from_docblock
             );
             if ($file_storage) {
-                $file_storage->referenced_classlikes[] = $this->fq_classlike_name;
+                $file_storage->referenced_classlikes[strtolower($this->fq_classlike_name)] = $this->fq_classlike_name;
             }
         }
 
@@ -399,7 +512,7 @@ abstract class Atomic
                 !$this->from_docblock
             );
             if ($file_storage) {
-                $file_storage->referenced_classlikes[] = $this->as;
+                $file_storage->referenced_classlikes[strtolower($this->as)] = $this->as;
             }
         }
 
@@ -419,7 +532,7 @@ abstract class Atomic
                 !$this->from_docblock
             );
             if ($file_storage) {
-                $file_storage->referenced_classlikes[] = $this->value;
+                $file_storage->referenced_classlikes[strtolower($this->value)] = $this->value;
             }
         }
 
@@ -510,23 +623,25 @@ abstract class Atomic
     }
 
     /**
-     * @param  array<string, Type\Union> $template_types
-     * @param  array<string, Type\Union> $generic_params
+     * @param  array<string, array{Type\Union, ?string}> $template_types
+     * @param  array<string, array{Type\Union, ?string}> $generic_params
      * @param  Type\Atomic|null          $input_type
      *
      * @return void
      */
     public function replaceTemplateTypesWithStandins(
-        array $template_types,
+        array &$template_types,
         array &$generic_params,
         Codebase $codebase = null,
-        Type\Atomic $input_type = null
+        Type\Atomic $input_type = null,
+        bool $replace = true,
+        bool $add_upper_bound = false
     ) {
         // do nothing
     }
 
     /**
-     * @param  array<string, Type\Union>     $template_types
+     * @param  array<string, array{Type\Union, ?string}>     $template_types
      *
      * @return void
      */

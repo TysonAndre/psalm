@@ -3,6 +3,7 @@ namespace Psalm\Internal\Codebase;
 
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
+use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Codebase;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Storage\FunctionLikeParameter;
@@ -161,7 +162,10 @@ class Reflection
         );
 
         if ($class_name_lower === 'generator') {
-            $storage->template_types = ['TKey' => Type::getMixed(), 'TValue' => Type::getMixed()];
+            $storage->template_types = [
+                'TKey' => [Type::getMixed(), 'Generator'],
+                'TValue' => [Type::getMixed(), 'Generator']
+            ];
         }
 
         $interfaces = $reflected_class->getInterfaces();
@@ -222,6 +226,7 @@ class Reflection
         $storage = $class_storage->methods[strtolower($method_name)] = new MethodStorage();
 
         $storage->cased_name = $method->name;
+        $storage->defining_fqcln = $method->class;
 
         if (strtolower((string)$method->name) === strtolower((string)$method->class)) {
             $this->codebase->methods->setDeclaringMethodId(
@@ -296,38 +301,10 @@ class Reflection
      */
     private function getReflectionParamData(\ReflectionParameter $param)
     {
-        $param_type_string = null;
-
-        if ($param->isArray()) {
-            $param_type_string = 'array';
-        } else {
-            try {
-                $param_class = $param->getClass();
-            } catch (\ReflectionException $e) {
-                $param_class = null;
-            }
-
-            if ($param_class) {
-                $param_type_string = (string)$param_class->getName();
-            }
-        }
-
-        $is_nullable = false;
+        $param_type = self::getPsalmTypeFromReflectionType($param->getType());
+        $param_name = (string)$param->getName();
 
         $is_optional = (bool)$param->isOptional();
-
-        try {
-            $is_nullable = $param->getDefaultValue() === null;
-
-            if ($param_type_string && $is_nullable) {
-                $param_type_string .= '|null';
-            }
-        } catch (\ReflectionException $e) {
-            // do nothing
-        }
-
-        $param_name = (string)$param->getName();
-        $param_type = $param_type_string ? Type::parseString($param_type_string) : Type::getMixed();
 
         return new FunctionLikeParameter(
             $param_name,
@@ -336,7 +313,7 @@ class Reflection
             null,
             null,
             $is_optional,
-            $is_nullable,
+            $param_type->isNullable(),
             $param->isVariadic()
         );
     }
@@ -351,14 +328,32 @@ class Reflection
         try {
             $reflection_function = new \ReflectionFunction($function_id);
 
+            $callmap_function_params = null;
+
+            $callmap_return_type = null;
+
             $storage = self::$builtin_functions[$function_id] = new FunctionLikeStorage();
 
-            $reflection_params = $reflection_function->getParameters();
+            if (CallMap::inCallMap($function_id)) {
+                $callmap_function_params = FunctionLikeAnalyzer::getFunctionParamsFromCallMapById(
+                    $this->codebase,
+                    $function_id,
+                    []
+                );
 
-            /** @var \ReflectionParameter $param */
-            foreach ($reflection_params as $param) {
-                $param_obj = $this->getReflectionParamData($param);
-                $storage->params[] = $param_obj;
+                $callmap_return_type = CallMap::getReturnTypeFromCallMap($function_id);
+            }
+
+            if ($callmap_function_params !== null) {
+                $storage->params = $callmap_function_params;
+            } else {
+                $reflection_params = $reflection_function->getParameters();
+
+                /** @var \ReflectionParameter $param */
+                foreach ($reflection_params as $param) {
+                    $param_obj = $this->getReflectionParamData($param);
+                    $storage->params[] = $param_obj;
+                }
             }
 
             $storage->required_param_count = 0;
@@ -371,14 +366,29 @@ class Reflection
 
             $storage->cased_name = $reflection_function->getName();
 
-            if (version_compare(PHP_VERSION, '7.0.0dev', '>=')
-                && $reflection_return_type = $reflection_function->getReturnType()
-            ) {
-                $storage->return_type = Type::parseString((string)$reflection_return_type);
+            if ($callmap_return_type) {
+                $storage->return_type = $callmap_return_type;
+            } elseif ($reflection_return_type = $reflection_function->getReturnType()) {
+                $storage->return_type = self::getPsalmTypeFromReflectionType($reflection_return_type);
             }
         } catch (\ReflectionException $e) {
             return false;
         }
+    }
+
+    public static function getPsalmTypeFromReflectionType(\ReflectionType $reflection_type = null) : Type\Union
+    {
+        if (!$reflection_type) {
+            return Type::getMixed();
+        }
+
+        $suffix = '';
+
+        if ($reflection_type->allowsNull()) {
+            $suffix = '|null';
+        }
+
+        return Type::parseString($reflection_type . $suffix);
     }
 
     /**

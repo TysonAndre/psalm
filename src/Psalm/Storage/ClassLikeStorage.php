@@ -171,6 +171,11 @@ class ClassLikeStorage
     public $trait_alias_map = [];
 
     /**
+     * @var array<string, int>
+     */
+    public $trait_visibility_map = [];
+
+    /**
      * @var bool
      */
     public $is_trait = false;
@@ -189,6 +194,11 @@ class ClassLikeStorage
      * @var array<string, MethodStorage>
      */
     public $pseudo_methods = [];
+
+    /**
+     * @var array<string, MethodStorage>
+     */
+    public $pseudo_static_methods = [];
 
     /**
      * @var array<string, string>
@@ -256,14 +266,29 @@ class ClassLikeStorage
     public $overridden_property_ids = [];
 
     /**
-     * @var array<string, Type\Union>|null
+     * @var array<string, array{Type\Union, ?string}>|null
      */
     public $template_types;
 
     /**
-     * @var array<string, string>|null
+     * @var array<string, array<int|string, Type\Atomic>>|null
      */
-    public $template_parents;
+    public $template_type_extends;
+
+    /**
+     * @var ?int
+     */
+    public $template_type_extends_count;
+
+    /**
+     * @var array<string, int>|null
+     */
+    public $template_type_implements_count;
+
+    /**
+     * @var array<string, int>|null
+     */
+    public $template_type_uses_count;
 
     /**
      * @var array<string, array<int, CodeLocation>>|null
@@ -279,6 +304,11 @@ class ClassLikeStorage
      * @var array<string>
      */
     public $invalid_dependencies = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    public $dependent_classlikes = [];
 
     /**
      * A hash of the source file's name, contents, and this file's modified on date
