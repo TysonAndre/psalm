@@ -1559,6 +1559,56 @@ class TemplateTest extends TestCase
                         return new C(new $t);
                     }',
             ],
+            'templateIntersectionLeft' => [
+                '<?php
+                    interface I1 {}
+                    interface I2 {}
+
+                    /**
+                     * @template T as I1&I2
+                     * @param T $a
+                     */
+                    function templatedBar(I1 $a) : void {}'
+            ],
+            'templateIntersectionRight' => [
+                '<?php
+                    interface I1 {}
+                    interface I2 {}
+
+                    /**
+                     * @template T as I1&I2
+                     * @param T $b
+                     */
+                    function templatedBar(I2 $b) : void {}',
+            ],
+            'matchMostSpecificTemplate' => [
+                '<?php
+                    /**
+                     * @template TReturn
+                     * @param callable():(\Generator<mixed, mixed, mixed, TReturn>|TReturn) $gen
+                     * @return array<int, TReturn>
+                     */
+                    function call(callable $gen) : array {
+                        $return = $gen();
+                        if ($return instanceof Generator) {
+                            return [$gen->getReturn()];
+                        }
+                        return [$gen];
+                    }
+
+                    $arr = call(
+                        /**
+                         * @return Generator<mixed, mixed, mixed, string>
+                         */
+                        function() {
+                            yield 1;
+                            return "hello";
+                        }
+                    );',
+                [
+                    '$arr' => 'array<int, string>',
+                ]
+            ],
         ];
     }
 
@@ -1749,7 +1799,7 @@ class TemplateTest extends TestCase
                             type($closure);
                         }
                     }',
-                'error_message' => 'InvalidArgument - src/somefile.php:20 - Argument 1 of type expects string, callable(State):(T as mixed)&Foo provided',
+                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:20 - Argument 1 of type expects string, callable(State):(T as mixed)&Foo provided',
             ],
             'classTemplateAsIncorrectClass' => [
                 '<?php
@@ -2017,6 +2067,22 @@ class TemplateTest extends TestCase
                     $templated_list = new SplDoublyLinkedList();
                     $templated_list->add(5, []);',
                 'error_message' => 'InvalidArgument',
+            ],
+            'classTemplateUnionType' => [
+                '<?php
+                    /**
+                     * @template T0 as int|string
+                     */
+                    class Foo {}',
+                'error_message' => 'InvalidDocblock'
+            ],
+            'functionTemplateUnionType' => [
+                '<?php
+                    /**
+                     * @template T0 as int|string
+                     */
+                    function foo() : void {}',
+                'error_message' => 'InvalidDocblock'
             ],
         ];
     }

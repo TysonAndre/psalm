@@ -5,8 +5,9 @@ namespace Psalm\Internal\LanguageServer\Client;
 
 use Psalm\Internal\LanguageServer\ClientHandler;
 use LanguageServerProtocol\{Diagnostic, TextDocumentItem, TextDocumentIdentifier};
-use Sabre\Event\Promise;
+use Amp\Promise;
 use JsonMapper;
+use function Amp\call;
 
 /**
  * Provides method handlers for all textDocument/* methods
@@ -49,19 +50,21 @@ class TextDocument
      * to request the current content of a text document identified by the URI
      *
      * @param TextDocumentIdentifier $textDocument The document to get the content for
-     * @return Promise <TextDocumentItem> The document's current content
+     * @return Promise<TextDocumentItem> The document's current content
      */
     public function xcontent(TextDocumentIdentifier $textDocument): Promise
     {
-        return $this->handler->request(
-            'textDocument/xcontent',
-            ['textDocument' => $textDocument]
-        )->then(
+        return call(
             /**
-             * @param object $result
-             * @return object
+             * @return \Generator<int, mixed, mixed, TextDocumentItem>
              */
-            function ($result) {
+            function () use ($textDocument) {
+                $result = yield $this->handler->request(
+                    'textDocument/xcontent',
+                    ['textDocument' => $textDocument]
+                );
+
+                /** @var TextDocumentItem */
                 return $this->mapper->map($result, new TextDocumentItem);
             }
         );

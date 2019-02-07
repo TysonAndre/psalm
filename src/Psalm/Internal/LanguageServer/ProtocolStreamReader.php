@@ -4,21 +4,20 @@ declare(strict_types = 1);
 namespace Psalm\Internal\LanguageServer;
 
 use AdvancedJsonRpc\Message as MessageBody;
+use Amp\ByteStream\ResourceInputStream;
 use Exception;
-use Psalm\Internal\LanguageServer\Message;
-use Sabre\Event\Emitter;
-use Sabre\Event\Loop;
+use function Amp\asyncCall;
 
 /**
  * Source: https://github.com/felixfbecker/php-language-server/tree/master/src/ProtocolStreamReader.php
  */
-class ProtocolStreamReader extends Emitter implements ProtocolReader
+class ProtocolStreamReader implements ProtocolReader
 {
+    use EmitterTrait;
+
     const PARSE_HEADERS = 1;
     const PARSE_BODY = 2;
 
-    /** @var resource */
-    private $input;
     /**
      * This is checked by ProtocolStreamReader so that it will stop reading from streams in the forked process.
      * There could be buffered bytes in stdin/over TCP, those would be processed by TCP if it were not for this check.
@@ -41,47 +40,43 @@ class ProtocolStreamReader extends Emitter implements ProtocolReader
      */
     public function __construct($input)
     {
-        $this->input = $input;
+        $input = new ResourceInputStream($input);
+        asyncCall(
+            /**
+             * @return \Generator<int, string, string, void>
+             */
+            function () use ($input) : \Generator {
+                while ($this->is_accepting_new_requests && ($chunk = yield $input->read()) !== null) {
+                    /** @var string $chunk */
+                    if ($this->readMessages($chunk) > 0) {
+                        $this->emit('readMessageGroup');
+                    }
+                }
+
+                $this->emitClose();
+            }
+        );
 
         $this->on(
             'close',
             /** @return void */
-            function () {
-                Loop\removeReadStream($this->input);
-            }
-        );
-
-        Loop\addReadStream(
-            $this->input,
-            /** @return void */
-            function () {
-                if (feof($this->input)) {
-                    // If stream_select reported a status change for this stream,
-                    // but the stream is EOF, it means it was closed.
-                    $this->emitClose();
-                    return;
-                }
-                if (!$this->is_accepting_new_requests) {
-                    // If we fork, don't read any bytes in the input buffer from the worker process.
-                    $this->emitClose();
-                    return;
-                }
-                $emitted_messages = $this->readMessages();
-                if ($emitted_messages > 0) {
-                    $this->emit('readMessageGroup');
-                }
+            static function () use ($input) {
+                $input->close();
             }
         );
     }
 
     /**
+     * @param string $buffer
+     *
      * @return int
      */
-    private function readMessages() : int
+    private function readMessages(string $buffer) : int
     {
         $emitted_messages = 0;
-        while (($c = fgetc($this->input)) !== false && $c !== '') {
-            $this->buffer .= $c;
+        $i = 0;
+        while (($buffer[$i] ?? '') !== '') {
+            $this->buffer .= $buffer[$i++];
             switch ($this->parsing_mode) {
                 case self::PARSE_HEADERS:
                     if ($this->buffer === "\r\n") {

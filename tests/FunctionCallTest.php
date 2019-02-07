@@ -77,6 +77,10 @@ class FunctionCallTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['PossiblyInvalidArgument'],
             ],
+            'arrayFilterAllowTrim' => [
+                '<?php
+                    $foo = array_filter(["hello ", " "], "trim");',
+            ],
             'typedArrayWithDefault' => [
                 '<?php
                     class A {}
@@ -1332,6 +1336,15 @@ class FunctionCallTest extends TestCase
                         foo($x);
                     }',
             ],
+            'rangeWithNoStepAndString' => [
+                '<?php
+
+                    function foo(string $bar) : void {}
+
+                    foreach (range("a", "z") as $x) {
+                        foo($x);
+                    }',
+            ],
             'rangeWithFloatStep' => [
                 '<?php
 
@@ -1403,6 +1416,42 @@ class FunctionCallTest extends TestCase
                     '$d' => 'float',
                     '$e' => 'int|float',
                 ],
+            ],
+            'hashInit70' => [
+                '<?php
+                    $h = hash_init("sha256");',
+                [
+                    '$h' => 'resource',
+                ],
+                [],
+                '7.1'
+            ],
+            'hashInit71' => [
+                '<?php
+                    $h = hash_init("sha256");',
+                [
+                    '$h' => 'resource',
+                ],
+                [],
+                '7.1'
+            ],
+            'hashInit72' => [
+                '<?php
+                    $h = hash_init("sha256");',
+                [
+                    '$h' => 'HashContext',
+                ],
+                [],
+                '7.2'
+            ],
+            'hashInit73' => [
+                '<?php
+                    $h = hash_init("sha256");',
+                [
+                    '$h' => 'HashContext',
+                ],
+                [],
+                '7.3'
             ]
         ];
     }

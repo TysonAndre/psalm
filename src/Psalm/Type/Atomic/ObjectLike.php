@@ -271,7 +271,7 @@ class ObjectLike extends \Psalm\Type\Atomic
 
     /**
      * @param  array<string, array{Union, ?string}>     $template_types
-     * @param  array<string, array{Union, ?string}>     $generic_params
+     * @param  array<string, array{Union, ?string, ?int}>     $generic_params
      * @param  Atomic|null              $input_type
      *
      * @return void
@@ -282,7 +282,8 @@ class ObjectLike extends \Psalm\Type\Atomic
         Codebase $codebase = null,
         Atomic $input_type = null,
         bool $replace = true,
-        bool $add_upper_bound = false
+        bool $add_upper_bound = false,
+        int $depth = 0
     ) {
         foreach ($this->properties as $offset => $property) {
             $input_type_param = null;
@@ -299,7 +300,8 @@ class ObjectLike extends \Psalm\Type\Atomic
                 $codebase,
                 $input_type_param,
                 $replace,
-                $add_upper_bound
+                $add_upper_bound,
+                $depth
             );
         }
     }

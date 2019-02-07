@@ -353,7 +353,7 @@ class Reconciler
                     }
                 }
 
-                return Type::parseString($new_var_type, false, $template_type_map);
+                return Type::parseString($new_var_type, null, $template_type_map);
             }
 
             return Type::getMixed();
@@ -884,7 +884,7 @@ class Reconciler
             $existing_has_string = $existing_var_type->hasString();
 
             if ($existing_has_object && !$existing_has_string) {
-                $new_type = Type::parseString($new_var_type, false, $template_type_map);
+                $new_type = Type::parseString($new_var_type, null, $template_type_map);
             } elseif ($existing_has_string && !$existing_has_object) {
                 if (!$allow_string_comparison && $code_location) {
                     if (IssueBuffer::accepts(
@@ -930,7 +930,7 @@ class Reconciler
                             )
                         )
                     ) {
-                        $new_type_part = Atomic::create($new_var_type, false, $template_type_map);
+                        $new_type_part = Atomic::create($new_var_type, null, $template_type_map);
 
                         $acceptable_atomic_types = [];
 
@@ -981,7 +981,7 @@ class Reconciler
             }
         } elseif (substr($new_var_type, 0, 9) === 'getclass-') {
             $new_var_type = substr($new_var_type, 9);
-            $new_type = Type::parseString($new_var_type, false, $template_type_map);
+            $new_type = Type::parseString($new_var_type, null, $template_type_map);
         } else {
             $bracket_pos = strpos($new_var_type, '(');
 
@@ -998,7 +998,7 @@ class Reconciler
                 );
             }
 
-            $new_type = Type::parseString($new_var_type, false, $template_type_map);
+            $new_type = Type::parseString($new_var_type, null, $template_type_map);
         }
 
         if ($existing_var_type->hasMixed()) {
@@ -1031,7 +1031,7 @@ class Reconciler
             }
         }
 
-        $new_type_part = Atomic::create($new_var_type, false, $template_type_map);
+        $new_type_part = Atomic::create($new_var_type, null, $template_type_map);
 
         if ($new_type_part instanceof TNamedObject
             && (($new_type_has_interface

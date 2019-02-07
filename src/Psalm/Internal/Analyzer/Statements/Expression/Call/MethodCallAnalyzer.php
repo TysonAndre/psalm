@@ -1089,7 +1089,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
     }
 
     /**
-     * @return array<string, array{0:Type\Union, 1:string|null}>|null
+     * @return array<string, array{Type\Union, string|null, ?int}>|null
      */
     public static function getClassTemplateParams(
         Codebase $codebase,
@@ -1144,6 +1144,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $class_template_params[$type_name] = [
                             $lhs_type_part->type_params[$i],
                             $calling_class_storage->name,
+                            0,
                         ];
                     }
 
@@ -1174,6 +1175,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                 $class_template_params[$type_name] = [
                                     $lhs_type_part->type_params[(int) $mapped_offset],
                                     $class_storage->name,
+                                    0,
                                 ];
                             }
                         } elseif ($type_extends->defining_class
@@ -1195,6 +1197,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                 $class_template_params[$type_name] = [
                                     $lhs_type_part->type_params[(int) $mapped_offset],
                                     $class_storage->name,
+                                    0,
                                 ];
                             }
                         }
@@ -1202,12 +1205,13 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $class_template_params[$type_name] = [
                             new Type\Union([$type_extends]),
                             $class_storage->name,
+                            0,
                         ];
                     }
                 }
 
                 if (!isset($class_template_params[$type_name])) {
-                    $class_template_params[$type_name] = [Type::getMixed(), null];
+                    $class_template_params[$type_name] = [Type::getMixed(), null, 0];
                 }
 
                 $i++;
@@ -1222,18 +1226,20 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $class_template_params[$type_name] = [
                             new Type\Union([$type_extends]),
                             $class_storage->name,
+                            0,
                         ];
                     } elseif ($type_extends->as) {
                         $class_template_params[$type_name] = [
                             $type_extends->as,
                             $class_storage->name,
+                            0,
                         ];
                     }
                 }
 
                 if ($lhs_var_id !== '$this') {
                     if (!isset($class_template_params[$type_name])) {
-                        $class_template_params[$type_name] = [$type, $class_storage->name];
+                        $class_template_params[$type_name] = [$type, $class_storage->name, 0];
                     }
                 }
             }

@@ -25,11 +25,11 @@ use Psalm\Internal\LanguageServer\Cache\{FileSystemCache, ClientCache};
 use Psalm\Internal\LanguageServer\Server\TextDocument;
 use LanguageServerProtocol\{Range, Position, Diagnostic, DiagnosticSeverity};
 use AdvancedJsonRpc;
-use Sabre\Event\Loop;
-use Sabre\Event\Promise;
-use function Sabre\Event\coroutine;
+use Amp\Promise;
 use Throwable;
 use Webmozart\PathUtil\Path;
+use function Amp\call;
+use function Amp\asyncCoroutine;
 
 /**
  * @internal
@@ -101,57 +101,58 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
         $this->protocolReader->on(
             'message',
             /** @return void */
-            function (Message $msg) {
-                coroutine(
-                    /** @return \Generator<int, Promise, mixed, void> */
-                    function () use ($msg) {
-                        if (!$msg->body) {
-                            return;
-                        }
-
-                        // Ignore responses, this is the handler for requests and notifications
-                        if (AdvancedJsonRpc\Response::isResponse($msg->body)) {
-                            return;
-                        }
-                        $result = null;
-                        $error = null;
-                        try {
-                            // Invoke the method handler to get a result
-                            /**
-                             * @var Promise
-                             * @psalm-suppress UndefinedClass
-                             */
-                            $dispatched = $this->dispatch($msg->body);
-                            $result = yield $dispatched;
-                        } catch (AdvancedJsonRpc\Error $e) {
-                            // If a ResponseError is thrown, send it back in the Response
-                            $error = $e;
-                        } catch (Throwable $e) {
-                            // If an unexpected error occurred, send back an INTERNAL_ERROR error response
-                            $error = new AdvancedJsonRpc\Error(
-                                (string)$e,
-                                AdvancedJsonRpc\ErrorCode::INTERNAL_ERROR,
-                                null,
-                                $e
-                            );
-                        }
-                        // Only send a Response for a Request
-                        // Notifications do not send Responses
-                        /**
-                         * @psalm-suppress UndefinedPropertyFetch
-                         * @psalm-suppress MixedArgument
-                         */
-                        if (AdvancedJsonRpc\Request::isRequest($msg->body)) {
-                            if ($error !== null) {
-                                $responseBody = new AdvancedJsonRpc\ErrorResponse($msg->body->id, $error);
-                            } else {
-                                $responseBody = new AdvancedJsonRpc\SuccessResponse($msg->body->id, $result);
-                            }
-                            $this->protocolWriter->write(new Message($responseBody));
-                        }
+            asyncCoroutine(
+                /**
+                 * @return \Generator<int, \Amp\Promise, mixed, void>
+                 */
+                function (Message $msg) {
+                    if (!$msg->body) {
+                        return;
                     }
-                )->otherwise('\Psalm\Internal\LanguageServer\LanguageServer::crash');
-            }
+
+                    // Ignore responses, this is the handler for requests and notifications
+                    if (AdvancedJsonRpc\Response::isResponse($msg->body)) {
+                        return;
+                    }
+
+                    $result = null;
+                    $error = null;
+                    try {
+                        // Invoke the method handler to get a result
+                        /**
+                         * @var Promise
+                         * @psalm-suppress UndefinedClass
+                         */
+                        $dispatched = $this->dispatch($msg->body);
+                        $result = yield $dispatched;
+                    } catch (AdvancedJsonRpc\Error $e) {
+                        // If a ResponseError is thrown, send it back in the Response
+                        $error = $e;
+                    } catch (Throwable $e) {
+                        // If an unexpected error occurred, send back an INTERNAL_ERROR error response
+                        $error = new AdvancedJsonRpc\Error(
+                            (string) $e,
+                            AdvancedJsonRpc\ErrorCode::INTERNAL_ERROR,
+                            null,
+                            $e
+                        );
+                    }
+                    // Only send a Response for a Request
+                    // Notifications do not send Responses
+                    /**
+                     * @psalm-suppress UndefinedPropertyFetch
+                     * @psalm-suppress MixedArgument
+                     */
+                    if (AdvancedJsonRpc\Request::isRequest($msg->body)) {
+                        if ($error !== null) {
+                            $responseBody = new AdvancedJsonRpc\ErrorResponse($msg->body->id, $error);
+                        } else {
+                            $responseBody = new AdvancedJsonRpc\SuccessResponse($msg->body->id, $result);
+                        }
+                        yield $this->protocolWriter->write(new Message($responseBody));
+                    }
+                }
+            )
         );
 
         $this->protocolReader->on(
@@ -181,7 +182,7 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
         string $rootPath = null,
         int $processId = null
     ): Promise {
-        return coroutine(
+        return call(
             /** @return \Generator<int, true, mixed, InitializeResult> */
             function () use ($capabilities, $rootPath, $processId) {
                 // Eventually, this might block on something. Leave it as a generator.
@@ -436,23 +437,5 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
             $filepath = str_replace('/', '\\', $filepath);
         }
         return $filepath;
-    }
-
-    /**
-     * Throws an exception on the next tick.
-     * Useful for letting a promise crash the process on rejection.
-     *
-     * @param Throwable $err
-     * @return void
-     * @psalm-suppress PossiblyUnusedMethod
-     */
-    public static function crash(Throwable $err)
-    {
-        Loop\nextTick(
-            /** @return void */
-            function () use ($err) {
-                throw $err;
-            }
-        );
     }
 }
