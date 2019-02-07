@@ -137,8 +137,6 @@ abstract class Type
         try {
             $parse_tree = ParseTree::createFromTokens($type_tokens);
             $parsed_type = self::getTypeFromTree($parse_tree, $php_compatible, $template_type_map);
-        } catch (TypeParseTreeException $e) {
-            throw $e;
         } catch (\InvalidArgumentException $e) {
             throw new TypeParseTreeException($e->getMessage());
         }

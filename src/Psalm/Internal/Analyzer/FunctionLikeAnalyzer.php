@@ -68,6 +68,11 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     protected $return_vars_in_scope = [];
 
     /**
+     * @var array<string, Type\Union>
+     */
+    protected $possible_param_types = [];
+
+    /**
      * @var array<string, array<string, bool>>
      */
     protected $return_vars_possibly_in_scope = [];
@@ -551,26 +556,36 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
         $statements_analyzer->analyze($function_stmts, $context, $global_context, true);
 
+        $this->addPossibleParamTypes($context, $codebase);
+
         foreach ($storage->params as $offset => $function_param) {
             // only complain if there's no type defined by a parent type
             if (!$function_param->type
                 && $function_param->location
                 && !isset($implemented_docblock_param_types[$offset])
             ) {
-                $possible_type = null;
+                if ($codebase->alter_code
+                    && isset($project_analyzer->getIssuesToFix()['MissingParamType'])
+                ) {
+                    $possible_type = $this->possible_param_types[$function_param->name] ?? null;
 
-                if (isset($context->possible_param_types[$function_param->name])) {
-                    $possible_type = $context->possible_param_types[$function_param->name];
+                    if (!$possible_type || $possible_type->hasMixed() || $possible_type->isNull()) {
+                        continue;
+                    }
+
+                    self::addOrUpdateParamType(
+                        $project_analyzer,
+                        $function_param->name,
+                        $possible_type
+                    );
+
+                    continue;
                 }
-
-                $infer_text = $codebase->infer_types_from_usage
-                    ? ', ' . ($possible_type ? 'should be ' . $possible_type : 'could not infer type')
-                    : '';
 
                 if ($this->function instanceof Closure) {
                     IssueBuffer::accepts(
                         new MissingClosureParamType(
-                            'Parameter $' . $function_param->name . ' has no provided type' . $infer_text,
+                            'Parameter $' . $function_param->name . ' has no provided type',
                             $function_param->location
                         ),
                         array_merge($this->suppressed_issues, $storage->suppressed_issues)
@@ -578,7 +593,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 } else {
                     IssueBuffer::accepts(
                         new MissingParamType(
-                            'Parameter $' . $function_param->name . ' has no provided type' . $infer_text,
+                            'Parameter $' . $function_param->name . ' has no provided type',
                             $function_param->location
                         ),
                         array_merge($this->suppressed_issues, $storage->suppressed_issues)
@@ -914,6 +929,26 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             );
         } else {
             $this->return_vars_possibly_in_scope[$return_type] = $context->vars_possibly_in_scope;
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function addPossibleParamTypes(Context $context, Codebase $codebase)
+    {
+        if ($context->infer_types) {
+            foreach ($context->possible_param_types as $var_id => $type) {
+                if (isset($this->possible_param_types[$var_id])) {
+                    $this->possible_param_types[$var_id] = Type::combineUnionTypes(
+                        $this->possible_param_types[$var_id],
+                        $type,
+                        $codebase
+                    );
+                } else {
+                    $this->possible_param_types[$var_id] = clone $type;
+                }
+            }
         }
     }
 

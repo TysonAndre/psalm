@@ -1356,7 +1356,7 @@ class Reconciler
                 }
             }
 
-            if (!$did_remove_type || !$non_object_types) {
+            if (!$non_object_types) {
                 if ($key && $code_location && !$is_equality) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
@@ -1788,8 +1788,6 @@ class Reconciler
         } elseif (substr($new_var_type, 0, 9) === 'getclass-') {
             $new_var_type = substr($new_var_type, 9);
         } elseif (!$is_equality) {
-            $new_type_part = new TNamedObject($new_var_type);
-
             $codebase = $statements_analyzer->getCodebase();
 
             // if there wasn't a direct hit, go deeper, eliminating subtypes
@@ -1798,6 +1796,8 @@ class Reconciler
                     if (!$existing_var_type_part->isObjectType()) {
                         continue;
                     }
+
+                    $new_type_part = new TNamedObject($new_var_type);
 
                     if (TypeAnalyzer::isAtomicContainedBy(
                         $codebase,

@@ -4,6 +4,7 @@ namespace Psalm\Internal\Analyzer\Statements\Block;
 use PhpParser;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\AlgebraAnalyzer;
+use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\ScopeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
@@ -280,6 +281,26 @@ class IfAnalyzer
                             $context->include_location
                         ) : null
                 );
+
+            if ($if_context->infer_types) {
+                $source_analyzer = $statements_analyzer->getSource();
+
+                if ($source_analyzer instanceof FunctionLikeAnalyzer) {
+                    $function_storage = $source_analyzer->getFunctionLikeStorage($statements_analyzer);
+
+                    foreach ($reconcilable_if_types as $var_id => $_) {
+                        if (isset($if_context->vars_in_scope[$var_id])) {
+                            $if_context->inferType(
+                                substr($var_id, 1),
+                                $function_storage,
+                                $if_context->vars_in_scope[$var_id],
+                                $if_vars_in_scope_reconciled[$var_id],
+                                $statements_analyzer->getCodebase()
+                            );
+                        }
+                    }
+                }
+            }
 
             $if_context->vars_in_scope = $if_vars_in_scope_reconciled;
 
@@ -655,7 +676,7 @@ class IfAnalyzer
                 }
             }
 
-            if ($codebase->infer_types_from_usage) {
+            if ($if_context->infer_types) {
                 $if_scope->possible_param_types = $if_context->possible_param_types;
             }
         } else {
@@ -1167,7 +1188,7 @@ class IfAnalyzer
             $if_scope->reasonable_clauses = [];
         }
 
-        if ($codebase->infer_types_from_usage) {
+        if ($elseif_context->infer_types) {
             $elseif_possible_param_types = $elseif_context->possible_param_types;
 
             if ($if_scope->possible_param_types) {
@@ -1587,7 +1608,7 @@ class IfAnalyzer
             $outer_context->possibly_thrown_exceptions += $else_context->possibly_thrown_exceptions;
         }
 
-        if ($codebase->infer_types_from_usage) {
+        if ($else_context->infer_types) {
             $else_possible_param_types = $else_context->possible_param_types;
 
             if ($if_scope->possible_param_types) {

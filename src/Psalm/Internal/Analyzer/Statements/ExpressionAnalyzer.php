@@ -1309,11 +1309,9 @@ class ExpressionAnalyzer
         PhpParser\Node\Scalar\Encapsed $stmt,
         Context $context
     ) {
-        $codebase = $statements_analyzer->getCodebase();
-
         $function_storage = null;
 
-        if ($codebase->infer_types_from_usage) {
+        if ($context->infer_types) {
             $source_analyzer = $statements_analyzer->getSource();
 
             if ($source_analyzer instanceof FunctionLikeAnalyzer) {
@@ -1327,8 +1325,18 @@ class ExpressionAnalyzer
                 return false;
             }
 
-            if ($function_storage) {
-                $context->inferType($part, $function_storage, Type::getString());
+            if ($function_storage
+                && $part instanceof PhpParser\Node\Expr\Variable
+                && is_string($part->name)
+                && isset($part->inferredType)
+            ) {
+                $context->inferType(
+                    $part->name,
+                    $function_storage,
+                    $part->inferredType,
+                    new Type\Union([new Type\Atomic\TString, new Type\Atomic\TInt, new Type\Atomic\TFloat]),
+                    $statements_analyzer->getCodebase()
+                );
             }
         }
 

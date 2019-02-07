@@ -6,6 +6,7 @@ use Psalm\Exception\TypeParseTreeException;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type;
 use Psalm\Type\Atomic;
+use Psalm\Type\Atomic\HasClassString;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
@@ -706,8 +707,8 @@ class TypeCombination
                         if (!isset($combination->value_types['string'])) {
                             if ($combination->strings) {
                                 $has_non_literal_class_string = false;
-                                foreach ($combination->strings as $literal_string) {
-                                    if (!$literal_string instanceof TLiteralClassString) {
+                                foreach ($combination->strings as $string_type) {
+                                    if (!$string_type instanceof TLiteralClassString) {
                                         $has_non_literal_class_string = true;
                                     }
                                 }
@@ -723,6 +724,27 @@ class TypeCombination
                         } elseif (get_class($combination->value_types['string']) !== TString::class) {
                             if (get_class($type) === TString::class) {
                                 $combination->value_types[$type_key] = $type;
+                            } elseif ($combination->value_types['string'] instanceof HasClassString
+                                && $type instanceof HasClassString
+                            ) {
+                                $a_named_object = $combination->value_types['string']->hasSingleNamedObject();
+                                $b_named_object = $type->hasSingleNamedObject();
+
+                                if ($a_named_object && $b_named_object) {
+                                    $a_object = $combination->value_types['string']->getSingleNamedObject();
+                                    $b_object = $type->getSingleNamedObject();
+
+                                    if ($a_object->value === $b_object->value) {
+                                        $combination->value_types[$type_key] = new TClassString(
+                                            $a_object->value,
+                                            $a_object
+                                        );
+                                    } else {
+                                        $combination->value_types[$type_key] = new TClassString();
+                                    }
+                                } else {
+                                    $combination->value_types[$type_key] = new TClassString();
+                                }
                             } elseif (get_class($combination->value_types['string']) !== get_class($type)) {
                                 $combination->value_types[$type_key] = new TString();
                             }

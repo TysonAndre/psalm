@@ -485,6 +485,48 @@ class ClassStringTest extends TestCase
                         }
                     }'
             ],
+            'returnTemplatedClassString' => [
+                '<?php
+                    /**
+                     * @template T
+                     *
+                     * @param class-string<T> $shouldBe
+                     * @return class-string<T>
+                     */
+                    function identity(string $shouldBe) : string {  return $shouldBe; }
+
+                    identity(DateTimeImmutable::class)::createFromMutable(new DateTime());',
+            ],
+            'filterIsObject' => [
+                '<?php
+                    /**
+                     * @param class-string<DateTimeInterface>|DateTimeInterface $maybe
+                     *
+                     * @return class-string<DateTimeInterface>
+                     */
+                    function Foo($maybe) : string {
+                        if (is_object($maybe)) {
+                            return get_class($maybe);
+                        }
+
+                        return $maybe;
+                    }',
+            ],
+            'filterIsString' => [
+                '<?php
+                    /**
+                     * @param class-string<DateTimeInterface>|DateTimeInterface $maybe
+                     *
+                     * @return class-string<DateTimeInterface>
+                     */
+                    function Bar($maybe) : string {
+                        if (is_string($maybe)) {
+                            return $maybe;
+                        }
+
+                        return get_class($maybe);
+                    }',
+            ],
         ];
     }
 

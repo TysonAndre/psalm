@@ -291,9 +291,11 @@ class CommentAnalyzer
             /** @var string $param */
             foreach ($all_params as $line_number => $param) {
                 $line_parts = self::splitDocLine($param);
-                $line_parts[0] = self::getRenamedType($line_parts[0]);
-                if ($line_parts[0] === '') {
-                    throw new IncorrectDocblockException('Empty type after renaming original');
+                if (count($line_parts) === 1) {
+                    $line_parts[0] = self::getRenamedType($line_parts[0]);
+                    if ($line_parts[0] === '') {
+                        throw new IncorrectDocblockException('Empty type after renaming original');
+                    }
                 }
 
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
@@ -330,11 +332,7 @@ class CommentAnalyzer
         if (isset($comments['specials']['param-out'])) {
             /** @var string $param */
             foreach ($comments['specials']['param-out'] as $line_number => $param) {
-                try {
-                    $line_parts = self::splitDocLine($param);
-                } catch (DocblockParseException $e) {
-                    throw $e;
-                }
+                $line_parts = self::splitDocLine($param);
 
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
                     continue;
@@ -369,11 +367,7 @@ class CommentAnalyzer
 
         if (isset($comments['specials']['global'])) {
             foreach ($comments['specials']['global'] as $line_number => $global) {
-                try {
-                    $line_parts = self::splitDocLine($global);
-                } catch (DocblockParseException $e) {
-                    throw $e;
-                }
+                $line_parts = self::splitDocLine($global);
 
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
                     continue;
@@ -541,11 +535,7 @@ class CommentAnalyzer
             return;
         }
 
-        try {
-            $line_parts = self::splitDocLine($return_block);
-        } catch (DocblockParseException $e) {
-            throw $e;
-        }
+        $line_parts = self::splitDocLine($return_block);
 
         if (!preg_match('/\[[^\]]+\]/', $line_parts[0])
             && $line_parts[0][0] !== '{'
@@ -775,11 +765,7 @@ class CommentAnalyzer
     {
         $magic_property_comments = isset($specials[$property_tag]) ? $specials[$property_tag] : [];
         foreach ($magic_property_comments as $line_number => $property) {
-            try {
-                $line_parts = self::splitDocLine($property);
-            } catch (DocblockParseException $e) {
-                throw $e;
-            }
+            $line_parts = self::splitDocLine($property);
 
             if (count($line_parts) === 1 && $line_parts[0][0] === '$') {
                 array_unshift($line_parts, 'mixed');
@@ -840,6 +826,7 @@ class CommentAnalyzer
         for ($i = 0, $l = strlen($return_block); $i < $l; ++$i) {
             $char = $return_block[$i];
             $next_char = $i < $l - 1 ? $return_block[$i + 1] : null;
+            $last_char = $i > 0 ? $return_block[$i - 1] : null;
 
             if ($quote_char) {
                 if ($char === $quote_char && $i > 1 && !$escaped) {
@@ -873,6 +860,14 @@ class CommentAnalyzer
                 continue;
             }
 
+            if ($char === ':' && $last_char === ')') {
+                $expects_callable_return = true;
+
+                $type .= $char;
+
+                continue;
+            }
+
             if ($char === '[' || $char === '{' || $char === '(' || $char === '<') {
                 $brackets .= $char;
             } elseif ($char === ']' || $char === '}' || $char === ')' || $char === '>') {
@@ -888,6 +883,7 @@ class CommentAnalyzer
                 }
             } elseif ($char === ' ') {
                 if ($brackets) {
+                    $expects_callable_return = false;
                     continue;
                 }
 
@@ -896,8 +892,6 @@ class CommentAnalyzer
                     $type .= $next_char;
                     continue;
                 }
-
-                $last_char = $i > 0 ? $return_block[$i - 1] : null;
 
                 if ($last_char === '|') {
                     continue;
@@ -923,6 +917,8 @@ class CommentAnalyzer
 
                 return [$type];
             }
+
+            $expects_callable_return = false;
 
             $type .= $char;
         }
