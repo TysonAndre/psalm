@@ -233,6 +233,10 @@ class CommentAnalyzer
                 array_shift($var_line_parts);
             }
 
+            if (!isset($var_line_parts[0])) {
+                continue;
+            }
+
             if ($var_line_parts[0] === '=') {
                 array_shift($var_line_parts);
             }
@@ -543,6 +547,7 @@ class CommentAnalyzer
             if ($line_parts[0][0] === '$' && !preg_match('/^\$this(\||$)/', $line_parts[0])) {
                 throw new IncorrectDocblockException('Misplaced variable');
             }
+            $line_parts[0] = self::getRenamedType($line_parts[0]);
 
             $info->return_type = array_shift($line_parts);
             $info->return_type_description = $line_parts ? implode(' ', $line_parts) : null;
