@@ -792,7 +792,6 @@ class ArrayFetchAnalyzer
                         );
                     }
 
-
                     $suppressed_issues = $statements_analyzer->getSuppressedIssues();
 
                     if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
