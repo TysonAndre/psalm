@@ -613,9 +613,6 @@ abstract class Type
             return self::$memoized_tokens[$string_type];
         }
 
-        $return_type_tokens = [''];
-        $was_char = false;
-
         // index of last type token
         $rtc = 0;
 

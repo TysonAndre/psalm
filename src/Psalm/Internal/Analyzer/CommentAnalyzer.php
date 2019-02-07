@@ -291,7 +291,7 @@ class CommentAnalyzer
             /** @var string $param */
             foreach ($all_params as $line_number => $param) {
                 $line_parts = self::splitDocLine($param);
-                if (count($line_parts) === 1) {
+                if (count($line_parts) >= 1) {
                     $line_parts[0] = self::getRenamedType($line_parts[0]);
                     if ($line_parts[0] === '') {
                         throw new IncorrectDocblockException('Empty type after renaming original');
