@@ -132,7 +132,7 @@ return [
         'vendor/nikic/php-parser/lib/PhpParser',
         'vendor/openlss/lib-array2xml',
         'vendor/php-cs-fixer/diff/src',
-        'vendor/sabre/event/lib',
+        'vendor/amphp/amp/lib',
         'vendor/symfony/console',
         'src',
         'examples',
