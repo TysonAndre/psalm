@@ -3,7 +3,9 @@ namespace Psalm;
 
 use LanguageServerProtocol\{Position, Range};
 use PhpParser;
+use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
@@ -142,6 +144,11 @@ class Codebase
     public $server_mode = false;
 
     /**
+     * @var bool
+     */
+    public $store_node_types = false;
+
+    /**
      * Whether or not to infer types from usage. Computationally expensive, so turned off by default
      *
      * @var bool
@@ -169,7 +176,6 @@ class Codebase
     public $php_minor_version = PHP_MINOR_VERSION;
 
     /**
-     * @param bool $collect_references
      * @param bool $debug_output
      */
     public function __construct(
@@ -311,6 +317,7 @@ class Codebase
     public function enterServerMode()
     {
         $this->server_mode = true;
+        $this->store_node_types = true;
     }
 
     /**
@@ -1037,7 +1044,7 @@ class Codebase
                 break;
             }
 
-            if ($offset > $end_pos + 1) {
+            if ($offset > $end_pos) {
                 continue;
             }
 
@@ -1052,7 +1059,7 @@ class Codebase
                     break;
                 }
 
-                if ($offset > $end_pos + 1) {
+                if ($offset > $end_pos) {
                     continue;
                 }
 
@@ -1102,13 +1109,13 @@ class Codebase
                 continue;
             }
 
-            if ($offset - $end_pos === 3 || $offset - $end_pos === 4) {
+            if ($offset - $end_pos === 2 || $offset - $end_pos === 3) {
                 $recent_type = $possible_type;
 
                 break;
             }
 
-            if ($offset - $end_pos > 4) {
+            if ($offset - $end_pos > 3) {
                 break;
             }
         }
@@ -1119,7 +1126,7 @@ class Codebase
             return null;
         }
 
-        $gap = substr($file_contents, $end_pos + 1, $offset - $end_pos - 1);
+        $gap = substr($file_contents, $end_pos, $offset - $end_pos);
 
         return [$recent_type, $gap];
     }
@@ -1147,5 +1154,71 @@ class Codebase
     public function removeTemporaryFileChanges(string $file_path)
     {
         $this->file_provider->removeTemporaryFileChanges($file_path);
+    }
+
+    /**
+     * Checks if type is a subtype of other
+     *
+     * Given two types, checks if `$input_type` is a subtype of `$container_type`.
+     * If you consider `Type\Union` as a set of types, this will tell you
+     * if `$input_type` is fully contained in `$container_type`,
+     *
+     * $input_type ⊆ $container_type
+     *
+     * Useful for emitting issues like InvalidArgument, where argument at the call site
+     * should be a subset of the function parameter type.
+     */
+    public function isTypeContainedByType(
+        Type\Union $input_type,
+        Type\Union $container_type
+    ): bool {
+        return TypeAnalyzer::isContainedBy($this, $input_type, $container_type);
+    }
+
+    /**
+     * Checks if type has any part that is a subtype of other
+     *
+     * Given two types, checks if *any part* of `$input_type` is a subtype of `$container_type`.
+     * If you consider `Type\Union` as a set of types, this will tell you if intersection
+     * of `$input_type` with `$container_type` is not empty.
+     *
+     * $input_type ∩ $container_type ≠ ∅ , e.g. they are not disjoint.
+     *
+     * Useful for emitting issues like PossiblyInvalidArgument, where argument at the call
+     * site should be a subtype of the function parameter type, but it's has some types that are
+     * not a subtype of the required type.
+     */
+    public function canTypeBeContainedByType(
+        Type\Union $input_type,
+        Type\Union $container_type
+    ): bool {
+        return TypeAnalyzer::canBeContainedBy($this, $input_type, $container_type);
+    }
+
+    /**
+     * Extracts key and value types from a traversable object (or iterable)
+     *
+     * Given an iterable type (*but not TArray*) returns a tuple of it's key/value types.
+     * First element of the tuple holds key type, second has the value type.
+     *
+     * Example:
+     * ```php
+     * $codebase->getKeyValueParamsForTraversableObject(Type::parseString('iterable<int,string>'))
+     * //  returns [Union(TInt), Union(TString)]
+     * ```
+     *
+     * @return array{Type\Union,Type\Union}
+     */
+    public function getKeyValueParamsForTraversableObject(Type\Atomic $type): array
+    {
+        $key_type = null;
+        $value_type = null;
+
+        ForeachAnalyzer::getKeyValueParamsForTraversableObject($type, $this, $key_type, $value_type);
+
+        return [
+            $key_type ?? Type::getMixed(),
+            $value_type ?? Type::getMixed(),
+        ];
     }
 }

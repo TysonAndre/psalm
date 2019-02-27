@@ -75,6 +75,7 @@
             <errorLevel type="suppress">
                 <directory name="examples"/>
                 <directory name="tests"/>
+                <file name="src/Psalm/Plugin/Hook/MethodReturnTypeProviderInterface.php" />
             </errorLevel>
         </UnusedClass>
 

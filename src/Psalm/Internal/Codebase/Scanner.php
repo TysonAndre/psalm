@@ -498,10 +498,15 @@ class Scanner
 
             if (!isset($this->classlike_files[$fq_classlike_name_lc])) {
                 if ($classlikes->doesClassLikeExist($fq_classlike_name_lc)) {
+                    if ($fq_classlike_name_lc === 'self') {
+                        continue;
+                    }
+
                     if ($this->debug_output) {
                         echo 'Using reflection to get metadata for ' . $fq_classlike_name . "\n";
                     }
 
+                    /** @psalm-suppress TypeCoercion */
                     $reflected_class = new \ReflectionClass($fq_classlike_name);
                     $this->reflection->registerClass($reflected_class);
                     $this->reflected_classlikes_lc[$fq_classlike_name_lc] = true;
@@ -674,6 +679,10 @@ class Scanner
             return true;
         }
 
+        if ($fq_class_name === 'self') {
+            return false;
+        }
+
         if (isset($this->existing_classlikes_lc[$fq_class_name_lc])) {
             throw new \InvalidArgumentException('Why are you asking about a builtin class?');
         }
@@ -704,6 +713,7 @@ class Scanner
                 echo 'Using reflection to locate file for ' . $fq_class_name . "\n";
             }
 
+            /** @psalm-suppress TypeCoercion */
             $reflected_class = new \ReflectionClass($fq_class_name);
         } catch (\ReflectionException $e) {
             error_reporting($old_level);

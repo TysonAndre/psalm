@@ -1,9 +1,6 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Config;
-use Psalm\Context;
-
 class MagicPropertyTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -407,6 +404,100 @@ class MagicPropertyTest extends TestCase
                     function getFoo(GetterSetter $o) : void {
                         $o->foo = "hello";
                     }',
+            ],
+            'psalmPropertyDocblock' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @psalm-property string $foo
+                     */
+                    class A {
+                        /** @param string $name */
+                        public function __get($name): ?string {
+                            if ($name === "foo") {
+                                return "hello";
+                            }
+
+                            return null;
+                        }
+
+                        /**
+                         * @param string $name
+                         * @param mixed $value
+                         */
+                        public function __set($name, $value): void {
+                        }
+                    }
+
+                    $a = new A();
+                    $a->foo = "hello";
+                    $a->bar = "hello"; // not a property',
+            ],
+            'overridePropertyAnnotations' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @property int $foo
+                     * @psalm-property string $foo
+                     */
+                    class A {
+                        /** @param string $name */
+                        public function __get($name): ?string {
+                            if ($name === "foo") {
+                                return "hello";
+                            }
+
+                            return null;
+                        }
+
+                        /**
+                         * @param string $name
+                         * @param mixed $value
+                         */
+                        public function __set($name, $value): void {
+                        }
+                    }
+
+                    $a = new A();
+                    $a->foo = "hello";
+                    $a->bar = "hello"; // not a property',
+            ],
+            'overrideWithReadWritePropertyAnnotations' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @psalm-property int $foo
+                     * @property-read string $foo
+                     * @property-write array $foo
+                     */
+                    class A {
+                        /** @param string $name */
+                        public function __get($name): ?string {
+                            if ($name === "foo") {
+                                return "hello";
+                            }
+
+                            return null;
+                        }
+
+                        /**
+                         * @param string $name
+                         * @param mixed $value
+                         */
+                        public function __set($name, $value): void {
+                        }
+
+                        public function takesString(string $s): void {}
+                    }
+
+                    $a = new A();
+                    $a->foo = [];
+
+                    $a = new A();
+                    $a->takesString($a->foo);',
             ],
         ];
     }

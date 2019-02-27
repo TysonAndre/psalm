@@ -2,6 +2,7 @@
 namespace Psalm\Internal\Analyzer;
 
 use PhpParser;
+use Psalm\Aliases;
 use Psalm\Internal\Analyzer\Statements\Block\DoAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\ForAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
@@ -13,7 +14,6 @@ use Psalm\Internal\Analyzer\Statements\Expression\Assignment\PropertyAssignmentA
 use Psalm\Internal\Analyzer\Statements\Expression\BinaryOpAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ConstFetchAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\Fetch\VariableFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ReturnAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ThrowAnalyzer;
@@ -34,7 +34,6 @@ use Psalm\Issue\UnevaluatedCode;
 use Psalm\Issue\UnrecognizedStatement;
 use Psalm\Issue\UnusedVariable;
 use Psalm\IssueBuffer;
-use Psalm\Internal\Scope\LoopScope;
 use Psalm\StatementsSource;
 use Psalm\Type;
 
@@ -145,16 +144,16 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     && $stmt->expr->name instanceof PhpParser\Node\Name
                     && $stmt->expr->name->parts === ['define']
                     && isset($stmt->expr->args[1])
-                    && $stmt->expr->args[0]->value instanceof PhpParser\Node\Scalar\String_
                 ) {
-                    $const_name = $stmt->expr->args[0]->value->value;
-
-                    $this->setConstType(
-                        $const_name,
-                        self::getSimpleType($codebase, $stmt->expr->args[1]->value, $this->getAliases(), $this)
-                            ?: Type::getMixed(),
-                        $context
-                    );
+                    $const_name = static::getConstName($stmt->expr->args[0]->value, $codebase, $this->getAliases());
+                    if ($const_name !== null) {
+                        $this->setConstType(
+                            $const_name,
+                            self::getSimpleType($codebase, $stmt->expr->args[1]->value, $this->getAliases(), $this)
+                                ?: Type::getMixed(),
+                            $context
+                        );
+                    }
                 }
             }
         }
@@ -830,6 +829,10 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                             $root_type->addType(
                                 new Type\Atomic\TArray($atomic_root_type->type_params)
                             );
+                        } elseif ($atomic_root_type instanceof Type\Atomic\TNonEmptyMixed) {
+                            $root_type->addType(
+                                new Type\Atomic\TMixed()
+                            );
                         }
                     }
 
@@ -907,6 +910,35 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
     ) {
         if ($stmt instanceof PhpParser\Node\Expr\BinaryOp) {
             if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
+                $left = self::getSimpleType(
+                    $codebase,
+                    $stmt->left,
+                    $aliases,
+                    $file_source,
+                    $existing_class_constants,
+                    $fq_classlike_name
+                );
+                $right = self::getSimpleType(
+                    $codebase,
+                    $stmt->right,
+                    $aliases,
+                    $file_source,
+                    $existing_class_constants,
+                    $fq_classlike_name
+                );
+
+                if ($left
+                    && $right
+                    && $left->isSingleStringLiteral()
+                    && $right->isSingleStringLiteral()
+                ) {
+                    $result = $left->getSingleStringLiteral()->value . $right->getSingleStringLiteral()->value;
+
+                    if (strlen($result) < 50) {
+                        return Type::getString($result);
+                    }
+                }
+
                 return Type::getString();
             }
 
@@ -991,9 +1023,15 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 return Type::getTrue();
             } elseif (strtolower($stmt->name->parts[0]) === 'null') {
                 return Type::getNull();
+            } elseif ($stmt->name->parts[0] === '__NAMESPACE__') {
+                return Type::getString($aliases->namespace);
             }
 
             return null;
+        }
+
+        if ($stmt instanceof PhpParser\Node\Scalar\MagicConst\Namespace_) {
+            return Type::getString($aliases->namespace);
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\ClassConstFetch) {
@@ -1333,6 +1371,12 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             return $file_storage_provider->get($constant_file_path)->constants[$const_name];
         }
 
+        if (isset($file_storage->declaring_constants[$fq_const_name])) {
+            $constant_file_path = $file_storage->declaring_constants[$fq_const_name];
+
+            return $file_storage_provider->get($constant_file_path)->constants[$fq_const_name];
+        }
+
         return ConstFetchAnalyzer::getGlobalConstType($codebase, $fq_const_name, $const_name);
     }
 
@@ -1461,5 +1505,30 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
     public function getFunctionAnalyzers()
     {
         return $this->function_analyzers;
+    }
+
+    /**
+     * @param  PhpParser\Node\Expr $first_arg_value
+     *
+     * @return null|string
+     */
+    public static function getConstName($first_arg_value, Codebase $codebase, Aliases $aliases)
+    {
+        $const_name = null;
+
+        if ($first_arg_value instanceof PhpParser\Node\Scalar\String_) {
+            $const_name = $first_arg_value->value;
+        } elseif (isset($first_arg_value->inferredType)) {
+            if ($first_arg_value->inferredType->isSingleStringLiteral()) {
+                $const_name = $first_arg_value->inferredType->getSingleStringLiteral()->value;
+            }
+        } else {
+            $simple_type = self::getSimpleType($codebase, $first_arg_value, $aliases);
+            if ($simple_type && $simple_type->isSingleStringLiteral()) {
+                $const_name = $simple_type->getSingleStringLiteral()->value;
+            }
+        }
+
+        return $const_name;
     }
 }

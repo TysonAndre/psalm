@@ -547,7 +547,7 @@ class ArrayIterator implements SeekableIterator, ArrayAccess, Serializable, Coun
     /**
      * Get array copy
      * @link http://php.net/manual/en/arrayiterator.getarraycopy.php
-     * @return array A copy of the array, or array of public properties
+     * @return array<TKey, TValue> A copy of the array, or array of public properties
      * if ArrayIterator refers to an object.
      * @since 5.0.0
      */
@@ -1150,4 +1150,46 @@ class SplObjectStorage implements Countable, Iterator, Serializable, ArrayAccess
     */
     public function getHash($object) {}
 
+}
+
+/**
+ * @template T as object
+ *
+ * @property-read class-string<T> $name
+ */
+class ReflectionClass implements Reflector {
+
+    /**
+    * @var class-string<T>
+    */
+    public $name;
+
+    /**
+    * @param T|class-string<T> $argument
+    */
+    public function __construct($argument) {}
+
+    /**
+    * @return class-string<T>
+    */
+    public function getName() : string;
+
+    /**
+    * @param mixed ...$args
+    *
+    * @return T
+    */
+    public function newInstance(...$args) : object {}
+
+    /**
+    * @param array<int, mixed> $args
+    *
+    * @return T
+    */
+    public function newInstanceArgs(array $args) : object {}
+
+    /**
+    * @return T
+    */
+    public function newInstanceWithoutConstructor() : object;
 }

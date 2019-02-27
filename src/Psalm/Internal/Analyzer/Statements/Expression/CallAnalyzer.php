@@ -140,7 +140,8 @@ class CallAnalyzer
                 }
 
                 if (!$declaring_method_id) {
-                    throw new \UnexpectedValueException('Could not find declaring method for ' . $method_id);
+                    // can happen for __call
+                    return;
                 }
             }
 
@@ -422,6 +423,7 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\FuncCall
             || $arg->value instanceof PhpParser\Node\Expr\MethodCall
             || $arg->value instanceof PhpParser\Node\Expr\Assign
+            || $arg->value instanceof PhpParser\Node\Expr\ArrayDimFetch
         ) {
             if (ExpressionAnalyzer::analyze($statements_analyzer, $arg->value, $context) === false) {
                 return false;
@@ -1114,7 +1116,6 @@ class CallAnalyzer
      * @param  string|null $cased_method_id
      * @param  string|null $fq_class_name
      * @param  FunctionLikeParameter|null $function_param
-     * @param  FunctionLikeParameter|null $last_param
      * @param  array<string, array{Type\Union, ?string}> $existing_generic_params
      * @param  array<string, array{Type\Union, ?string, ?int}> $generic_params
      * @param  array<string, array{Type\Union, ?string}> $template_types
@@ -1188,7 +1189,6 @@ class CallAnalyzer
     /**
      * @param  string|null $method_id
      * @param  string|null $cased_method_id
-     * @param  FunctionLikeParameter|null $function_param
      * @param  FunctionLikeParameter|null $last_param
      * @param  array<int, FunctionLikeParameter> $function_params
      * @param  array<string, array{Type\Union, ?string, ?int}> $generic_params
@@ -1211,6 +1211,7 @@ class CallAnalyzer
         array $template_types = null
     ) {
         if ($arg->value instanceof PhpParser\Node\Scalar
+            || $arg->value instanceof PhpParser\Node\Expr\Cast
             || $arg->value instanceof PhpParser\Node\Expr\Array_
             || $arg->value instanceof PhpParser\Node\Expr\ClassConstFetch
             || (
@@ -1249,9 +1250,16 @@ class CallAnalyzer
         )) {
             $by_ref_type = null;
 
+            $check_null_ref = true;
+
             if ($last_param) {
                 if ($argument_offset < count($function_params)) {
                     $by_ref_type = $function_params[$argument_offset]->type;
+
+                    if ($by_ref_type && $by_ref_type->isNullable()) {
+                        $check_null_ref = false;
+                    }
+
                     if (isset($function_storage->param_out_types[$argument_offset])) {
                         $by_ref_type = $function_storage->param_out_types[$argument_offset];
                     }
@@ -1294,7 +1302,8 @@ class CallAnalyzer
                 $arg->value,
                 $by_ref_type,
                 $context,
-                $method_id && (strpos($method_id, '::') !== false || !CallMap::inCallMap($method_id))
+                $method_id && (strpos($method_id, '::') !== false || !CallMap::inCallMap($method_id)),
+                $check_null_ref
             );
         }
     }
@@ -1387,8 +1396,8 @@ class CallAnalyzer
             $fleshed_out_type = ExpressionAnalyzer::fleshOutType(
                 $codebase,
                 $param_type,
-                $fq_class_name,
-                $fq_class_name
+                $fq_class_name ?: $context->self,
+                $fq_class_name ?: $context->self
             );
 
             if ($arg->unpack) {
@@ -1494,7 +1503,7 @@ class CallAnalyzer
                         if (is_string($template_name)
                             && $class_name_lc === strtolower($class_storage->name)
                         ) {
-                            if ($type instanceof Type\Atomic\TGenericParam
+                            if ($type instanceof Type\Atomic\TTemplateParam
                                 && $type->defining_class
                                 && isset(
                                     $calling_class_storage
@@ -1913,7 +1922,7 @@ class CallAnalyzer
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        // fall through
                     }
                 } elseif ($types_can_be_identical) {
                     if (IssueBuffer::accepts(
@@ -2106,23 +2115,23 @@ class CallAnalyzer
                         if (IssueBuffer::accepts(
                             new InvalidScalarInComplexArgument(
                                 'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                    $param_type . ', ' . $input_type->getId() . ' provided',
+                                    $param_type->getId() . ', ' . $input_type->getId() . ' provided',
                                 $code_location
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // fall through
                         }
                     } else {
                         if (IssueBuffer::accepts(
                             new InvalidScalarArgument(
                                 'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                    $param_type . ', ' . $input_type->getId() . ' provided',
+                                    $param_type->getId() . ', ' . $input_type->getId() . ' provided',
                                 $code_location
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // fall through
                         }
                     }
                 }
@@ -2135,7 +2144,7 @@ class CallAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
             } elseif (IssueBuffer::accepts(
                 new InvalidArgument(
@@ -2145,9 +2154,13 @@ class CallAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
-        } elseif ($input_expr instanceof PhpParser\Node\Scalar\String_
+
+            return;
+        }
+
+        if ($input_expr instanceof PhpParser\Node\Scalar\String_
             || $input_expr instanceof PhpParser\Node\Expr\Array_
             || $input_expr instanceof PhpParser\Node\Expr\BinaryOp\Concat
         ) {
@@ -2426,7 +2439,7 @@ class CallAnalyzer
 
                 if ($type_part->extra_types) {
                     foreach ($type_part->extra_types as $extra_type) {
-                        if ($extra_type instanceof Type\Atomic\TGenericParam) {
+                        if ($extra_type instanceof Type\Atomic\TTemplateParam) {
                             throw new \UnexpectedValueException('Shouldn’t get a generic param here');
                         }
                         $method_id .= '&' . $extra_type->value . '::' . $method_name_arg->value;

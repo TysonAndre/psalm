@@ -1186,6 +1186,88 @@ class TypeReconciliationTest extends TestCase
                         return is_object($maybe) ? get_class($maybe) : $maybe;
                     }'
             ],
+            'removeArrayWithIterableCheck' => [
+                '<?php
+                    $s = rand(0,1) ? "foo" : [1];
+                    if (!is_iterable($s)) {
+                        strlen($s);
+                    }',
+            ],
+            'removeIterableWithIterableCheck' => [
+                '<?php
+                    /** @var string|iterable */
+                    $s = rand(0,1) ? "foo" : [1];
+                    if (!is_iterable($s)) {
+                        strlen($s);
+                    }',
+            ],
+            'removeArrayWithIterableCheckWithExit' => [
+                '<?php
+                    $a = rand(0,1) ? "foo" : [1];
+                    if (is_iterable($a)) {
+                        return;
+                    }
+                    strlen($a);',
+            ],
+            'removeIterableWithIterableCheckWithExit' => [
+                '<?php
+                    /** @var string|iterable */
+                    $a = rand(0,1) ? "foo" : [1];
+                    if (is_iterable($a)) {
+                        return;
+                    }
+                    strlen($a);',
+            ],
+            'removeCallable' => [
+                '<?php
+                    $s = rand(0,1) ? "strlen" : [1];
+                    if (!is_callable($s)) {
+                        array_pop($s);
+                    }
+
+                    $a = rand(0, 1) ? (function(): void {}) : 1.1;
+                    if (!is_callable($a)) {
+                        echo $a;
+                    }',
+            ],
+            'removeCallableWithAssertion' => [
+                '<?php
+                    /**
+                     * @param mixed $p
+                     * @psalm-assert !callable $p
+                     * @throws TypeError
+                     */
+                    function assertIsNotCallable($p): void { if (!is_callable($p)) throw new TypeError; }
+
+                    /** @return callable|float */
+                    function f() { return rand(0,1) ? "f" : 1.1; }
+
+                    $a = f();
+                    assert(!is_callable($a));
+
+                    $b = f();
+                    assertIsNotCallable($b);
+
+                    atan($a);
+                    atan($b);',
+            ],
+            'PHP71-removeNonCallable' => [
+                '<?php
+                    $f = rand(0, 1) ? "strlen" : 1.1;
+                    if (is_callable($f)) {
+                        Closure::fromCallable($f);
+                    }',
+            ],
+            'compareObjectLikeToArray' => [
+                '<?php
+                    /**
+                     * @param array<"from"|"to", bool> $a
+                     * @return array{from:bool, to: bool}
+                     */
+                    function foo(array $a) : array {
+                        return $a;
+                    }',
+            ],
         ];
     }
 

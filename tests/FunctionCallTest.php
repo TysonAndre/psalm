@@ -113,7 +113,7 @@ class FunctionCallTest extends TestCase
             ],
             'byRefNewString' => [
                 '<?php
-                    function fooFoo(string &$v): void {}
+                    function fooFoo(?string &$v): void {}
                     fooFoo($a);',
             ],
             'byRefVariableFunctionExistingArray' => [
@@ -451,6 +451,21 @@ class FunctionCallTest extends TestCase
                 'error_levels' => [
                     'MixedAssignment',
                 ],
+            ],
+            'countMoreThan0CanBeInverted' => [
+                '<?php
+                    $a = [];
+
+                    if (rand(0, 1)) {
+                        $a[] = "hello";
+                    }
+
+                    if (count($a) > 0) {
+                        exit;
+                    }',
+                    'assertions' => [
+                        '$a' => 'array<empty, empty>',
+                    ],
             ],
             'uasort' => [
                 '<?php
@@ -1452,7 +1467,15 @@ class FunctionCallTest extends TestCase
                 ],
                 [],
                 '7.3'
-            ]
+            ],
+            'nullableByRef' => [
+                '<?php
+                    function foo(?string &$s) : void {}
+
+                    function bar() : void {
+                        foo($bar);
+                    }'
+            ],
         ];
     }
 
@@ -1621,6 +1644,18 @@ class FunctionCallTest extends TestCase
                         [1, 2, 3]
                     );',
                 'error_message' => 'UndefinedFunction',
+            ],
+            'arrayMapWithNonCallableStringArray' => [
+                '<?php
+                    $foo = ["one", "two"];
+                    array_map($foo, ["hello"]);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'arrayMapWithNonCallableIntArray' => [
+                '<?php
+                    $foo = [1, 2];
+                    array_map($foo, ["hello"]);',
+                'error_message' => 'InvalidArgument',
             ],
             'objectLikeKeyChecksAgainstDifferentGeneric' => [
                 '<?php
@@ -1881,6 +1916,78 @@ class FunctionCallTest extends TestCase
                     $a = [[1], [2], [3]];
                     usort($a, "strcmp");',
                 'error_message' => 'InvalidArgument',
+            ],
+            'functionCallOnMixed' => [
+                '<?php
+                    /**
+                     * @var mixed $s
+                     * @psalm-suppress MixedAssignment
+                     */
+                    $s = 1;
+                    $s();',
+                'error_message' => 'MixedFunctionCall',
+            ],
+            'iterableOfObjectCannotAcceptIterableOfInt' => [
+                '<?php
+                    /** @param iterable<string,object> $_p */
+                    function accepts(iterable $_p): void {}
+
+                    /** @return iterable<int,int> */
+                    function iterable() { yield 1; }
+
+                    accepts(iterable());',
+                'error_message' => 'InvalidArgument',
+            ],
+            'iterableOfObjectCannotAcceptTraversableOfInt' => [
+                '<?php
+                    /** @param iterable<string,object> $_p */
+                    function accepts(iterable $_p): void {}
+
+                    /** @return Traversable<int,int> */
+                    function traversable() { yield 1; }
+
+                    accepts(traversable());',
+                'error_message' => 'InvalidArgument',
+            ],
+            'iterableOfObjectCannotAcceptGeneratorOfInt' => [
+                '<?php
+                    /** @param iterable<string,object> $_p */
+                    function accepts(iterable $_p): void {}
+
+                    /** @return Generator<int,int,mixed,void> */
+                    function generator() { yield 1; }
+
+                    accepts(generator());',
+                'error_message' => 'InvalidArgument',
+            ],
+            'iterableOfObjectCannotAcceptArrayOfInt' => [
+                '<?php
+                    /** @param iterable<string,object> $_p */
+                    function accepts(iterable $_p): void {}
+
+                    /** @return array<int,int> */
+                    function arr() { return [1]; }
+
+                    accepts(arr());',
+                'error_message' => 'InvalidArgument',
+            ],
+            'nonNullableByRef' => [
+                '<?php
+                    function foo(string &$s) : void {}
+
+                    function bar() : void {
+                        foo($bar);
+                    }',
+                'error_message' => 'NullArgument',
+            ],
+            'intCastByRef' => [
+                '<?php
+                    function foo(int &$i) : void {}
+
+                    $a = rand(0, 1) ? null : 5;
+                    /** @psalm-suppress MixedArgument */
+                    foo((int) $a);',
+                'InvalidPassByReference'
             ],
         ];
     }

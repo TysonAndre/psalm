@@ -6,6 +6,8 @@ use Psalm\Type;
 
 class ClassLikeStorage
 {
+    use CustomMetadataTrait;
+
     /**
      * A lookup table for public class constants
      *

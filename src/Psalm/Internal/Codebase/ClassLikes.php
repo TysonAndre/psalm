@@ -4,7 +4,6 @@ namespace Psalm\Internal\Codebase;
 use PhpParser;
 use Psalm\Aliases;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
-use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Issue\PossiblyUnusedMethod;
@@ -101,9 +100,6 @@ class ClassLikes
      */
     private $scanner;
 
-    /**
-     * @param bool $debug_output
-     */
     public function __construct(
         Config $config,
         ClassLikeStorageProvider $storage_provider,
@@ -126,6 +122,7 @@ class ClassLikes
 
         foreach ($predefined_classes as $predefined_class) {
             $predefined_class = preg_replace('/^\\\/', '', $predefined_class);
+            /** @psalm-suppress TypeCoercion */
             $reflection_class = new \ReflectionClass($predefined_class);
 
             if (!$reflection_class->isUserDefined()) {
@@ -140,6 +137,7 @@ class ClassLikes
 
         foreach ($predefined_interfaces as $predefined_interface) {
             $predefined_interface = preg_replace('/^\\\/', '', $predefined_interface);
+            /** @psalm-suppress TypeCoercion */
             $reflection_class = new \ReflectionClass($predefined_interface);
 
             if (!$reflection_class->isUserDefined()) {
@@ -663,8 +661,10 @@ class ClassLikes
                     if (IssueBuffer::accepts(
                         new UnusedClass(
                             'Class ' . $classlike_storage->name . ' is never used',
-                            $classlike_storage->location
-                        )
+                            $classlike_storage->location,
+                            $classlike_storage->name
+                        ),
+                        $classlike_storage->suppressed_issues
                     )) {
                         // fall through
                     }

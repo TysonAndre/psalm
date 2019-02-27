@@ -12,6 +12,7 @@ use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Codebase;
 use Psalm\Internal\Codebase\CallMap;
 use Psalm\Internal\Codebase\PropertyMap;
+use Psalm\Internal\Scanner\PhpStormMetaScanner;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\DocComment;
@@ -25,6 +26,7 @@ use Psalm\Issue\DuplicateFunction;
 use Psalm\Issue\DuplicateMethod;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
+use Psalm\Issue\InvalidDocblockParamName;
 use Psalm\Issue\MisplacedRequiredParam;
 use Psalm\Issue\MissingDocblockType;
 use Psalm\IssueBuffer;
@@ -247,6 +249,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         } elseif ($node instanceof PhpParser\Node\FunctionLike) {
             $this->registerFunctionLike($node);
 
+            if ($node instanceof PhpParser\Node\Expr\Closure) {
+                $this->codebase->scanner->queueClassLikeForScanning('Closure', $this->file_path);
+            }
+
             if (!$this->scan_deep) {
                 return PhpParser\NodeTraverser::DONT_TRAVERSE_CHILDREN;
             }
@@ -449,6 +455,22 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     {
         if ($node instanceof PhpParser\Node\Stmt\Namespace_) {
             $this->aliases = $this->file_aliases;
+
+            if ($this->codebase->register_stub_files
+                && $node->name
+                && $node->name->parts === ['PHPSTORM_META']
+            ) {
+                foreach ($node->stmts as $meta_stmt) {
+                    if ($meta_stmt instanceof PhpParser\Node\Stmt\Expression
+                        && $meta_stmt->expr instanceof PhpParser\Node\Expr\FuncCall
+                        && $meta_stmt->expr->name instanceof PhpParser\Node\Name
+                        && $meta_stmt->expr->name->parts === ['override']
+                        && count($meta_stmt->expr->args) > 1
+                    ) {
+                        PhpStormMetaScanner::handleOverride($meta_stmt->expr->args, $this->codebase);
+                    }
+                }
+            }
         } elseif ($node instanceof PhpParser\Node\Stmt\ClassLike) {
             if (!$this->fq_classlike_names) {
                 throw new \LogicException('$this->fq_classlike_names should not be empty');
@@ -570,21 +592,23 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         if ($function_id === 'define') {
             $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
             $second_arg_value = isset($node->args[1]) ? $node->args[1]->value : null;
-            if ($first_arg_value instanceof PhpParser\Node\Scalar\String_ && $second_arg_value) {
-                $const_type = StatementsAnalyzer::getSimpleType(
-                    $this->codebase,
-                    $second_arg_value,
-                    $this->aliases
-                ) ?: Type::getMixed();
-                $const_name = $first_arg_value->value;
+            if ($first_arg_value && $second_arg_value) {
+                $const_name = StatementsAnalyzer::getConstName($first_arg_value, $this->codebase, $this->aliases);
 
-                if ($this->functionlike_storages && !$this->config->hoist_constants) {
-                    $functionlike_storage =
-                        $this->functionlike_storages[count($this->functionlike_storages) - 1];
-                    $functionlike_storage->defined_constants[$const_name] = $const_type;
-                } else {
-                    $this->file_storage->constants[$const_name] = $const_type;
-                    $this->file_storage->declaring_constants[$const_name] = $this->file_path;
+                if ($const_name !== null) {
+                    $const_type = StatementsAnalyzer::getSimpleType(
+                        $this->codebase,
+                        $second_arg_value,
+                        $this->aliases
+                    ) ?: Type::getMixed();
+                    if ($this->functionlike_storages && !$this->config->hoist_constants) {
+                        $functionlike_storage =
+                            $this->functionlike_storages[count($this->functionlike_storages) - 1];
+                        $functionlike_storage->defined_constants[$const_name] = $const_type;
+                    } else {
+                        $this->file_storage->constants[$const_name] = $const_type;
+                        $this->file_storage->declaring_constants[$const_name] = $this->file_path;
+                    }
                 }
             }
         }
@@ -2096,7 +2120,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         }
 
                         $param->type = new Type\Union([
-                            new Type\Atomic\TGenericParamClass(
+                            new Type\Atomic\TTemplateParamClass(
                                 $template_typeof['template_type'],
                                 $template_type && !$template_type->isMixed()
                                     ? (string)$template_type
@@ -2225,6 +2249,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         $cased_method_id = $base . $storage->cased_name;
 
+        $unused_docblock_params = [];
+
         foreach ($docblock_params as $docblock_param) {
             $param_name = $docblock_param['name'];
             $docblock_param_variadic = false;
@@ -2245,7 +2271,20 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
             }
 
+            $code_location = new CodeLocation(
+                $this->file_scanner,
+                $function,
+                null,
+                true,
+                CodeLocation::FUNCTION_PHPDOC_PARAM_TYPE,
+                $docblock_param['type']
+            );
+
+            $code_location->setCommentLine($docblock_param['line_number']);
+
             if ($storage_param === null) {
+                $unused_docblock_params[$param_name] = $code_location;
+
                 if (!$docblock_param_variadic || $storage->params || $this->scan_deep) {
                     continue;
                 }
@@ -2264,17 +2303,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->params[] = $storage_param;
             }
-
-            $code_location = new CodeLocation(
-                $this->file_scanner,
-                $function,
-                null,
-                true,
-                CodeLocation::FUNCTION_PHPDOC_PARAM_TYPE,
-                $docblock_param['type']
-            );
-
-            $code_location->setCommentLine($docblock_param['line_number']);
 
             try {
                 $new_param_type = Type::parseTokens(
@@ -2380,6 +2408,27 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             $storage_param->type = $new_param_type;
             $storage_param->type_location = $code_location;
+        }
+
+        $params_without_docblock_type = array_filter(
+            $storage->params,
+            function (FunctionLikeParameter $p) : bool {
+                return !$p->has_docblock_type && (!$p->type || $p->type->hasArray());
+            }
+        );
+
+        if ($params_without_docblock_type) {
+            foreach ($unused_docblock_params as $param_name => $code_location) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblockParamName(
+                        'Incorrect param name $' . $param_name . ' in docblock for ' . $cased_method_id,
+                        $code_location
+                    )
+                )) {
+                }
+
+                $storage->has_docblock_issues = true;
+            }
         }
     }
 

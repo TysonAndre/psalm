@@ -17,7 +17,7 @@ use Psalm\Type\Atomic\TEmptyMixed;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
-use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\GetClassT;
 use Psalm\Type\Atomic\GetTypeT;
 use Psalm\Type\Atomic\THtmlEscapedString;
@@ -34,7 +34,6 @@ use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
 use Psalm\Type\Atomic\TObject;
-use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
@@ -301,8 +300,8 @@ class TypeAnalyzer
 
     /**
      * @param  Codebase       $codebase
-     * @param  TNamedObject|TGenericParam|TIterable  $input_type_part
-     * @param  TNamedObject|TGenericParam|TIterable  $container_type_part
+     * @param  TNamedObject|TTemplateParam|TIterable  $input_type_part
+     * @param  TNamedObject|TTemplateParam|TIterable  $container_type_part
      * @param  bool           $allow_interface_equality
      *
      * @return bool
@@ -316,7 +315,7 @@ class TypeAnalyzer
         $intersection_input_types = $input_type_part->extra_types ?: [];
         $intersection_input_types[] = $input_type_part;
 
-        if ($input_type_part instanceof TGenericParam) {
+        if ($input_type_part instanceof TTemplateParam) {
             foreach ($input_type_part->as->getTypes() as $g) {
                 if ($g instanceof TNamedObject && $g->extra_types) {
                     $intersection_input_types = array_merge(
@@ -330,7 +329,7 @@ class TypeAnalyzer
         $intersection_container_types = $container_type_part->extra_types ?: [];
         $intersection_container_types[] = $container_type_part;
 
-        if ($container_type_part instanceof TGenericParam) {
+        if ($container_type_part instanceof TTemplateParam) {
             foreach ($container_type_part->as->getTypes() as $g) {
                 if ($g instanceof TNamedObject && $g->extra_types) {
                     $intersection_container_types = array_merge(
@@ -344,7 +343,7 @@ class TypeAnalyzer
         foreach ($intersection_container_types as $intersection_container_type) {
             if ($intersection_container_type instanceof TIterable) {
                 $intersection_container_type_lower = 'iterable';
-            } elseif ($intersection_container_type instanceof TGenericParam) {
+            } elseif ($intersection_container_type instanceof TTemplateParam) {
                 if ($intersection_container_type->as->isMixed()) {
                     continue;
                 }
@@ -377,7 +376,7 @@ class TypeAnalyzer
             foreach ($intersection_input_types as $intersection_input_type) {
                 if ($intersection_input_type instanceof TIterable) {
                     $intersection_input_type_lower = 'iterable';
-                } elseif ($intersection_input_type instanceof TGenericParam) {
+                } elseif ($intersection_input_type instanceof TTemplateParam) {
                     if ($intersection_input_type->as->isMixed()) {
                         continue;
                     }
@@ -489,7 +488,7 @@ class TypeAnalyzer
         &$type_coerced_from_scalar = null
     ) {
         if ($container_type_part instanceof TMixed
-            || ($container_type_part instanceof TGenericParam
+            || ($container_type_part instanceof TTemplateParam
                 && $container_type_part->as->isMixed()
                 && !$container_type_part->extra_types)
         ) {
@@ -510,7 +509,7 @@ class TypeAnalyzer
         }
 
         if ($input_type_part instanceof TMixed
-            || ($input_type_part instanceof TGenericParam
+            || ($input_type_part instanceof TTemplateParam
                 && $input_type_part->as->isMixed()
                 && !$input_type_part->extra_types)
         ) {
@@ -528,12 +527,33 @@ class TypeAnalyzer
             return false;
         }
 
+        if ($container_type_part instanceof ObjectLike
+            && $input_type_part instanceof TArray
+        ) {
+            $all_string_literals = true;
+
+            $properties = [];
+
+            foreach ($input_type_part->type_params[0]->getTypes() as $atomic_key_type) {
+                if ($atomic_key_type instanceof TLiteralString) {
+                    $properties[$atomic_key_type->value] = $input_type_part->type_params[1];
+                } else {
+                    $all_string_literals = false;
+                    break;
+                }
+            }
+
+            if ($all_string_literals) {
+                $input_type_part = new ObjectLike($properties);
+            }
+        }
+
         if ($input_type_part->shallowEquals($container_type_part)
             || (($input_type_part instanceof TNamedObject
-                    || $input_type_part instanceof TGenericParam
+                    || $input_type_part instanceof TTemplateParam
                     || $input_type_part instanceof TIterable)
                 && ($container_type_part instanceof TNamedObject
-                    || $container_type_part instanceof TGenericParam
+                    || $container_type_part instanceof TTemplateParam
                     || $container_type_part instanceof TIterable)
                 && self::isObjectContainedByObject(
                     $codebase,
@@ -555,11 +575,11 @@ class TypeAnalyzer
             );
         }
 
-        if ($container_type_part instanceof TGenericParam) {
+        if ($container_type_part instanceof TTemplateParam) {
             $container_type_part = array_values($container_type_part->as->getTypes())[0];
         }
 
-        if ($input_type_part instanceof TGenericParam) {
+        if ($input_type_part instanceof TTemplateParam) {
             $input_type_part = array_values($input_type_part->as->getTypes())[0];
         }
 
@@ -997,6 +1017,37 @@ class TypeAnalyzer
                 )
             )
         ) {
+            if ($input_type_part instanceof TArray) {
+                if ($input_type_part->type_params[1]->isMixed()
+                    || $input_type_part->type_params[1]->hasScalar()
+                ) {
+                    $type_coerced_from_mixed = true;
+                    $type_coerced = true;
+
+                    return false;
+                }
+
+                if (!$input_type_part->type_params[1]->hasString()) {
+                    return false;
+                }
+            } elseif ($input_type_part instanceof ObjectLike) {
+                $method_id = self::getCallableMethodIdFromObjectLike($input_type_part);
+
+                if ($method_id === 'not-callable') {
+                    return false;
+                }
+
+                if (!$method_id) {
+                    return true;
+                }
+
+                try {
+                    $codebase->methods->getStorage($method_id);
+                } catch (\Exception $e) {
+                    return false;
+                }
+            }
+
             $input_callable = self::getCallableFromAtomic($codebase, $input_type_part);
 
             if ($input_callable) {
@@ -1171,44 +1222,65 @@ class TypeAnalyzer
                 }
             }
         } elseif ($input_type_part instanceof ObjectLike) {
-            if (isset($input_type_part->properties[0])
-                && isset($input_type_part->properties[1])
-                && $input_type_part->properties[1]->isSingleStringLiteral()
-            ) {
-                $lhs = $input_type_part->properties[0];
-                $method_name = $input_type_part->properties[1]->getSingleStringLiteral()->value;
+            if ($method_id = self::getCallableMethodIdFromObjectLike($input_type_part)) {
+                try {
+                    $method_storage = $codebase->methods->getStorage($method_id);
 
-                $class_name = null;
-
-                if ($lhs->isSingleStringLiteral()) {
-                    $class_name = $lhs->getSingleStringLiteral()->value;
-                } elseif ($lhs->isSingle()) {
-                    foreach ($lhs->getTypes() as $lhs_atomic_type) {
-                        if ($lhs_atomic_type instanceof TNamedObject) {
-                            $class_name = $lhs_atomic_type->value;
-                        }
-                    }
-                }
-
-                if ($class_name) {
-                    $method_id = $class_name . '::' . $method_name;
-
-                    try {
-                        $method_storage = $codebase->methods->getStorage($method_id);
-
-                        return new TCallable(
-                            'callable',
-                            $method_storage->params,
-                            $method_storage->return_type
-                        );
-                    } catch (\Exception $e) {
-                        // do nothing
-                    }
+                    return new TCallable(
+                        'callable',
+                        $method_storage->params,
+                        $method_storage->return_type
+                    );
+                } catch (\Exception $e) {
+                    // do nothing
                 }
             }
         }
 
         return null;
+    }
+
+    /** @return ?string */
+    private static function getCallableMethodIdFromObjectLike(ObjectLike $input_type_part)
+    {
+        if (!isset($input_type_part->properties[0])
+            || !isset($input_type_part->properties[1])
+        ) {
+            return 'not-callable';
+        }
+
+        if ($input_type_part->properties[1]->hasMixed() || $input_type_part->properties[1]->hasScalar()) {
+            return null;
+        }
+
+        if (!$input_type_part->properties[1]->hasString()) {
+            return 'not-callable';
+        }
+
+        if (!$input_type_part->properties[1]->isSingleStringLiteral()) {
+            return null;
+        }
+
+        $lhs = $input_type_part->properties[0];
+        $method_name = $input_type_part->properties[1]->getSingleStringLiteral()->value;
+
+        $class_name = null;
+
+        if ($lhs->isSingleStringLiteral()) {
+            $class_name = $lhs->getSingleStringLiteral()->value;
+        } elseif ($lhs->isSingle()) {
+            foreach ($lhs->getTypes() as $lhs_atomic_type) {
+                if ($lhs_atomic_type instanceof TNamedObject) {
+                    $class_name = $lhs_atomic_type->value;
+                }
+            }
+        }
+
+        if (!$class_name) {
+            return null;
+        }
+
+        return $class_name . '::' . $method_name;
     }
 
     /**
@@ -1235,8 +1307,8 @@ class TypeAnalyzer
     ) {
         $all_types_contain = true;
 
-        if ($container_type_part instanceof TGenericObject) {
-            if (!$input_type_part instanceof TGenericObject) {
+        if ($container_type_part instanceof TGenericObject || $container_type_part instanceof TIterable) {
+            if (!$input_type_part instanceof TGenericObject && !$input_type_part instanceof TIterable) {
                 if ($input_type_part instanceof TNamedObject
                     && $codebase->classExists($input_type_part->value)
                 ) {
@@ -1380,6 +1452,12 @@ class TypeAnalyzer
                     continue;
                 }
 
+                if ($input_param->isEmpty()
+                    && $container_type_part instanceof Type\Atomic\TNonEmptyArray
+                ) {
+                    return false;
+                }
+
                 if (!$input_param->isEmpty() &&
                     !self::isContainedBy(
                         $codebase,
@@ -1398,6 +1476,17 @@ class TypeAnalyzer
                     $all_types_contain = false;
                 }
             }
+        }
+
+        if ($container_type_part instanceof Type\Atomic\TNonEmptyArray
+            && !$input_type_part instanceof Type\Atomic\TNonEmptyArray
+            && !($input_type_part instanceof ObjectLike && $input_type_part->sealed)
+        ) {
+            if ($all_types_contain) {
+                $type_coerced = true;
+            }
+
+            return false;
         }
 
         if ($all_types_contain) {
@@ -1566,7 +1655,7 @@ class TypeAnalyzer
 
             // don't try to simplify intersection types
             if (($type_part instanceof TNamedObject
-                    || $type_part instanceof TGenericParam
+                    || $type_part instanceof TTemplateParam
                     || $type_part instanceof TIterable)
                 && $type_part->extra_types
             ) {

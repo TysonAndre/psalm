@@ -3,6 +3,8 @@ namespace Psalm\Storage;
 
 class FileStorage
 {
+    use CustomMetadataTrait;
+
     /**
      * @var array<string, string>
      */

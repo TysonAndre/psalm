@@ -118,7 +118,7 @@ class CallableTest extends TestCase
                     $take_string = function(string $s): string { return $s; };
                     $take_string("string");',
             ],
-            'callableMethod' => [
+            'callableMethodStringCallable' => [
                 '<?php
                     class A {
                         public static function bar(string $a): string {
@@ -129,7 +129,18 @@ class CallableTest extends TestCase
                     function foo(callable $c): void {}
 
                     foo("A::bar");
-                    foo(A::class . "::bar");
+                    foo(A::class . "::bar");',
+            ],
+            'callableMethodArrayCallable' => [
+                '<?php
+                    class A {
+                        public static function bar(string $a): string {
+                            return $a . "b";
+                        }
+                    }
+
+                    function foo(callable $c): void {}
+
                     foo(["A", "bar"]);
                     foo([A::class, "bar"]);
                     $a = new A();
@@ -561,6 +572,7 @@ class CallableTest extends TestCase
             ],
             'nullableReturnTypeShorthand' => [
                 '<?php
+                    class A {}
                     /** @param callable(mixed):?A $a */
                     function foo(callable $a): void {}',
             ],
@@ -670,6 +682,81 @@ class CallableTest extends TestCase
 
                     acceptsIntToBool(Closure::fromCallable($anonInvokable));'
             ],
+            'noExceptionWhenSuppressingUndefinedClass' => [
+                '<?php
+                    class one { public function two(string $_p): void {} }
+                    /**
+                     * @psalm-suppress UndefinedClass
+                     * @psalm-suppress InvalidArgument
+                     */
+                    array_map(["two", "three"], ["one", "two"]);',
+            ],
+            'callableSelfArg' => [
+                '<?php
+                    class Clazz {
+                        /**
+                         * @param callable(static) $f
+                         */
+                        function func1(callable $f): void {
+                            $f($this);
+                        }
+
+                        /**
+                         * @param callable(self) $f
+                         */
+                        function func2(callable $f): void {
+                            $f($this);
+                        }
+
+                        /**
+                         * @param callable(parent) $f
+                         */
+                        function func3(callable $f): void {
+                            $f($this);
+                        }
+                    }',
+            ],
+            'selfArrayMapCallableWrongClass' => [
+                '<?php
+                    class Foo {
+                        public function __construct(int $param) {}
+
+                        public static function foo(int $param): Foo {
+                            return new self($param);
+                        }
+                        public static function baz(int $param): self {
+                            return new self($param);
+                        }
+                    }
+
+                    class Bar {
+                        /**
+                         * @return array<int, Foo>
+                         */
+                        public function bar() {
+                            return array_map([Foo::class, "foo"], [1,2,3]);
+                        }
+                        /** @return array<int, Foo> */
+                        public function bat() {
+                            return array_map([Foo::class, "baz"], [1]);
+                        }
+                    }'
+            ],
+            'dynamicCallableArray' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        private $value = "default";
+
+                        private function modify(string $name, string $value): void {
+                            call_user_func([$this, "modify" . $name], $value);
+                        }
+
+                        public function modifyFoo(string $value): void {
+                            $this->value = $value;
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -760,7 +847,7 @@ class CallableTest extends TestCase
                     function foo(callable $c): void {}
 
                     foo([A::class, "::barr"]);',
-                'error_message' => 'UndefinedMethod',
+                'error_message' => 'InvalidArgument',
             ],
             'undefinedCallableMethodArrayWithoutClass' => [
                 '<?php
@@ -773,7 +860,7 @@ class CallableTest extends TestCase
                     function foo(callable $c): void {}
 
                     foo(["A", "::barr"]);',
-                'error_message' => 'UndefinedMethod',
+                'error_message' => 'InvalidArgument',
             ],
             'undefinedCallableMethodClass' => [
                 '<?php
@@ -804,7 +891,10 @@ class CallableTest extends TestCase
 
 
                     $foo =
-                        /** @param mixed $bar */
+                        /**
+                         * @param mixed $bar
+                         * @psalm-suppress MixedFunctionCall
+                         */
                         function ($bar) use (&$foo): string
                         {
                             if (is_array($bar)) {
@@ -1137,6 +1227,12 @@ class CallableTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidPropertyAssignmentValue',
+            ],
+            'badArrayMapArrayCallable' => [
+                '<?php
+                    class one { public function two(string $_p): void {} }
+                    array_map(["two", "three"], ["one", "two"]);',
+                'error_message' => 'InvalidArgument'
             ],
         ];
     }

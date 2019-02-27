@@ -9,7 +9,6 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\InvalidCatch;
 use Psalm\IssueBuffer;
-use Psalm\Internal\Scope\LoopScope;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Union;
@@ -353,6 +352,11 @@ class TryAnalyzer
                     }
                 }
 
+                $context->vars_possibly_in_scope = array_merge(
+                    $catch_context->vars_possibly_in_scope,
+                    $context->vars_possibly_in_scope
+                );
+            } elseif ($stmt->finally) {
                 $context->vars_possibly_in_scope = array_merge(
                     $catch_context->vars_possibly_in_scope,
                     $context->vars_possibly_in_scope

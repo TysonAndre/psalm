@@ -123,7 +123,7 @@ class UnusedCodeTest extends TestCase
                         }
 
                         private function modify(string $name, string $value): void {
-                            call_user_func(array($this, "modify_" . $name), $value);
+                            call_user_func([$this, "modify" . $name], $value);
                         }
 
                         public function modifyFoo(string $value): void {
@@ -204,12 +204,11 @@ class UnusedCodeTest extends TestCase
                          * @param int[] $as
                          */
                         public function __construct(array $as) {
+                            $this->i = new B();
 
                             foreach ($as as $a) {
                                 $this->a($a, 1);
                             }
-
-                            $this->i = new B();
                         }
 
                         private function a(int $a, int $b): self

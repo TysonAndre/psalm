@@ -38,6 +38,7 @@ class Config
         'MixedArrayAssignment',
         'MixedArrayOffset',
         'MixedAssignment',
+        'MixedFunctionCall',
         'MixedInferredReturnType',
         'MixedMethodCall',
         'MixedOperand',
@@ -252,7 +253,7 @@ class Config
     public $plugin_paths = [];
 
     /**
-     * @var array<array{class:string,config:?SimpleXmlElement}>
+     * @var array<array{class:string,config:?SimpleXMLElement}>
      */
     private $plugin_classes = [];
 
@@ -311,6 +312,12 @@ class Config
      * @var string[]
      */
     public $before_analyze_files = [];
+
+    /**
+     * Static methods to be called after codebase has been populated
+     * @var class-string<Hook\AfterCodebasePopulatedInterface>[]
+     */
+    public $after_codebase_populated = [];
 
     /** @var array<string, mixed> */
     private $predefined_constants;
@@ -836,7 +843,7 @@ class Config
     }
 
     /** @return void */
-    public function addPluginClass(string $class_name, SimpleXmlElement $plugin_config = null)
+    public function addPluginClass(string $class_name, SimpleXMLElement $plugin_config = null)
     {
         $this->plugin_classes[] = ['class' => $class_name, 'config' => $plugin_config];
     }
@@ -1215,6 +1222,12 @@ class Config
         }
 
         $stub_files = array_merge([$generic_stubs_path, $generic_classes_path], $this->stub_files);
+
+        $phpstorm_meta_path = $this->base_dir . DIRECTORY_SEPARATOR . '.phpstorm.meta.php';
+
+        if (file_exists($phpstorm_meta_path)) {
+            $stub_files[] = $phpstorm_meta_path;
+        }
 
         foreach ($stub_files as $file_path) {
             $codebase->scanner->addFileToShallowScan($file_path);

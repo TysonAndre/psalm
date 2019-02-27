@@ -778,7 +778,7 @@ class ReturnTypeTest extends TestCase
                       }
                       return $arr;
                     }',
-                'error_message' => 'LessSpecificReturnStatement',
+                'error_message' => 'InvalidReturnStatement',
             ],
             'invalidVoidStatementWhenMixedInferred' => [
                 '<?php

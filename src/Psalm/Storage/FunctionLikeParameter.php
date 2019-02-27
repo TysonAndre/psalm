@@ -6,6 +6,8 @@ use Psalm\Type;
 
 class FunctionLikeParameter
 {
+    use CustomMetadataTrait;
+
     /**
      * @var string
      */

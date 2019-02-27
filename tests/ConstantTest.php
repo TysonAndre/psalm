@@ -327,6 +327,53 @@ class ConstantTest extends TestCase
                     namespace Foo;
                     echo DIRECTORY_SEPARATOR;',
             ],
+            'constantDefinedInRootNamespace' => [
+                '<?php
+                    namespace {
+                        define("ns1\\cons1", 0);
+
+                        echo \ns1\cons1;
+                        echo ns1\cons1;
+                    }',
+            ],
+            'constantDynamicallyDefinedInNamespaceReferencedInSame' => [
+                '<?php
+                    namespace ns2 {
+                        define(__NAMESPACE__."\\cons2", 0);
+
+                        echo \ns2\cons2;
+                        echo cons2;
+                    }',
+            ],
+            'constantDynamicallyDefinedInNamespaceReferencedInRoot' => [
+                '<?php
+                    namespace ns2 {
+                        define(__NAMESPACE__."\\cons2", 0);
+                    }
+                    namespace {
+                        echo \ns2\cons2;
+                        echo ns2\cons2;
+                    }',
+            ],
+            'constantExplicitlyDefinedInNamespaceReferencedInSame' => [
+                '<?php
+                    namespace ns2 {
+                        define("ns2\\cons2", 0);
+
+                        echo \ns2\cons2;
+                        echo cons2;
+                    }',
+            ],
+            'constantExplicitlyDefinedInNamespaceReferencedInRoot' => [
+                '<?php
+                    namespace ns2 {
+                        define("ns2\\cons2", 0);
+                    }
+                    namespace {
+                        echo \ns2\cons2;
+                        echo ns2\cons2;
+                    }',
+            ],
         ];
     }
 
@@ -422,6 +469,16 @@ class ConstantTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'outOfScopeDefinedConstant' => [
+                '<?php
+                    namespace {
+                        define("A\\B", 0);
+                    }
+                    namespace C {
+                        echo A\B;
+                    }',
+                'UndefinedConstant',
             ],
         ];
     }

@@ -7,7 +7,6 @@ use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\ClosureAnalyzer;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\ArrayAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
@@ -46,7 +45,7 @@ use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TFloat;
-use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
@@ -150,12 +149,27 @@ class ExpressionAnalyzer
                     $stmt->inferredType = Type::getLiteralClassString($context->self);
                     break;
 
+                case '__namespace__':
+                    $namespace = $statements_analyzer->getNamespace();
+                    if ($namespace === null &&
+                    IssueBuffer::accepts(
+                        new UndefinedConstant(
+                            'Cannot get __namespace__ outside a namespace',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+
+                    $stmt->inferredType = Type::getString($namespace);
+                    break;
+
                 case '__file__':
                 case '__dir__':
                 case '__function__':
                 case '__trait__':
                 case '__method__':
-                case '__namespace__':
                     $stmt->inferredType = Type::getString();
                     break;
             }
@@ -503,6 +517,17 @@ class ExpressionAnalyzer
                     ) === false) {
                         return false;
                     }
+
+                    if ($codebase->store_node_types
+                        && $fq_class_name
+                        && $codebase->classOrInterfaceExists($fq_class_name)
+                    ) {
+                        $codebase->analyzer->addNodeReference(
+                            $statements_analyzer->getFilePath(),
+                            $stmt->class,
+                            $fq_class_name
+                        );
+                    }
                 }
             }
 
@@ -620,7 +645,8 @@ class ExpressionAnalyzer
         PhpParser\Node\Expr $stmt,
         Type\Union $by_ref_type,
         Context $context,
-        $constrain_type = true
+        bool $constrain_type = true,
+        bool $prevent_null = false
     ) {
         $var_id = self::getVarId(
             $stmt,
@@ -639,6 +665,24 @@ class ExpressionAnalyzer
                 if (!$statements_analyzer->hasVariable($var_id)) {
                     $location = new CodeLocation($statements_analyzer, $stmt);
                     $statements_analyzer->registerVariable($var_id, $location, null);
+
+                    if ($constrain_type
+                        && $prevent_null
+                        && !$by_ref_type->isMixed()
+                        && !$by_ref_type->isNullable()
+                        && !strpos($var_id, '->')
+                        && !strpos($var_id, '::')
+                    ) {
+                        if (IssueBuffer::accepts(
+                            new \Psalm\Issue\NullArgument(
+                                'Not expecting null argument passed by reference',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
 
                     if ($context->collect_references) {
                         $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
@@ -928,7 +972,7 @@ class ExpressionAnalyzer
         $static_class_type = null
     ) {
         if ($return_type instanceof TNamedObject
-            || $return_type instanceof TGenericParam
+            || $return_type instanceof TTemplateParam
         ) {
             if ($return_type->extra_types) {
                 $new_intersection_types = [];
@@ -971,6 +1015,14 @@ class ExpressionAnalyzer
                         $return_type = clone $static_class_type;
                     }
                 } elseif ($return_type_lc === 'self') {
+                    if (!$self_class) {
+                        throw new \UnexpectedValueException(
+                            'Cannot handle ' . $return_type->value . ' when $self_class is empty'
+                        );
+                    }
+
+                    $return_type->value = $self_class;
+                } elseif ($return_type_lc === 'parent') {
                     if (!$self_class) {
                         throw new \UnexpectedValueException(
                             'Cannot handle ' . $return_type->value . ' when $self_class is empty'
@@ -1284,12 +1336,17 @@ class ExpressionAnalyzer
             $yield_from_type = null;
 
             foreach ($stmt->expr->inferredType->getTypes() as $atomic_type) {
-                if ($yield_from_type === null
-                    && $atomic_type instanceof Type\Atomic\TGenericObject
-                    && strtolower($atomic_type->value) === 'generator'
-                    && isset($atomic_type->type_params[3])
-                ) {
-                    $yield_from_type = clone $atomic_type->type_params[3];
+                if ($yield_from_type === null) {
+                    if ($atomic_type instanceof Type\Atomic\TGenericObject
+                        && strtolower($atomic_type->value) === 'generator'
+                        && isset($atomic_type->type_params[3])
+                    ) {
+                        $yield_from_type = clone $atomic_type->type_params[3];
+                    } elseif ($atomic_type instanceof Type\Atomic\TArray) {
+                        $yield_from_type = clone $atomic_type->type_params[1];
+                    } elseif ($atomic_type instanceof Type\Atomic\ObjectLike) {
+                        $yield_from_type = $atomic_type->getGenericValueType();
+                    }
                 } else {
                     $yield_from_type = Type::getMixed();
                 }
@@ -1315,6 +1372,8 @@ class ExpressionAnalyzer
         Context $context
     ) {
         $stmt->inferredType = Type::getBool();
+
+        $context->inside_negation = !$context->inside_negation;
 
         if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
             return false;
@@ -1460,7 +1519,7 @@ class ExpressionAnalyzer
                 if (!$clone_type_part instanceof TNamedObject
                     && !$clone_type_part instanceof TObject
                     && !$clone_type_part instanceof TMixed
-                    && !$clone_type_part instanceof TGenericParam
+                    && !$clone_type_part instanceof TTemplateParam
                 ) {
                     if (IssueBuffer::accepts(
                         new InvalidClone(

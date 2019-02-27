@@ -5,13 +5,19 @@
 - [Introduction](#introduction)
 - [Installation](installation.md)
 - [Configuration](configuration.md)
-- [Running Psalm via command line](running_psalm.md)
-- [Running Psalm in your IDE](language_server.md)
-- [Supported Annotations](supported_annotations.md)
+- Using Psalm
+  - [Running Psalm via command line](running_psalm.md)
+  - [Running Psalm in your IDE](language_server.md)
+- [Using Psalter](fixing_code.md)
 - [Dealing with code issues](dealing_with_code_issues.md)
+  - [Issue types](issues.md)
 - [Typing in Psalm](typing_in_psalm.md)
+  - [Supported Annotations](supported_annotations.md)
+  - [Templated Annotations](templated_annotations.md)
 - [Plugins](plugins.md)
 - [Checking non-PHP files](checking_non_php_files.md)
+- [How Psalm works](how_psalm_works.md)
+  - [Things that make developing Psalm complicated](what_makes_psalm_complicated.md)
 
 ## Introduction
 

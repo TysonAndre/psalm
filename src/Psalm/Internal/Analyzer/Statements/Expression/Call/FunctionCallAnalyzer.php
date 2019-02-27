@@ -4,14 +4,15 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Call;
 use PhpParser;
 use Psalm\Internal\Analyzer\FunctionAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\ForbiddenCode;
+use Psalm\Issue\MixedFunctionCall;
 use Psalm\Issue\InvalidFunctionCall;
 use Psalm\Issue\NullFunctionCall;
 use Psalm\Issue\PossiblyInvalidFunctionCall;
@@ -19,10 +20,9 @@ use Psalm\Issue\PossiblyNullFunctionCall;
 use Psalm\IssueBuffer;
 use Psalm\Storage\Assertion;
 use Psalm\Type;
-use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TCallableObject;
 use Psalm\Type\Atomic\TCallableString;
-use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
@@ -117,9 +117,18 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
                         $function_exists = true;
                         $has_valid_function_call_type = true;
-                    } elseif ($var_type_part instanceof TMixed || $var_type_part instanceof TGenericParam) {
+                    } elseif ($var_type_part instanceof TMixed || $var_type_part instanceof TTemplateParam) {
                         $has_valid_function_call_type = true;
-                        // @todo maybe emit issue here
+
+                        if (IssueBuffer::accepts(
+                            new MixedFunctionCall(
+                                'Cannot call function on mixed',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
                     } elseif ($var_type_part instanceof TCallableObject
                         || $var_type_part instanceof TCallableString
                     ) {
@@ -283,7 +292,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     );
                 }
 
-                if ($codebase->server_mode) {
+                if ($codebase->store_node_types) {
                     $codebase->analyzer->addNodeReference(
                         $statements_analyzer->getFilePath(),
                         $stmt->name,
@@ -333,7 +342,15 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
             }
 
             if ($stmt->name instanceof PhpParser\Node\Name && $function_id) {
-                if (!$in_call_map || $is_stubbed) {
+                if ($codebase->functions->return_type_provider->has($function_id)) {
+                    $stmt->inferredType = $codebase->functions->return_type_provider->getReturnType(
+                        $statements_analyzer,
+                        $function_id,
+                        $stmt->args,
+                        $context,
+                        new CodeLocation($statements_analyzer->getSource(), $stmt->name)
+                    );
+                } elseif (!$in_call_map || $is_stubbed) {
                     if ($function_storage && $function_storage->template_types) {
                         foreach ($function_storage->template_types as $template_name => $_) {
                             if (!isset($generic_params[$template_name])) {
@@ -407,9 +424,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         $statements_analyzer,
                         $function_id,
                         $stmt->args,
-                        $context,
-                        $code_location,
-                        $statements_analyzer->getSuppressedIssues()
+                        $context
                     );
                 }
             }
@@ -495,7 +510,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
             }
         }
 
-        if ($codebase->server_mode
+        if ($codebase->store_node_types
             && (!$context->collect_initializations
                 && !$context->collect_mutations)
             && isset($stmt->inferredType)
@@ -593,18 +608,64 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     return false;
                 }
             } elseif ($function->parts === ['define']) {
-                if ($first_arg && $first_arg->value instanceof PhpParser\Node\Scalar\String_) {
-                    $second_arg = $stmt->args[1];
-                    ExpressionAnalyzer::analyze($statements_analyzer, $second_arg->value, $context);
-                    $const_name = $first_arg->value->value;
-
-                    $statements_analyzer->setConstType(
-                        $const_name,
-                        isset($second_arg->value->inferredType) ? $second_arg->value->inferredType : Type::getMixed(),
-                        $context
+                if ($first_arg) {
+                    $fq_const_name = StatementsAnalyzer::getConstName(
+                        $first_arg->value,
+                        $codebase,
+                        $statements_analyzer->getAliases()
                     );
+
+                    if ($fq_const_name !== null) {
+                        $second_arg = $stmt->args[1];
+                        ExpressionAnalyzer::analyze($statements_analyzer, $second_arg->value, $context);
+
+                        $statements_analyzer->setConstType(
+                            $fq_const_name,
+                            isset($second_arg->value->inferredType) ?
+                                $second_arg->value->inferredType :
+                                Type::getMixed(),
+                            $context
+                        );
+                    }
                 } else {
                     $context->check_consts = false;
+                }
+            } elseif ($first_arg
+                && $function_id
+                && strpos($function_id, 'is_') === 0
+                && $function_id !== 'is_a'
+            ) {
+                if (isset($stmt->assertions)) {
+                    $assertions = $stmt->assertions;
+                } else {
+                    $assertions = AssertionFinder::processFunctionCall(
+                        $stmt,
+                        $context->self,
+                        $statements_analyzer,
+                        $context->inside_negation
+                    );
+                }
+
+                $changed_vars = [];
+
+                $referenced_var_ids = array_map(
+                    function (array $_) : bool {
+                        return true;
+                    },
+                    $assertions
+                );
+
+                if ($assertions) {
+                    Reconciler::reconcileKeyedTypes(
+                        $assertions,
+                        $context->vars_in_scope,
+                        $changed_vars,
+                        $referenced_var_ids,
+                        $statements_analyzer,
+                        [],
+                        $context->inside_loop,
+                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                    );
                 }
             }
         }

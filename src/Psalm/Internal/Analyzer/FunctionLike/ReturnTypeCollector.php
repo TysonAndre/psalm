@@ -24,9 +24,9 @@ class ReturnTypeCollector
     public static function getReturnTypes(
         array $stmts,
         array &$yield_types,
-        &$ignore_nullable_issues = false,
-        &$ignore_falsable_issues = false,
-        $collapse_types = false
+        bool &$ignore_nullable_issues = false,
+        bool &$ignore_falsable_issues = false,
+        bool $collapse_types = false
     ) {
         $return_types = [];
 
@@ -225,6 +225,10 @@ class ReturnTypeCollector
                 $value_type = null;
 
                 foreach ($yield_types as $type) {
+                    if ($type instanceof Type\Atomic\ObjectLike) {
+                        $type = $type->getGenericArrayType();
+                    }
+
                     if ($type instanceof Type\Atomic\TArray
                         || $type instanceof Type\Atomic\TIterable
                         || $type instanceof Type\Atomic\TGenericObject

@@ -11,7 +11,6 @@ use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
-use Psalm\Config;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\InvalidMethodCall;
@@ -227,7 +226,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        // keep going
                     }
                 } else {
                     if (IssueBuffer::accepts(
@@ -237,7 +236,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        // keep going
                     }
                 }
             }
@@ -253,7 +252,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // keep going
                         }
                     } else {
                         if (IssueBuffer::accepts(
@@ -264,7 +263,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // keep going
                         }
                     }
                 }
@@ -283,7 +282,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // keep going
                         }
                     } else {
                         if (IssueBuffer::accepts(
@@ -294,7 +293,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // keep going
                         }
                     }
                 }
@@ -324,7 +323,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             );
         }
 
-        if ($codebase->server_mode
+        if ($codebase->store_node_types
             && (!$context->collect_initializations
                 && !$context->collect_mutations)
             && isset($stmt->inferredType)
@@ -410,7 +409,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
     ) {
         $config = $codebase->config;
 
-        if ($lhs_type_part instanceof Type\Atomic\TGenericParam
+        if ($lhs_type_part instanceof Type\Atomic\TTemplateParam
             && !$lhs_type_part->as->isMixed()
         ) {
             $extra_types = $lhs_type_part->extra_types;
@@ -450,7 +449,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 case Type\Atomic\TSingleLetter::class:
                 case Type\Atomic\TLiteralString::class:
                 case Type\Atomic\TLiteralClassString::class:
-                case Type\Atomic\TGenericParamClass::class:
+                case Type\Atomic\TTemplateParamClass::class:
                 case Type\Atomic\TNumericString::class:
                 case Type\Atomic\THtmlEscapedString::class:
                 case Type\Atomic\TClassString::class:
@@ -458,7 +457,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $invalid_method_call_types[] = (string)$lhs_type_part;
                     return;
 
-                case Type\Atomic\TGenericParam::class:
+                case Type\Atomic\TTemplateParam::class:
                 case Type\Atomic\TEmptyMixed::class:
                 case Type\Atomic\TMixed::class:
                 case Type\Atomic\TNonEmptyMixed::class:
@@ -706,7 +705,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             }
 
             foreach ($intersection_types as $intersection_type) {
-                if ($intersection_type instanceof Type\Atomic\TGenericParam) {
+                if ($intersection_type instanceof Type\Atomic\TTemplateParam) {
                     if (!$intersection_type->as->isMixed()
                         && !$intersection_type->as->hasObject()
                     ) {
@@ -871,8 +870,24 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             $codebase->methods->getDeclaringMethodId($method_id) ?: $method_id
         );
 
+        $appearing_method_id = $codebase->methods->getAppearingMethodId($method_id);
+        $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+
         if ($method_name_lc === '__tostring') {
             $return_type_candidate = Type::getString();
+        } elseif ($appearing_method_id
+            && $declaring_method_id
+            && $codebase->methods->return_type_provider->has($appearing_method_id)
+        ) {
+            $return_type_candidate = $codebase->methods->return_type_provider->getReturnType(
+                $statements_analyzer,
+                $method_id,
+                $appearing_method_id,
+                $declaring_method_id,
+                $stmt->args,
+                $context,
+                new CodeLocation($statements_analyzer->getSource(), $stmt->name)
+            );
         } elseif ($call_map_id && CallMap::inCallMap($call_map_id)) {
             if (($class_template_params || $class_storage->stubbed)
                 && isset($class_storage->methods[$method_name_lc])
@@ -950,7 +965,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 $args
             );
 
-            if ($codebase->server_mode && $method_id) {
+            if ($codebase->store_node_types && $method_id) {
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
@@ -1052,9 +1067,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         if ($config->after_method_checks) {
             $file_manipulations = [];
 
-            $appearing_method_id = $codebase->methods->getAppearingMethodId($method_id);
-            $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
-
             if ($appearing_method_id && $declaring_method_id) {
                 foreach ($config->after_method_checks as $plugin_fq_class_name) {
                     $plugin_fq_class_name::afterMethodCallAnalysis(
@@ -1095,7 +1107,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         Codebase $codebase,
         ClassLikeStorage $class_storage,
         string $fq_class_name,
-        string $method_name,
+        string $method_name = null,
         Type\Atomic $lhs_type_part = null,
         string $lhs_var_id = null
     ) {
@@ -1105,6 +1117,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
         if (!$template_types) {
             if ($calling_class_storage->template_type_extends
+                && $method_name
                 && !empty($class_storage->overridden_method_ids[$method_name])
                 && !isset($class_storage->methods[$method_name]->return_type)
             ) {
@@ -1137,7 +1150,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         $e = $calling_class_storage->template_type_extends;
 
         if ($lhs_type_part instanceof TGenericObject) {
-            if ($calling_class_storage->template_types) {
+            if ($calling_class_storage->template_types && $class_storage === $calling_class_storage) {
                 $i = 0;
                 foreach ($calling_class_storage->template_types as $type_name => $_) {
                     if (isset($lhs_type_part->type_params[$i])) {
@@ -1164,7 +1177,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 ) {
                     $type_extends = $e[strtolower($class_storage->name)][$type_name];
 
-                    if ($type_extends instanceof Type\Atomic\TGenericParam) {
+                    if ($type_extends instanceof Type\Atomic\TTemplateParam) {
                         if (isset($calling_class_storage->template_types[$type_extends->param_name])) {
                             $mapped_offset = array_search(
                                 $type_extends->param_name,
@@ -1222,13 +1235,13 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     && isset($e[strtolower($class_storage->name)][$type_name])
                 ) {
                     $type_extends = $e[strtolower($class_storage->name)][$type_name];
-                    if (!$type_extends instanceof Type\Atomic\TGenericParam) {
+                    if (!$type_extends instanceof Type\Atomic\TTemplateParam) {
                         $class_template_params[$type_name] = [
                             new Type\Union([$type_extends]),
                             $class_storage->name,
                             0,
                         ];
-                    } elseif ($type_extends->as) {
+                    } else {
                         $class_template_params[$type_name] = [
                             $type_extends->as,
                             $class_storage->name,

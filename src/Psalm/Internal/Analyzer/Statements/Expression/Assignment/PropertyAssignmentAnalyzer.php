@@ -5,7 +5,6 @@ use PhpParser;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Stmt\PropertyProperty;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
-use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
@@ -396,7 +395,7 @@ class PropertyAssignmentAnalyzer
                     continue;
                 }
 
-                if ($codebase->server_mode
+                if ($codebase->store_node_types
                     && (!$context->collect_initializations
                         && !$context->collect_mutations)
                 ) {
@@ -433,7 +432,6 @@ class PropertyAssignmentAnalyzer
                         }
                     }
                 }
-
 
                 $declaring_property_class = (string) $codebase->properties->getDeclaringClassForProperty(
                     $property_id
@@ -567,7 +565,7 @@ class PropertyAssignmentAnalyzer
 
         $has_valid_assignment_value_type = false;
 
-        if ($codebase->server_mode
+        if ($codebase->store_node_types
             && (!$context->collect_initializations
                 && !$context->collect_mutations)
             && count($class_property_types) === 1

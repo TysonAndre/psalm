@@ -25,7 +25,7 @@ use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
-use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
@@ -337,6 +337,10 @@ class Reconciler
             if (($new_var_type === 'isset' && !$is_negation)
                 || ($new_var_type === 'empty' && $is_negation)
             ) {
+                if ($key === '$_SESSION') {
+                    return Type::getArray();
+                }
+
                 return Type::getMixed($inside_loop);
             }
 
@@ -423,6 +427,7 @@ class Reconciler
                         && IssueBuffer::accepts(
                             new ParadoxicalCondition(
                                 'Found a paradox when evaluating ' . $key
+                                    . ' of type ' . $existing_var_type->getId()
                                     . ' and trying to reconcile it with a ' . $new_var_type . ' assertion',
                                 $code_location
                             ),
@@ -448,6 +453,7 @@ class Reconciler
                         && IssueBuffer::accepts(
                             new RedundantCondition(
                                 'Found a redundant condition when evaluating ' . $key
+                                    . ' of type ' . $existing_var_type->getId()
                                     . ' and trying to reconcile it with a ' . $new_var_type . ' assertion',
                                 $code_location
                             ),
@@ -652,6 +658,11 @@ class Reconciler
                 } elseif (get_class($type) === TString::class) {
                     $callable_types[] = new Type\Atomic\TCallableString();
                     $did_remove_type = true;
+                } elseif (get_class($type) === Type\Atomic\TLiteralString::class
+                    && \Psalm\Internal\Codebase\CallMap::inCallMap($type->value)
+                ) {
+                    $callable_types[] = $type;
+                    $did_remove_type = true;
                 } elseif ($type instanceof TArray || $type instanceof ObjectLike) {
                     $type = clone $type;
                     $type->callable = true;
@@ -679,6 +690,44 @@ class Reconciler
 
             if ($callable_types) {
                 return new Type\Union($callable_types);
+            }
+
+            $failed_reconciliation = 2;
+
+            return Type::getMixed();
+        }
+
+        if ($new_var_type === 'iterable' && !$existing_var_type->hasMixed()) {
+            $iterable_types = [];
+            $did_remove_type = false;
+
+            foreach ($existing_var_atomic_types as $type) {
+                if ($type->isIterable($codebase)) {
+                    $iterable_types[] = $type;
+                } elseif ($type instanceof TObject) {
+                    $iterable_types[] = new Type\Atomic\TCallableObject();
+                    $did_remove_type = true;
+                } else {
+                    $did_remove_type = true;
+                }
+            }
+
+            if ((!$iterable_types || !$did_remove_type) && !$is_equality) {
+                if ($key && $code_location) {
+                    self::triggerIssueForImpossible(
+                        $existing_var_type,
+                        $old_var_type_string,
+                        $key,
+                        $new_var_type,
+                        !$did_remove_type,
+                        $code_location,
+                        $suppressed_issues
+                    );
+                }
+            }
+
+            if ($iterable_types) {
+                return new Type\Union($iterable_types);
             }
 
             $failed_reconciliation = 2;
@@ -1559,6 +1608,7 @@ class Reconciler
                         && IssueBuffer::accepts(
                             new ParadoxicalCondition(
                                 'Found a paradox when evaluating ' . $key
+                                    . ' of type ' . $existing_var_type->getId()
                                     . ' and trying to reconcile it with a non-' . $new_var_type . ' assertion',
                                 $code_location
                             ),
@@ -1584,6 +1634,7 @@ class Reconciler
                         && IssueBuffer::accepts(
                             new RedundantCondition(
                                 'Found a redundant condition when evaluating ' . $key
+                                    . ' of type ' . $existing_var_type->getId()
                                     . ' and trying to reconcile it with a non-' . $new_var_type . ' assertion',
                                 $code_location
                             ),
@@ -1700,6 +1751,24 @@ class Reconciler
             $existing_var_type->from_calculation = false;
 
             return $existing_var_type;
+        }
+
+        if ($new_var_type === 'callable') {
+            $existing_var_type->removeType('callable');
+
+            foreach ($existing_var_atomic_types as $atomic_key => $type) {
+                if ($type instanceof Type\Atomic\TLiteralString
+                    && \Psalm\Internal\Codebase\CallMap::inCallMap($type->value)
+                ) {
+                    $existing_var_type->removeType($atomic_key);
+                }
+            }
+
+            return $existing_var_type;
+        }
+
+        if ($new_var_type === 'iterable') {
+            $existing_var_type->removeType('array');
         }
 
         if ($new_var_type === 'non-empty-countable') {
@@ -2530,7 +2599,7 @@ class Reconciler
                         if ($existing_key_type_part instanceof TNull) {
                             $class_property_type = Type::getNull();
                         } elseif ($existing_key_type_part instanceof TMixed
-                            || $existing_key_type_part instanceof TGenericParam
+                            || $existing_key_type_part instanceof TTemplateParam
                             || $existing_key_type_part instanceof TObject
                             || ($existing_key_type_part instanceof TNamedObject
                                 && strtolower($existing_key_type_part->value) === 'stdclass')

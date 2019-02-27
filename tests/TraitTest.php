@@ -318,7 +318,25 @@ class TraitTest extends TestCase
                         public function foo() : void {}
                     }',
             ],
-            'isAClassTraitUser' => [
+            'isAClassTraitUserStringClass' => [
+                '<?php
+                    trait T {
+                        public function f(): void {
+                            if (is_a(static::class, "B")) { }
+                        }
+                    }
+
+                    class A {
+                        use T;
+                    }
+
+                    class B {
+                        use T;
+
+                        public function foo() : void {}
+                    }',
+            ],
+            'isAClassTraitUserClassConstant' => [
                 '<?php
                     trait T {
                         public function f(): void {
@@ -779,6 +797,33 @@ class TraitTest extends TestCase
                             return null;
                         }
                     }'
+            ],
+            'noCrashOnUndefinedIgnoredTrait' => [
+                '<?php
+                    /** @psalm-suppress UndefinedTrait */
+                    class C {
+                        use UnknownTrait;
+                    }'
+            ],
+            'reconcileStaticTraitProperties' => [
+                '<?php
+                    trait T {
+                        /**
+                         * @var string|null
+                         */
+                        private static $b;
+
+                        private static function booA(): string {
+                            if (self::$b === null) {
+                                return "hello";
+                            }
+                            return self::$b;
+                        }
+                    }
+
+                    class C {
+                        use T;
+                    }',
             ],
         ];
     }

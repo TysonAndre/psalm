@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Internal\Codebase\Reflection;
 use Psalm\Type;
 
 class TypeParseTest extends TestCase
@@ -11,7 +10,24 @@ class TypeParseTest extends TestCase
      */
     public function setUp()
     {
-        //pae::setUp();
+        $this->file_provider = new \Psalm\Tests\Internal\Provider\FakeFileProvider();
+
+        $config = new TestConfig();
+
+        $providers = new \Psalm\Internal\Provider\Providers(
+            $this->file_provider,
+            new \Psalm\Tests\Internal\Provider\FakeParserCacheProvider()
+        );
+
+        $this->project_analyzer = new \Psalm\Internal\Analyzer\ProjectAnalyzer(
+            $config,
+            $providers,
+            false,
+            true,
+            \Psalm\Internal\Analyzer\ProjectAnalyzer::TYPE_CONSOLE,
+            1,
+            false
+        );
     }
 
     /**
@@ -118,6 +134,14 @@ class TypeParseTest extends TestCase
     public function testArrayWithUnion()
     {
         $this->assertSame('array<int|string, string>', (string) Type::parseString('array<int|string, string>'));
+    }
+
+    /**
+     * @return void
+     */
+    public function testNonEmptyArrray()
+    {
+        $this->assertSame('non-empty-array<array-key, int>', (string) Type::parseString('non-empty-array<int>'));
     }
 
     /**
@@ -366,6 +390,17 @@ class TypeParseTest extends TestCase
         $this->assertSame(
             'callable(int, string):void',
             (string)Type::parseString('callable(int, string) : void')
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testCallableWithParamNames()
+    {
+        $this->assertSame(
+            'callable(int, string):void',
+            (string)Type::parseString('callable(int $foo, string $bar) : void')
         );
     }
 

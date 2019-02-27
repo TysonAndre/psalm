@@ -5,17 +5,14 @@ use PhpParser;
 use Psalm\Aliases;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
-use Psalm\Config;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
-use Psalm\Issue\DuplicateClass;
 use Psalm\Issue\InaccessibleProperty;
 use Psalm\Issue\InvalidClass;
 use Psalm\Issue\MissingDependency;
 use Psalm\Issue\ReservedWord;
 use Psalm\Issue\UndefinedClass;
 use Psalm\IssueBuffer;
-use Psalm\Internal\Provider\FileReferenceProvider;
 use Psalm\StatementsSource;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
@@ -366,14 +363,6 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
             implode('\\', $class_name->parts),
             $aliases
         );
-    }
-
-    /**
-     * @return null|string
-     */
-    public function getNamespace()
-    {
-        return $this->source->getNamespace();
     }
 
     /**

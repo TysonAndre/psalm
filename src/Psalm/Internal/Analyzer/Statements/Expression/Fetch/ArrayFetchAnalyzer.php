@@ -31,11 +31,9 @@ use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TEmpty;
-use Psalm\Type\Atomic\TLiteralFloat;
 use Psalm\Type\Atomic\TLiteralInt;
 use Psalm\Type\Atomic\TLiteralString;
-use Psalm\Type\Atomic\TFloat;
-use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
@@ -648,13 +646,17 @@ class ArrayFetchAnalyzer
                 if ($type instanceof TSingleLetter) {
                     $valid_offset_type = Type::getInt(false, 0);
                 } elseif ($type instanceof TLiteralString) {
-                    $valid_offsets = [];
+                    if (!strlen($type->value)) {
+                        $valid_offset_type = Type::getEmpty();
+                    } else {
+                        $valid_offsets = [];
 
-                    for ($i = -strlen($type->value), $l = strlen($type->value); $i < $l; $i++) {
-                        $valid_offsets[] = new TLiteralInt($i);
+                        for ($i = -strlen($type->value), $l = strlen($type->value); $i < $l; $i++) {
+                            $valid_offsets[] = new TLiteralInt($i);
+                        }
+
+                        $valid_offset_type = new Type\Union($valid_offsets);
                     }
-
-                    $valid_offset_type = new Type\Union($valid_offsets);
                 } else {
                     $valid_offset_type = Type::getInt();
                 }
@@ -684,7 +686,7 @@ class ArrayFetchAnalyzer
                 continue;
             }
 
-            if ($type instanceof TMixed || $type instanceof TGenericParam || $type instanceof TEmpty) {
+            if ($type instanceof TMixed || $type instanceof TTemplateParam || $type instanceof TEmpty) {
                 $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
 
                 if (!$context->inside_isset) {
@@ -752,14 +754,7 @@ class ArrayFetchAnalyzer
 
                     $iterator_class_type = $fake_method_call->inferredType ?? null;
                     $array_access_type = $iterator_class_type ?: Type::getMixed();
-                } elseif ((strtolower($type->value) === 'arrayaccess'
-                        || (($codebase->classExists($type->value)
-                            && $codebase->classImplements($type->value, 'ArrayAccess'))
-                        || ($codebase->interfaceExists($type->value)
-                            && $codebase->interfaceExtends($type->value, 'ArrayAccess'))
-                        ))
-                    && ($stmt->dim || $in_assignment)
-                ) {
+                } else {
                     if ($in_assignment) {
                         $fake_method_call = new PhpParser\Node\Expr\MethodCall(
                             $stmt->var,
@@ -787,7 +782,14 @@ class ArrayFetchAnalyzer
                             $stmt->var,
                             new PhpParser\Node\Identifier('offsetGet', $stmt->var->getAttributes()),
                             [
-                                new PhpParser\Node\Arg($stmt->dim)
+                                new PhpParser\Node\Arg(
+                                    $stmt->dim
+                                        ? $stmt->dim
+                                        : new PhpParser\Node\Expr\ConstFetch(
+                                            new PhpParser\Node\Name('null'),
+                                            $stmt->var->getAttributes()
+                                        )
+                                )
                             ]
                         );
                     }
@@ -810,10 +812,8 @@ class ArrayFetchAnalyzer
 
                     $iterator_class_type = $fake_method_call->inferredType ?? null;
                     $array_access_type = $iterator_class_type ?: Type::getMixed();
-                } else {
-                    $non_array_types[] = (string)$type;
                 }
-            } else {
+            } elseif (!$array_type->hasMixed()) {
                 $non_array_types[] = (string)$type;
             }
         }

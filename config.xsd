@@ -176,6 +176,7 @@
             <xs:element name="InvalidClone" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidParamDefault" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidDocblock" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="InvalidDocblockParamName" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidFalsableReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidGlobal" type="IssueHandlerType" minOccurs="0" />
@@ -223,6 +224,7 @@
             <xs:element name="MixedArrayAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedAssignment" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="MixedFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedInferredReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedMethodCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedOperand" type="IssueHandlerType" minOccurs="0" />
@@ -311,6 +313,7 @@
             <xs:element name="UndefinedVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnimplementedAbstractMethod" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnimplementedInterfaceMethod" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="UninitializedProperty" type="PropertyIssueHandlerType" minOccurs="0" />
             <xs:element name="UnrecognizedExpression" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnrecognizedStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnresolvableInclude" type="IssueHandlerType" minOccurs="0" />

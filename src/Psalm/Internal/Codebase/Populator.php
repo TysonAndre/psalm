@@ -323,14 +323,14 @@ class Populator
                                     continue;
                                 }
 
-                                if ($type instanceof Type\Atomic\TGenericParam
+                                if ($type instanceof Type\Atomic\TTemplateParam
                                     && $type->defining_class
                                     && ($referenced_type
                                         = $storage->template_type_extends
                                             [strtolower($type->defining_class)]
                                             [$type->param_name]
                                             ?? null)
-                                    && (!$referenced_type instanceof Type\Atomic\TGenericParam)
+                                    && (!$referenced_type instanceof Type\Atomic\TTemplateParam)
                                 ) {
                                     $storage->template_type_extends[$t_storage_class][$i] = $referenced_type;
                                 } else {
@@ -406,14 +406,14 @@ class Populator
                                     continue;
                                 }
 
-                                if ($type instanceof Type\Atomic\TGenericParam
+                                if ($type instanceof Type\Atomic\TTemplateParam
                                     && $type->defining_class
                                     && ($referenced_type
                                         = $storage->template_type_extends
                                             [strtolower($type->defining_class)]
                                             [$type->param_name]
                                             ?? null)
-                                    && (!$referenced_type instanceof Type\Atomic\TGenericParam)
+                                    && (!$referenced_type instanceof Type\Atomic\TTemplateParam)
                                 ) {
                                     $storage->template_type_extends[$t_storage_class][$i] = $referenced_type;
                                 } else {
@@ -539,14 +539,14 @@ class Populator
                                     continue;
                                 }
 
-                                if ($type instanceof Type\Atomic\TGenericParam
+                                if ($type instanceof Type\Atomic\TTemplateParam
                                     && $type->defining_class
                                     && ($referenced_type
                                         = $storage->template_type_extends
                                             [strtolower($type->defining_class)]
                                             [$type->param_name]
                                             ?? null)
-                                    && (!$referenced_type instanceof Type\Atomic\TGenericParam)
+                                    && (!$referenced_type instanceof Type\Atomic\TTemplateParam)
                                 ) {
                                     $storage->template_type_extends[$t_storage_class][$i] = $referenced_type;
                                 } else {
@@ -764,6 +764,29 @@ class Populator
             );
         }
 
+        foreach ($storage->referenced_classlikes as $fq_class_name) {
+            try {
+                $classlike_storage = $this->classlike_storage_provider->get($fq_class_name);
+            } catch (\InvalidArgumentException $e) {
+                continue;
+            }
+
+            if (!$classlike_storage->location) {
+                continue;
+            }
+
+            try {
+                $included_file_storage = $this->file_storage_provider->get($classlike_storage->location->file_path);
+            } catch (\InvalidArgumentException $e) {
+                continue;
+            }
+
+            $storage->declaring_function_ids = array_merge(
+                $included_file_storage->declaring_function_ids,
+                $storage->declaring_function_ids
+            );
+        }
+
         $storage->required_file_paths = $all_required_file_paths;
 
         foreach ($all_required_file_paths as $required_file_path) {
@@ -839,6 +862,10 @@ class Populator
                 if ($iterator_name === 'iterable') {
                     $generic_iterator = new Type\Atomic\TIterable($generic_params);
                 } else {
+                    if (strtolower($iterator_name) === 'generator') {
+                        $generic_params[] = Type::getMixed();
+                        $generic_params[] = Type::getMixed();
+                    }
                     $generic_iterator = new Type\Atomic\TGenericObject($iterator_name, $generic_params);
                 }
 

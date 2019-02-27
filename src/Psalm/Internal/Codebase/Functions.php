@@ -2,9 +2,8 @@
 namespace Psalm\Internal\Codebase;
 
 use Psalm\Codebase;
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Provider\FileStorageProvider;
+use Psalm\Internal\Provider\{FileStorageProvider, FunctionReturnTypeProvider};
 use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeStorage;
 
@@ -23,6 +22,9 @@ class Functions
      */
     private static $stubbed_functions;
 
+    /** @var FunctionReturnTypeProvider */
+    public $return_type_provider;
+
     /**
      * @var Reflection
      */
@@ -32,6 +34,7 @@ class Functions
     {
         $this->file_storage_provider = $storage_provider;
         $this->reflection = $reflection;
+        $this->return_type_provider = new FunctionReturnTypeProvider();
 
         self::$stubbed_functions = [];
     }

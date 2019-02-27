@@ -29,7 +29,7 @@ $valid_long_options = [
     'diff',
     'diff-methods',
     'disable-extension:',
-    'find-dead-code',
+    'find-dead-code::',
     'find-references-to:',
     'help',
     'ignore-baseline',
@@ -51,6 +51,7 @@ $valid_long_options = [
     'use-ini-defaults',
     'version',
     'php-version:',
+    'generate-json-map:',
 ];
 
 gc_collect_cycles();
@@ -68,7 +69,10 @@ array_map(
         if (substr($arg, 0, 2) === '--' && $arg !== '--') {
             $arg_name = preg_replace('/=.*$/', '', substr($arg, 2));
 
-            if (!in_array($arg_name, $valid_long_options) && !in_array($arg_name . ':', $valid_long_options)) {
+            if (!in_array($arg_name, $valid_long_options)
+                && !in_array($arg_name . ':', $valid_long_options)
+                && !in_array($arg_name . '::', $valid_long_options)
+            ) {
                 echo 'Unrecognised argument "--' . $arg_name . '"' . PHP_EOL
                     . 'Type --help to see a list of supported arguments'. PHP_EOL;
                 exit(1);
@@ -166,8 +170,8 @@ Options:
     --output-format=console
         Changes the output format. Possible values: compact, console, emacs, json, pylint, xml
 
-    --find-dead-code
-        Look for dead code
+    --find-dead-code[=auto]
+        Look for dead code. Options are 'auto' or 'always'. If no value is specified, default is 'auto'
 
     --find-references-to=[class|method|property]
         Searches the codebase for references to the given fully-qualified class or method,
@@ -217,6 +221,8 @@ Options:
     --update-baseline
         Update the baseline by removing fixed issues. This will not add new issues to the baseline
 
+    --generate-json-map=PATH
+        Generate a map of node references and types in JSON format, saved to the given path.
 HELP;
 
     exit;
@@ -272,6 +278,12 @@ if (isset($options['disable-extension'])) {
 
 if ($threads > 1) {
     $ini_handler->disableExtension('grpc');
+}
+
+$type_map_location = null;
+
+if (isset($options['generate-type-map']) && is_string($options['generate-type-map'])) {
+    $type_map_location = $options['generate-type-map'];
 }
 
 // If XDebug is enabled, restart without it
@@ -395,7 +407,15 @@ $show_info = isset($options['show-info'])
 
 $is_diff = isset($options['diff']);
 
-$find_dead_code = isset($options['find-dead-code']);
+/** @var false|'always'|'auto' $find_dead_code */
+$find_dead_code = false;
+if (isset($options['find-dead-code'])) {
+    if ($options['find-dead-code'] === 'always') {
+        $find_dead_code = 'always';
+    } else {
+        $find_dead_code = 'auto';
+    }
+}
 
 $find_references_to = isset($options['find-references-to']) && is_string($options['find-references-to'])
     ? $options['find-references-to']
@@ -479,6 +499,11 @@ if (isset($options['php-version'])) {
 
 $project_analyzer->getCodebase()->diff_methods = isset($options['diff-methods']);
 
+if ($type_map_location) {
+    $project_analyzer->getCodebase()->store_node_types = true;
+}
+
+
 $start_time = microtime(true);
 
 $config->visitComposerAutoloadFiles($project_analyzer, $debug);
@@ -518,7 +543,7 @@ if ($paths_to_check === null) {
 
 if ($find_references_to) {
     $project_analyzer->findReferencesTo($find_references_to);
-} elseif ($find_dead_code && !$paths_to_check && !$is_diff) {
+} elseif (($find_dead_code === 'always') || ($find_dead_code === 'auto' && !$paths_to_check && !$is_diff)) {
     if ($threads > 1) {
         if ($output_format === ProjectAnalyzer::TYPE_CONSOLE) {
             echo 'Unused classes and methods cannot currently be found in multithreaded mode' . PHP_EOL;
@@ -586,11 +611,25 @@ if (isset($options['update-baseline'])) {
     }
 
     try {
+        $issue_current_baseline = ErrorBaseline::read(
+            new \Psalm\Internal\Provider\FileProvider,
+            $baselineFile
+        );
+        $total_issues_current_baseline = ErrorBaseline::countTotalIssues($issue_current_baseline);
+
         $issue_baseline = ErrorBaseline::update(
             new \Psalm\Internal\Provider\FileProvider,
             $baselineFile,
             IssueBuffer::getIssuesData()
         );
+        $total_issues_updated_baseline = ErrorBaseline::countTotalIssues($issue_baseline);
+
+        $total_fixed_issues = $total_issues_current_baseline - $total_issues_updated_baseline;
+
+        if ($total_fixed_issues > 0) {
+            echo str_repeat('-', 30) . "\n";
+            echo $total_fixed_issues . ' errors fixed' . "\n";
+        }
     } catch (\Psalm\Exception\ConfigException $exception) {
         die('Could not update baseline file: ' . $exception->getMessage());
     }
@@ -605,6 +644,71 @@ if (!empty(Config::getInstance()->error_baseline) && !isset($options['ignore-bas
     } catch (\Psalm\Exception\ConfigException $exception) {
         die('Error while reading baseline: ' . $exception->getMessage());
     }
+}
+
+if ($type_map_location) {
+    $file_map = $providers->file_reference_provider->getFileMaps();
+
+    $name_file_map = [];
+
+    $expected_references = [];
+
+    foreach ($file_map as $file_path => $map) {
+        $file_name = $config->shortenFileName($file_path);
+        foreach ($map[0] as $map_parts) {
+            $expected_references[$map_parts[1]] = true;
+        }
+        $map[2] = [];
+        $name_file_map[$file_name] = $map;
+    }
+
+    $reference_dictionary = [];
+
+    foreach ($providers->classlike_storage_provider->getAll() as $storage) {
+        if (!$storage->location) {
+            continue;
+        }
+
+        $fq_classlike_name = $storage->name;
+
+        if (isset($expected_references[$fq_classlike_name])) {
+            $reference_dictionary[$fq_classlike_name]
+                = $storage->location->file_name
+                    . ':' . $storage->location->getLineNumber()
+                    . ':' . $storage->location->getColumn();
+        }
+
+        foreach ($storage->methods as $method_name => $method_storage) {
+            if (!$method_storage->location) {
+                continue;
+            }
+
+            if (isset($expected_references[$fq_classlike_name . '::' . $method_name . '()'])) {
+                $reference_dictionary[$fq_classlike_name . '::' . $method_name . '()']
+                    = $method_storage->location->file_name
+                        . ':' . $method_storage->location->getLineNumber()
+                        . ':' . $method_storage->location->getColumn();
+            }
+        }
+
+        foreach ($storage->properties as $property_name => $property_storage) {
+            if (!$property_storage->location) {
+                continue;
+            }
+
+            if (isset($expected_references[$fq_classlike_name . '::$' . $property_name])) {
+                $reference_dictionary[$fq_classlike_name . '::$' . $property_name]
+                    = $property_storage->location->file_name
+                        . ':' . $property_storage->location->getLineNumber()
+                        . ':' . $property_storage->location->getColumn();
+            }
+        }
+    }
+
+    $providers->file_provider->setContents(
+        $type_map_location,
+        json_encode(['files' => $name_file_map, 'references' => $reference_dictionary])
+    );
 }
 
 IssueBuffer::finish(

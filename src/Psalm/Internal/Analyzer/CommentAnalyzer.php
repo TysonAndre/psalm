@@ -575,8 +575,11 @@ class CommentAnalyzer
 
         $info = new ClassLikeDocblockComment();
 
-        if (isset($comments['specials']['template'])) {
-            foreach ($comments['specials']['template'] as $template_line) {
+        if (isset($comments['specials']['template']) || isset($comments['specials']['psalm-template'])) {
+            $all_templates = (isset($comments['specials']['template']) ? $comments['specials']['template'] : [])
+                + (isset($comments['specials']['psalm-template']) ? $comments['specials']['psalm-template'] : []);
+
+            foreach ($all_templates as $template_line) {
                 $template_type = preg_split('/[\s]+/', $template_line);
 
                 if (count($template_type) > 2
@@ -650,8 +653,11 @@ class CommentAnalyzer
             }
         }
 
-        if (isset($comments['specials']['method'])) {
-            foreach ($comments['specials']['method'] as $method_entry) {
+        if (isset($comments['specials']['method']) || isset($comments['specials']['psalm-method'])) {
+            $all_methods = (isset($comments['specials']['method']) ? $comments['specials']['method'] : [])
+                + (isset($comments['specials']['psalm-method']) ? $comments['specials']['psalm-method'] : []);
+
+            foreach ($all_methods as $method_entry) {
                 $method_entry = preg_replace('/[ \t]+/', ' ', trim($method_entry));
 
                 $docblock_lines = [];
@@ -751,6 +757,7 @@ class CommentAnalyzer
         }
 
         self::addMagicPropertyToInfo($info, $comments['specials'], 'property');
+        self::addMagicPropertyToInfo($info, $comments['specials'], 'psalm-property');
         self::addMagicPropertyToInfo($info, $comments['specials'], 'property-read');
         self::addMagicPropertyToInfo($info, $comments['specials'], 'property-write');
 
@@ -760,7 +767,7 @@ class CommentAnalyzer
     /**
      * @param ClassLikeDocblockComment $info
      * @param array<string, array<int, string>> $specials
-     * @param string $property_tag ('property', 'property-read', or 'property-write')
+     * @param string $property_tag ('property', 'psalm-property', 'property-read', or 'property-write')
      *
      * @throws DocblockParseException
      *

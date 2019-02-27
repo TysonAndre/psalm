@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Internal\Analyzer;
 
-use JsonRPC\Server;
 use Psalm\Codebase;
 use Psalm\Config;
 use Psalm\Context;
@@ -12,7 +11,6 @@ use Psalm\Internal\Provider\FileReferenceProvider;
 use Psalm\Internal\Provider\ParserCacheProvider;
 use Psalm\Internal\Provider\Providers;
 use Psalm\Type;
-use Amp\Loop;
 
 /**
  * @internal
@@ -206,9 +204,7 @@ class ProjectAnalyzer
     }
 
     /**
-     * @param  string $base_dir
      * @param  string|null $address
-     * @param  bool $socket_server_mode
      * @return void
      */
     public function server($address = '127.0.0.1:12345', bool $socket_server_mode = false)
@@ -395,6 +391,14 @@ class ProjectAnalyzer
         }
 
         $this->config->visitStubFiles($this->codebase, $this->debug_output);
+
+        $plugin_classes = $this->config->after_codebase_populated;
+
+        if ($plugin_classes) {
+            foreach ($plugin_classes as $plugin_fq_class_name) {
+                $plugin_fq_class_name::afterCodebasePopulated($this->codebase);
+            }
+        }
 
         $this->codebase->analyzer->analyzeFiles($this, $this->threads, $this->codebase->alter_code);
 

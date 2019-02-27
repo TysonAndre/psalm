@@ -15,7 +15,6 @@ use Psalm\Context;
 use Psalm\Issue\ConflictingReferenceConstraint;
 use Psalm\IssueBuffer;
 use Psalm\Internal\Scope\IfScope;
-use Psalm\Internal\Scope\LoopScope;
 use Psalm\Type;
 use Psalm\Type\Algebra;
 use Psalm\Type\Reconciler;
@@ -77,10 +76,10 @@ class IfAnalyzer
         $pre_assigned_var_ids = $context->assigned_var_ids;
         $context->assigned_var_ids = [];
 
-        if ($first_if_cond_expr &&
-            ExpressionAnalyzer::analyze($statements_analyzer, $first_if_cond_expr, $context) === false
-        ) {
-            return false;
+        if ($first_if_cond_expr) {
+            if (ExpressionAnalyzer::analyze($statements_analyzer, $first_if_cond_expr, $context) === false) {
+                return false;
+            }
         }
 
         $first_cond_assigned_var_ids = $context->assigned_var_ids;
@@ -1637,7 +1636,6 @@ class IfAnalyzer
      * if/elseif/else blocks
      *
      * @param  PhpParser\Node\Expr $stmt
-     * @param  bool $inside_and
      *
      * @return PhpParser\Node\Expr|null
      */

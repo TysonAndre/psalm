@@ -499,6 +499,19 @@ Emitted when there's an error in a docblock type
 $a = [];
 ```
 
+### InvalidDocblockParamName
+
+Emitted when a docblock param name doesn’t match up with a named param in the function.
+
+```php
+/**
+ * @param string[] $bar
+ */
+function foo(array $barb): void {
+    //
+}
+```
+
 ### InvalidFalsableReturnType
 
 Emitted when a function can return a nullable value, but its given return type says otherwise
@@ -1053,6 +1066,16 @@ Emitted when assigning a variable to a value for which Psalm cannot infer a type
 
 ```php
 $a = $_GET['foo'];
+```
+
+### MixedFunctionCall
+
+Emitted when calling a function on a value whose type Psalm cannot infer.
+
+```php
+/** @psalm-suppress MixedAssignment */
+$a = $_GET['foo'];
+$a();
 ```
 
 ### MixedInferredReturnType
@@ -2100,6 +2123,22 @@ interface I {
     public function foo();
 }
 class A implements I {}
+```
+
+### UninitializedProperty
+
+Emitted when a property is used in a constructor before it is initialized
+
+```php
+class A {
+    /** @var string */
+    public $foo;
+
+    public function __construct() {
+        echo strlen($this->foo);
+        $this->foo = "foo";
+    }
+}
 ```
 
 ### UnrecognizedExpression

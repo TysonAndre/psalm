@@ -2,7 +2,6 @@
 
 namespace Psalm;
 
-use Psalm\DocComment;
 use Psalm\Exception\DocblockParseException;
 
 class DocComment
@@ -129,6 +128,7 @@ class DocComment
                     $special_key,
                     [
                         'return', 'param', 'template', 'var', 'type',
+                        'property', 'method',
                         'assert', 'assert-if-true', 'assert-if-false', 'suppress',
                         'ignore-nullable-return', 'override-property-visibility',
                         'override-method-visibility', 'seal-properties', 'seal-methods',

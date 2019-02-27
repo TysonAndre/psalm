@@ -9,9 +9,7 @@ use Psalm\FileManipulation;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
 use Psalm\IssueBuffer;
-use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileProvider;
-use Psalm\Internal\Provider\FileReferenceProvider;
 use Psalm\Internal\Provider\FileStorageProvider;
 
 /**
@@ -429,7 +427,7 @@ class Analyzer
     }
 
     /**
-     * @param array<string, array<int, array{0: int, 1: int, 2: int, 3: int}>> $diff_map
+     * @param array<string, array<int, array{int, int, int, int}>> $diff_map
      * @return void
      */
     public function shiftFileOffsets(array $diff_map)
@@ -458,7 +456,10 @@ class Analyzer
                 $matched = false;
 
                 foreach ($file_diff_map as list($from, $to, $file_offset, $line_offset)) {
-                    if ($issue_data['from'] >= $from && $issue_data['from'] <= $to) {
+                    if ($issue_data['from'] >= $from
+                        && $issue_data['from'] <= $to
+                        && !$matched
+                    ) {
                         $issue_data['from'] += $file_offset;
                         $issue_data['to'] += $file_offset;
                         $issue_data['snippet_from'] += $file_offset;
@@ -616,7 +617,7 @@ class Analyzer
     public function addNodeType(string $file_path, PhpParser\Node $node, string $node_type)
     {
         $this->type_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
-            (int)$node->getAttribute('endFilePos'),
+            (int)$node->getAttribute('endFilePos') + 1,
             $node_type
         ];
     }
@@ -627,7 +628,7 @@ class Analyzer
     public function addNodeReference(string $file_path, PhpParser\Node $node, string $reference)
     {
         $this->reference_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
-            (int)$node->getAttribute('endFilePos'),
+            (int)$node->getAttribute('endFilePos') + 1,
             $reference
         ];
     }

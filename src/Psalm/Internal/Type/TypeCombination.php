@@ -29,14 +29,10 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNonEmptyArray;
 use Psalm\Type\Atomic\TNonEmptyMixed;
 use Psalm\Type\Atomic\TNull;
-use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TObject;
-use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
-use Psalm\Type\Atomic\TVoid;
-use Psalm\Internal\Type\ParseTree;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
 
@@ -203,6 +199,11 @@ class TypeCombination
         if (isset($combination->type_params['array'])
             && (isset($combination->named_object_types['Traversable'])
                 || isset($combination->type_params['Traversable']))
+            && (($codebase && !$codebase->config->allow_phpstorm_generics)
+                || isset($combination->type_params['Traversable'])
+                || (isset($combination->named_object_types['Traversable'])
+                    && $combination->named_object_types['Traversable']->from_docblock)
+            )
         ) {
             $array_param_types = $combination->type_params['array'];
             $traversable_param_types = $combination->type_params['Traversable'] ?? [Type::getMixed(), Type::getMixed()];
@@ -235,6 +236,19 @@ class TypeCombination
 
         if (count($combination->objectlike_entries)) {
             if (!$combination->has_mixed || $combination->mixed_from_loop_isset) {
+                if (isset($combination->type_params['array'])
+                    && $combination->type_params['array'][0]->allStringLiterals()
+                ) {
+                    foreach ($combination->type_params['array'][0]->getTypes() as $atomic_key_type) {
+                        if ($atomic_key_type instanceof TLiteralString) {
+                            $combination->objectlike_entries[$atomic_key_type->value]
+                                = $combination->type_params['array'][1];
+                        }
+                    }
+
+                    unset($combination->type_params['array']);
+                }
+
                 if (!isset($combination->type_params['array'])
                     || $combination->type_params['array'][1]->isEmpty()
                 ) {
@@ -500,7 +514,7 @@ class TypeCombination
             if (!isset($combination->type_params['iterable'])) {
                 $combination->type_params['iterable']
                     = $combination->type_params['Traversable'] ?? [Type::getMixed(), Type::getMixed()];
-            } else {
+            } elseif (isset($combination->type_params['Traversable'])) {
                 foreach ($combination->type_params['Traversable'] as $i => $array_type_param) {
                     $iterable_type_param = $combination->type_params['iterable'][$i];
                     $combination->type_params['iterable'][$i] = Type::combineUnionTypes(
@@ -508,6 +522,8 @@ class TypeCombination
                         $array_type_param
                     );
                 }
+            } else {
+                $combination->type_params['iterable'] = [Type::getMixed(), Type::getMixed()];
             }
 
             /** @psalm-suppress PossiblyNullArrayAccess */

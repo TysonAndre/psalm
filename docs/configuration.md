@@ -93,7 +93,7 @@ Allows you to specify whether or not to use the typed iterator docblock format s
   allowCoercionFromStringToClassConst="[bool]"
 >
 ```
-When `true`, strings can be coerced to [`class-string`](supported_annotations.md#class-constants), with Psalm emitting a `TypeCoercion` issue. If disabled, that issue changes to a more serious one. Defaults to `true`.
+When `true`, strings can be coerced to [`class-string`](templated_annotations.md#param-class-stringt), with Psalm emitting a `TypeCoercion` issue. If disabled, that issue changes to a more serious one. Defaults to `true`.
 
 #### `allowStringToStandInForClass`
 ```xml
@@ -215,7 +215,7 @@ Contains a list of all the directories that Psalm should inspect. You can also s
 </projectFiles>
 ```
 
-#### `<fileExtensions>` 
+#### `<fileExtensions>`
 Optional.  A list of extensions to search over. See [Checking non-PHP files](checking_non_php_files.md) to understand how to extend this.
 
 #### `<plugins>`

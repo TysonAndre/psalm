@@ -14,7 +14,7 @@ use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
-use Psalm\Type\Atomic\TGenericParam;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TIterable;
 use Psalm\Type\Atomic\TLiteralClassString;
@@ -221,7 +221,9 @@ abstract class Type
 
             $generic_type_value = self::fixScalarTerms($generic_type);
 
-            if ($generic_type_value === 'array' && count($generic_params) === 1) {
+            if (($generic_type_value === 'array' || $generic_type_value === 'non-empty-array')
+                && count($generic_params) === 1
+            ) {
                 array_unshift($generic_params, new Union([new TArrayKey]));
             } elseif (($generic_type_value === 'iterable' || $generic_type_value === 'Traversable')
                 && count($generic_params) === 1
@@ -243,6 +245,10 @@ abstract class Type
 
             if ($generic_type_value === 'array') {
                 return new TArray($generic_params);
+            }
+
+            if ($generic_type_value === 'non-empty-array') {
+                return new Type\Atomic\TNonEmptyArray($generic_params);
             }
 
             if ($generic_type_value === 'iterable') {
@@ -335,7 +341,7 @@ abstract class Type
 
             foreach ($intersection_types as $intersection_type) {
                 if (!$intersection_type instanceof TNamedObject
-                    && !$intersection_type instanceof TGenericParam
+                    && !$intersection_type instanceof TTemplateParam
                     && !$intersection_type instanceof TIterable
                 ) {
                     throw new TypeParseTreeException(
@@ -344,10 +350,10 @@ abstract class Type
                 }
             }
 
-            /** @var TNamedObject|TGenericParam */
+            /** @var TNamedObject|TTemplateParam */
             $first_type = array_shift($intersection_types);
 
-            /** @var array<int, TNamedObject|TGenericParam> $intersection_types */
+            /** @var array<int, TNamedObject|TTemplateParam> $intersection_types */
             $first_type->extra_types = $intersection_types;
 
             return $first_type;
@@ -368,8 +374,8 @@ abstract class Type
                     $property_maybe_undefined = $property_branch->possibly_undefined;
                     $property_key = $property_branch->value;
                 } else {
-                    throw new \InvalidArgumentException(
-                        'Unexpected number of property parts (' . count($property_branch->children) . ')'
+                    throw new TypeParseTreeException(
+                        'Missing property type'
                     );
                 }
 
@@ -431,6 +437,10 @@ abstract class Type
                         $is_variadic = $child_tree->variadic;
                         $is_optional = $child_tree->has_default;
                     } else {
+                        if ($child_tree instanceof ParseTree\Value && strpos($child_tree->value, '$') > 0) {
+                            $child_tree->value = preg_replace('/(.+)\$.*/', '$1', $child_tree->value);
+                        }
+
                         $tree_type = self::getTypeFromTree($child_tree, null, $template_type_map);
                     }
 
@@ -538,9 +548,9 @@ abstract class Type
         string $param_name,
         Union $as,
         string $defining_class = null
-    ) : Atomic\TGenericParamClass {
+    ) : Atomic\TTemplateParamClass {
         if ($as->hasMixed()) {
-            return new Atomic\TGenericParamClass(
+            return new Atomic\TTemplateParamClass(
                 $param_name,
                 'object',
                 null,
@@ -556,7 +566,7 @@ abstract class Type
 
         foreach ($as->getTypes() as $t) {
             if ($t instanceof TObject) {
-                return new Atomic\TGenericParamClass(
+                return new Atomic\TTemplateParamClass(
                     $param_name,
                     'object',
                     null,
@@ -571,7 +581,7 @@ abstract class Type
                 );
 
                 $as->substitute(new Union([$t]), new Union([$traversable]));
-                return new Atomic\TGenericParamClass(
+                return new Atomic\TTemplateParamClass(
                     $param_name,
                     $traversable->value,
                     $traversable,
@@ -585,7 +595,7 @@ abstract class Type
                 );
             }
 
-            return new Atomic\TGenericParamClass(
+            return new Atomic\TTemplateParamClass(
                 $param_name,
                 $t->value,
                 $t,
@@ -780,7 +790,9 @@ abstract class Type
 
             if (in_array(
                 $string_type_token,
-                ['<', '>', '|', '?', ',', '{', '}', ':', '::', '[', ']', '(', ')', '&'],
+                [
+                    '<', '>', '|', '?', ',', '{', '}', ':', '::', '[', ']', '(', ')', '&', '=', '...'
+                ],
                 true
             )) {
                 continue;
@@ -800,6 +812,10 @@ abstract class Type
 
             if ($i > 0 && $type_tokens[$i - 1] === '::') {
                 continue;
+            }
+
+            if (strpos($string_type_token, '$')) {
+                $string_type_token = preg_replace('/(.+)\$.*/', '$1', $string_type_token);
             }
 
             $type_tokens[$i] = $string_type_token = self::fixScalarTerms($string_type_token);

@@ -16,7 +16,6 @@ use Psalm\Issue\DeprecatedInterface;
 use Psalm\Issue\DeprecatedTrait;
 use Psalm\Issue\InaccessibleMethod;
 use Psalm\Issue\InternalClass;
-use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidTemplateParam;
 use Psalm\Issue\MissingConstructor;
 use Psalm\Issue\MissingPropertyType;
@@ -197,7 +196,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
-                if ($codebase->server_mode && $fq_class_name) {
+                if ($codebase->store_node_types && $fq_class_name) {
                     $codebase->analyzer->addNodeReference(
                         $this->getFilePath(),
                         $class->extends,
@@ -244,7 +243,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 return false;
             }
 
-            if ($codebase->server_mode && $fq_class_name) {
+            if ($codebase->store_node_types && $fq_class_name) {
                 $bounds = $interface_location->getSelectionBounds();
 
                 $codebase->analyzer->addOffsetReference(
@@ -278,6 +277,28 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $code_location,
                     $expected_param_count
                 );
+            }
+        }
+
+        if ($storage->template_types) {
+            foreach ($storage->template_types as $param_name => $_) {
+                $fq_classlike_name = Type::getFQCLNFromString(
+                    $param_name,
+                    $this->getAliases()
+                );
+
+                if ($codebase->classOrInterfaceExists($fq_classlike_name)) {
+                    if (IssueBuffer::accepts(
+                        new ReservedWord(
+                            'Cannot use ' . $param_name . ' as template name since the class already exists',
+                            new CodeLocation($this, $this->class),
+                            'resource'
+                        ),
+                        $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
             }
         }
 
@@ -520,6 +541,27 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 )
                 : $property_type;
 
+            /**
+             * @psalm-suppress ReferenceConstraintViolation
+             */
+            $class_template_params = MethodCallAnalyzer::getClassTemplateParams(
+                $codebase,
+                $property_class_storage,
+                $fq_class_name,
+                null,
+                new Type\Atomic\TNamedObject($fq_class_name),
+                '$this'
+            );
+
+            if ($class_template_params) {
+                $generic_params = [];
+                $fleshed_out_type->replaceTemplateTypesWithStandins(
+                    $class_template_params,
+                    $generic_params,
+                    $codebase
+                );
+            }
+
             if ($property_type_location && !$fleshed_out_type->isMixed()) {
                 $fleshed_out_type->check(
                     $this,
@@ -616,7 +658,12 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         $this->source->getAliases()
                     );
 
-                    $trait_file_analyzer = $project_analyzer->getFileAnalyzerForClassLike($fq_trait_name);
+                    try {
+                        $trait_file_analyzer = $project_analyzer->getFileAnalyzerForClassLike($fq_trait_name);
+                    } catch (\Exception $e) {
+                        continue;
+                    }
+
                     $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name);
                     $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name);
                     $trait_analyzer = new TraitAnalyzer(
@@ -835,11 +882,11 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $fake_constructor_stmts = [
                     new PhpParser\Node\Stmt\Expression(
                         new PhpParser\Node\Expr\StaticCall(
-                            new PhpParser\Node\Name(['parent']),
+                            new PhpParser\Node\Name\FullyQualified($constructor_declaring_fqcln),
                             new PhpParser\Node\Identifier('__construct'),
                             $fake_constructor_stmt_args,
                             [
-                                'line' => $class->extends->getLine(),
+                                'startLine' => $class->extends->getLine(),
                                 'startFilePos' => $class->extends->getAttribute('startFilePos'),
                                 'endFilePos' => $class->extends->getAttribute('endFilePos'),
                             ]
@@ -853,6 +900,11 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         'type' => PhpParser\Node\Stmt\Class_::MODIFIER_PUBLIC,
                         'params' => $fake_constructor_params,
                         'stmts' => $fake_constructor_stmts,
+                    ],
+                    [
+                        'startLine' => $class->extends->getLine(),
+                        'startFilePos' => $class->extends->getAttribute('startFilePos'),
+                        'endFilePos' => $class->extends->getAttribute('endFilePos'),
                     ]
                 );
 

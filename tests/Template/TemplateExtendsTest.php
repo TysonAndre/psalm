@@ -1135,6 +1135,234 @@ class TemplateExtendsTest extends TestCase
                         }
                     }',
             ],
+            'useGenericParentMethod' => [
+                '<?php
+                    /**
+                     * @template-extends ArrayObject<string, string>
+                     */
+                    class Foo extends ArrayObject
+                    {
+                        public function bar() : void {
+                            $c = $this->getArrayCopy();
+                            foreach ($c as $d) {
+                                echo $d;
+                            }
+                        }
+                    }',
+            ],
+            'templateExtendsDifferentNameWithStaticCall' => [
+                '<?php
+                    /** @template T */
+                    class Container {
+                        /** @var T */
+                        private $t;
+
+                        /** @param T $t */
+                        private function __construct($t) {
+                            $this->t = $t;
+                        }
+
+                        /**
+                         * @param T $t
+                         * @return static<T>
+                         */
+                        public static function getContainer($t) {
+                            return new static($t);
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function getValue()
+                        {
+                            return $this->t;
+                        }
+                    }
+
+                    /**
+                     * @template T1 as object
+                     * @template-extends Container<T1>
+                     */
+                    class ObjectContainer extends Container {}
+
+                    /**
+                     * @template T2 as A
+                     * @template-extends ObjectContainer<T2>
+                     */
+                    class AContainer extends ObjectContainer {}
+
+                    class A {
+                        function foo() : void {}
+                    }
+
+                    $b = AContainer::getContainer(new A());',
+                [
+                    '$b' => 'AContainer<A>',
+                ],
+            ],
+            'templateExtendsSameNameWithStaticCall' => [
+                '<?php
+                    /** @template T */
+                    class Container {
+                        /** @var T */
+                        private $t;
+
+                        /** @param T $t */
+                        private function __construct($t) {
+                            $this->t = $t;
+                        }
+
+                        /**
+                         * @param T $t
+                         * @return static<T>
+                         */
+                        public static function getContainer($t) {
+                            return new static($t);
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function getValue()
+                        {
+                            return $this->t;
+                        }
+                    }
+
+                    /**
+                     * @template T as object
+                     * @template-extends Container<T>
+                     */
+                    class ObjectContainer extends Container {}
+
+                    /**
+                     * @template T as A
+                     * @template-extends ObjectContainer<T>
+                     */
+                    class AContainer extends ObjectContainer {}
+
+                    class A {
+                        function foo() : void {}
+                    }
+
+                    $b = AContainer::getContainer(new A());',
+                [
+                    '$b' => 'AContainer<A>',
+                ],
+            ],
+            'returnParentExtendedTemplateProperty' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Container {
+                        /**
+                         * @var T
+                         */
+                        public $t;
+
+                        /**
+                         * @param T $t
+                         */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template-extends Container<int>
+                     */
+                    class IntContainer extends Container {
+                        public function __construct(int $i) {
+                            parent::__construct($i);
+                        }
+
+                        public function getValue() : int {
+                            return $this->t;
+                        }
+                    }',
+            ],
+            'childSetInConstructor' => [
+                '<?php
+                    /**
+                     * @template T0
+                     */
+                    class Container {
+                        /**
+                         * @var T0
+                         */
+                        public $t;
+
+                        /**
+                         * @param T0 $t
+                         */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T1 as object
+                     * @template-extends Container<T1>
+                     */
+                    class ObjectContainer extends Container {}',
+            ],
+            'grandChildSetInConstructor' => [
+                '<?php
+                    /**
+                     * @template T0
+                     */
+                    class Container {
+                        /**
+                         * @var T0
+                         */
+                        public $t;
+
+                        /**
+                         * @param T0 $t
+                         */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T1 as object
+                     * @template-extends Container<T1>
+                     */
+                    class ObjectContainer extends Container {}
+
+                    /**
+                     * @template T2 as A
+                     * @template-extends ObjectContainer<T2>
+                     */
+                    class AContainer extends ObjectContainer {}
+
+                    class A {}',
+            ],
+            'extendArrayObjectWithTemplateParams' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     * @template-extends \ArrayObject<TKey,TValue>
+                     */
+                    class C extends \ArrayObject {
+                        /**
+                         * @param array<TKey,TValue> $kv
+                         */
+                        public function __construct(array $kv) {
+                            parent::__construct($kv);
+                        }
+                    }
+
+                    $c = new C(["a" => 1]);
+                    $i = $c->getIterator();',
+                [
+                    '$c' => 'C<string, int>',
+                    '$i' => 'ArrayIterator<string, int>',
+                ]
+            ],
         ];
     }
 

@@ -26,8 +26,7 @@ use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
-use Psalm\Type\Atomic\TGenericParam;
-use Psalm\Type\Atomic\TGenericParamClass;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\THtmlEscapedString;
 use Psalm\Type\Atomic\TIterable;
 use Psalm\Type\Atomic\TInt;
@@ -183,7 +182,7 @@ abstract class Atomic
         }
 
         if (isset($template_type_map[$value])) {
-            return new TGenericParam($value, $template_type_map[$value][0], $template_type_map[$value][1]);
+            return new TTemplateParam($value, $template_type_map[$value][0], $template_type_map[$value][1]);
         }
 
         return new TNamedObject($value);
@@ -288,7 +287,7 @@ abstract class Atomic
 
             if ($this->extra_types) {
                 foreach ($this->extra_types as $extra_type) {
-                    if ($extra_type instanceof TGenericParam) {
+                    if ($extra_type instanceof TTemplateParam) {
                         continue;
                     }
 
@@ -345,7 +344,7 @@ abstract class Atomic
             }
         }
 
-        if ($this instanceof TGenericParam) {
+        if ($this instanceof TTemplateParam) {
             $this->as->check($source, $code_location, $suppressed_issues, $phantom_classes, $inferred);
         }
 
@@ -397,6 +396,34 @@ abstract class Atomic
                 $source->getSuppressedIssues()
             )) {
                 // fall through
+            }
+        }
+
+        if ($this instanceof Type\Atomic\Fn
+            || $this instanceof Type\Atomic\TCallable
+        ) {
+            if ($this->params) {
+                foreach ($this->params as $param) {
+                    if ($param->type) {
+                        $param->type->check(
+                            $source,
+                            $code_location,
+                            $suppressed_issues,
+                            $phantom_classes,
+                            $inferred
+                        );
+                    }
+                }
+            }
+
+            if ($this->return_type) {
+                $this->return_type->check(
+                    $source,
+                    $code_location,
+                    $suppressed_issues,
+                    $phantom_classes,
+                    $inferred
+                );
             }
         }
 
@@ -536,7 +563,7 @@ abstract class Atomic
             }
         }
 
-        if ($this instanceof TGenericParam) {
+        if ($this instanceof TTemplateParam) {
             $this->as->queueClassLikesForScanning(
                 $codebase,
                 $file_storage,
@@ -556,9 +583,36 @@ abstract class Atomic
             }
         }
 
-        if ($this instanceof Type\Atomic\TArray || $this instanceof Type\Atomic\TGenericObject) {
+        if ($this instanceof Type\Atomic\TArray
+            || $this instanceof Type\Atomic\TGenericObject
+            || $this instanceof Type\Atomic\TIterable
+        ) {
             foreach ($this->type_params as $type_param) {
                 $type_param->queueClassLikesForScanning(
+                    $codebase,
+                    $file_storage,
+                    $phantom_classes
+                );
+            }
+        }
+
+        if ($this instanceof Type\Atomic\Fn
+            || $this instanceof Type\Atomic\TCallable
+        ) {
+            if ($this->params) {
+                foreach ($this->params as $param) {
+                    if ($param->type) {
+                        $param->type->queueClassLikesForScanning(
+                            $codebase,
+                            $file_storage,
+                            $phantom_classes
+                        );
+                    }
+                }
+            }
+
+            if ($this->return_type) {
+                $this->return_type->queueClassLikesForScanning(
                     $codebase,
                     $file_storage,
                     $phantom_classes

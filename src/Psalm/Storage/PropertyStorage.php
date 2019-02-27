@@ -7,6 +7,8 @@ use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 
 class PropertyStorage
 {
+    use CustomMetadataTrait;
+
     /**
      * @var bool
      */

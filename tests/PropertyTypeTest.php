@@ -1278,6 +1278,149 @@ class PropertyTypeTest extends TestCase
                         }
                     }'
             ],
+            'propertySetInGrandparentExplicitly' => [
+                '<?php
+                    class A {
+                        /**
+                         * @var string
+                         */
+                        public $s;
+
+                        public function __construct(string $s) {
+                            $this->s = $s;
+                        }
+                    }
+                    class B extends A {}
+                    class C extends B {
+                        public function __construct(string $s) {
+                            A::__construct($s);
+                        }
+                    }'
+            ],
+            'propertySetInGrandparentImplicitly' => [
+                '<?php
+                    class A {
+                        /**
+                         * @var string
+                         */
+                        public $s;
+
+                        public function __construct(string $s) {
+                            $this->s = $s;
+                        }
+                    }
+                    class B extends A {}
+                    class C extends B {}'
+            ],
+            'unitializedPropertySuppressPropertyNotSetInConstructor' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        public function __construct() {
+                            $this->setFoo(); // public method that circumvents checks
+                            echo strlen($this->foo);
+                        }
+
+                        public function setFoo() : void {
+                            $this->foo = "foo";
+                        }
+                    }',
+                [],
+                ['PropertyNotSetInConstructor']
+            ],
+            'setObjectLikePropertyType' => [
+                '<?php
+                    class Foo {
+                        /**
+                         * @psalm-var array{from:bool, to:bool}
+                         */
+                        protected $changed = [
+                            "from" => false,
+                            "to" => false,
+                        ];
+
+                        /**
+                         * @psalm-param "from"|"to" $property
+                         */
+                        public function ChangeThing(string $property) : void {
+                            $this->changed[$property] = true;
+                        }
+                    }'
+            ],
+            'noRedundantConditionWhenCheckingInitializations' => [
+                '<?php
+                    final class Clazz {
+                        /**
+                         * @var bool
+                         */
+                        public $x;
+
+                        /**
+                         * @var int
+                         */
+                        public $y = 0;
+
+                        public function func1 (): bool {
+                            if ($this->y) {
+                                return true;
+                            }
+                            return false;
+                        }
+
+                        public function func2 (): int {
+                            if ($this->y) {
+                                return 1;
+                            }
+                            return 2;
+                        }
+
+                        public function __construct () {
+                            $this->x = false;
+                            if ($this->func1()) {
+                                $this->y = $this->func2();
+                            }
+                            $this->func2();
+                        }
+                    }'
+            ],
+            'noRedundantConditionWhenCheckingInitializationsEdgeCases' => [
+                '<?php
+                    final class Clazz {
+                        /**
+                         * @var bool
+                         */
+                        public $x;
+
+                        /**
+                         * @var int
+                         */
+                        public $y = 0;
+
+                        public function func1 (): bool {
+                            if ($this->y !== 0) {
+                                return true;
+                            }
+                            return false;
+                        }
+
+                        public function func2 (): int {
+                            if ($this->y !== 0) {
+                                return $this->y;
+                            }
+                            return 2;
+                        }
+
+                        public function __construct () {
+                            $this->x = false;
+                            if ($this->func1()) {
+                                $this->y = $this->func2();
+                            }
+                            $this->func2();
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -1668,7 +1811,7 @@ class PropertyTypeTest extends TestCase
                     }
 
                     class B extends A {}',
-                'error_message' => 'InaccessibleMethod',
+                'error_message' => 'InaccessibleMethod - src/somefile.php:11',
             ],
             'classInheritsPrivateConstructorWithImplementedConstructor' => [
                 '<?php
@@ -2018,6 +2161,64 @@ class PropertyTypeTest extends TestCase
 
                     Y::$b = 5;',
                 'error_message' => 'InvalidPropertyAssignmentValue',
+            ],
+            'unitializedProperty' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        public function __construct() {
+                            echo strlen($this->foo);
+                            $this->foo = "foo";
+                        }
+                    }',
+                'error_message' => 'UninitializedProperty'
+            ],
+            'unitializedObjectProperty' => [
+                '<?php
+                    class Foo {
+                        /** @var int */
+                        public $bar = 5;
+                    }
+                    function takesInt(int $i) : void {}
+                    class A {
+                        /** @var Foo */
+                        public $foo;
+
+                        public function __construct(Foo $foo) {
+                            takesInt($this->foo->bar);
+                            $this->foo = $foo;
+                        }
+                    }',
+                'error_message' => 'UninitializedProperty'
+            ],
+            'possiblyNullArg' => [
+                '<?php
+                    class A {
+                        /** @var ?string */
+                        public $foo;
+
+                        public function __construct() {
+                            echo strlen($this->foo);
+                            $this->foo = "foo";
+                        }
+                    }',
+                'error_message' => 'PossiblyNullArgument'
+            ],
+            'noCrashOnMagicCall' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        private $a;
+
+                        public function __construct() {
+                            $this->setA();
+                        }
+
+                        public function __call(string $var, array $args) {}
+                    }',
+                'error_message' => 'PropertyNotSetInConstructor'
             ],
         ];
     }

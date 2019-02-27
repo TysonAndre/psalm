@@ -251,7 +251,7 @@ class TemplateTest extends TestCase
 
                     bar(foo("string"));',
             ],
-            'validPsalmTemplatedType' => [
+            'validPsalmTemplatedFunctionType' => [
                 '<?php
                     namespace FooFoo;
 
@@ -267,6 +267,23 @@ class TemplateTest extends TestCase
                     function bar(string $a): void { }
 
                     bar(foo("string"));',
+            ],
+            'validPsalmTemplatedClassType' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @psalm-template T
+                     */
+                    class Foo {
+                        /**
+                         * @param T $x
+                         */
+                        public function bar($x): void { }
+                    }
+
+                    $afoo = new Foo();
+                    $afoo->bar(new A());',
             ],
             'validTemplatedStaticMethodType' => [
                 '<?php
@@ -787,7 +804,7 @@ class TemplateTest extends TestCase
                         private $bar;
 
                         /**
-                         * @param T&Foo $closure
+                         * @param T&Foo $bar
                          */
                         public function __construct(Foo $bar)
                         {
@@ -1609,6 +1626,77 @@ class TemplateTest extends TestCase
                     '$arr' => 'array<int, string>',
                 ]
             ],
+            'templatedClassStringParam' => [
+                '<?php
+                    abstract class C {
+                        public function foo() : void{}
+                    }
+
+                    class E {
+                        /**
+                         * @template T as C
+                         * @param class-string<T> $c_class
+                         *
+                         * @return C
+                         * @psalm-return T
+                         */
+                        public static function get(string $c_class) : C {
+                            $c = new $c_class;
+                            $c->foo();
+                            return $c;
+                        }
+                    }
+
+                    /**
+                     * @param class-string<C> $c_class
+                     */
+                    function bar(string $c_class) : void {
+                        $c = E::get($c_class);
+                        $c->foo();
+                    }
+
+                    /**
+                     * @psalm-suppress TypeCoercion
+                     */
+                    function bat(string $c_class) : void {
+                        $c = E::get($c_class);
+                        $c->foo();
+                    }'
+            ],
+            'templatedClassStringParamMoreSpecific' => [
+                '<?php
+                    abstract class C {
+                        public function foo() : void{}
+                    }
+
+                    class D extends C {
+                        public function faa() : void{}
+                    }
+
+                    class E {
+                        /**
+                         * @template T as C
+                         * @param class-string<T> $c_class
+                         *
+                         * @return C
+                         * @psalm-return T
+                         */
+                        public static function get(string $c_class) : C {
+                            $c = new $c_class;
+                            $c->foo();
+                            return $c;
+                        }
+                    }
+
+                    /**
+                     * @param class-string<D> $d_class
+                     */
+                    function moreSpecific(string $d_class) : void {
+                        $d = E::get($d_class);
+                        $d->foo();
+                        $d->faa();
+                    }'
+            ],
         ];
     }
 
@@ -2083,6 +2171,44 @@ class TemplateTest extends TestCase
                      */
                     function foo() : void {}',
                 'error_message' => 'InvalidDocblock'
+            ],
+            'copyScopedClassInFunction' => [
+                '<?php
+                    /**
+                     * @template Throwable as DOMNode
+                     *
+                     * @param class-string<Throwable> $foo
+                     */
+                    function Foo(string $foo) : string {
+                        return $foo;
+                    }',
+                'error_message' => 'ReservedWord',
+            ],
+            'copyScopedClassInNamespacedFunction' => [
+                '<?php
+                    namespace Foo;
+
+                    class Bar {}
+
+                    /**
+                     * @template Bar as DOMNode
+                     *
+                     * @param class-string<Bar> $foo
+                     */
+                    function Foo(string $foo) : string {
+                        return $foo;
+                    }',
+                'error_message' => 'ReservedWord',
+            ],
+            'copyScopedClassInNamespacedClass' => [
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @template Bar as DOMNode
+                     */
+                    class Bar {}',
+                'error_message' => 'ReservedWord',
             ],
         ];
     }

@@ -21,6 +21,7 @@ use Psalm\Issue\PossiblyNullPropertyFetch;
 use Psalm\Issue\UndefinedClass;
 use Psalm\Issue\UndefinedPropertyFetch;
 use Psalm\Issue\UndefinedThisPropertyFetch;
+use Psalm\Issue\UninitializedProperty;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TGenericObject;
@@ -89,7 +90,7 @@ class PropertyFetchAnalyzer
 
             $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
 
-            if ($codebase->server_mode
+            if ($codebase->store_node_types
                 && (!$context->collect_initializations
                     && !$context->collect_mutations)
             ) {
@@ -98,6 +99,46 @@ class PropertyFetchAnalyzer
                     $stmt->name,
                     (string) $stmt->inferredType
                 );
+            }
+
+            if ($stmt_var_id === '$this'
+                && !$stmt->inferredType->initialized
+                && $context->collect_initializations
+                && isset($stmt->var->inferredType)
+                && $stmt->var->inferredType->hasObjectType()
+                && $stmt->name instanceof PhpParser\Node\Identifier
+            ) {
+                $source = $statements_analyzer->getSource();
+
+                $property_id = null;
+
+                foreach ($stmt->var->inferredType->getTypes() as $lhs_type_part) {
+                    if ($lhs_type_part instanceof TNamedObject) {
+                        if (!$codebase->classExists($lhs_type_part->value)) {
+                            continue;
+                        }
+
+                        $property_id = $lhs_type_part->value . '::$' . $stmt->name->name;
+                    }
+                }
+
+                if ($property_id
+                    && $source instanceof FunctionLikeAnalyzer
+                    && $source->getMethodName() === '__construct'
+                ) {
+                    if (IssueBuffer::accepts(
+                        new UninitializedProperty(
+                            'Cannot use unitialized property ' . $var_id,
+                            new CodeLocation($statements_analyzer->getSource(), $stmt),
+                            $var_id
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+
+                    $stmt->inferredType->addType(new Type\Atomic\TNull);
+                }
             }
 
             if (isset($stmt->var->inferredType)
@@ -121,7 +162,7 @@ class PropertyFetchAnalyzer
                                 : null
                         );
 
-                        if ($codebase->server_mode) {
+                        if ($codebase->store_node_types) {
                             $codebase->analyzer->addNodeReference(
                                 $statements_analyzer->getFilePath(),
                                 $stmt->name,
@@ -189,7 +230,7 @@ class PropertyFetchAnalyzer
             if ($stmt_var_type->hasMixed()) {
                 $stmt->inferredType = Type::getMixed();
 
-                if ($codebase->server_mode
+                if ($codebase->store_node_types
                     && (!$context->collect_initializations
                         && !$context->collect_mutations)
                 ) {
@@ -232,7 +273,7 @@ class PropertyFetchAnalyzer
                 continue;
             }
 
-            if ($lhs_type_part instanceof Type\Atomic\TGenericParam) {
+            if ($lhs_type_part instanceof Type\Atomic\TTemplateParam) {
                 $extra_types = $lhs_type_part->extra_types;
 
                 $lhs_type_part = array_values(
@@ -406,7 +447,7 @@ class PropertyFetchAnalyzer
                 continue;
             }
 
-            if ($codebase->server_mode) {
+            if ($codebase->store_node_types) {
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
@@ -430,7 +471,7 @@ class PropertyFetchAnalyzer
                 ) {
                     $property_id = $context->self . '::$' . $prop_name;
                 } else {
-                    if ($context->inside_isset) {
+                    if ($context->inside_isset || $context->collect_initializations) {
                         return;
                     }
 
@@ -581,7 +622,7 @@ class PropertyFetchAnalyzer
             }
         }
 
-        if ($codebase->server_mode
+        if ($codebase->store_node_types
             && (!$context->collect_initializations
                 && !$context->collect_mutations)
             && isset($stmt->inferredType)
@@ -730,13 +771,13 @@ class PropertyFetchAnalyzer
         ) {
             $var_id = ExpressionAnalyzer::getVarId(
                 $stmt,
-                $statements_analyzer->getFQCLN(),
+                $context->self ?: $statements_analyzer->getFQCLN(),
                 $statements_analyzer
             );
 
             $property_id = $fq_class_name . '::$' . $prop_name;
 
-            if ($codebase->server_mode) {
+            if ($codebase->store_node_types) {
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
@@ -757,7 +798,7 @@ class PropertyFetchAnalyzer
                     );
                 }
 
-                if ($codebase->server_mode
+                if ($codebase->store_node_types
                     && (!$context->collect_initializations
                         && !$context->collect_mutations)
                     && isset($stmt->inferredType)
@@ -823,7 +864,7 @@ class PropertyFetchAnalyzer
 
                 $stmt->inferredType = clone $context->vars_in_scope[$var_id];
 
-                if ($codebase->server_mode
+                if ($codebase->store_node_types
                     && (!$context->collect_initializations
                         && !$context->collect_mutations)
                 ) {

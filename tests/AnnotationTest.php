@@ -12,7 +12,7 @@ class AnnotationTest extends TestCase
     /**
      * @return void
      */
-    public function testPhpStormGenericsWithValidArgument()
+    public function testPhpStormGenericsWithValidArrayIteratorArgument()
     {
         Config::getInstance()->allow_phpstorm_generics = true;
 
@@ -26,6 +26,29 @@ class AnnotationTest extends TestCase
                     $s = $i->offsetGet("a");
                     takesString($s);
 
+                    foreach ($i as $s2) {
+                        takesString($s2);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testPhpStormGenericsWithValidTraversableArgument()
+    {
+        Config::getInstance()->allow_phpstorm_generics = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param Traversable|string[] $i */
+                function takesTraversableOfString(Traversable $i): void {
                     foreach ($i as $s2) {
                         takesString($s2);
                     }
@@ -57,6 +80,30 @@ class AnnotationTest extends TestCase
                   {
                     return $this->bar;
                   }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testPhpStormGenericsWithGeneratorArray()
+    {
+        Config::getInstance()->allow_phpstorm_generics = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A {
+                    /**
+                     * @return stdClass[]|Generator
+                     */
+                    function getCollection(): Generator
+                    {
+                        yield new stdClass;
+                    }
                 }'
         );
 
@@ -799,7 +846,6 @@ class AnnotationTest extends TestCase
                         $s .= "foo";
                     }
 
-                    $a = null;
                     addFoo($a);
 
                     echo strlen($a);',
@@ -845,6 +891,34 @@ class AnnotationTest extends TestCase
                 [
                     'MixedAssignment'
                 ]
+            ],
+            'extraneousDocblockParamName' => [
+                '<?php
+                    /**
+                     * @param string $foo
+                     * @param string[] $bar
+                     * @param string[] $barb
+                     */
+                    function f(string $foo, array $barb): void {}',
+            ],
+            'nonEmptyArray' => [
+                '<?php
+                    /** @param non-empty-array<string> $arr */
+                    function foo(array $arr) : void {
+                        foreach ($arr as $a) {}
+                        echo $a;
+                    }
+
+                    foo(["a", "b", "c"]);
+
+                    /** @param array<string> $arr */
+                    function bar(array $arr) : void {
+                        if (!$arr) {
+                            return;
+                        }
+
+                        foo($arr);
+                    }'
             ],
         ];
     }
@@ -1193,6 +1267,44 @@ class AnnotationTest extends TestCase
                     /** @var Foo */
                     $a = $_GET["foo"];',
                 'error_message' => 'UndefinedClass',
+            ],
+            'badPsalmType' => [
+                '<?php
+                    /**
+                     * @psalm-type Foo = array{a:}
+                     */',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'mismatchingDocblockParamName' => [
+                '<?php
+                    /** @param string[] $_bar */
+                    function f(array $_barb): void {}',
+                'error_message' => 'InvalidDocblockParamName',
+            ],
+            'nonEmptyArrayCalledWithEmpty' => [
+                '<?php
+                    /** @param non-empty-array<string> $arr */
+                    function foo(array $arr) : void {
+                        foreach ($arr as $a) {}
+                        echo $a;
+                    }
+
+                    foo([]);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'nonEmptyArrayCalledWithArray' => [
+                '<?php
+                    /** @param non-empty-array<string> $arr */
+                    function foo(array $arr) : void {
+                        foreach ($arr as $a) {}
+                        echo $a;
+                    }
+
+                    /** @param array<string> $arr */
+                    function bar(array $arr) {
+                        foo($arr);
+                    }',
+                'error_message' => 'TypeCoercion',
             ],
         ];
     }

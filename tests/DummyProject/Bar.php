@@ -1,6 +1,6 @@
 <?php
 
-namespace Foo;
+namespace Vimeo\Test\DummyProject;
 
 class Bar
 {
@@ -11,4 +11,12 @@ class Bar
     {
         $this->x = "hello";
     }
+}
+
+/**
+ * @return void
+ */
+function someFunction()
+{
+    echo "here";
 }
