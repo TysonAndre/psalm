@@ -1,6 +1,6 @@
 # Installation
 
-Psalm Requires PHP >= 5.6 and [Composer](https://getcomposer.org/).
+Psalm Requires PHP >= 7.0 and [Composer](https://getcomposer.org/).
 
 ```bash
 composer require --dev vimeo/psalm
@@ -25,3 +25,5 @@ Then run Psalm:
 ```bash
 ./vendor/bin/psalm
 ```
+
+Psalm will probably find a number of issues - find out how to deal with them in [Dealing with code issues](dealing_with_code_issues.md).

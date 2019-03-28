@@ -7,7 +7,7 @@ class ScopeTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -235,11 +235,26 @@ class ScopeTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedPropertyAssignment', 'MixedArgument'],
             ],
+            'typedStatic' => [
+                '<?php
+                    function a(): ?int {
+                        /** @var ?int */
+                        static $foo = 5;
+
+                        if (rand(0, 1)) {
+                            return $foo;
+                        }
+
+                        $foo = null;
+
+                        return $foo;
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -251,7 +266,7 @@ class ScopeTest extends TestCase
                     }
 
                     echo $b;',
-                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:6 - Possibly undefined global '
+                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:26 - Possibly undefined global '
                     . 'variable $b, first seen on line 3',
             ],
             'possiblyUndefinedArrayInIf' => [
@@ -261,7 +276,7 @@ class ScopeTest extends TestCase
                     }
 
                     echo $array;',
-                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Possibly undefined global '
+                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:25 - Possibly undefined global '
                     . 'variable $array, first seen on line 3',
             ],
             'invalidGlobal' => [
@@ -288,6 +303,49 @@ class ScopeTest extends TestCase
                         return $foo;
                     }',
                 'error_message' => 'MixedReturnStatement',
+            ],
+            'staticNullRef' => [
+                '<?php
+                    /** @return void */
+                    function foo() {
+                        /** @var int */
+                        static $bar = 5;
+
+                        if ($bar === null) {
+                            // do something
+                        }
+
+                        $bar = 4;
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'typedStaticCannotHaveNullDefault' => [
+                '<?php
+                    function a(): void {
+                        /** @var string */
+                        static $foo = null;
+                    }',
+                'error_message' => 'ReferenceConstraintViolation',
+            ],
+            'typedStaticCannotBeAssignedInt' => [
+                '<?php
+                    function a(): void {
+                        /** @var string */
+                        static $foo = "foo";
+
+                        $foo = 5;
+                    }',
+                'error_message' => 'ReferenceConstraintViolation',
+            ],
+            'typedStaticCannotBeAssignedNull' => [
+                '<?php
+                    function a(): void {
+                        /** @var string */
+                        static $foo = "foo";
+
+                        $foo = null;
+                    }',
+                'error_message' => 'ReferenceConstraintViolation',
             ],
         ];
     }

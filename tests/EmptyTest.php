@@ -7,7 +7,7 @@ class EmptyTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -177,7 +177,7 @@ class EmptyTest extends TestCase
             'alwaysBoolResult' => [
                 '<?php
                     function takesBool(bool $p): void {}
-                    takesBool(empty($q));'
+                    takesBool(empty($q));',
             ],
             'noRedundantConditionAfterFalsyIntChecks' => [
                 '<?php
@@ -314,7 +314,7 @@ class EmptyTest extends TestCase
                 '<?php
                     function foo(array $a, array $b) : void {
                         if (empty($a) && empty($b)) {}
-                    }'
+                    }',
             ],
             'doubleEmptyCheckOnObjectLike' => [
                 '<?php
@@ -323,7 +323,7 @@ class EmptyTest extends TestCase
                      */
                     function foo(array $arr) : void {
                         if (empty($arr["a"]) && empty($arr["b"])) {}
-                    }'
+                    }',
             ],
             'doubleEmptyCheckOnObjectLikeVariableOffsets' => [
                 '<?php
@@ -333,13 +333,21 @@ class EmptyTest extends TestCase
                         $arr[1] = rand(0, 1);
 
                         if (empty($arr[$i]) && empty($arr[$j])) {}
-                    }'
+                    }',
+            ],
+            'checkArrayEmptyUnknownRoot' => [
+                '<?php
+                    function foo(array $arr) : void {
+                        if (empty($arr[rand(0, 1)])) {
+                            if ($arr) {}
+                        }
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {

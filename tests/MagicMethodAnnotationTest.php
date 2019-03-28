@@ -44,39 +44,9 @@ class MagicMethodAnnotationTest extends TestCase
     }
 
     /**
-     * @return void
-     */
-    public function testCannotOverrideParentClassRetunTypeWhenIgnoringPhpDocMethod()
-    {
-        Config::getInstance()->use_phpdoc_method_without_magic_or_parent = false;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                class ParentClass {
-                    public static function getMe() : self {
-                        return new self();
-                    }
-                }
-
-                /**
-                 * @method getMe() : Child
-                 */
-                class Child extends ParentClass {}
-
-                $child = Child::getMe();'
-        );
-
-        $context = new Context();
-
-        $this->analyzeFile('somefile.php', $context);
-
-        $this->assertSame('Child', (string) $context->vars_in_scope['$child']);
-    }
-
-    /**
      * @expectedException        \Psalm\Exception\CodeException
      * @expectedExceptionMessage UndefinedMethod
+     *
      * @return void
      */
     public function testAnnotationWithoutCallConfig()
@@ -93,14 +63,12 @@ class MagicMethodAnnotationTest extends TestCase
 
                 $child = new Child();
 
-                $a = $child->getString();'
+                $child->getString();'
         );
 
         $context = new Context();
 
         $this->analyzeFile('somefile.php', $context);
-
-        $this->assertSame('ParentClass', (string) $context->vars_in_scope['$child']);
     }
 
     /**
@@ -135,7 +103,7 @@ class MagicMethodAnnotationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -368,7 +336,7 @@ class MagicMethodAnnotationTest extends TestCase
                 [
                     '$a' => 'C',
                     '$b' => 'C',
-                ]
+                ],
             ],
             'allowMagicMethodStatic' => [
                 '<?php
@@ -384,7 +352,7 @@ class MagicMethodAnnotationTest extends TestCase
                 [
                     '$c' => 'C',
                     '$d' => 'D',
-                ]
+                ],
             ],
             'validSimplePsalmAnnotations' => [
                 '<?php
@@ -432,7 +400,7 @@ class MagicMethodAnnotationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -476,7 +444,7 @@ class MagicMethodAnnotationTest extends TestCase
                     $child = new Child();
                     $child->getString();
                     $child->foo();',
-                'error_message' => 'UndefinedMethod - src' . DIRECTORY_SEPARATOR . 'somefile.php:14 - Method Child::foo does not exist',
+                'error_message' => 'UndefinedMethod - src' . DIRECTORY_SEPARATOR . 'somefile.php:14:29 - Method Child::foo does not exist',
             ],
             'annotationInvalidArg' => [
                 '<?php
@@ -539,7 +507,7 @@ class MagicMethodAnnotationTest extends TestCase
 
                     /** @method D foo(string $s) */
                     class B extends A {}',
-                'error_message' => 'ImplementedReturnTypeMismatch',
+                'error_message' => 'ImplementedReturnTypeMismatch - src/somefile.php:11:33',
             ],
             'magicMethodOverridesParentWithDifferentParamType' => [
                 '<?php
@@ -554,7 +522,7 @@ class MagicMethodAnnotationTest extends TestCase
 
                     /** @method D foo(int $s) */
                     class B extends A {}',
-                'error_message' => 'MoreSpecificImplementedParamType',
+                'error_message' => 'MoreSpecificImplementedParamType - src/somefile.php:11:21',
             ],
         ];
     }

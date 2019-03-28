@@ -110,54 +110,21 @@ class VariableFetchAnalyzer
             return null;
         }
 
-        if (in_array(
-            $stmt->name,
-            [
-                'GLOBALS',
-                '_SERVER',
-                '_GET',
-                '_POST',
-                '_FILES',
-                '_COOKIE',
-                '_SESSION',
-                '_REQUEST',
-                '_ENV',
-                'http_response_header'
-            ],
-            true
-        )
-        ) {
-            if (isset($context->vars_in_scope['$' . $stmt->name])) {
-                $stmt->inferredType = clone $context->vars_in_scope['$' . $stmt->name];
+        if (is_string($stmt->name) && $statements_analyzer->isSuperGlobal('$' . $stmt->name)) {
+            $var_name = '$' . $stmt->name;
+
+            if (isset($context->vars_in_scope[$var_name])) {
+                $stmt->inferredType = clone $context->vars_in_scope[$var_name];
 
                 return null;
             }
 
-            $stmt->inferredType = Type::getArray();
-            $context->vars_in_scope['$' . $stmt->name] = Type::getArray();
-            $context->vars_possibly_in_scope['$' . $stmt->name] = true;
+            $type = $statements_analyzer->getGlobalType($var_name);
 
-            return null;
-        }
-
-        if ($context->is_global && ($stmt->name === 'argv' || $stmt->name === 'argc')) {
-            $var_name = '$' . $stmt->name;
-
-            if (!$context->hasVariable($var_name, $statements_analyzer)) {
-                if ($stmt->name === 'argv') {
-                    $context->vars_in_scope[$var_name] = new Type\Union([
-                        new Type\Atomic\TArray([
-                            Type::getInt(),
-                            Type::getString(),
-                        ]),
-                    ]);
-                } else {
-                    $context->vars_in_scope[$var_name] = Type::getInt();
-                }
-            }
-
+            $stmt->inferredType = $type;
+            $context->vars_in_scope[$var_name] = clone $type;
             $context->vars_possibly_in_scope[$var_name] = true;
-            $stmt->inferredType = clone $context->vars_in_scope[$var_name];
+
             return null;
         }
 
@@ -172,7 +139,7 @@ class VariableFetchAnalyzer
         }
 
         if ($passed_by_reference && $by_ref_type) {
-            ExpressionAnalyzer::assignByRefParam($statements_analyzer, $stmt, $by_ref_type, $context);
+            ExpressionAnalyzer::assignByRefParam($statements_analyzer, $stmt, $by_ref_type, $by_ref_type, $context);
 
             return null;
         }

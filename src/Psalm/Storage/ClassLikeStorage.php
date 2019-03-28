@@ -218,6 +218,11 @@ class ClassLikeStorage
     public $overridden_method_ids = [];
 
     /**
+     * @var array<string, string>
+     */
+    public $documenting_method_ids = [];
+
+    /**
      * @var array<string, array<string>>
      */
     public $interface_method_ids = [];
@@ -268,12 +273,12 @@ class ClassLikeStorage
     public $overridden_property_ids = [];
 
     /**
-     * @var array<string, array{Type\Union, ?string}>|null
+     * @var array<string, array<string, array{Type\Union}>>|null
      */
     public $template_types;
 
     /**
-     * @var array<string, array<int|string, Type\Atomic>>|null
+     * @var array<string, array<int|string, Type\Union>>|null
      */
     public $template_type_extends;
 

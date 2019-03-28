@@ -1,9 +1,9 @@
 <?php
 namespace Psalm\Tests;
 
+use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
-use Psalm\Context;
 use Psalm\IssueBuffer;
 use Psalm\Tests\Internal\Provider;
 
@@ -137,14 +137,12 @@ echo $a;';
                     'message' => 'Could not verify return type \'string|null\' for psalmCanVerify',
                     'file_name' => 'somefile.php',
                     'file_path' => 'somefile.php',
-                    'snippet' => 'function psalmCanVerify(int $your_code): ?string {
-  return $as_you . "type";
-}',
+                    'snippet' => 'function psalmCanVerify(int $your_code): ?string {',
                     'selected_text' => '?string',
                     'from' => 47,
                     'to' => 54,
                     'snippet_from' => 6,
-                    'snippet_to' => 85,
+                    'snippet_to' => 56,
                     'column_from' => 42,
                     'column_to' => 49,
                 ],
@@ -188,7 +186,7 @@ echo $a;';
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,message:string,line:int,error:string}>
      */
     public function providerTestJsonOutputErrors()
     {

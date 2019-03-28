@@ -1,13 +1,16 @@
 <?php
 namespace Psalm\Tests;
 
+use Psalm\Config;
+use Psalm\Context;
+
 class TryCatchTest extends TestCase
 {
     use Traits\ValidCodeAnalysisTestTrait;
     use Traits\InvalidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -161,7 +164,7 @@ class TryCatchTest extends TestCase
                         if (!empty($errors)) {
                             return $errors;
                         }
-                    }'
+                    }',
             ],
             'typeDoesNotContainTypeInCatch' => [
                 '<?php
@@ -200,13 +203,13 @@ class TryCatchTest extends TestCase
                                 echo "here";
                             }
                         }
-                    }'
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -273,5 +276,46 @@ class TryCatchTest extends TestCase
                 'error_message' => 'InvalidReturnType',
             ],
         ];
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage UncaughtThrowInGlobalScope
+     *
+     * @return                   void
+     */
+    public function testUncaughtThrowInGlobalScope()
+    {
+        Config::getInstance()->check_for_throws_in_global_scope = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                throw new \Exception();'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return                   void
+     */
+    public function testCaughtThrowInGlobalScope()
+    {
+        Config::getInstance()->check_for_throws_in_global_scope = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                try {
+                    throw new \Exception();
+                } catch (\Exception $e) {}'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
     }
 }

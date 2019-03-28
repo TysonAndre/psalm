@@ -4,12 +4,14 @@
 [![Packagist](https://img.shields.io/packagist/dt/vimeo/psalm.svg)](https://packagist.org/packages/vimeo/psalm)
 [![Travis CI](https://img.shields.io/travis/vimeo/psalm/master.svg)](https://travis-ci.org/vimeo/psalm/branches)
 [![Coverage Status](https://coveralls.io/repos/github/vimeo/psalm/badge.svg)](https://coveralls.io/github/vimeo/psalm)
+![Psalm coverage](https://spirit.psalm.dev/github/vimeo/psalm/coverage.svg?)
+
 
 Psalm is a static analysis tool for finding errors in PHP applications, built on top of [PHP Parser](https://github.com/nikic/php-parser).
 
 It's able to find a [large number of issues](https://github.com/vimeo/psalm/blob/master/docs/issues.md), but it can also be configured to only care about a small subset of those.
 
-[Try a live demo](https://getpsalm.org/), or install it in your project by following the Quickstart Guide below.
+[Try a live demo](https://psalm.dev/), or install it in your project by following the Quickstart Guide below.
 
 ## Details about this fork
 
@@ -24,7 +26,7 @@ This was customized for a narrow use case. It differs from the upstream repo psa
 
 ## Psalm documentation
 
-Documentation is available on [Psalm’s website](https://getpsalm.org/docs), generated from the [docs](https://github.com/vimeo/psalm/blob/master/docs) folder.
+Documentation is available on [Psalm’s website](https://psalm.dev/docs), generated from the [docs](https://github.com/vimeo/psalm/blob/master/docs) folder.
 
 ## Quickstart Guide
 

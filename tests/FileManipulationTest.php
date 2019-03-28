@@ -1,8 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Context;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 
 class FileManipulationTest extends TestCase
@@ -84,7 +84,7 @@ class FileManipulationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,string,string,string[],bool}>
      */
     public function providerValidCodeParse()
     {

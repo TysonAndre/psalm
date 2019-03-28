@@ -9,7 +9,7 @@ class ForTest extends \Psalm\Tests\TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -71,7 +71,7 @@ class ForTest extends \Psalm\Tests\TestCase
                           $v[$k] = $x;
                         }
                       }
-                    }'
+                    }',
             ],
             'whileTrueWithBreak' => [
                 '<?php
@@ -112,7 +112,7 @@ class ForTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -126,7 +126,7 @@ class ForTest extends \Psalm\Tests\TestCase
                     }
 
                     echo $array;',
-                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:4 - Possibly undefined ' .
+                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:4:29 - Possibly undefined ' .
                     'global variable $array, first seen on line 4',
             ],
             'forLoopInvalidation' => [

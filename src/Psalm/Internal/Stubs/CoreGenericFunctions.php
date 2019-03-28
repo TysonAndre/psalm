@@ -90,16 +90,6 @@ function array_diff_key(array $arr, array $arr2, array $arr3 = null, array $arr4
  * @psalm-template TValue
  *
  * @param array<TKey, TValue> $arr
- * @param bool            $preserve_keys
- * @return array<TKey, TValue>
- */
-function array_reverse(array $arr, bool $preserve_keys = false) {}
-
-/**
- * @psalm-template TKey as array-key
- * @psalm-template TValue
- *
- * @param array<TKey, TValue> $arr
  * @return array<TValue, TKey>
  */
 function array_flip(array $arr) {}
@@ -155,3 +145,11 @@ function array_change_key_case(array $arr, int $case = CASE_LOWER) {}
  * @return array<int, array<array-key, T>>
  */
 function array_chunk(array $arr, int $size, bool $preserve_keys = false) {}
+
+/**
+ * @psalm-template TKey as array-key
+ * @param TKey $key
+ * @param array<TKey, mixed> $search
+ * @return bool
+ */
+function array_key_exists($key, array $search) : bool { }

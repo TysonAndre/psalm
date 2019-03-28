@@ -443,7 +443,8 @@ class ArrayFetchAnalyzer
                     if ($in_assignment && $replacement_type) {
                         $type->type_params[1] = Type::combineUnionTypes(
                             $type->type_params[1],
-                            $replacement_type
+                            $replacement_type,
+                            $codebase
                         );
                     }
 
@@ -512,6 +513,12 @@ class ArrayFetchAnalyzer
                                     $type->properties[$key_value]
                                 );
                             }
+                        } elseif ($type->had_mixed_value) {
+                            $has_valid_offset = true;
+
+                            $type->properties[$key_value] = new Type\Union([new TMixed]);
+
+                            $array_access_type = Type::getMixed();
                         } else {
                             if (!$context->inside_isset || $type->sealed) {
                                 $object_like_keys = array_keys($type->properties);
@@ -627,7 +634,15 @@ class ArrayFetchAnalyzer
             if ($type instanceof TString) {
                 if ($in_assignment && $replacement_type) {
                     if ($replacement_type->hasMixed()) {
-                        $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                        if (!$context->collect_initializations
+                            && !$context->collect_mutations
+                            && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                            && (!(($parent_source = $statements_analyzer->getSource())
+                                    instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                                || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+                        ) {
+                            $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                        }
 
                         if (IssueBuffer::accepts(
                             new MixedStringOffsetAssignment(
@@ -639,7 +654,15 @@ class ArrayFetchAnalyzer
                             // fall through
                         }
                     } else {
-                        $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+                        if (!$context->collect_initializations
+                            && !$context->collect_mutations
+                            && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                            && (!(($parent_source = $statements_analyzer->getSource())
+                                    instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                                || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+                        ) {
+                            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+                        }
                     }
                 }
 
@@ -648,7 +671,7 @@ class ArrayFetchAnalyzer
                 } elseif ($type instanceof TLiteralString) {
                     if (!strlen($type->value)) {
                         $valid_offset_type = Type::getEmpty();
-                    } else {
+                    } elseif (strlen($type->value) < 10) {
                         $valid_offsets = [];
 
                         for ($i = -strlen($type->value), $l = strlen($type->value); $i < $l; $i++) {
@@ -656,6 +679,8 @@ class ArrayFetchAnalyzer
                         }
 
                         $valid_offset_type = new Type\Union($valid_offsets);
+                    } else {
+                        $valid_offset_type = Type::getInt();
                     }
                 } else {
                     $valid_offset_type = Type::getInt();
@@ -687,7 +712,15 @@ class ArrayFetchAnalyzer
             }
 
             if ($type instanceof TMixed || $type instanceof TTemplateParam || $type instanceof TEmpty) {
-                $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                if (!$context->collect_initializations
+                    && !$context->collect_mutations
+                    && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                    && (!(($parent_source = $statements_analyzer->getSource())
+                            instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                        || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+                ) {
+                    $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                }
 
                 if (!$context->inside_isset) {
                     if ($in_assignment) {
@@ -718,7 +751,15 @@ class ArrayFetchAnalyzer
                 break;
             }
 
-            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            }
 
             if ($type instanceof Type\Atomic\TFalse && $array_type->ignore_falsable_issues) {
                 continue;
@@ -875,7 +916,15 @@ class ArrayFetchAnalyzer
         }
 
         if ($offset_type->hasMixed()) {
-            $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+            }
 
             if (IssueBuffer::accepts(
                 new MixedArrayOffset(
@@ -887,7 +936,15 @@ class ArrayFetchAnalyzer
                 // fall through
             }
         } else {
-            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            }
 
             if ($expected_offset_types) {
                 $invalid_offset_type = $expected_offset_types[0];

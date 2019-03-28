@@ -31,7 +31,7 @@ class ArrayAssignmentTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -1043,7 +1043,7 @@ class ArrayAssignmentTest extends TestCase
                     $out["attr"] = (array) ($out["attr"] ?? []);
                     $out["attr"]["bar"] = 1;',
                 'assertions' => [
-                    '$out[\'attr\'][\'bar\']' => 'int'
+                    '$out[\'attr\'][\'bar\']' => 'int',
                 ],
             ],
             'arrayAssignmentOnMixedArray' => [
@@ -1059,7 +1059,7 @@ class ArrayAssignmentTest extends TestCase
             'implementsArrayAccessAllowNullOffset' => [
                 '<?php
                     /**
-                     * @template-implements ArrayAccess<int, string>
+                     * @template-implements ArrayAccess<?int, string>
                      */
                     class C implements ArrayAccess {
                         public function offsetExists(int $offset) : bool { return true; }
@@ -1078,7 +1078,7 @@ class ArrayAssignmentTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1214,7 +1214,7 @@ class ArrayAssignmentTest extends TestCase
                     $_GET["foo"][0] = "5";',
                 'error_message' => 'MixedArrayAssignment',
             ],
-            'implementsArrayAccessAllowNullOffset' => [
+            'implementsArrayAccessPreventNullOffset' => [
                 '<?php
                     /**
                      * @template-implements ArrayAccess<int, string>
@@ -1238,7 +1238,7 @@ class ArrayAssignmentTest extends TestCase
                     $key = [1,2,3];
                     $storage = new \SplObjectStorage();
                     $storage[$key] = "test";',
-                'error_message' => 'InvalidArgument'
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

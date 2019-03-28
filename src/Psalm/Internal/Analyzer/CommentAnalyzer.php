@@ -25,7 +25,7 @@ class CommentAnalyzer
     /**
      * @param  string           $comment
      * @param  Aliases          $aliases
-     * @param  array<string, array{Type\Union, ?string}>|null   $template_type_map
+     * @param  array<string, array<string, array{Type\Union}>>|null   $template_type_map
      * @param  int|null         $var_line_number
      * @param  int|null         $came_from_line_number what line number in $source that $comment came from
      * @param  array<string, array<int, string>> $type_aliases
@@ -431,7 +431,7 @@ class CommentAnalyzer
         }
 
         if (strpos(strtolower($comments['description']), '@inheritdoc') !== false
-            || isset($comments['specials']['inheritdoc'])) {
+            || isset($comments['specials']['inheritdoc']) || isset($comments['specials']['inheritDoc'])) {
             $info->inheritdoc = true;
         }
 
@@ -569,7 +569,7 @@ class CommentAnalyzer
      * @return ClassLikeDocblockComment
      * @psalm-suppress MixedArrayAccess
      */
-    public static function extractClassLikeDocblockInfo($comment, $line_number)
+    public static function extractClassLikeDocblockInfo(\PhpParser\Node $node, $comment, $line_number)
     {
         $comments = DocComment::parse($comment, $line_number);
 
@@ -582,15 +582,19 @@ class CommentAnalyzer
             foreach ($all_templates as $template_line) {
                 $template_type = preg_split('/[\s]+/', $template_line);
 
-                if (count($template_type) > 2
-                    && in_array(strtolower($template_type[1]), ['as', 'super', 'of'], true)
+                $template_name = array_shift($template_type);
+
+                if (count($template_type) > 1
+                    && in_array(strtolower($template_type[0]), ['as', 'super', 'of'], true)
                 ) {
+                    $template_modifier = strtolower(array_shift($template_type));
                     $info->templates[] = [
-                        $template_type[0],
-                        strtolower($template_type[1]), $template_type[2]
+                        $template_name,
+                        $template_modifier,
+                        implode(' ', $template_type)
                     ];
                 } else {
-                    $info->templates[] = [$template_type[0]];
+                    $info->templates[] = [$template_name];
                 }
             }
         }
@@ -657,7 +661,7 @@ class CommentAnalyzer
             $all_methods = (isset($comments['specials']['method']) ? $comments['specials']['method'] : [])
                 + (isset($comments['specials']['psalm-method']) ? $comments['specials']['psalm-method'] : []);
 
-            foreach ($all_methods as $method_entry) {
+            foreach ($all_methods as $line_number => $method_entry) {
                 $method_entry = preg_replace('/[ \t]+/', ' ', trim($method_entry));
 
                 $docblock_lines = [];
@@ -750,6 +754,23 @@ class CommentAnalyzer
                     || !$statements[0]->stmts[0] instanceof \PhpParser\Node\Stmt\ClassMethod
                 ) {
                     throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
+                }
+
+                /** @var \PhpParser\Comment\Doc */
+                $node_doc_comment = $node->getDocComment();
+
+                $statements[0]->stmts[0]->setAttribute('startLine', $node_doc_comment->getLine());
+                $statements[0]->stmts[0]->setAttribute('startFilePos', $node_doc_comment->getFilePos());
+                $statements[0]->stmts[0]->setAttribute('endFilePos', $node->getAttribute('startFilePos'));
+
+                if ($doc_comment = $statements[0]->stmts[0]->getDocComment()) {
+                    $statements[0]->stmts[0]->setDocComment(
+                        new \PhpParser\Comment\Doc(
+                            $doc_comment->getText(),
+                            $line_number,
+                            $node_doc_comment->getFilePos()
+                        )
+                    );
                 }
 
                 $info->methods[] = $statements[0]->stmts[0];

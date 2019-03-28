@@ -7,7 +7,7 @@ class AssignmentTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -45,11 +45,17 @@ class AssignmentTest extends TestCase
                         echo $x;
                     }',
             ],
+            'ifAssignment' => [
+                '<?php
+                    if ($foo = rand(0, 1)) {
+                        echo $foo;
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {

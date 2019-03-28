@@ -7,7 +7,7 @@ class RedundantConditionTest extends TestCase
     use Traits\InvalidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -283,7 +283,7 @@ class RedundantConditionTest extends TestCase
                         if ($bar !== null) {}
                     }',
                 'assertions' => [],
-                'error_levels' => ['RedundantConditionGivenDocblockType'],
+                'error_levels' => ['DocblockTypeContradiction'],
             ],
             'isObjectAssertionOnDocblockType' => [
                 '<?php
@@ -488,7 +488,7 @@ class RedundantConditionTest extends TestCase
                         $b = $a && rand(0, 1);
                     }',
                 [],
-                'error_levels' => ['MissingParamType']
+                'error_levels' => ['MissingParamType'],
             ],
             'noRedundantConditionAfterAssertingValue' => [
                 '<?php
@@ -531,7 +531,7 @@ class RedundantConditionTest extends TestCase
                         }
                     }',
                 [],
-                ['MixedAssignment', 'MixedArrayAccess', 'MixedArrayOffset']
+                ['MixedAssignment', 'MixedArrayAccess', 'MixedArrayOffset'],
             ],
             'emptyKnowingArrayType' => [
                 '<?php
@@ -549,11 +549,34 @@ class RedundantConditionTest extends TestCase
                         }
                     }',
             ],
+            'suppressRedundantConditionAfterAssertNonEmpty' => [
+                '<?php
+                    /**
+                     * @param array<int> $a
+                     */
+                    function process(array $a): void {
+                        assert(!empty($a));
+                        /** @psalm-suppress RedundantConditionGivenDocblockType */
+                        assert(is_int($a[0]));
+                    }',
+            ],
+            'allowChecksOnFalsyIf' => [
+                '<?php
+                    function foo(?string $s) : string {
+                        if ($s == null) {
+                            if ($s === null) {}
+
+                            return "hello";
+                        } else {
+                            return $s;
+                        }
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -842,7 +865,106 @@ class RedundantConditionTest extends TestCase
                         $b = $a && rand(0, 1);
                     }',
                 'error_message' => 'RedundantCondition',
-                'error_levels' => ['MissingParamType']
+                'error_levels' => ['MissingParamType'],
+            ],
+            'negatedInstanceof' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    function foo(A $a) : void {
+                        if (!$a instanceof B) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'redundantInstanceof' => [
+                '<?php
+                    /** @param Exception $a */
+                    function foo($a) : void {
+                        if ($a instanceof \Exception) {}
+                    }',
+                'error_message' => 'RedundantConditionGivenDocblockType',
+            ],
+            'preventDocblockTypesBeingIdenticalToTrue' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @param  A $a
+                     */
+                    function foo($a, $b) : void {
+                        if ($a === true) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventDocblockTypesBeingIdenticalToTrueReversed' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @param  A $a
+                     */
+                    function foo($a, $b) : void {
+                        if (true === $a) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventDocblockTypesBeingIdenticalToFalse' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @param  A $a
+                     */
+                    function foo($a, $b) : void {
+                        if ($a === false) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventDocblockTypesBeingIdenticalToFalseReversed' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @param  A $a
+                     */
+                    function foo($a, $b) : void {
+                        if (false === $a) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventDocblockTypesBeingSameAsEmptyArrayReversed' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @param  A $a
+                     */
+                    function foo($a, $b) : void {
+                        if ([] == $a) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventDocblockTypesBeingIdenticalToEmptyArrayReversed' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @param  A $a
+                     */
+                    function foo($a, $b) : void {
+                        if ([] === $a) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventTypesBeingIdenticalToEmptyArrayReversed' => [
+                '<?php
+                    class A {}
+
+                    function foo(A $a, $b) : void {
+                        if ([] === $a) {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

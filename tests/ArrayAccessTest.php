@@ -7,7 +7,7 @@ class ArrayAccessTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -151,7 +151,7 @@ class ArrayAccessTest extends TestCase
                     $e = $doc->getElementsByTagName("node")[0];',
                 [
                     '$e' => 'null|DOMElement',
-                ]
+                ],
             ],
             'getOnArrayAcccess' => [
                 '<?php
@@ -216,7 +216,7 @@ class ArrayAccessTest extends TestCase
                           $cellOptions[0] = "b";
                         }
                       }
-                    }'
+                    }',
             ],
             'arrayAccessPropertyAssertion' => [
                 '<?php
@@ -258,7 +258,7 @@ class ArrayAccessTest extends TestCase
                         }
 
                         if (isset($settings["c"])) {}
-                    }'
+                    }',
             ],
             'arrayKeyChecks' => [
                 '<?php
@@ -307,7 +307,7 @@ class ArrayAccessTest extends TestCase
                         if ($i === "hel") {}
                     }',
             ],
-            'allowMixedTypeCoercionArrayKeyAccess' =>  [
+            'allowMixedTypeCoercionArrayKeyAccess' => [
                 '<?php
                     /**
                      * @param array<array-key, int> $i
@@ -321,7 +321,7 @@ class ArrayAccessTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedTypeCoercion'],
             ],
-            'allowNegativeStringOffset' =>  [
+            'allowNegativeStringOffset' => [
                 '<?php
                     $a = "hello";
                     echo $a[-5];
@@ -351,13 +351,13 @@ class ArrayAccessTest extends TestCase
 
                     echo $params["b"]["c"];',
                 [],
-                ['MixedArrayAccess', 'MixedArgument']
+                ['MixedArrayAccess', 'MixedArgument'],
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -437,7 +437,7 @@ class ArrayAccessTest extends TestCase
                 '<?php
                     $params = ["key" => "value"];
                     echo $params["fieldName"];',
-                'error_message' => 'InvalidArrayOffset - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Cannot access '
+                'error_message' => 'InvalidArrayOffset - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:26 - Cannot access '
                     . 'value on variable $params using offset value of',
             ],
             'missingArrayOffsetAfterUnset' => [
@@ -565,7 +565,7 @@ class ArrayAccessTest extends TestCase
                     }',
                 'error_message' => 'TypeDoesNotContainType',
             ],
-            'forbidNegativeStringOffsetOutOfRange' =>  [
+            'forbidNegativeStringOffsetOutOfRange' => [
                 '<?php
                     $a = "hello";
                     echo $a[-6];',

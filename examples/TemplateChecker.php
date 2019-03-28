@@ -105,12 +105,22 @@ class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
 
         $constructor_id = $class . '::__construct';
 
-        $this->project_analyzer->getMethodMutations($constructor_id, $this_context);
+        $this->project_analyzer->getMethodMutations(
+            $constructor_id,
+            $this_context,
+            $this->getRootFilePath(),
+            $this->getRootFileName()
+        );
 
         $this_context->vars_in_scope['$this'] = new Type\Union([new Type\Atomic\TNamedObject($class)]);
 
         // check the actual method
-        $this->project_analyzer->getMethodMutations($method_id, $this_context);
+        $this->project_analyzer->getMethodMutations(
+            $method_id,
+            $this_context,
+            $this->getRootFilePath(),
+            $this->getRootFileName()
+        );
 
         $view_context = new Context();
         $view_context->self = self::VIEW_CLASS;

@@ -7,7 +7,7 @@ class TypeAnnotationTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -37,7 +37,7 @@ class TypeAnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'typeAliasBeforeFunction' => [
                 '<?php
@@ -64,7 +64,7 @@ class TypeAnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'typeAliasInSeparateBlockBeforeFunction' => [
                 '<?php
@@ -92,7 +92,7 @@ class TypeAnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'almostFreeStandingTypeAlias' => [
                 '<?php
@@ -121,7 +121,7 @@ class TypeAnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'typeAliasUsedTwice' => [
                 '<?php
@@ -159,7 +159,7 @@ class TypeAnnotationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {

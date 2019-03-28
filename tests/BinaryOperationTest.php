@@ -81,7 +81,7 @@ class BinaryOperationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -201,7 +201,7 @@ class BinaryOperationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -253,7 +253,7 @@ class BinaryOperationTest extends TestCase
                 '<?php
                     $a = gmp_init(2);
                     $b = "a" + $a;',
-                'error_message' => 'InvalidOperand - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Cannot add GMP to non-numeric type',
+                'error_message' => 'InvalidOperand - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:26 - Cannot add GMP to non-numeric type',
             ],
             'stringIncrement' => [
                 '<?php

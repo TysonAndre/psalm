@@ -1,11 +1,11 @@
 <?php
 namespace Psalm\Tests;
 
+use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Clause;
-use Psalm\Context;
 use Psalm\Type;
 use Psalm\Type\Algebra;
 use Psalm\Type\Reconciler;
@@ -93,7 +93,7 @@ class TypeReconciliationTest extends TestCase
 
         $negated_formula = Algebra::negateFormula($formula);
 
-        $this->assertSame(1, count($negated_formula));
+        $this->assertCount(1, $negated_formula);
         $this->assertSame(['$a' => ['falsy']], $negated_formula[0]->possibilities);
 
         $formula = [
@@ -102,7 +102,7 @@ class TypeReconciliationTest extends TestCase
 
         $negated_formula = Algebra::negateFormula($formula);
 
-        $this->assertSame(2, count($negated_formula));
+        $this->assertCount(2, $negated_formula);
         $this->assertSame(['$a' => ['falsy']], $negated_formula[0]->possibilities);
         $this->assertSame(['$b' => ['falsy']], $negated_formula[1]->possibilities);
 
@@ -113,7 +113,7 @@ class TypeReconciliationTest extends TestCase
 
         $negated_formula = Algebra::negateFormula($formula);
 
-        $this->assertSame(1, count($negated_formula));
+        $this->assertCount(1, $negated_formula);
         $this->assertSame(['$a' => ['falsy'], '$b' => ['falsy']], $negated_formula[0]->possibilities);
 
         $formula = [
@@ -122,7 +122,7 @@ class TypeReconciliationTest extends TestCase
 
         $negated_formula = Algebra::negateFormula($formula);
 
-        $this->assertSame(3, count($negated_formula));
+        $this->assertCount(3, $negated_formula);
         $this->assertSame(['$a' => ['!int']], $negated_formula[0]->possibilities);
         $this->assertSame(['$a' => ['!string']], $negated_formula[1]->possibilities);
         $this->assertSame(['$b' => ['falsy']], $negated_formula[2]->possibilities);
@@ -176,13 +176,13 @@ class TypeReconciliationTest extends TestCase
 
         $simplified_formula = Algebra::simplifyCNF($formula);
 
-        $this->assertSame(2, count($simplified_formula));
+        $this->assertCount(2, $simplified_formula);
         $this->assertSame(['$a' => ['!falsy']], $simplified_formula[0]->possibilities);
         $this->assertSame(['$b' => ['falsy']], $simplified_formula[1]->possibilities);
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,string,string}>
      */
     public function providerTestReconcilation()
     {
@@ -233,7 +233,7 @@ class TypeReconciliationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,string}>
      */
     public function providerTestTypeIsContainedBy()
     {
@@ -245,7 +245,7 @@ class TypeReconciliationTest extends TestCase
             'unionContainsWithFalse' => ['false', 'string|false'],
             'objectLikeTypeWithPossiblyUndefinedToGeneric' => [
                 'array{0:array{a:string}, 1:array{c:string, e:string}}',
-                'array<int, array<string, string>>'
+                'array<int, array<string, string>>',
             ],
             'objectLikeTypeWithPossiblyUndefinedToEmpty' => [
                 'array<empty, empty>',
@@ -255,7 +255,7 @@ class TypeReconciliationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -311,7 +311,7 @@ class TypeReconciliationTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['RedundantConditionGivenDocblockType'],
+                'error_levels' => ['DocblockTypeContradiction'],
             ],
             'notInstanceof' => [
                 '<?php
@@ -823,7 +823,7 @@ class TypeReconciliationTest extends TestCase
                         if (is_numeric($b) && $a === $b) {
                             echo $a;
                         }
-                    }'
+                    }',
             ],
             'reconcileNullableStringWithWeakEquality' => [
                 '<?php
@@ -973,7 +973,7 @@ class TypeReconciliationTest extends TestCase
                      */
                     function Foo($thing) : void {
                         if (is_numeric($thing)) {}
-                    }'
+                    }',
             ],
             'filterSubclassBasedOnParentNegativeInstanceof' => [
                 '<?php
@@ -1022,7 +1022,7 @@ class TypeReconciliationTest extends TestCase
                         if (is_array($p)) {
                             takesArray($p);
                         }
-                    }'
+                    }',
             ],
             'eliminateNonIterable' => [
                 '<?php
@@ -1109,7 +1109,7 @@ class TypeReconciliationTest extends TestCase
                         }
 
                         if (!isset($v[0])) {}
-                    }'
+                    }',
             ],
             'arrayEquality' => [
                 '<?php
@@ -1137,7 +1137,7 @@ class TypeReconciliationTest extends TestCase
                     }',
                 'assertions' => [
                     '$a' => 'A',
-                ]
+                ],
             ],
             'isNumericCanBeScalar' => [
                 '<?php
@@ -1168,7 +1168,7 @@ class TypeReconciliationTest extends TestCase
                         }
 
                         return is_string($maybe) ? $maybe : get_class($maybe);
-                    }'
+                    }',
             ],
             'allowObjectToStringReconciliation' => [
                 '<?php
@@ -1184,7 +1184,7 @@ class TypeReconciliationTest extends TestCase
                         }
 
                         return is_object($maybe) ? get_class($maybe) : $maybe;
-                    }'
+                    }',
             ],
             'removeArrayWithIterableCheck' => [
                 '<?php
@@ -1268,11 +1268,53 @@ class TypeReconciliationTest extends TestCase
                         return $a;
                     }',
             ],
+            'dontChangeScalar' => [
+                '<?php
+                    /**
+                     * @param scalar|null $val
+                     */
+                    function foo($val) : ? bool {
+                        if ("1" === $val || 1 === $val) {
+                            return true;
+                        } elseif ("0" === $val || 0 === $val) {
+                            return false;
+                        }
+
+                        return null;
+                    }',
+            ],
+            'emptyArrayCheck' => [
+                '<?php
+                    /**
+                     * @param non-empty-array $x
+                     */
+                    function example(array $x): void {}
+
+                    /** @var array */
+                    $x = [];
+                    if ($x !== []) {
+                        example($x);
+                    }',
+            ],
+            'emptyArrayCheckInverse' => [
+                '<?php
+                    /**
+                     * @param non-empty-array $x
+                     */
+                    function example(array $x): void {}
+
+                    /** @var array */
+                    $x = [];
+                    if ($x === []) {
+                    } else {
+                        example($x);
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1516,7 +1558,7 @@ class TypeReconciliationTest extends TestCase
                     }
 
                     if ($a instanceof A) {}',
-                'error_message' => 'RedundantCondition'
+                'error_message' => 'RedundantCondition',
             ],
         ];
     }

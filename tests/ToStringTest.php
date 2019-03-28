@@ -7,7 +7,7 @@ class ToStringTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -94,7 +94,7 @@ class ToStringTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -177,7 +177,7 @@ class ToStringTest extends TestCase
                     }',
                 'error_message' => 'ImplicitToStringCast',
                 [],
-                true
+                true,
             ],
             'resourceCannotBeCoercedToString' => [
                 '<?php
@@ -185,6 +185,39 @@ class ToStringTest extends TestCase
                     $a = fopen("php://memory", "r");
                     takesString($a);',
                 'error_message' => 'InvalidArgument',
+            ],
+            'resourceOrFalseToString' => [
+                '<?php
+                    $a = fopen("php://memory", "r");
+                    if (rand(0, 1)) {
+                        $a = [];
+                    }
+                    $b = (string) $a;',
+                'error_message' => 'PossiblyInvalidCast',
+            ],
+            'cannotCastInsideString' => [
+                '<?php
+                    class NotStringCastable {}
+                    $object = new NotStringCastable();
+                    echo "$object";',
+                'error_message' => 'InvalidCast',
+            ],
+            'warnAboutNullableCast' => [
+                '<?php
+                    class ClassWithToString {
+                        public function __toString(): string {
+                            return "";
+                        }
+                    }
+
+                    function maybeShow(?string $message): void {
+                        if ($message !== null) {
+                            echo $message;
+                        }
+                    }
+
+                    maybeShow(new ClassWithToString());',
+                'error_message' => 'ImplicitToStringCast',
             ],
         ];
     }

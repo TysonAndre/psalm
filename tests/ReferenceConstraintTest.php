@@ -7,7 +7,7 @@ class ReferenceConstraintTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -82,11 +82,72 @@ class ReferenceConstraintTest extends TestCase
                     'MixedOperand',
                 ],
             ],
+            'paramOutRefineType' => [
+                '<?php
+                    /**
+                     * @param-out string $s
+                     */
+                    function addFoo(?string &$s) : void {
+                        if ($s === null) {
+                            $s = "hello";
+                        }
+                        $s .= "foo";
+                    }
+
+                    addFoo($a);
+
+                    echo strlen($a);',
+            ],
+            'paramOutChangeType' => [
+                '<?php
+                    /**
+                     * @param-out int $s
+                     */
+                    function addFoo(?string &$s) : void {
+                        if ($s === null) {
+                            $s = 5;
+                            return;
+                        }
+                        $s = 4;
+                    }
+
+                    addFoo($a);',
+                'assertions' => [
+                    '$a' => 'int',
+                ],
+            ],
+            'paramOutReturn' => [
+                '<?php
+                    /**
+                     * @param-out bool $s
+                     */
+                    function foo(?bool &$s) : void {
+                        $s = true;
+                    }
+
+                    $b = false;
+                    foo($b);',
+                'assertions' => [
+                    '$b' => 'bool',
+                ],
+            ],
+            'dontChangeThis' => [
+                '<?php
+                    interface I {}
+                    class C implements I {
+                        public function foo() : self {
+                            bar($this);
+                            return $this;
+                        }
+                    }
+
+                    function bar(I &$i) : void {}',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {

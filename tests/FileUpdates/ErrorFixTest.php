@@ -4,8 +4,8 @@ namespace Psalm\Tests\FileUpdates;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Provider\Providers;
-use Psalm\Tests\TestConfig;
 use Psalm\Tests\Internal\Provider;
+use Psalm\Tests\TestConfig;
 
 class ErrorFixTest extends \Psalm\Tests\TestCase
 {
@@ -117,7 +117,7 @@ class ErrorFixTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return array
+     * @return array<string,array{start_files:array<string,string>,middle_files:array<string,string>,end_files:array<string,string>,error_counts:array<int,int>,error_levels?:array<string,string>}>
      */
     public function providerTestErrorFix()
     {
@@ -204,7 +204,7 @@ class ErrorFixTest extends \Psalm\Tests\TestCase
                 'error_counts' => [2, 1, 0],
                 [
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
-                ]
+                ],
             ],
             'traitMethodRename' => [
                 'start_files' => [
@@ -264,7 +264,7 @@ class ErrorFixTest extends \Psalm\Tests\TestCase
                             }
                         }',
                 ],
-                'error_positions' => [0, 1, 0],
+                'error_counts' => [0, 1, 0],
             ],
         ];
     }

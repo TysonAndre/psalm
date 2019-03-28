@@ -7,7 +7,7 @@ class ReturnTypeTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -529,7 +529,7 @@ class ReturnTypeTest extends TestCase
                         }
 
                         return 0;
-                    }'
+                    }',
             ],
             'stopAfterFirstReturn' => [
                 '<?php
@@ -587,11 +587,23 @@ class ReturnTypeTest extends TestCase
                         foo();
                     }',
             ],
+            'suppressInvalidReturnType' => [
+                '<?php
+                    /**
+                     * @psalm-suppress InvalidReturnType
+                     */
+                    function calculate(string $foo): int {
+                        switch ($foo) {
+                            case "a":
+                                return 0;
+                        }
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -949,6 +961,13 @@ class ReturnTypeTest extends TestCase
                         return 5;
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'invalidReturnTypeCorrectLine' => [
+                '<?php
+                    function f1(
+                        int $a
+                    ): string {}',
+                'error_message' => 'InvalidReturnType - src/somefile.php:4:24',
             ],
         ];
     }

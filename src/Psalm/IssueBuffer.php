@@ -140,6 +140,10 @@ class IssueBuffer
             return 'InvalidDocblock';
         }
 
+        if ($issue_type === 'UnusedClosureParam') {
+            return 'UnusedParam';
+        }
+
         return null;
     }
 
@@ -162,8 +166,6 @@ class IssueBuffer
         if (!$project_analyzer->show_issues) {
             return false;
         }
-
-        $error_message = $issue_type . ' - ' . $e->getShortLocation() . ' - ' . $e->getMessage();
 
         if ($e instanceof ClassIssue
             && $config->getReportingLevelForClass($issue_type, $e->fq_classlike_name) === Config::REPORT_INFO
@@ -206,7 +208,12 @@ class IssueBuffer
         }
 
         if ($config->throw_exception) {
-            throw new Exception\CodeException($error_message);
+            throw new Exception\CodeException(
+                $issue_type
+                    . ' - ' . $e->getShortLocation()
+                    . ':' . $e->getLocation()->getColumn()
+                    . ' - ' . $e->getMessage()
+            );
         }
 
         if (!self::alreadyEmitted($emitted_key)) {
@@ -345,6 +352,28 @@ class IssueBuffer
             );
         }
 
+        $after_analysis_hooks = $codebase->config->after_analysis;
+
+        if ($after_analysis_hooks) {
+            $source_control_info = null;
+            $build_info = (new \Psalm\Internal\ExecutionEnvironment\BuildInfoCollector($_SERVER))->collect();
+
+            try {
+                $source_control_info = (new \Psalm\Internal\ExecutionEnvironment\GitInfoCollector())->collect();
+            } catch (\RuntimeException $e) {
+                // do nothing
+            }
+
+            foreach ($after_analysis_hooks as $after_analysis_hook) {
+                $after_analysis_hook::afterAnalysis(
+                    $codebase,
+                    self::$issues_data,
+                    $build_info,
+                    $source_control_info
+                );
+            }
+        }
+
         foreach ($project_analyzer->reports as $format => $path) {
             file_put_contents(
                 $path,
@@ -380,10 +409,8 @@ class IssueBuffer
                 echo 'Checks took ' . number_format(microtime(true) - $start_time, 2) . ' seconds';
                 echo ' and used ' . number_format(memory_get_peak_usage() / (1024 * 1024), 3) . 'MB of memory' . "\n";
 
-                if ($is_full) {
-                    $analysis_summary = $codebase->analyzer->getTypeInferenceSummary();
-                    echo $analysis_summary . "\n";
-                }
+                $analysis_summary = $codebase->analyzer->getTypeInferenceSummary($codebase);
+                echo $analysis_summary . "\n";
 
                 if ($add_stats) {
                     echo '-----------------' . "\n";

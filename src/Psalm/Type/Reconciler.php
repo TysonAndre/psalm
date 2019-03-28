@@ -22,6 +22,8 @@ use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TCallableArray;
+use Psalm\Type\Atomic\TCallableObjectLikeArray;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
@@ -52,7 +54,7 @@ class Reconciler
      * @param  array<string, bool>       $referenced_var_ids
      * @param  StatementsAnalyzer         $statements_analyzer
      * @param  CodeLocation|null         $code_location
-     * @param   array<string, array{0:Type\Union, 1:null|string}> $template_type_map
+     * @param  array<string, array<string, array{Type\Union}>> $template_type_map
      *
      * @return array<string, Type\Union>
      */
@@ -167,6 +169,7 @@ class Reconciler
             $has_negation = false;
             $has_equality = false;
             $has_isset = false;
+            $has_not_isset = false;
             $has_count_check = false;
 
             foreach ($new_type_parts as $new_type_part_parts) {
@@ -185,6 +188,8 @@ class Reconciler
                     $has_isset = $has_isset
                         || $new_type_part_part === 'isset'
                         || $new_type_part_part === 'array-key-exists';
+
+                    $has_not_isset = $has_not_isset || $new_type_part_part === '!isset';
 
                     $has_count_check = $has_count_check
                         || $new_type_part_part === 'non-empty-countable';
@@ -232,7 +237,8 @@ class Reconciler
                         $key_parts,
                         $existing_types,
                         $changed_var_ids,
-                        $result_type
+                        $result_type,
+                        $has_not_isset
                     );
                 }
             } elseif ($code_location
@@ -241,6 +247,7 @@ class Reconciler
                 && !$has_equality
                 && !$has_count_check
                 && !$result_type->hasMixed()
+                && !$result_type->hasTemplate()
                 && !$result_type->hasType('iterable')
                 && (!$has_isset || substr($key, -1, 1) !== ']')
             ) {
@@ -294,7 +301,7 @@ class Reconciler
      * @param   CodeLocation        $code_location
      * @param   string[]            $suppressed_issues
      * @param   0|1|2               $failed_reconciliation if the types cannot be reconciled, we need to know
-     * @param   array<string, array{0:Type\Union, 1:null|string}> $template_type_map
+     * @param   array<string, array<string, array{Type\Union}>> $template_type_map
      *
      * @return  Type\Union
      */
@@ -333,14 +340,16 @@ class Reconciler
             $is_equality = true;
         }
 
+        if ($existing_var_type === null && is_string($key) &&
+            $statements_analyzer->isSuperGlobal($key)
+        ) {
+            $existing_var_type = $statements_analyzer->getGlobalType($key);
+        }
+
         if ($existing_var_type === null) {
             if (($new_var_type === 'isset' && !$is_negation)
                 || ($new_var_type === 'empty' && $is_negation)
             ) {
-                if ($key === '$_SESSION') {
-                    return Type::getArray();
-                }
-
                 return Type::getMixed($inside_loop);
             }
 
@@ -577,6 +586,10 @@ class Reconciler
 
                     $existing_var_type->removeType($type_key);
                 }
+
+                if ($type instanceof TTemplateParam) {
+                    $did_remove_type = true;
+                }
             }
 
             if (!$did_remove_type || empty($existing_var_type->getTypes())) {
@@ -663,10 +676,14 @@ class Reconciler
                 ) {
                     $callable_types[] = $type;
                     $did_remove_type = true;
-                } elseif ($type instanceof TArray || $type instanceof ObjectLike) {
+                } elseif ($type instanceof TArray) {
                     $type = clone $type;
-                    $type->callable = true;
-
+                    $type = new TCallableArray($type->type_params);
+                    $callable_types[] = $type;
+                    $did_remove_type = true;
+                } elseif ($type instanceof ObjectLike) {
+                    $type = clone $type;
+                    $type = new TCallableObjectLikeArray($type->properties);
                     $callable_types[] = $type;
                     $did_remove_type = true;
                 } else {
@@ -855,6 +872,35 @@ class Reconciler
             $failed_reconciliation = 2;
 
             return Type::getMixed();
+        }
+
+        $is_maybe_callable_array = false;
+
+        if ($new_var_type === 'array' && isset($existing_var_atomic_types['callable'])) {
+            $existing_var_type->removeType('callable');
+
+            if (!isset($existing_var_atomic_types['array'])) {
+                $existing_var_type->addType(
+                    new TCallableObjectLikeArray([
+                        Type::getMixed(),
+                        Type::getString()
+                    ])
+                );
+            } else {
+                $array_combination = \Psalm\Internal\Type\TypeCombination::combineTypes([
+                    new TCallableObjectLikeArray([
+                        Type::getMixed(),
+                        Type::getString()
+                    ]),
+                    $existing_var_atomic_types['array']
+                ]);
+
+                $existing_var_type->addType(
+                    $array_combination->getTypes()['array']
+                );
+
+                $is_maybe_callable_array = true;
+            }
         }
 
         if (isset($existing_var_atomic_types['int'])
@@ -1130,6 +1176,7 @@ class Reconciler
                 && $code_location
                 && $new_type->getId() === $existing_var_type->getId()
                 && !$is_equality
+                && !$is_maybe_callable_array
             ) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
@@ -1224,7 +1271,7 @@ class Reconciler
     }
 
     /**
-     * @param array<string, array{0:Type\Union, 1:null|string}> $template_type_map
+     * @param array<string, array<string, array{0:Type\Union, 1?: int}>> $template_type_map
      */
     private static function filterTypeWithAnother(
         Codebase $codebase,
@@ -1387,8 +1434,12 @@ class Reconciler
             );
         }
 
-        if (!$is_equality && ($new_var_type === 'isset' || $new_var_type === 'array-key-exists')) {
-            return Type::getNull();
+        if (!$is_equality) {
+            if ($new_var_type === 'isset') {
+                return Type::getNull();
+            } elseif ($new_var_type === 'array-key-exists') {
+                return Type::getEmpty();
+            }
         }
 
         $existing_var_atomic_types = $existing_var_type->getTypes();
@@ -1411,7 +1462,7 @@ class Reconciler
                         $existing_var_type,
                         $old_var_type_string,
                         $key,
-                        $new_var_type,
+                        '!' . $new_var_type,
                         !$did_remove_type,
                         $code_location,
                         $suppressed_issues
@@ -1450,7 +1501,7 @@ class Reconciler
                         $existing_var_type,
                         $old_var_type_string,
                         $key,
-                        $new_var_type,
+                        '!' . $new_var_type,
                         !$did_remove_type,
                         $code_location,
                         $suppressed_issues
@@ -1495,7 +1546,7 @@ class Reconciler
                         $existing_var_type,
                         $old_var_type_string,
                         $key,
-                        $new_var_type,
+                        '!' . $new_var_type,
                         !$did_remove_type,
                         $code_location,
                         $suppressed_issues
@@ -1535,7 +1586,7 @@ class Reconciler
                         $existing_var_type,
                         $old_var_type_string,
                         $key,
-                        $new_var_type,
+                        '!' . $new_var_type,
                         $did_remove_type,
                         $code_location,
                         $suppressed_issues
@@ -1674,7 +1725,7 @@ class Reconciler
             $existing_var_type->possibly_undefined = false;
             $existing_var_type->possibly_undefined_from_try = false;
 
-            if (!$did_remove_type || empty($existing_var_type->getTypes())) {
+            if ((!$did_remove_type || empty($existing_var_type->getTypes())) && !$existing_var_type->hasTemplate()) {
                 if ($key && $code_location && !$is_equality) {
                     self::triggerIssueForImpossible(
                         $existing_var_type,
@@ -1715,7 +1766,7 @@ class Reconciler
                         $existing_var_type,
                         $old_var_type_string,
                         $key,
-                        $new_var_type,
+                        '!' . $new_var_type,
                         !$did_remove_type,
                         $code_location,
                         $suppressed_issues
@@ -1736,7 +1787,8 @@ class Reconciler
             return Type::getMixed();
         }
 
-        if (isset($existing_var_atomic_types['int'])
+        if (!$is_equality
+            && isset($existing_var_atomic_types['int'])
             && $existing_var_type->from_calculation
             && ($new_var_type === 'int' || $new_var_type === 'float')
         ) {
@@ -1754,12 +1806,14 @@ class Reconciler
         }
 
         if ($new_var_type === 'callable') {
-            $existing_var_type->removeType('callable');
-
             foreach ($existing_var_atomic_types as $atomic_key => $type) {
                 if ($type instanceof Type\Atomic\TLiteralString
                     && \Psalm\Internal\Codebase\CallMap::inCallMap($type->value)
                 ) {
+                    $existing_var_type->removeType($atomic_key);
+                }
+
+                if ($type->isCallableType()) {
                     $existing_var_type->removeType($atomic_key);
                 }
             }
@@ -1811,7 +1865,7 @@ class Reconciler
                             $existing_var_type,
                             $old_var_type_string,
                             $key,
-                            $new_var_type,
+                            '!' . $new_var_type,
                             !$did_remove_type,
                             $code_location,
                             $suppressed_issues
@@ -1862,11 +1916,17 @@ class Reconciler
             // if there wasn't a direct hit, go deeper, eliminating subtypes
             if (!$existing_var_type->removeType($new_var_type)) {
                 foreach ($existing_var_type->getTypes() as $part_name => $existing_var_type_part) {
-                    if (!$existing_var_type_part->isObjectType()) {
+                    if (!$existing_var_type_part->isObjectType() || strpos($new_var_type, '-')) {
+                        $did_remove_type = true;
                         continue;
                     }
 
-                    $new_type_part = new TNamedObject($new_var_type);
+                    $new_type_part = Atomic::create($new_var_type);
+
+                    if (!$new_type_part instanceof TNamedObject) {
+                        $did_remove_type = true;
+                        continue;
+                    }
 
                     if (TypeAnalyzer::isAtomicContainedBy(
                         $codebase,
@@ -1894,8 +1954,8 @@ class Reconciler
                         $existing_var_type,
                         $old_var_type_string,
                         $key,
-                        $new_var_type,
-                        true,
+                        '!' . $new_var_type,
+                        false,
                         $code_location,
                         $suppressed_issues
                     );
@@ -2002,7 +2062,7 @@ class Reconciler
         if ($scalar_type === 'int') {
             $value = (int) $value;
 
-            if ($existing_var_type->hasMixed()) {
+            if ($existing_var_type->hasMixed() || $existing_var_type->hasScalar() || $existing_var_type->hasNumeric()) {
                 return new Type\Union([new Type\Atomic\TLiteralInt($value)]);
             }
 
@@ -2086,7 +2146,7 @@ class Reconciler
                 }
             }
         } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
-            if ($existing_var_type->hasMixed()) {
+            if ($existing_var_type->hasMixed() || $existing_var_type->hasScalar()) {
                 if ($scalar_type === 'class-string') {
                     return new Type\Union([new Type\Atomic\TLiteralClassString($value)]);
                 }
@@ -2145,7 +2205,7 @@ class Reconciler
         } elseif ($scalar_type === 'float') {
             $value = (float) $value;
 
-            if ($existing_var_type->hasMixed()) {
+            if ($existing_var_type->hasMixed() || $existing_var_type->hasScalar() || $existing_var_type->hasNumeric()) {
                 return new Type\Union([new Type\Atomic\TLiteralFloat($value)]);
             }
 
@@ -2396,39 +2456,63 @@ class Reconciler
         array $key_parts,
         array &$existing_types,
         array &$changed_var_ids,
-        Type\Union $result_type
+        Type\Union $result_type,
+        bool $has_not_isset
     ) {
         array_pop($key_parts);
         $array_key = array_pop($key_parts);
         array_pop($key_parts);
 
+        if ($array_key === null) {
+            throw new \UnexpectedValueException('Not expecting null array key');
+        }
+
         if ($array_key[0] === '$') {
             return;
         }
 
-        $array_key_offset = substr($array_key, 1, -1);
+        $array_key_offset = $array_key[0] === '\'' ? substr($array_key, 1, -1) : $array_key;
 
         $base_key = implode($key_parts);
 
-        if (isset($existing_types[$base_key])) {
+        if (isset($existing_types[$base_key]) && $array_key_offset !== false) {
             $base_atomic_types = $existing_types[$base_key]->getTypes();
 
-            if (isset($base_atomic_types['array'])) {
-                if ($base_atomic_types['array'] instanceof Type\Atomic\ObjectLike) {
+            if (isset($base_atomic_types['array'])
+                && ($base_atomic_types['array'] instanceof Type\Atomic\ObjectLike
+                    || ($base_atomic_types['array'] instanceof Type\Atomic\TArray
+                        && $base_atomic_types['array']->type_params[0]->isArrayKey()
+                        && $base_atomic_types['array']->type_params[1]->isMixed())
+                        && !$has_not_isset)
+            ) {
+                if ($base_atomic_types['array'] instanceof Type\Atomic\TArray) {
+                    $new_objectlike = new Type\Atomic\ObjectLike(
+                        [
+                            $array_key_offset => clone $result_type
+                        ],
+                        null
+                    );
+
+                    $new_objectlike->had_mixed_value = true;
+
+                    $existing_types[$base_key]->addType($new_objectlike);
+                } else {
                     $base_atomic_types['array']->properties[$array_key_offset] = clone $result_type;
-                    $changed_var_ids[] = $base_key . '[' . $array_key . ']';
-
-                    if ($key_parts[count($key_parts) - 1] === ']') {
-                        self::adjustObjectLikeType(
-                            $key_parts,
-                            $existing_types,
-                            $changed_var_ids,
-                            $existing_types[$base_key]
-                        );
-                    }
-
-                    $existing_types[$base_key]->bustCache();
                 }
+
+                $changed_var_ids[] = $base_key . '[' . $array_key . ']';
+
+                if ($key_parts[count($key_parts) - 1] === ']') {
+                    self::adjustObjectLikeType(
+                        $key_parts,
+                        $existing_types,
+                        $changed_var_ids,
+                        $existing_types[$base_key],
+                        $has_not_isset
+                    );
+                }
+
+                $existing_types[$base_key]->bustCache();
             }
         }
     }
@@ -2611,12 +2695,13 @@ class Reconciler
                             } else {
                                 $property_id = $existing_key_type_part->value . '::$' . $property_name;
 
-                                if (!$codebase->properties->propertyExists($property_id)) {
+                                if (!$codebase->properties->propertyExists($property_id, true)) {
                                     return null;
                                 }
 
                                 $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-                                    $property_id
+                                    $property_id,
+                                    true
                                 );
 
                                 $class_storage = $codebase->classlike_storage_provider->get(

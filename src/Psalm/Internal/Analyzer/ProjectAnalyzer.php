@@ -810,11 +810,17 @@ class ProjectAnalyzer
      *
      * @return void
      */
-    public function getMethodMutations($original_method_id, Context $this_context)
-    {
+    public function getMethodMutations(
+        $original_method_id,
+        Context $this_context,
+        string $root_file_path,
+        string $root_file_name
+    ) {
         list($fq_class_name) = explode('::', $original_method_id);
 
         $file_analyzer = $this->getFileAnalyzerForClassLike($fq_class_name);
+
+        $file_analyzer->setRootFilePath($root_file_path, $root_file_name);
 
         $appearing_method_id = $this->codebase->methods->getAppearingMethodId($original_method_id);
 
@@ -846,7 +852,7 @@ class ProjectAnalyzer
             $this_context->vars_in_scope['$this'] = Type::parseString($fq_class_name);
         }
 
-        $file_analyzer->getMethodMutations($appearing_method_id, $this_context);
+        $file_analyzer->getMethodMutations($appearing_method_id, $this_context, true);
 
         $file_analyzer->class_analyzers_to_analyze = [];
         $file_analyzer->interface_analyzers_to_analyze = [];

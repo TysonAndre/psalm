@@ -183,7 +183,9 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
         $fq_class_name,
         CodeLocation $code_location,
         array $suppressed_issues,
-        $inferred = true
+        $inferred = true,
+        bool $allow_trait = false,
+        bool $allow_interface = true
     ) {
         $codebase = $statements_source->getCodebase();
         if (empty($fq_class_name)) {
@@ -233,7 +235,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
         $interface_exists = $codebase->interfaceExists($fq_class_name);
 
         if (!$class_exists && !$interface_exists) {
-            if (!$codebase->classlikes->traitExists($fq_class_name)) {
+            if (!$allow_trait || !$codebase->classlikes->traitExists($fq_class_name)) {
                 if (IssueBuffer::accepts(
                     new UndefinedClass(
                         'Class or interface ' . $fq_class_name . ' does not exist',
@@ -247,6 +249,17 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
             }
 
             return null;
+        } elseif ($interface_exists && !$allow_interface) {
+            if (IssueBuffer::accepts(
+                new UndefinedClass(
+                    'Class ' . $fq_class_name . ' does not exist',
+                    $code_location,
+                    $fq_class_name
+                ),
+                $suppressed_issues
+            )) {
+                return false;
+            }
         }
 
         $aliased_name_lc = $codebase->classlikes->getUnAliasedName(
@@ -394,7 +407,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
     }
 
     /**
-     * @return array<string, array{Type\Union, ?string}>|null
+     * @return array<string, array<string, array{Type\Union}>>|null
      */
     public function getTemplateTypeMap()
     {
@@ -466,19 +479,37 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
      */
     public static function checkPropertyVisibility(
         $property_id,
-        $calling_context,
+        Context $context,
         SourceAnalyzer $source,
         CodeLocation $code_location,
         array $suppressed_issues,
         $emit_issues = true
     ) {
+        list($fq_class_name, $property_name) = explode('::$', (string)$property_id);
+
         $codebase = $source->getCodebase();
 
+        if ($codebase->properties->property_visibility_provider->has($fq_class_name)) {
+            $property_visible = $codebase->properties->property_visibility_provider->isPropertyVisible(
+                $source,
+                $fq_class_name,
+                $property_name,
+                false,
+                $context
+            );
+
+            if ($property_visible !== null) {
+                return $property_visible;
+            }
+        }
+
         $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-            $property_id
+            $property_id,
+            true
         );
         $appearing_property_class = $codebase->properties->getAppearingClassForProperty(
-            $property_id
+            $property_id,
+            true
         );
 
         if (!$declaring_property_class || !$appearing_property_class) {
@@ -487,10 +518,8 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
             );
         }
 
-        list(, $property_name) = explode('::$', (string)$property_id);
-
         // if the calling class is the same, we know the property exists, so it must be visible
-        if ($appearing_property_class === $calling_context) {
+        if ($appearing_property_class === $context->self) {
             return $emit_issues ? null : true;
         }
 
@@ -511,10 +540,10 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                 return $emit_issues ? null : true;
 
             case self::VISIBILITY_PRIVATE:
-                if (!$calling_context || $appearing_property_class !== $calling_context) {
+                if (!$context->self || $appearing_property_class !== $context->self) {
                     if ($emit_issues && IssueBuffer::accepts(
                         new InaccessibleProperty(
-                            'Cannot access private property ' . $property_id . ' from context ' . $calling_context,
+                            'Cannot access private property ' . $property_id . ' from context ' . $context->self,
                             $code_location
                         ),
                         $suppressed_issues
@@ -528,11 +557,11 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                 return $emit_issues ? null : true;
 
             case self::VISIBILITY_PROTECTED:
-                if ($appearing_property_class === $calling_context) {
+                if ($appearing_property_class === $context->self) {
                     return null;
                 }
 
-                if (!$calling_context) {
+                if (!$context->self) {
                     if ($emit_issues && IssueBuffer::accepts(
                         new InaccessibleProperty(
                             'Cannot access protected property ' . $property_id,
@@ -546,14 +575,14 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                     return null;
                 }
 
-                if ($codebase->classExtends($appearing_property_class, $calling_context)) {
+                if ($codebase->classExtends($appearing_property_class, $context->self)) {
                     return $emit_issues ? null : true;
                 }
 
-                if (!$codebase->classExtends($calling_context, $appearing_property_class)) {
+                if (!$codebase->classExtends($context->self, $appearing_property_class)) {
                     if ($emit_issues && IssueBuffer::accepts(
                         new InaccessibleProperty(
-                            'Cannot access protected property ' . $property_id . ' from context ' . $calling_context,
+                            'Cannot access protected property ' . $property_id . ' from context ' . $context->self,
                             $code_location
                         ),
                         $suppressed_issues

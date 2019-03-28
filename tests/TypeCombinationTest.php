@@ -1,8 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Type;
 use Psalm\Internal\Type\TypeCombination;
+use Psalm\Type;
 
 class TypeCombinationTest extends TestCase
 {
@@ -31,7 +31,7 @@ class TypeCombinationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -57,7 +57,7 @@ class TypeCombinationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,array<int,string>}>
      */
     public function providerTestValidTypeCombination()
     {

@@ -58,7 +58,7 @@ class AnnotationTest extends TestCase
         $this->analyzeFile('somefile.php', new Context());
     }
 
-     /**
+    /**
      * @return void
      */
     public function testPhpStormGenericsWithClassProperty()
@@ -243,7 +243,7 @@ class AnnotationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -317,7 +317,7 @@ class AnnotationTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_level' => ['LoopInvalidation', 'MixedArrayOffset', 'RedundantConditionGivenDocblockType'],
+                'error_level' => ['LoopInvalidation', 'MixedArrayOffset', 'DocblockTypeContradiction'],
             ],
             'goodDocblock' => [
                 '<?php
@@ -590,7 +590,7 @@ class AnnotationTest extends TestCase
                     }
 
                     $f = foo();
-                    if ($f) {}'
+                    if ($f) {}',
             ],
             'spreadOperatorArrayAnnotation' => [
                 '<?php
@@ -611,7 +611,7 @@ class AnnotationTest extends TestCase
                         return rand(0,1) ? "a" : "b";
                     }
 
-                    acceptsLiteral(returnsLiteral());'
+                    acceptsLiteral(returnsLiteral());',
             ],
             'typeAliasBeforeClass' => [
                 '<?php
@@ -638,7 +638,7 @@ class AnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'typeAliasBeforeFunction' => [
                 '<?php
@@ -665,7 +665,7 @@ class AnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'typeAliasInSeparateBlockBeforeFunction' => [
                 '<?php
@@ -693,7 +693,7 @@ class AnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'almostFreeStandingTypeAlias' => [
                 '<?php
@@ -722,7 +722,7 @@ class AnnotationTest extends TestCase
                     /** @param CoolType $a **/
                     function bar ($a) : void { }
 
-                    bar(foo());'
+                    bar(foo());',
             ],
             'typeAliasUsedTwice' => [
                 '<?php
@@ -792,7 +792,7 @@ class AnnotationTest extends TestCase
                 [
                     'InvalidDocblock' => \Psalm\Config::REPORT_INFO,
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
-                ]
+                ],
             ],
             'objectWithPropertiesAnnotation' => [
                 '<?php
@@ -821,7 +821,7 @@ class AnnotationTest extends TestCase
                         }) as $envVar) {
                             yield $envVar => [getenv($envVar)];
                         }
-                    }'
+                    }',
             ],
             'allowAnnotationOnServer' => [
                 '<?php
@@ -832,23 +832,7 @@ class AnnotationTest extends TestCase
                         }) as $envVar) {
                             yield $envVar => [getenv($envVar)];
                         }
-                    }'
-            ],
-            'paramOutChangeType' => [
-                '<?php
-                    /**
-                     * @param-out string $s
-                     */
-                    function addFoo(?string &$s) : void {
-                        if ($s === null) {
-                            $s = "hello";
-                        }
-                        $s .= "foo";
-                    }
-
-                    addFoo($a);
-
-                    echo strlen($a);',
+                    }',
             ],
             'annotationOnForeachItems' => [
                 '<?php
@@ -889,8 +873,8 @@ class AnnotationTest extends TestCase
                     }',
                 [],
                 [
-                    'MixedAssignment'
-                ]
+                    'MixedAssignment',
+                ],
             ],
             'extraneousDocblockParamName' => [
                 '<?php
@@ -918,13 +902,34 @@ class AnnotationTest extends TestCase
                         }
 
                         foo($arr);
-                    }'
+                    }',
+            ],
+            'nonEmptyArrayInNamespace' => [
+                '<?php
+                    namespace ns;
+
+                    /** @param non-empty-array<string> $arr */
+                    function foo(array $arr) : void {
+                        foreach ($arr as $a) {}
+                        echo $a;
+                    }
+
+                    foo(["a", "b", "c"]);
+
+                    /** @param array<string> $arr */
+                    function bar(array $arr) : void {
+                        if (!$arr) {
+                            return;
+                        }
+
+                        foo($arr);
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1008,7 +1013,7 @@ class AnnotationTest extends TestCase
                     }
 
                     fooBar("hello");',
-                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:8 - Too many arguments for method fooBar '
+                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:21 - Too many arguments for method fooBar '
                     . '- expecting 0 but saw 1',
             ],
             'missingParamVar' => [
@@ -1018,7 +1023,7 @@ class AnnotationTest extends TestCase
                      */
                     function fooBar(): void {
                     }',
-                'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:5 - Badly-formatted @param',
+                'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:5:21 - Badly-formatted @param',
             ],
             'missingReturnTypeWithBadDocblock' => [
                 '<?php
@@ -1030,7 +1035,7 @@ class AnnotationTest extends TestCase
                 'error_message' => 'MissingReturnType',
                 [
                     'InvalidDocblock' => \Psalm\Config::REPORT_INFO,
-                ]
+                ],
             ],
             'invalidDocblockReturn' => [
                 '<?php
@@ -1277,12 +1282,25 @@ class AnnotationTest extends TestCase
             ],
             'mismatchingDocblockParamName' => [
                 '<?php
-                    /** @param string[] $_bar */
-                    function f(array $_barb): void {}',
-                'error_message' => 'InvalidDocblockParamName',
+                    /** @param string[] $bar */
+                    function f(array $barb): void {}',
+                'error_message' => 'InvalidDocblockParamName - src' . DIRECTORY_SEPARATOR . 'somefile.php:2:41',
             ],
             'nonEmptyArrayCalledWithEmpty' => [
                 '<?php
+                    /** @param non-empty-array<string> $arr */
+                    function foo(array $arr) : void {
+                        foreach ($arr as $a) {}
+                        echo $a;
+                    }
+
+                    foo([]);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'nonEmptyArrayCalledWithEmptyInNamespace' => [
+                '<?php
+                    namespace ns;
+
                     /** @param non-empty-array<string> $arr */
                     function foo(array $arr) : void {
                         foreach ($arr as $a) {}
@@ -1305,6 +1323,22 @@ class AnnotationTest extends TestCase
                         foo($arr);
                     }',
                 'error_message' => 'TypeCoercion',
+            ],
+            'automaticInheritDoc' => [
+                '<?php
+                    class Y {
+                        /**
+                         * @param string[] $arr
+                         */
+                        public function boo(array $arr) : void {}
+                    }
+
+                    class X extends Y {
+                        public function boo(array $arr) : void {}
+                    }
+
+                    (new X())->boo([1, 2]);',
+                'error_message' => 'InvalidScalarArgument',
             ],
         ];
     }

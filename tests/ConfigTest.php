@@ -1,9 +1,9 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 
 class ConfigTest extends TestCase
@@ -180,8 +180,8 @@ class ConfigTest extends TestCase
         $no_symlinking_error = 'symlink(): Cannot create symlink, error code(1314)';
         $last_error = error_get_last();
         $check_symlink_error =
-            ! is_array($last_error) ||
-            ! isset($last_error['message']) ||
+            !is_array($last_error) ||
+            !isset($last_error['message']) ||
             $no_symlinking_error !== $last_error['message'];
 
         @symlink(__DIR__ . '/symlinktest/a', __DIR__ . '/symlinktest/ignored/b');
@@ -840,6 +840,7 @@ class ConfigTest extends TestCase
     /**
      * @expectedException  \Psalm\Exception\CodeException
      * @expectedExceptionMessage  ForbiddenCode
+     *
      * @return void
      */
     public function testForbiddenEchoFunctionViaFunctions()
@@ -870,6 +871,7 @@ class ConfigTest extends TestCase
     /**
      * @expectedException  \Psalm\Exception\CodeException
      * @expectedExceptionMessage  ForbiddenEcho
+     *
      * @return void
      */
     public function testForbiddenEchoFunctionViaFlag()
@@ -921,6 +923,7 @@ class ConfigTest extends TestCase
     /**
      * @expectedException  \Psalm\Exception\CodeException
      * @expectedExceptionMessage  ForbiddenCode
+     *
      * @return  void
      */
     public function testForbiddenVarExportFunction()
@@ -952,6 +955,7 @@ class ConfigTest extends TestCase
     /**
      * @expectedException  \Psalm\Exception\CodeException
      * @expectedExceptionMessage  InvalidCatch
+     *
      * @return void
      */
     public function testValidThrowInvalidCatch()
@@ -1003,6 +1007,7 @@ class ConfigTest extends TestCase
     /**
      * @expectedException  \Psalm\Exception\CodeException
      * @expectedExceptionMessage  InvalidThrow
+     *
      * @return void
      */
     public function testInvalidThrowValidCatch()
@@ -1116,5 +1121,103 @@ class ConfigTest extends TestCase
                 dirname(__DIR__)
             );
         }
+    }
+
+    /**
+     * @return void
+     */
+    public function testGlobals()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <globals>
+                        <var name="glob1" type="string" />
+                        <var name="glob2" type="array{str:string}" />
+                        <var name="glob3" type="ns\Clazz" />
+                        <var name="glob4" type="string|null" />
+                        <var name="_GET" type="array{str:string}" />
+                    </globals>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                namespace {
+                    ord($glob1);
+                    ord($glob2["str"]);
+                    $glob3->func();
+                    ord($_GET["str"]);
+
+                    assert($glob4 !== null);
+                    ord($glob4);
+
+                    function example1(): void {
+                        global $glob1, $glob2, $glob3, $glob4;
+                        ord($glob1);
+                        ord($glob2["str"]);
+                        $glob3->func();
+                        ord($glob4);
+                        ord($_GET["str"]);
+                    }
+
+                    $glob1 = 0;
+                    error_reporting($glob1);
+
+                    $_GET["str"] = 0;
+                    error_reporting($_GET["str"]);
+
+                    function example2(): void {
+                        global $glob1, $glob2, $glob3;
+                        error_reporting($glob1);
+                        ord($glob2["str"]);
+                        $glob3->func();
+                        ord($_GET["str"]);
+                    }
+                }
+                namespace ns {
+                    ord($glob1);
+                    ord($glob2["str"]);
+                    $glob3->func();
+                    ord($_GET["str"]);
+
+                    class Clazz {
+                        public function func(): void {}
+                    }
+
+                    function example3(): void {
+                        global $glob1, $glob2, $glob3;
+                        ord($glob1);
+                        ord($glob2["str"]);
+                        $glob3->func();
+                        ord($_GET["str"]);
+                    }
+                }
+                namespace ns2 {
+                    /** @psalm-suppress InvalidGlobal */
+                    global $glob1, $glob2, $glob3;
+                    ord($glob1);
+                    ord($glob2["str"]);
+                    $glob3->func();
+                }
+                namespace {
+                    ord($glob1 ?? "str");
+                    ord($_GET["str"] ?? "str");
+
+                    function example4(): void {
+                        global $glob1;
+                        ord($glob1 ?? "str");
+                        ord($_GET["str"] ?? "str");
+                    }
+                }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
     }
 }

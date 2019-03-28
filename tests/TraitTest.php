@@ -7,7 +7,7 @@ class TraitTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -610,7 +610,7 @@ class TraitTest extends TestCase
 
                     class C {
                         use A;
-                    }'
+                    }',
             ],
             'noRedundantConditionForTraitStatic' => [
                 '<?php
@@ -643,7 +643,7 @@ class TraitTest extends TestCase
 
                     class Bat {
                         use Foo;
-                    }'
+                    }',
             ],
             'nonMemoizedAssertions' => [
                 '<?php
@@ -677,7 +677,7 @@ class TraitTest extends TestCase
                         public function __construct(bool $bool) {
                            $this->value = $bool;
                         }
-                    }'
+                    }',
             ],
             'manyTraitAliases' => [
                 '<?php
@@ -713,7 +713,7 @@ class TraitTest extends TestCase
                     $b->foo();
                     $b->foobar();
 
-                    $b->bad();'
+                    $b->bad();',
             ],
             'inheritedProtectedTraitMethodAccess' => [
                 '<?php
@@ -731,7 +731,7 @@ class TraitTest extends TestCase
                         public function foo() : void {
                             $this->bar();
                         }
-                    }'
+                    }',
             ],
             'inheritedPublicTraitMethodAccess' => [
                 '<?php
@@ -745,7 +745,7 @@ class TraitTest extends TestCase
                         }
                     }
 
-                    (new A)->bar();'
+                    (new A)->bar();',
             ],
             'allowImplementMethodMadePublicInClass' => [
                 '<?php
@@ -796,14 +796,14 @@ class TraitTest extends TestCase
 
                             return null;
                         }
-                    }'
+                    }',
             ],
             'noCrashOnUndefinedIgnoredTrait' => [
                 '<?php
                     /** @psalm-suppress UndefinedTrait */
                     class C {
                         use UnknownTrait;
-                    }'
+                    }',
             ],
             'reconcileStaticTraitProperties' => [
                 '<?php
@@ -825,11 +825,40 @@ class TraitTest extends TestCase
                         use T;
                     }',
             ],
+            'covariantAbstractReturn' => [
+                '<?php
+                    trait T {
+                        /** @return iterable */
+                        abstract public function bar();
+                    }
+
+                    class C {
+                        use T;
+
+                        /** @return array */
+                        public function bar() { return []; }
+                    }',
+            ],
+            'traitSelfParam' => [
+                '<?php
+                    trait T {
+                        public function bar(self $object): self {
+                            return $this;
+                        }
+                    }
+
+                    class Foo {
+                        use T;
+                    }
+
+                    $f1 = new Foo();
+                    $f2 = (new Foo())->bar($f1);',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -871,7 +900,7 @@ class TraitTest extends TestCase
                             $this->foo = 5;
                         }
                     }',
-                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Property T::$foo does not have a ' .
+                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:32 - Property T::$foo does not have a ' .
                     'declared type - consider int|null',
             ],
             'missingPropertyTypeWithConstructorInit' => [
@@ -886,7 +915,7 @@ class TraitTest extends TestCase
                             $this->foo = 5;
                         }
                     }',
-                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Property T::$foo does not have a ' .
+                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:32 - Property T::$foo does not have a ' .
                     'declared type - consider int',
             ],
             'missingPropertyTypeWithConstructorInitAndNull' => [
@@ -905,7 +934,7 @@ class TraitTest extends TestCase
                             $this->foo = null;
                         }
                     }',
-                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Property T::$foo does not have a ' .
+                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:32 - Property T::$foo does not have a ' .
                     'declared type - consider int|null',
             ],
             'missingPropertyTypeWithConstructorInitAndNullDefault' => [
@@ -920,7 +949,7 @@ class TraitTest extends TestCase
                             $this->foo = 5;
                         }
                     }',
-                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Property T::$foo does not have a ' .
+                'error_message' => 'MissingPropertyType - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:32 - Property T::$foo does not have a ' .
                     'declared type - consider int|null',
             ],
             'redefinedTraitMethodInSubclass' => [
@@ -1008,7 +1037,17 @@ class TraitTest extends TestCase
                             $this->traitFoo(); // should fail
                         }
                     }',
-                'error_message' => 'InaccessibleMethod'
+                'error_message' => 'InaccessibleMethod',
+            ],
+            'preventTraitPropertyType' => [
+                '<?php
+                    trait T {}
+
+                    class X {
+                      /** @var T|null */
+                      public $hm;
+                    }',
+                'error_message' => 'UndefinedClass',
             ],
         ];
     }

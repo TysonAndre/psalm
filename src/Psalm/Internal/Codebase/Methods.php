@@ -2,8 +2,17 @@
 namespace Psalm\Internal\Codebase;
 
 use PhpParser;
+use Psalm\Codebase;
 use Psalm\CodeLocation;
-use Psalm\Internal\Provider\{ClassLikeStorageProvider, FileReferenceProvider, MethodReturnTypeProvider};
+use Psalm\Internal\Provider\{
+    ClassLikeStorageProvider,
+    FileReferenceProvider,
+    MethodReturnTypeProvider,
+    MethodExistenceProvider,
+    MethodParamsProvider,
+    MethodVisibilityProvider
+};
+use Psalm\StatementsSource;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Storage\MethodStorage;
@@ -44,6 +53,15 @@ class Methods
     /** @var MethodReturnTypeProvider */
     public $return_type_provider;
 
+    /** @var MethodParamsProvider */
+    public $params_provider;
+
+    /** @var MethodExistenceProvider */
+    public $existence_provider;
+
+    /** @var MethodVisibilityProvider */
+    public $visibility_provider;
+
     /**
      * @param ClassLikeStorageProvider $storage_provider
      */
@@ -58,6 +76,9 @@ class Methods
         $this->file_reference_provider = $file_reference_provider;
         $this->classlikes = $classlikes;
         $this->return_type_provider = new MethodReturnTypeProvider();
+        $this->existence_provider = new MethodExistenceProvider();
+        $this->visibility_provider = new MethodVisibilityProvider();
+        $this->params_provider = new MethodParamsProvider();
     }
 
     /**
@@ -72,13 +93,27 @@ class Methods
     public function methodExists(
         $method_id,
         $calling_method_id = null,
-        CodeLocation $code_location = null
+        CodeLocation $code_location = null,
+        StatementsSource $source = null
     ) {
         // remove trailing backslash if it exists
         $method_id = preg_replace('/^\\\\/', '', $method_id);
         list($fq_class_name, $method_name) = explode('::', $method_id);
         $method_name = strtolower($method_name);
         $method_id = $fq_class_name . '::' . $method_name;
+
+        if ($this->existence_provider->has($fq_class_name)) {
+            $method_exists = $this->existence_provider->doesMethodExist(
+                $fq_class_name,
+                $method_name,
+                $source,
+                $code_location
+            );
+
+            if ($method_exists !== null) {
+                return $method_exists;
+            }
+        }
 
         $old_method_id = null;
 
@@ -186,35 +221,33 @@ class Methods
 
     /**
      * @param  string $method_id
+     * @param  array<PhpParser\Node\Arg> $args
      *
      * @return array<int, FunctionLikeParameter>
      */
-    public function getMethodParams($method_id)
+    public function getMethodParams($method_id, StatementsSource $source = null, array $args = null)
     {
+        list($fq_class_name, $method_name) = explode('::', $method_id);
+
+        if ($this->params_provider->has($fq_class_name)) {
+            $method_params = $this->params_provider->getMethodParams(
+                $fq_class_name,
+                $method_name,
+                $args,
+                $source
+            );
+
+            if ($method_params !== null) {
+                return $method_params;
+            }
+        }
+
         if ($declaring_method_id = $this->getDeclaringMethodId($method_id)) {
             $storage = $this->getStorage($declaring_method_id);
 
-            if ($storage->inheritdoc) {
-                $non_null_param_types = array_filter(
-                    $storage->params,
-                    /** @return bool */
-                    function (FunctionLikeParameter $p) {
-                        return $p->type !== null && $p->has_docblock_type;
-                    }
-                );
-            } else {
-                $non_null_param_types = array_filter(
-                    $storage->params,
-                    /** @return bool */
-                    function (FunctionLikeParameter $p) {
-                        return $p->type !== null;
-                    }
-                );
-            }
-
             $params = $storage->params;
 
-            if ($non_null_param_types) {
+            if ($storage->has_docblock_param_types) {
                 return $params;
             }
 
@@ -232,30 +265,40 @@ class Methods
                 return $params;
             }
 
-            foreach ($class_storage->overridden_method_ids[$appearing_method_name] as $overridden_method_id) {
-                $overridden_storage = $this->getStorage($overridden_method_id);
+            if (!isset($class_storage->documenting_method_ids[$appearing_method_name])) {
+                return $params;
+            }
 
-                $non_null_param_types = array_filter(
-                    $overridden_storage->params,
-                    /** @return bool */
-                    function (FunctionLikeParameter $p) {
-                        return $p->type !== null && $p->type->from_docblock;
+            $overridden_method_id = $class_storage->documenting_method_ids[$appearing_method_name];
+            $overridden_storage = $this->getStorage($overridden_method_id);
+
+            list($overriding_fq_class_name) = explode('::', $overridden_method_id);
+
+            foreach ($params as $i => $param) {
+                if (isset($overridden_storage->params[$i]->type)
+                    && $overridden_storage->params[$i]->has_docblock_type
+                    && $overridden_storage->params[$i]->name === $param->name
+                ) {
+                    $params[$i] = clone $param;
+                    /** @var Type\Union $params[$i]->type */
+                    $params[$i]->type = clone $overridden_storage->params[$i]->type;
+
+                    if ($source) {
+                        $params[$i]->type = self::localizeParamType(
+                            $source->getCodebase(),
+                            $params[$i]->type,
+                            $appearing_fq_class_name,
+                            $overriding_fq_class_name
+                        );
                     }
-                );
 
-                if ($non_null_param_types) {
-                    foreach ($params as $i => $param) {
-                        if (isset($overridden_storage->params[$i]->type)
-                            && $overridden_storage->params[$i]->type->from_docblock
-                            && $overridden_storage->params[$i]->name === $param->name
-                        ) {
-                            $params[$i] = clone $param;
-                            $params[$i]->type = $overridden_storage->params[$i]->type;
-                            $params[$i]->type_location = $overridden_storage->params[$i]->type_location;
-                        }
+                    if ($params[$i]->signature_type
+                        && $params[$i]->signature_type->isNullable()
+                    ) {
+                        $params[$i]->type->addType(new Type\Atomic\TNull);
                     }
 
-                    break;
+                    $params[$i]->type_location = $overridden_storage->params[$i]->type_location;
                 }
             }
 
@@ -265,6 +308,85 @@ class Methods
         throw new \UnexpectedValueException('Cannot get method params for ' . $method_id);
     }
 
+    private static function localizeParamType(
+        Codebase $codebase,
+        Type\Union $type,
+        string $appearing_fq_class_name,
+        string $base_fq_class_name
+    ) : Type\Union {
+        $class_storage = $codebase->classlike_storage_provider->get($appearing_fq_class_name);
+        $extends = $class_storage->template_type_extends;
+
+        if (!$extends) {
+            return $type;
+        }
+
+        $type = clone $type;
+
+        foreach ($type->getTypes() as $key => $atomic_type) {
+            if ($atomic_type instanceof Type\Atomic\TTemplateParam
+                || $atomic_type instanceof Type\Atomic\TTemplateParamClass
+            ) {
+                if ($atomic_type->defining_class
+                    && strcasecmp($atomic_type->defining_class, $base_fq_class_name) === 0
+                ) {
+                    if (isset($extends[strtolower($base_fq_class_name)][$atomic_type->param_name])) {
+                        $extended_param = $extends[strtolower($base_fq_class_name)][$atomic_type->param_name];
+
+                        $type->removeType($key);
+                        $type = Type::combineUnionTypes(
+                            $type,
+                            $extended_param,
+                            $codebase
+                        );
+                    }
+                }
+            }
+
+            if ($atomic_type instanceof Type\Atomic\TArray
+                || $atomic_type instanceof Type\Atomic\TIterable
+                || $atomic_type instanceof Type\Atomic\TGenericObject
+            ) {
+                foreach ($atomic_type->type_params as $type_param) {
+                    $type_param = self::localizeParamType(
+                        $codebase,
+                        $type_param,
+                        $appearing_fq_class_name,
+                        $base_fq_class_name
+                    );
+                }
+            }
+
+            if ($atomic_type instanceof Type\Atomic\TCallable
+                || $atomic_type instanceof Type\Atomic\Fn
+            ) {
+                if ($atomic_type->params) {
+                    foreach ($atomic_type->params as $param) {
+                        if ($param->type) {
+                            $param->type = self::localizeParamType(
+                                $codebase,
+                                $param->type,
+                                $appearing_fq_class_name,
+                                $base_fq_class_name
+                            );
+                        }
+                    }
+                }
+
+                if ($atomic_type->return_type) {
+                    $atomic_type->return_type = self::localizeParamType(
+                        $codebase,
+                        $atomic_type->return_type,
+                        $appearing_fq_class_name,
+                        $base_fq_class_name
+                    );
+                }
+            }
+        }
+
+        return $type;
+    }
+
     /**
      * @param  string $method_id
      *
@@ -272,7 +394,13 @@ class Methods
      */
     public function isVariadic($method_id)
     {
-        $method_id = (string) $this->getDeclaringMethodId($method_id);
+        $declaring_method_id = $this->getDeclaringMethodId($method_id);
+
+        if (!$declaring_method_id) {
+            return false;
+        }
+
+        $method_id = $declaring_method_id;
 
         list($fq_class_name, $method_name) = explode('::', $method_id);
 
@@ -582,7 +710,7 @@ class Methods
         $method_id = $this->getDeclaringMethodId($original_method_id);
 
         if ($method_id === null) {
-            throw new \UnexpectedValueException('Cannot get declaring method id for ' . $original_method_id);
+            return $original_method_id;
         }
 
         $storage = $this->getStorage($method_id);
@@ -621,6 +749,19 @@ class Methods
      */
     public function getClassLikeStorageForMethod($method_id)
     {
+        list($fq_class_name, $method_name) = explode('::', $method_id);
+
+        if ($this->existence_provider->has($fq_class_name)) {
+            if ($this->existence_provider->doesMethodExist(
+                $fq_class_name,
+                $method_name,
+                null,
+                null
+            )) {
+                return $this->classlike_storage_provider->get($fq_class_name);
+            }
+        }
+
         $declaring_method_id = $this->getDeclaringMethodId($method_id);
 
         if (!$declaring_method_id) {

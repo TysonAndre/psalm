@@ -99,6 +99,11 @@ class Codebase
     public $find_unused_code = false;
 
     /**
+     * @var bool
+     */
+    public $find_unused_variables = false;
+
+    /**
      * @var Internal\Codebase\Reflection
      */
     private $reflection;
@@ -338,6 +343,16 @@ class Codebase
     {
         $this->collectReferences();
         $this->find_unused_code = true;
+        $this->find_unused_variables = true;
+    }
+
+    /**
+     * @return void
+     */
+    public function reportUnusedVariables()
+    {
+        $this->collect_references = true;
+        $this->find_unused_variables = true;
     }
 
     /**
@@ -662,10 +677,12 @@ class Codebase
      * @param  string       $possible_parent
      *
      * @return bool
+     * @throws \Psalm\Exception\UnpopulatedClasslikeException when called on unpopulated class
+     * @throws \InvalidArgumentException when class does not exist
      */
     public function classExtends($fq_class_name, $possible_parent)
     {
-        return $this->classlikes->classExtends($fq_class_name, $possible_parent);
+        return $this->classlikes->classExtends($fq_class_name, $possible_parent, true);
     }
 
     /**
@@ -781,10 +798,11 @@ class Codebase
     /**
      * @param  string $method_id
      * @param  string $self_class
+     * @param  array<int, PhpParser\Node\Arg> $call_args
      *
      * @return Type\Union|null
      */
-    public function getMethodReturnType($method_id, &$self_class)
+    public function getMethodReturnType($method_id, &$self_class, array $call_args = [])
     {
         return $this->methods->getMethodReturnType($method_id, $self_class);
     }

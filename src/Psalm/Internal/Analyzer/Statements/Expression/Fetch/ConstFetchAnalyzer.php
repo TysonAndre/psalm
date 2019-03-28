@@ -34,6 +34,7 @@ class ConstFetchAnalyzer
         Context $context
     ) {
         $const_name = implode('\\', $stmt->name->parts);
+
         switch (strtolower($const_name)) {
             case 'null':
                 $stmt->inferredType = Type::getNull();
@@ -54,7 +55,6 @@ class ConstFetchAnalyzer
 
             default:
                 $const_type = $statements_analyzer->getConstType(
-                    $statements_analyzer,
                     $const_name,
                     $stmt->name instanceof PhpParser\Node\Name\FullyQualified,
                     $context
@@ -131,7 +131,8 @@ class ConstFetchAnalyzer
                                 $fq_class_name,
                                 new CodeLocation($statements_analyzer->getSource(), $stmt->class),
                                 $statements_analyzer->getSuppressedIssues(),
-                                false
+                                false,
+                                true
                             ) === false) {
                                 return false;
                             }

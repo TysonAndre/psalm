@@ -3,6 +3,7 @@ namespace Psalm\Type\Atomic;
 
 use Psalm\Codebase;
 use Psalm\Storage\FunctionLikeParameter;
+use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Union;
 
@@ -141,7 +142,16 @@ trait CallableTrait
         $return_type_string = '';
 
         if ($this->params !== null) {
-            $param_string = '(' . implode(', ', $this->params) . ')';
+            $param_string .= '(';
+            foreach ($this->params as $i => $param) {
+                if ($i) {
+                    $param_string .= ', ';
+                }
+
+                $param_string .= $param->getId();
+            }
+
+            $param_string .= ')';
         }
 
         if ($this->return_type !== null) {
@@ -159,8 +169,8 @@ trait CallableTrait
     }
 
     /**
-     * @param  array<string, array{Union, ?string}>     $template_types
-     * @param  array<string, array{Union, ?string, ?int}>     $generic_params
+     * @param  array<string, array<string, array{Type\Union}>>     $template_types
+     * @param  array<string, array<string, array{Type\Union, 1?:int}>>     $generic_params
      * @param  Atomic|null              $input_type
      *
      * @return void
@@ -216,7 +226,7 @@ trait CallableTrait
     }
 
     /**
-     * @param  array<string, array{Union, ?string}>  $template_types
+     * @param  array<string, array<string, array{Type\Union, 1?:int}>>  $template_types
      *
      * @return void
      */
@@ -234,6 +244,28 @@ trait CallableTrait
 
         if ($this->return_type) {
             $this->return_type->replaceTemplateTypesWithArgTypes($template_types);
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function setFromDocblock()
+    {
+        $this->from_docblock = true;
+
+        if ($this->params) {
+            foreach ($this->params as $param) {
+                if (!$param->type) {
+                    continue;
+                }
+
+                $param->type->setFromDocblock();
+            }
+        }
+
+        if ($this->return_type) {
+            $this->return_type->setFromDocblock();
         }
     }
 }

@@ -29,6 +29,7 @@ use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TSingleLetter;
+use Psalm\Type\Atomic\TSqlSelectString;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
@@ -61,6 +62,7 @@ abstract class Type
         'empty' => true,
         'callable' => true,
         'array' => true,
+        'non-empty-array' => true,
         'iterable' => true,
         'null' => true,
         'mixed' => true,
@@ -94,7 +96,7 @@ abstract class Type
      *
      * @param  string $type_string
      * @param  array{int,int}|null   $php_version
-     * @param  array<string, array{Union, ?string}> $template_type_map
+     * @param  array<string, array<string, array{Type\Union}>> $template_type_map
      *
      * @return Union
      * @throws TypeParseTreeException
@@ -112,7 +114,7 @@ abstract class Type
      *
      * @param  array<int, string> $type_tokens
      * @param  array{int,int}|null   $php_version
-     * @param  array<string, array{Union, ?string}> $template_type_map
+     * @param  array<string, array<string, array{Type\Union}>> $template_type_map
      *
      * @return Union
      */
@@ -195,7 +197,7 @@ abstract class Type
     /**
      * @param  ParseTree $parse_tree
      * @param  array{int,int}|null   $php_version
-     * @param  array<string, array{Union, ?string}> $template_type_map
+     * @param  array<string, array<string, array{Type\Union}>> $template_type_map
      *
      * @return  Atomic|TArray|TGenericObject|ObjectLike|Union
      */
@@ -259,10 +261,11 @@ abstract class Type
                 $class_name = (string) $generic_params[0];
 
                 if (isset($template_type_map[$class_name])) {
+                    $first_class = array_keys($template_type_map[$class_name])[0];
                     return self::getGenericParamClass(
                         $class_name,
-                        $template_type_map[$class_name][0],
-                        $template_type_map[$class_name][1]
+                        $template_type_map[$class_name][$first_class][0],
+                        $first_class
                     );
                 }
 
@@ -513,10 +516,12 @@ abstract class Type
             list($fq_classlike_name, $const_name) = explode('::', $parse_tree->value);
 
             if (isset($template_type_map[$fq_classlike_name]) && $const_name === 'class') {
+                $first_class = array_keys($template_type_map[$fq_classlike_name])[0];
+
                 return self::getGenericParamClass(
                     $fq_classlike_name,
-                    $template_type_map[$fq_classlike_name][0],
-                    $template_type_map[$fq_classlike_name][1]
+                    $template_type_map[$fq_classlike_name][$first_class][0],
+                    $first_class
                 );
             }
 
@@ -936,9 +941,29 @@ abstract class Type
      */
     public static function getString($value = null)
     {
+        $type = null;
+
         if ($value !== null) {
-            $type = new TLiteralString($value);
-        } else {
+            if (stripos($value, 'select ') !== false) {
+                try {
+                    $parser = new \PhpMyAdmin\SqlParser\Parser($value);
+
+                    if (!$parser->errors) {
+                        $type = new TSqlSelectString($value);
+                    }
+                } catch (\Throwable $e) {
+                    if (strlen($value) < 1000) {
+                        $type = new TLiteralString($value);
+                    }
+                }
+            }
+
+            if (!$type && strlen($value) < 1000) {
+                $type = new TLiteralString($value);
+            }
+        }
+
+        if (!$type) {
             $type = new TString();
         }
 

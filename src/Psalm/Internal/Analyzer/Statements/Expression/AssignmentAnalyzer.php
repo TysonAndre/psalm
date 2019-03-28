@@ -214,14 +214,22 @@ class AssignmentAnalyzer
                 $statements_analyzer
             );
 
-            $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                            instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                        || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+            }
 
             if (!$assign_var instanceof PhpParser\Node\Expr\PropertyFetch
                 && !strpos($root_var_id ?? '', '->')
             ) {
                 if (IssueBuffer::accepts(
                     new MixedAssignment(
-                        'Cannot assign ' . $var_id . ' to a mixed type',
+                        'Cannot assign' . ($var_id ? ' ' . $var_id . ' ' : ' ') . 'to a mixed type',
                         new CodeLocation($statements_analyzer->getSource(), $assign_var)
                     ),
                     $statements_analyzer->getSuppressedIssues()
@@ -230,7 +238,15 @@ class AssignmentAnalyzer
                 }
             }
         } else {
-            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            }
 
             if ($var_id
                 && isset($context->byref_constraints[$var_id])
@@ -659,7 +675,7 @@ class AssignmentAnalyzer
             || $stmt instanceof PhpParser\Node\Expr\AssignOp\Mul
             || $stmt instanceof PhpParser\Node\Expr\AssignOp\Pow
         ) {
-            BinaryOpAnalyzer::analyzeNonDivArithmenticOp(
+            BinaryOpAnalyzer::analyzeNonDivArithmeticOp(
                 $statements_analyzer,
                 $stmt->var,
                 $stmt->expr,
@@ -712,7 +728,7 @@ class AssignmentAnalyzer
                 || $stmt instanceof PhpParser\Node\Expr\AssignOp\ShiftRight
             )
         ) {
-            BinaryOpAnalyzer::analyzeNonDivArithmenticOp(
+            BinaryOpAnalyzer::analyzeNonDivArithmeticOp(
                 $statements_analyzer,
                 $stmt->var,
                 $stmt->expr,

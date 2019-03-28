@@ -7,7 +7,7 @@ class TypeTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -994,7 +994,7 @@ class TypeTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1132,7 +1132,7 @@ class TypeTest extends TestCase
                             $one->fooFoo();
                         }
                     }',
-                'error_mesage' => 'PossiblyNullReference',
+                'error_message' => 'PossiblyNullReference',
             ],
             'nullableMethodWithGuardedNestedIncompleteRedefinition' => [
                 '<?php
@@ -1427,7 +1427,7 @@ class TypeTest extends TestCase
                     class C extends A {}
 
                     function takesB(B $i): void {}',
-                'error_message' => 'TypeCoercion - src' . DIRECTORY_SEPARATOR . 'somefile.php:11 - Argument 1 of takesB expects B,'
+                'error_message' => 'TypeCoercion - src' . DIRECTORY_SEPARATOR . 'somefile.php:11:32 - Argument 1 of takesB expects B,'
                     . ' parent type A provided',
             ],
             'intersectionTypeInterfaceCheckAfterInstanceof' => [
@@ -1446,7 +1446,7 @@ class TypeTest extends TestCase
                     interface I {}
 
                     function takesI(I $i): void {}',
-                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:9 - Argument 1 of takesI expects I, A provided',
+                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:32 - Argument 1 of takesI expects I, A provided',
             ],
         ];
     }

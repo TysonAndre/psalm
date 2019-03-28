@@ -88,7 +88,15 @@ class PropertyFetchAnalyzer
             // we don't need to check anything
             $stmt->inferredType = $context->vars_in_scope[$var_id];
 
-            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            }
 
             if ($codebase->store_node_types
                 && (!$context->collect_initializations
@@ -128,7 +136,7 @@ class PropertyFetchAnalyzer
                 ) {
                     if (IssueBuffer::accepts(
                         new UninitializedProperty(
-                            'Cannot use unitialized property ' . $var_id,
+                            'Cannot use uninitialized property ' . $var_id,
                             new CodeLocation($statements_analyzer->getSource(), $stmt),
                             $var_id
                         ),
@@ -156,7 +164,9 @@ class PropertyFetchAnalyzer
 
                         $codebase->properties->propertyExists(
                             $property_id,
-                            $context->calling_method_id,
+                            false,
+                            $statements_analyzer,
+                            $context,
                             $context->collect_references
                                 ? new CodeLocation($statements_analyzer->getSource(), $stmt)
                                 : null
@@ -215,7 +225,15 @@ class PropertyFetchAnalyzer
         }
 
         if ($stmt_var_type->hasMixed()) {
-            $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+            }
 
             if (IssueBuffer::accepts(
                 new MixedPropertyFetch(
@@ -245,7 +263,15 @@ class PropertyFetchAnalyzer
             }
         }
 
-        $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getRootFilePath());
+        if (!$context->collect_initializations
+            && !$context->collect_mutations
+            && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+            && (!(($parent_source = $statements_analyzer->getSource())
+                    instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+        ) {
+            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getRootFilePath());
+        }
 
         if ($stmt_var_type->isNullable() && !$stmt_var_type->ignore_nullable_issues && !$context->inside_isset) {
             if (IssueBuffer::accepts(
@@ -400,12 +426,12 @@ class PropertyFetchAnalyzer
             $property_id = $fq_class_name . '::$' . $prop_name;
 
             if ($codebase->methodExists($fq_class_name . '::__get')
-                && (!$codebase->properties->propertyExists($property_id)
+                && (!$codebase->properties->propertyExists($property_id, false, $statements_analyzer, $context)
                     || ($stmt_var_id !== '$this'
                         && $fq_class_name !== $context->self
                         && ClassLikeAnalyzer::checkPropertyVisibility(
                             $property_id,
-                            $context->self,
+                            $context,
                             $statements_analyzer,
                             new CodeLocation($statements_analyzer->getSource(), $stmt),
                             $statements_analyzer->getSuppressedIssues(),
@@ -457,7 +483,9 @@ class PropertyFetchAnalyzer
 
             if (!$codebase->properties->propertyExists(
                 $property_id,
-                $context->calling_method_id,
+                false,
+                $statements_analyzer,
+                $context,
                 $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
             )
             ) {
@@ -465,7 +493,9 @@ class PropertyFetchAnalyzer
                     && $context->self
                     && $codebase->properties->propertyExists(
                         $context->self . '::$' . $prop_name,
-                        $context->calling_method_id,
+                        false,
+                        $statements_analyzer,
+                        $context,
                         $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
                     )
                 ) {
@@ -512,7 +542,7 @@ class PropertyFetchAnalyzer
             if (!$override_property_visibility) {
                 if (ClassLikeAnalyzer::checkPropertyVisibility(
                     $property_id,
-                    $context->self,
+                    $context,
                     $statements_analyzer,
                     new CodeLocation($statements_analyzer->getSource(), $stmt),
                     $statements_analyzer->getSuppressedIssues()
@@ -521,35 +551,22 @@ class PropertyFetchAnalyzer
                 }
             }
 
-            $declaring_property_class = (string) $codebase->properties->getDeclaringClassForProperty($property_id);
+            $declaring_property_class = (string) $codebase->properties->getDeclaringClassForProperty(
+                $property_id,
+                true
+            );
 
             $declaring_class_storage = $codebase->classlike_storage_provider->get(
                 $declaring_property_class
             );
 
-            $property_storage = $declaring_class_storage->properties[$prop_name];
+            if (isset($declaring_class_storage->properties[$prop_name])) {
+                $property_storage = $declaring_class_storage->properties[$prop_name];
 
-            if ($property_storage->deprecated) {
-                if (IssueBuffer::accepts(
-                    new DeprecatedProperty(
-                        $property_id . ' is marked deprecated',
-                        new CodeLocation($statements_analyzer->getSource(), $stmt),
-                        $property_id
-                    ),
-                    $statements_analyzer->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-            }
-
-            if ($property_storage->internal && $context->self) {
-                $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
-                $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $declaring_property_class);
-
-                if (strtolower($self_root) !== strtolower($declaring_root)) {
+                if ($property_storage->deprecated) {
                     if (IssueBuffer::accepts(
-                        new InternalProperty(
-                            $property_id . ' is marked internal',
+                        new DeprecatedProperty(
+                            $property_id . ' is marked deprecated',
                             new CodeLocation($statements_analyzer->getSource(), $stmt),
                             $property_id
                         ),
@@ -558,9 +575,32 @@ class PropertyFetchAnalyzer
                         // fall through
                     }
                 }
+
+                if ($property_storage->internal && $context->self) {
+                    $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
+                    $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $declaring_property_class);
+
+                    if (strtolower($self_root) !== strtolower($declaring_root)) {
+                        if (IssueBuffer::accepts(
+                            new InternalProperty(
+                                $property_id . ' is marked internal',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $property_id
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
+                }
             }
 
-            $class_property_type = $codebase->properties->getPropertyType($property_id);
+            $class_property_type = $codebase->properties->getPropertyType(
+                $property_id,
+                false,
+                $statements_analyzer,
+                $context
+            );
 
             if (!$class_property_type) {
                 if (IssueBuffer::accepts(
@@ -793,7 +833,9 @@ class PropertyFetchAnalyzer
                     // log the appearance
                     $codebase->properties->propertyExists(
                         $property_id,
-                        $context->calling_method_id,
+                        false,
+                        $statements_analyzer,
+                        $context,
                         new CodeLocation($statements_analyzer->getSource(), $stmt)
                     );
                 }
@@ -815,7 +857,9 @@ class PropertyFetchAnalyzer
 
             if (!$codebase->properties->propertyExists(
                 $property_id,
-                $context->calling_method_id,
+                false,
+                $statements_analyzer,
+                $context,
                 $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
             )
             ) {
@@ -827,7 +871,7 @@ class PropertyFetchAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
 
                 return;
@@ -835,7 +879,7 @@ class PropertyFetchAnalyzer
 
             if (ClassLikeAnalyzer::checkPropertyVisibility(
                 $property_id,
-                $context->self,
+                $context,
                 $statements_analyzer,
                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                 $statements_analyzer->getSuppressedIssues()
@@ -844,7 +888,8 @@ class PropertyFetchAnalyzer
             }
 
             $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-                $fq_class_name . '::$' . $prop_name
+                $fq_class_name . '::$' . $prop_name,
+                true
             );
 
             $class_storage = $codebase->classlike_storage_provider->get((string)$declaring_property_class);

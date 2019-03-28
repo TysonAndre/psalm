@@ -9,6 +9,7 @@
     rememberPropertyAssignmentsAfterCall="true"
     checkForThrowsDocblock="false"
     throwExceptionOnError="0"
+    findUnusedCode="true"
     xsi:schemaLocation="https://getpsalm.org/schema/config config.xsd"
 >
     <projectFiles>
@@ -21,8 +22,10 @@
             <directory name="tests/stubs"/>
             <directory name="tests/DummyProject"/>
             <file name="vendor/phpunit/phpunit/src/Framework/TestCase.php"/>
-            <file name="vendor/symfony/console/Command/Command.php" />
+            <file name="vendor/symfony/console/Command/Command.php"/>
+            <directory name="vendor/netresearch/jsonmapper" />
             <file name="src/Psalm/Internal/Traverser/CustomTraverser.php"/>
+            <file name="vendor/felixfbecker/advanced-json-rpc/lib/Dispatcher.php" />
             <file name="tests/performance/a.test"/>
             <file name="tests/performance/b.test"/>
             <file name="tests/ErrorBaselineTest.php"/>
@@ -40,7 +43,8 @@
     </stubs>
 
     <plugins>
-        <plugin filename="examples/plugins/FunctionCasingChecker.php" />
+        <plugin filename="examples/plugins/FunctionCasingChecker.php"/>
+        <pluginClass class="Psalm\PhpUnitPlugin\Plugin"/>
     </plugins>
 
     <issueHandlers>
@@ -74,8 +78,8 @@
         <UnusedClass>
             <errorLevel type="suppress">
                 <directory name="examples"/>
-                <directory name="tests"/>
-                <file name="src/Psalm/Plugin/Hook/MethodReturnTypeProviderInterface.php" />
+                <file name="src/Psalm/Plugin/SpiritGuide.php" />
+                <file name="src/Psalm/Plugin/Hook/MethodReturnTypeProviderInterface.php"/>
             </errorLevel>
         </UnusedClass>
 
@@ -89,8 +93,9 @@
             <errorLevel type="info">
                 <file name="src/Psalm/Internal/LanguageServer/LanguageClient.php"/>
                 <file name="src/Psalm/Storage/FunctionLikeStorage.php"/>
+                <file name="src/Psalm/Type/Atomic/TCallableArray.php"/>
                 <file name="src/Psalm/Type/Atomic/TNonEmptyArray.php"/>
-                <file name="src/Psalm/Storage/PropertyStorage.php" />
+                <file name="src/Psalm/Storage/PropertyStorage.php"/>
             </errorLevel>
         </PossiblyUnusedProperty>
 
@@ -98,8 +103,8 @@
 
         <PossiblyUnusedMethod>
             <errorLevel type="suppress">
-                <directory name="tests"/>
                 <directory name="src/Psalm/Plugin"/>
+                <directory name="src/Psalm/SourceControl/Git/"/>
                 <file name="src/Psalm/Internal/LanguageServer/Client/TextDocument.php"/>
                 <file name="src/Psalm/Internal/LanguageServer/Server/TextDocument.php"/>
                 <referencedMethod name="Psalm\Codebase::getParentInterfaces"/>
@@ -118,64 +123,9 @@
 
         <PropertyNotSetInConstructor>
             <errorLevel type="suppress">
-                <directory name="tests"/>
                 <file name="src/Psalm/Config.php"/>
             </errorLevel>
         </PropertyNotSetInConstructor>
-
-        <MixedArgument>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </MixedArgument>
-
-        <MixedOperand>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </MixedOperand>
-
-        <MixedPropertyFetch>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </MixedPropertyFetch>
-
-        <NoInterfaceProperties>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </NoInterfaceProperties>
-
-        <NullArrayAccess>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </NullArrayAccess>
-
-        <NullPropertyFetch>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </NullPropertyFetch>
-
-        <NullArgument>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </NullArgument>
-
-        <PossiblyFalseArgument>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </PossiblyFalseArgument>
-
-        <TypeCoercion>
-            <errorLevel type="suppress">
-                <directory name="tests"/>
-            </errorLevel>
-        </TypeCoercion>
 
         <InternalMethod>
             <errorLevel type="suppress">

@@ -2,13 +2,11 @@
 namespace Psalm\Tests;
 
 use Psalm\Codebase;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Config;
 use Psalm\Context;
-use Psalm\PluginRegistrationSocket;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Plugin\Hook\AfterCodebasePopulatedInterface;
-use Psalm\Plugin\PluginEntryPointInterface;
-use Psalm\Plugin\RegistrationInterface;
+use Psalm\PluginRegistrationSocket;
 use Psalm\Tests\Internal\Provider;
 
 class PluginTest extends TestCase
@@ -16,7 +14,7 @@ class PluginTest extends TestCase
     /** @var TestConfig */
     protected static $config;
 
-    /** @var \Psalm\Internal\Analyzer\ProjectAnalyzer */
+    /** @var ?\Psalm\Internal\Analyzer\ProjectAnalyzer */
     protected $project_analyzer;
 
     /**
@@ -490,21 +488,286 @@ class PluginTest extends TestCase
             )
         );
 
-        $hook = new class implements AfterCodebasePopulatedInterface
-        {
+        $hook = new class implements AfterCodebasePopulatedInterface {
             /** @return void */
             public static function afterCodebasePopulated(Codebase $codebase)
             {
             }
         };
 
-        $config = $this->project_analyzer->getCodebase()->config;
+        $codebase = $this->project_analyzer->getCodebase();
 
-        (new PluginRegistrationSocket($config))->registerHooksFromClass(get_class($hook));
+        $config = $codebase->config;
+
+        (new PluginRegistrationSocket($config, $codebase))->registerHooksFromClass(get_class($hook));
 
         $this->assertContains(
             get_class($hook),
             $this->project_analyzer->getCodebase()->config->after_codebase_populated
         );
+    }
+
+    /** @return void */
+    public function testPropertyProviderHooks()
+    {
+        require_once __DIR__ . '/Plugin/PropertyPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\PropertyPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                namespace Ns;
+
+                class Foo {}
+
+                $foo = new Foo();
+                echo $foo->magic_property;'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /** @return void */
+    public function testMethodProviderHooks()
+    {
+        require_once __DIR__ . '/Plugin/MethodPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\MethodPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                namespace Ns;
+
+                class Foo {}
+
+                $foo = new Foo();
+                echo $foo->magicMethod("hello");
+                echo $foo::magicMethod("hello");'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /** @return void */
+    public function testFunctionProviderHooks()
+    {
+        require_once __DIR__ . '/Plugin/FunctionPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\FunctionPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                magicFunction("hello");'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidPropertyAssignmentValue
+     *
+     * @return                   void
+     */
+    public function testPropertyProviderHooksInvalidAssignment()
+    {
+        require_once __DIR__ . '/Plugin/PropertyPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\PropertyPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                namespace Ns;
+
+                class Foo {}
+
+                $foo = new Foo();
+                $foo->magic_property = 5;'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidScalarArgument
+     *
+     * @return                   void
+     */
+    public function testMethodProviderHooksInvalidArg()
+    {
+        require_once __DIR__ . '/Plugin/MethodPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\MethodPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                namespace Ns;
+
+                class Foo {}
+
+                $foo = new Foo();
+                echo $foo->magicMethod(5);'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage InvalidScalarArgument
+     *
+     * @return                   void
+     */
+    public function testFunctionProviderHooksInvalidArg()
+    {
+        require_once __DIR__ . '/Plugin/FunctionPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\FunctionPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                magicFunction(5);'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testAfterAnalysisHooks()
+    {
+        require_once __DIR__ . '/Plugin/AfterAnalysisPlugin.php';
+
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__) . DIRECTORY_SEPARATOR,
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="tests/DummyProject" />
+                    </projectFiles>
+                    <plugins>
+                        <pluginClass class="Psalm\\Test\\Plugin\\AfterAnalysisPlugin" />
+                    </plugins>
+                </psalm>'
+            )
+        );
+
+        $this->project_analyzer->getCodebase()->config->initializePlugins($this->project_analyzer);
+
+        $this->project_analyzer->output_format = \Psalm\Internal\Analyzer\ProjectAnalyzer::TYPE_JSON;
+
+        $this->project_analyzer->check('tests/DummyProject', true);
+        \Psalm\IssueBuffer::finish($this->project_analyzer, true, microtime(true));
     }
 }

@@ -7,7 +7,7 @@ class ValueTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -107,7 +107,7 @@ class ValueTest extends TestCase
                     while (rand(0, 1)) {
                         if ($i === $j) {}
                         $i++;
-                    }'
+                    }',
             ],
             'checkStringKeyValue' => [
                 '<?php
@@ -209,7 +209,7 @@ class ValueTest extends TestCase
                 '<?php
                     $i = 0;
                     if (rand(0, 1)) $i++;
-                    if ($i === 1) {}'
+                    if ($i === 1) {}',
             ],
             'incrementInClosureAndCheck' => [
                 '<?php
@@ -243,7 +243,7 @@ class ValueTest extends TestCase
 
                     if ($s === "a" || $s === "b") {
                         if ($s === "a") {}
-                    }'
+                    }',
             ],
             'moreValueReconciliation' => [
                 '<?php
@@ -292,7 +292,7 @@ class ValueTest extends TestCase
             'falsyReconciliation' => [
                 '<?php
                     $s = rand(0, 1) ? 200 : null;
-                    if (!$s) {}'
+                    if (!$s) {}',
             ],
             'redefinedIntInIfAndPossibleComparison' => [
                 '<?php
@@ -381,7 +381,7 @@ class ValueTest extends TestCase
                     $i = rand(0, 2);
                     if (isset($f[$i]) && !is_string($f[$i])) {
                         takesInt($f[$i]);
-                    }'
+                    }',
             ],
             'removeLiteralIntForNotIsInt' => [
                 '<?php
@@ -393,7 +393,7 @@ class ValueTest extends TestCase
                     $i = rand(0, 2);
                     if (isset($f[$i]) && !is_int($f[$i])) {
                         takesString($f[$i]);
-                    }'
+                    }',
             ],
             'removeLiteralFloatForNotIsFloat' => [
                 '<?php
@@ -405,7 +405,7 @@ class ValueTest extends TestCase
                     $i = rand(0, 2);
                     if (isset($f[$i]) && !is_float($f[$i])) {
                         takesString($f[$i]);
-                    }'
+                    }',
             ],
             'coerceFromMixed' => [
                 '<?php
@@ -455,7 +455,7 @@ class ValueTest extends TestCase
 
                             if (isset($map[$this->s])) {}
                         }
-                    }'
+                    }',
             ],
             'noRedundantConditionWithMixed' => [
                 '<?php
@@ -465,14 +465,92 @@ class ValueTest extends TestCase
                             if ($a == "b" && rand(0, 1)) {}
                         }
                     }',
-                [],
+                'assertions' => [],
                 'error_levels' => ['MissingParamType', 'MixedAssignment'],
+            ],
+            'sqlTypes' => [
+                '<?php
+                    $a = "select * from foo";
+                    $b = "select * from";
+                    $c = "select * from foo where i = :i";',
+                'assertions' => [
+                    '$a===' => 'sql-select-string(select * from foo)',
+                    '$b===' => 'string(select * from)',
+                    '$c===' => 'sql-select-string(select * from foo where i = :i)',
+                ],
+            ],
+            'numericToStringComparison' => [
+                '<?php
+                    /** @psalm-suppress MissingParamType */
+                    function foo($s) : void {
+                        if (is_numeric($s)) {
+                            if ($s === 1) {}
+                        }
+                    }',
+            ],
+            'newlineIssue' => [
+                '<?php
+                    $a = "foo";
+                    $b = "
+
+
+                    ";
+
+                    $c = $a;
+                    if (rand(0, 1)) {
+                        $c = $b;
+                    }
+
+                    if ($c === $b) {}',
+            ],
+            'don’tChangeType' => [
+                '<?php
+                    $x = 0;
+                    $y = rand(0, 1);
+                    $x++;
+                    if ($x !== $y) {
+                        chr($x);
+                    }',
+            ],
+            'don’tChangeTypeInElse' => [
+                '<?php
+                    /** @var 0|string */
+                    $x = 0;
+                    $y = rand(0, 1) ? 0 : 1;
+                    if ($x !== $y) {
+                    } else {
+                        if (!is_string($x)) {
+                            chr($x);
+                        }
+                    }
+
+                    /** @var int|string */
+                    $x = 0;
+                    if ($x !== $y) {
+                    } else {
+                        if (!is_string($x)) {
+                            chr($x);
+                        }
+                    }',
+            ],
+            'convertNullArrayKeyToEmptyString' => [
+                '<?php
+                    $a = [
+                        1 => 1,
+                        2 => 2,
+                        null => "hello",
+                    ];
+
+                    $b = $a[""];',
+                'assertions' => [
+                    '$b' => 'string',
+                ],
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -538,20 +616,6 @@ class ValueTest extends TestCase
                     $a = 4.1;
                     if ($a !== 4.1) {
                         // do something
-                    }',
-                'error_message' => 'TypeDoesNotContainType',
-            ],
-            'SKIPPED-phpstanPostedArrayTest' => [
-                '<?php
-                    $array = [1, 2, 3];
-                    if (rand(1, 10) === 1) {
-                        $array[] = 4;
-                        $array[] = 5;
-                        $array[] = 6;
-                    }
-
-                    if (count($array) === 7) {
-
                     }',
                 'error_message' => 'TypeDoesNotContainType',
             ],

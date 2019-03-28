@@ -41,6 +41,32 @@ class MethodSignatureTest extends TestCase
                     ) {
                         return $_GET["foo"];
                     }
+                }
+
+                class B extends SoapClient
+                {
+                    public function __soapCall(
+                        $function_name,
+                        $arguments,
+                        $options = [],
+                        $input_headers = [],
+                        &$output_headers = []
+                    ) {
+                        return $_GET["foo"];
+                    }
+                }
+
+                class C extends SoapClient
+                {
+                    public function __soapCall(
+                        string $function_name,
+                        $arguments,
+                        $options = [],
+                        $input_headers = [],
+                        &$output_headers = []
+                    ) {
+                        return $_GET["foo"];
+                    }
                 }'
         );
 
@@ -90,7 +116,7 @@ class MethodSignatureTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -348,7 +374,7 @@ class MethodSignatureTest extends TestCase
                         public function foo(I $i) : I {
                             return new C();
                         }
-                    }'
+                    }',
             ],
             'allowInterfaceImplementation' => [
                 '<?php
@@ -386,7 +412,16 @@ class MethodSignatureTest extends TestCase
                         public function boo(A $class): void {}
                     }
 
-                    (new Y())->boo(new A());',
+                    class Z extends X {
+                        /**
+                         * @inheritDoc
+                         * @param A $class
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    (new Y())->boo(new A());
+                    (new Z())->boo(new A());',
             ],
             'allowMixedExtensionOfIteratorAggregate' => [
                 '<?php
@@ -394,13 +429,29 @@ class MethodSignatureTest extends TestCase
                         public function getIterator(): Iterator {
                             return new ArrayIterator([]);
                         }
-                    }'
+                    }',
+            ],
+            'allowExtraVariadic' => [
+                '<?php
+                    interface I {
+                        public function f(string $a, int $b): void;
+                    }
+
+                    class C implements I {
+                        public function f(string $a = "a", int $b = 1, float ...$rest): void {}
+                    }
+
+                    (new C)->f();
+                    (new C)->f("b");
+                    (new C)->f("b", 3);
+                    (new C)->f("b", 3, 0.5);
+                    (new C)->f("b", 3, 0.5, 0.8);',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -594,7 +645,7 @@ class MethodSignatureTest extends TestCase
                             return new B();
                         }
                     }',
-                'error_message' => 'ImplementedReturnTypeMismatch'
+                'error_message' => 'ImplementedReturnTypeMismatch',
             ],
             'mustOmitReturnType' => [
                 '<?php
@@ -615,7 +666,7 @@ class MethodSignatureTest extends TestCase
                     class C implements I {
                         public function foo(bool $b): void {}
                     }',
-                'error_message' => 'MethodSignatureMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:6 - Method C::foo has more required',
+                'error_message' => 'MethodSignatureMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:27 - Method C::foo has more required',
             ],
             'inheritParamTypes' => [
                 '<?php
@@ -636,7 +687,7 @@ class MethodSignatureTest extends TestCase
                     }
 
                     (new B)->foo(new stdClass);',
-                'error_message' => 'InvalidArgument'
+                'error_message' => 'InvalidArgument',
             ],
             'interfaceHasFewerConstructorArgs' => [
                 '<?php
@@ -664,6 +715,28 @@ class MethodSignatureTest extends TestCase
                     class Y extends X {
                         /**
                          * @inheritdoc
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    (new Y())->boo(new A());',
+                'error_message' => 'TypeCoercion',
+            ],
+            'enforceParameterInheritanceWithCapitalizedInheritDoc' => [
+                '<?php
+                    class A {}
+                    class B extends A {}
+
+                    class X {
+                        /**
+                         * @param B $class
+                         */
+                        public function boo(A $class): void {}
+                    }
+
+                    class Y extends X {
+                        /**
+                         * @inheritDoc
                          */
                         public function boo(A $class): void {}
                     }
@@ -732,6 +805,18 @@ class MethodSignatureTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'preventInterfaceOverload' => [
+                '<?php
+                    interface I {
+                        public function f(float ...$rest): void;
+                    }
+
+                    class C implements I {
+                        /** @param array<int,float> $f */
+                        public function f($f): void {}
+                    }',
+                'error_message' => 'MethodSignatureMismatch',
             ],
         ];
     }

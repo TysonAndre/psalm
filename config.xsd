@@ -18,6 +18,7 @@
             <xs:element name="forbiddenFunctions" type="ExitFunctionsType" minOccurs="0" maxOccurs="1" />
             <xs:element name="issueHandlers" type="IssueHandlersType" minOccurs="0" maxOccurs="1" />
             <xs:element name="ignoreExceptions" type="ExceptionsType" minOccurs="0" maxOccurs="1" />
+            <xs:element name="globals" type="GlobalsType" minOccurs="0" maxOccurs="1" />
         </xs:choice>
 
         <xs:attribute name="name" type="xs:string" />
@@ -44,8 +45,11 @@
         <xs:attribute name="hoistConstants" type="xs:string" />
         <xs:attribute name="addParamDefaultToDocblockType" type="xs:string" />
         <xs:attribute name="checkForThrowsDocblock" type="xs:string" />
+        <xs:attribute name="checkForThrowsInGlobalScope" type="xs:string" />
         <xs:attribute name="forbidEcho" type="xs:string" />
         <xs:attribute name="errorBaseline" type="xs:string" />
+        <xs:attribute name="findUnusedCode" type="xs:string" />
+        <xs:attribute name="findUnusedVariablesAndParams" type="xs:string" />
     </xs:complexType>
 
     <xs:complexType name="ProjectFilesType">
@@ -260,6 +264,7 @@
             <xs:element name="PossiblyInvalidArrayAccess" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidArrayAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidArrayOffset" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidCast" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidIterator" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidMethodCall" type="IssueHandlerType" minOccurs="0" />
@@ -299,9 +304,11 @@
             <xs:element name="TypeCoercion" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TypeDoesNotContainNull" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TypeDoesNotContainType" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="UncaughtThrowInGlobalScope" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedClass" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedConstant" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedFunction" type="FunctionIssueHandlerType" minOccurs="0" />
+            <xs:element name="UndefinedInterface" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedInterfaceMethod" type="MethodIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedMethod" type="MethodIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedPropertyAssignment" type="PropertyIssueHandlerType" minOccurs="0" />
@@ -318,6 +325,7 @@
             <xs:element name="UnrecognizedStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnresolvableInclude" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnevaluatedCode" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="UnusedClosureParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedProperty" type="PropertyIssueHandlerType" minOccurs="0" />
@@ -431,5 +439,16 @@
         </xs:sequence>
 
         <xs:attribute name="errorLevel" type="xs:string" />
+    </xs:complexType>
+
+    <xs:complexType name="GlobalsType">
+        <xs:sequence>
+            <xs:element name="var" maxOccurs="unbounded" type="IdentifierType" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="IdentifierType">
+        <xs:attribute name="name" type="xs:string" use="required" />
+        <xs:attribute name="type" type="xs:string" use="required" />
     </xs:complexType>
 </xs:schema>

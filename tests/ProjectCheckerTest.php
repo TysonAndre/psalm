@@ -2,12 +2,12 @@
 namespace Psalm\Tests;
 
 use Psalm\Codebase;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Config;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Plugin\Hook\AfterCodebasePopulatedInterface;
 use Psalm\Tests\Internal\Provider;
 
-class ProjectAnalyzerTest extends TestCase
+class ProjectCheckerTest extends TestCase
 {
     /** @var TestConfig */
     protected static $config;
@@ -38,39 +38,6 @@ class ProjectAnalyzerTest extends TestCase
     {
         FileAnalyzer::clearCache();
         $this->file_provider = new Provider\FakeFileProvider();
-    }
-
-    /**
-     * @return       string[]
-     * @psalm-return array<mixed, string>
-     */
-    public static function getAllIssues()
-    {
-        return array_filter(
-            array_map(
-                /**
-                 * @param string $file_name
-                 *
-                 * @return string
-                 */
-                function ($file_name) {
-                    return substr($file_name, 0, -4);
-                },
-                scandir(dirname(__DIR__) . '/src/Psalm/Issue')
-            ),
-            /**
-             * @param string $issue_name
-             *
-             * @return bool
-             */
-            function ($issue_name) {
-                return !empty($issue_name)
-                    && $issue_name !== 'MethodIssue'
-                    && $issue_name !== 'PropertyIssue'
-                    && $issue_name !== 'ClassIssue'
-                    && $issue_name !== 'CodeIssue';
-            }
-        );
     }
 
     /**
@@ -117,9 +84,15 @@ class ProjectAnalyzerTest extends TestCase
 
         $this->assertSame(0, \Psalm\IssueBuffer::getErrorCount());
 
+        $codebase = $this->project_analyzer->getCodebase();
+
+        $this->assertSame([0, 4], $codebase->analyzer->getTotalTypeCoverage($codebase));
+
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (2 files)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $codebase->analyzer->getTypeInferenceSummary(
+                $codebase
+            )
         );
     }
 
@@ -128,10 +101,10 @@ class ProjectAnalyzerTest extends TestCase
      */
     public function testAfterCodebasePopulatedIsInvoked()
     {
-        $hook = new class implements AfterCodebasePopulatedInterface
-        {
+        $hook = new class implements AfterCodebasePopulatedInterface {
             /** @var bool */
             public static $called = false;
+
             /** @return void */
             public static function afterCodebasePopulated(Codebase $codebase)
             {
@@ -151,7 +124,10 @@ class ProjectAnalyzerTest extends TestCase
             )
         );
 
-        $this->project_analyzer->getCodebase()->config->after_codebase_populated[] = get_class($hook);
+        $hook_class = get_class($hook);
+
+        /** @psalm-suppress TypeCoercion see vimeo/psalm#1397 */
+        $this->project_analyzer->getCodebase()->config->after_codebase_populated[] = $hook_class;
 
         ob_start();
         $this->project_analyzer->check('tests/DummyProject');
@@ -183,8 +159,10 @@ class ProjectAnalyzerTest extends TestCase
         \Psalm\IssueBuffer::finish($this->project_analyzer, true, microtime(true));
 
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (2 files)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
 
         $this->project_analyzer->getCodebase()->reloadFiles($this->project_analyzer, []);
@@ -195,7 +173,9 @@ class ProjectAnalyzerTest extends TestCase
 
         $this->assertSame(
             'No files analyzed',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
     }
 
@@ -222,8 +202,10 @@ class ProjectAnalyzerTest extends TestCase
         \Psalm\IssueBuffer::finish($this->project_analyzer, true, microtime(true));
 
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (2 files)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
 
         $bat_file_path = getcwd() . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'DummyProject' . DIRECTORY_SEPARATOR . 'Bat.php';
@@ -250,8 +232,10 @@ class Bat
         $this->assertSame(0, \Psalm\IssueBuffer::getErrorCount());
 
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (1 file)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
     }
 
@@ -281,8 +265,10 @@ class Bat
         $this->assertSame(0, \Psalm\IssueBuffer::getErrorCount());
 
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (2 files)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
     }
 
@@ -312,8 +298,10 @@ class Bat
         $this->assertSame(0, \Psalm\IssueBuffer::getErrorCount());
 
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (1 file)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
     }
 
@@ -343,8 +331,10 @@ class Bat
         $this->assertSame(0, \Psalm\IssueBuffer::getErrorCount());
 
         $this->assertSame(
-            'Psalm was able to infer types for 100.000% of analyzed code (1 file)',
-            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary()
+            'Psalm was able to infer types for 100% of the codebase',
+            $this->project_analyzer->getCodebase()->analyzer->getTypeInferenceSummary(
+                $this->project_analyzer->getCodebase()
+            )
         );
     }
 }

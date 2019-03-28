@@ -80,7 +80,7 @@ class FunctionLikeParameter
      */
     public function __construct(
         $name,
-        $by_ref,
+        bool $by_ref,
         Type\Union $type = null,
         CodeLocation $location = null,
         CodeLocation $type_location = null,
@@ -105,6 +105,13 @@ class FunctionLikeParameter
     public function __toString()
     {
         return ($this->type ?: 'mixed')
+            . ($this->is_variadic ? '...' : '')
+            . ($this->is_optional ? '=' : '');
+    }
+
+    public function getId() : string
+    {
+        return ($this->type ? $this->type->getId() : 'mixed')
             . ($this->is_variadic ? '...' : '')
             . ($this->is_optional ? '=' : '');
     }

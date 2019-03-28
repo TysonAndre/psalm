@@ -17,6 +17,7 @@ use Psalm\Issue\DeprecatedTrait;
 use Psalm\Issue\InaccessibleMethod;
 use Psalm\Issue\InternalClass;
 use Psalm\Issue\InvalidTemplateParam;
+use Psalm\Issue\MethodSignatureMismatch;
 use Psalm\Issue\MissingConstructor;
 use Psalm\Issue\MissingPropertyType;
 use Psalm\Issue\MissingTemplateParam;
@@ -24,6 +25,8 @@ use Psalm\Issue\OverriddenPropertyAccess;
 use Psalm\Issue\PropertyNotSetInConstructor;
 use Psalm\Issue\ReservedWord;
 use Psalm\Issue\TooManyTemplateParams;
+use Psalm\Issue\UndefinedClass;
+use Psalm\Issue\UndefinedInterface;
 use Psalm\Issue\UndefinedTrait;
 use Psalm\Issue\UnimplementedAbstractMethod;
 use Psalm\Issue\UnimplementedInterfaceMethod;
@@ -153,14 +156,27 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             try {
                 $parent_class_storage = $classlike_storage_provider->get($parent_fq_class_name);
 
-                if ($parent_class_storage->deprecated) {
-                    $code_location = new CodeLocation(
-                        $this,
-                        $class->extends,
-                        $class_context ? $class_context->include_location : null,
-                        true
-                    );
+                $code_location = new CodeLocation(
+                    $this,
+                    $class->extends,
+                    $class_context ? $class_context->include_location : null,
+                    true
+                );
 
+                if ($parent_class_storage->is_trait || $parent_class_storage->is_interface) {
+                    if (IssueBuffer::accepts(
+                        new UndefinedClass(
+                            $parent_fq_class_name . ' is not a class',
+                            $code_location,
+                            $parent_fq_class_name . ' as class'
+                        ),
+                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                    )) {
+                        // fall through
+                    }
+                }
+
+                if ($parent_class_storage->deprecated) {
                     if (IssueBuffer::accepts(
                         new DeprecatedClass(
                             $parent_fq_class_name . ' is marked deprecated',
@@ -266,6 +282,18 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $class_context ? $class_context->include_location : null,
                 true
             );
+
+            if (!$interface_storage->is_interface) {
+                if (IssueBuffer::accepts(
+                    new UndefinedInterface(
+                        $fq_interface_name . ' is not an interface',
+                        $code_location
+                    ),
+                    array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                )) {
+                    // fall through
+                }
+            }
 
             if (isset($storage->template_type_implements_count[strtolower($fq_interface_name)])) {
                 $expected_param_count = $storage->template_type_implements_count[strtolower($fq_interface_name)];
@@ -427,6 +455,20 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             return null;
                         }
 
+                        if ($interface_method_storage->is_static && !$implementer_method_storage->is_static) {
+                            if (IssueBuffer::accepts(
+                                new MethodSignatureMismatch(
+                                    'Method ' . $implementer_method_storage->cased_name
+                                    . ' should be static like '
+                                    . $storage->name . '::' . $interface_method_storage->cased_name,
+                                    $code_location
+                                ),
+                                $implementer_method_storage->suppressed_issues
+                            )) {
+                                return false;
+                            }
+                        }
+
                         MethodAnalyzer::compareMethods(
                             $codebase,
                             $implementer_classlike_storage ?: $storage,
@@ -486,7 +528,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
             $property_class_name = $codebase->properties->getDeclaringClassForProperty(
-                $appearing_property_id
+                $appearing_property_id,
+                true
             );
             $property_class_storage = $classlike_storage_provider->get((string)$property_class_name);
 
@@ -650,7 +693,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         foreach ($class->stmts as $stmt) {
             if ($stmt instanceof PhpParser\Node\Stmt\Property && !isset($stmt->type)) {
-                $this->checkForMissingPropertyType($this, $stmt);
+                $this->checkForMissingPropertyType($this, $stmt, $class_context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\TraitUse) {
                 foreach ($stmt->traits as $trait) {
                     $fq_trait_name = self::getFQCLNFromNameObject(
@@ -691,7 +734,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
                     foreach ($trait_node->stmts as $trait_stmt) {
                         if ($trait_stmt instanceof PhpParser\Node\Stmt\Property) {
-                            $this->checkForMissingPropertyType($trait_analyzer, $trait_stmt);
+                            $this->checkForMissingPropertyType($trait_analyzer, $trait_stmt, $class_context);
                         }
                     }
                 }
@@ -807,7 +850,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
             $property_class_name = (string) $codebase->properties->getDeclaringClassForProperty(
-                $appearing_property_id
+                $appearing_property_id,
+                true
             );
             $property_class_storage = $classlike_storage_provider->get($property_class_name);
 
@@ -946,7 +990,9 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 if ($fq_class_name !== $constructor_appearing_fqcln
                     && $property_storage->visibility === ClassLikeAnalyzer::VISIBILITY_PRIVATE
                 ) {
-                    $a_class_storage = $classlike_storage_provider->get($constructor_appearing_fqcln);
+                    $a_class_storage = $classlike_storage_provider->get(
+                        $end_type->initialized_class ?: $constructor_appearing_fqcln
+                    );
 
                     if (!isset($a_class_storage->declaring_property_ids[$property_name])) {
                         $constructor_class_property_storage = null;
@@ -964,7 +1010,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     if (IssueBuffer::accepts(
                         new PropertyNotSetInConstructor(
                             'Property ' . $property_id . ' is not defined in constructor of ' .
-                                $this->fq_class_name . ' or in any private methods called in the constructor',
+                                $this->fq_class_name . ' or in any methods called in the constructor',
                             $property_storage->location,
                             $property_id
                         ),
@@ -1122,7 +1168,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
      */
     private function checkForMissingPropertyType(
         StatementsSource $source,
-        PhpParser\Node\Stmt\Property $stmt
+        PhpParser\Node\Stmt\Property $stmt,
+        Context $context
     ) {
         $comment = $stmt->getDocComment();
 
@@ -1135,7 +1182,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $property_id = $fq_class_name . '::$' . $property_name;
 
             $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-                $property_id
+                $property_id,
+                true
             );
 
             if (!$declaring_property_class) {
@@ -1147,7 +1195,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $fq_class_name = $declaring_property_class;
 
             // gets inherited property type
-            $class_property_type = $codebase->properties->getPropertyType($property_id);
+            $class_property_type = $codebase->properties->getPropertyType($property_id, false, $source, $context);
 
             if ($class_property_type) {
                 return;
@@ -1234,15 +1282,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             if ($actual_method_id !== $declaring_method_id) {
                 // the method is an abstract trait method
 
-                $implementer_method_storage = $method_analyzer->getFunctionLikeStorage();
+                $declaring_method_storage = $method_analyzer->getFunctionLikeStorage();
 
-                if (!$implementer_method_storage instanceof \Psalm\Storage\MethodStorage) {
+                if (!$declaring_method_storage instanceof \Psalm\Storage\MethodStorage) {
                     throw new \LogicException('This should never happen');
                 }
 
-                if ($declaring_method_id && $implementer_method_storage->abstract) {
+                if ($declaring_method_id && $declaring_method_storage->abstract) {
                     $appearing_storage = $classlike_storage_provider->get($class_context->self);
-                    $declaring_method_storage = $codebase->methods->getStorage($declaring_method_id);
+                    $implementer_method_storage = $codebase->methods->getStorage($declaring_method_id);
 
                     MethodAnalyzer::compareMethods(
                         $codebase,
@@ -1447,24 +1495,26 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         }
 
         if ($parent_storage->template_types && $storage->template_type_extends) {
-            foreach ($parent_storage->template_types as $i => $template_type) {
-                if (!$template_type[0]->isMixed()
-                    && isset($storage->template_type_extends[strtolower($parent_storage->name)][$i])
-                ) {
-                    $extended_type = new Type\Union([
-                        $storage->template_type_extends[strtolower($parent_storage->name)][$i]
-                    ]);
+            foreach ($parent_storage->template_types as $template_name => $type_map) {
+                foreach ($type_map as $template_type) {
+                    $parent_class_lc = strtolower($parent_storage->name);
+                    if (!$template_type[0]->isMixed()
+                        && isset($storage->template_type_extends[$parent_class_lc][$template_name])
+                    ) {
+                        $extended_type = $storage->template_type_extends[$parent_class_lc][$template_name];
 
-                    if (!TypeAnalyzer::isContainedBy($codebase, $extended_type, $template_type[0])) {
-                        if (IssueBuffer::accepts(
-                            new InvalidTemplateParam(
-                                'Extended template param ' . $i . ' expects type ' . $template_type[0]->getId()
-                                    . ', type ' . $extended_type->getId() . ' given',
-                                $code_location
-                            ),
-                            array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
-                        )) {
-                            // fall through
+                        if (!TypeAnalyzer::isContainedBy($codebase, $extended_type, $template_type[0])) {
+                            if (IssueBuffer::accepts(
+                                new InvalidTemplateParam(
+                                    'Extended template param ' . $template_name
+                                        . ' expects type ' . $template_type[0]->getId()
+                                        . ', type ' . $extended_type->getId() . ' given',
+                                    $code_location
+                                ),
+                                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                            )) {
+                                // fall through
+                            }
                         }
                     }
                 }

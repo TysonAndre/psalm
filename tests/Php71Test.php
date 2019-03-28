@@ -7,7 +7,7 @@ class Php71Test extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -234,11 +234,21 @@ class Php71Test extends TestCase
                       return $i;
                     }',
             ],
+            'noReservedWordInDocblock' => [
+                '<?php
+                    /**
+                     * @param Closure():(resource|false) $op
+                     * @return resource|false
+                     */
+                    function create_resource($op) {
+                        return $op();
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -304,7 +314,7 @@ class Php71Test extends TestCase
                 'error_message' => 'ReservedWord',
                 [],
                 false,
-                '7.0'
+                '7.0',
             ],
             'objectDoesntWorkIn71' => [
                 '<?php
@@ -314,7 +324,7 @@ class Php71Test extends TestCase
                 'error_message' => 'ReservedWord',
                 [],
                 false,
-                '7.0'
+                '7.0',
             ],
         ];
     }

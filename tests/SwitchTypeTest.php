@@ -7,7 +7,7 @@ class SwitchTypeTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -395,7 +395,7 @@ class SwitchTypeTest extends TestCase
                             case "b":
                                 break;
                         }
-                    }'
+                    }',
             ],
             'preventBadClausesFromBleeding' => [
                 '<?php
@@ -513,7 +513,7 @@ class SwitchTypeTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -749,7 +749,7 @@ class SwitchTypeTest extends TestCase
 
                         if ($a) {}
                     }',
-                'error_message' => 'PossiblyUndefinedVariable'
+                'error_message' => 'PossiblyUndefinedVariable',
             ],
             'getClassExteriorArgStringType' => [
                 '<?php
@@ -761,7 +761,7 @@ class SwitchTypeTest extends TestCase
                                 break;
                         }
                     }',
-                'error_message' => 'TypeDoesNotContainType - src' . DIRECTORY_SEPARATOR . 'somefile.php:5 - string(InvalidArgumentException) cannot be identical to class-string',
+                'error_message' => 'TypeDoesNotContainType - src' . DIRECTORY_SEPARATOR . 'somefile.php:5:34 - string(InvalidArgumentException) cannot be identical to class-string',
             ],
         ];
     }

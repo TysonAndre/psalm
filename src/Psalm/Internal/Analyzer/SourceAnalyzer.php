@@ -3,6 +3,7 @@ namespace Psalm\Internal\Analyzer;
 
 use Psalm\Aliases;
 use Psalm\Codebase;
+use Psalm\Context;
 use Psalm\StatementsSource;
 use Psalm\Type;
 
@@ -197,7 +198,7 @@ abstract class SourceAnalyzer implements StatementsSource
     }
 
     /**
-     * @return array<string,array{Type\Union, ?string}>|null
+     * @return array<string, array<string, array{Type\Union}>>|null
      */
     public function getTemplateTypeMap()
     {

@@ -345,7 +345,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
 
                     if (MethodAnalyzer::checkMethodVisibility(
                         $method_id,
-                        $context->self,
+                        $context,
                         $statements_analyzer->getSource(),
                         new CodeLocation($statements_analyzer->getSource(), $stmt),
                         $statements_analyzer->getSuppressedIssues()
@@ -353,37 +353,36 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         return false;
                     }
 
-                    $generic_params = null;
+                    $generic_param_types = null;
 
                     if ($storage->template_types) {
+                        $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+
+                        $declaring_fq_class_name = $declaring_method_id
+                            ? explode('::', $declaring_method_id)[0]
+                            : $fq_class_name;
+
                         foreach ($storage->template_types as $template_name => $_) {
-                            if (isset($found_generic_params[$template_name])) {
-                                $generic_params[] = $found_generic_params[$template_name];
+                            if (isset($found_generic_params[$template_name][$fq_class_name])) {
+                                $generic_param_types[] = $found_generic_params[$template_name][$fq_class_name][0];
                             } elseif ($storage->template_type_extends && $found_generic_params) {
-                                $generic_params[] = self::getGenericParamForOffset(
+                                $generic_param_types[] = self::getGenericParamForOffset(
+                                    $declaring_fq_class_name,
                                     $template_name,
                                     $storage->template_type_extends,
                                     $found_generic_params
                                 );
                             } else {
-                                $generic_params[] = [Type::getMixed(), null];
+                                $generic_param_types[] = Type::getMixed();
                             }
                         }
                     }
 
-                    if ($generic_params) {
+                    if ($generic_param_types) {
                         $stmt->inferredType = new Type\Union([
                             new Type\Atomic\TGenericObject(
                                 $fq_class_name,
-                                array_map(
-                                    /**
-                                     * @param array{Type\Union, ?string} $i
-                                     */
-                                    function (array $i) : Type\Union {
-                                        return $i[0];
-                                    },
-                                    $generic_params
-                                )
+                                $generic_param_types
                             ),
                         ]);
                     }
@@ -411,34 +410,39 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
 
     /**
      * @param  string $template_name
-     * @param  array<string, array<int|string, Type\Atomic>>  $template_type_extends
-     * @param  array<string, array{Type\Union, ?string}>  $found_generic_params
-     * @return array{Type\Union, ?string}
+     * @param  array<string, array<int|string, Type\Union>>  $template_type_extends
+     * @param  array<string, array<string, array{Type\Union}>>  $found_generic_params
+     * @return Type\Union
      */
     private static function getGenericParamForOffset(
+        string $fq_class_name,
         string $template_name,
         array $template_type_extends,
         array $found_generic_params
     ) {
-        if (isset($found_generic_params[$template_name])) {
-            return $found_generic_params[$template_name];
+        if (isset($found_generic_params[$template_name][$fq_class_name])) {
+            return $found_generic_params[$template_name][$fq_class_name][0];
         }
 
         foreach ($template_type_extends as $type_map) {
             foreach ($type_map as $extended_template_name => $extended_type) {
-                if (is_string($extended_template_name)
-                    && $extended_type instanceof Type\Atomic\TTemplateParam
-                    && $extended_type->param_name === $template_name
-                ) {
-                    return self::getGenericParamForOffset(
-                        $extended_template_name,
-                        $template_type_extends,
-                        $found_generic_params
-                    );
+                foreach ($extended_type->getTypes() as $extended_atomic_type) {
+                    if (is_string($extended_template_name)
+                        && $extended_atomic_type instanceof Type\Atomic\TTemplateParam
+                        && $extended_atomic_type->param_name === $template_name
+                        && $extended_template_name !== $template_name
+                    ) {
+                        return self::getGenericParamForOffset(
+                            $fq_class_name,
+                            $extended_template_name,
+                            $template_type_extends,
+                            $found_generic_params
+                        );
+                    }
                 }
             }
         }
 
-        return [Type::getMixed(), null];
+        return Type::getMixed();
     }
 }

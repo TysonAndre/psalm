@@ -100,7 +100,7 @@ class FunctionLikeStorage
     public $global_types = [];
 
     /**
-     * @var array<string, array{Type\Union, ?string}>|null
+     * @var array<string, array<string, array{Type\Union}>>|null
      */
     public $template_types;
 
@@ -153,6 +153,11 @@ class FunctionLikeStorage
      * @var string|null
      */
     public $return_type_description;
+
+    /**
+     * @var array<string, CodeLocation>|null
+     */
+    public $unused_docblock_params;
 
     public function __toString()
     {

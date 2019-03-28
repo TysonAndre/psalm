@@ -243,7 +243,7 @@ class Populator
                 $this->file_reference_provider->addFileInheritanceToClass($file_path, $parent_interface_lc);
             }
 
-            foreach ($storage->parent_classes as $parent_class_lc) {
+            foreach ($storage->parent_classes as $parent_class_lc => $_) {
                 $this->file_reference_provider->addFileInheritanceToClass($file_path, $parent_class_lc);
             }
 
@@ -269,6 +269,53 @@ class Populator
 
             foreach ($storage->properties as $property) {
                 $property->internal = true;
+            }
+        }
+
+        foreach ($storage->methods as $method_name => $method_storage) {
+            if (isset($storage->overridden_method_ids[$method_name])) {
+                foreach ($storage->overridden_method_ids[$method_name] as $declaring_method_id) {
+                    list($declaring_class, $declaring_method_name) = explode('::', $declaring_method_id);
+                    $declaring_class_storage = $this->classlike_storage_provider->get($declaring_class);
+
+                    $declaring_method_storage = $declaring_class_storage->methods[strtolower($declaring_method_name)];
+
+                    if ($declaring_method_storage->has_docblock_param_types
+                        && !$method_storage->has_docblock_param_types
+                        && !isset($storage->documenting_method_ids[$method_name])
+                    ) {
+                        $storage->documenting_method_ids[$method_name] = $declaring_method_id;
+                    }
+
+                    // tell the declaring class it's overridden downstream
+                    $declaring_method_storage->overridden_downstream = true;
+                    $declaring_method_storage->overridden_somewhere = true;
+
+                    if (!$method_storage->throws
+                        && $method_storage->inheritdoc
+                        && $declaring_method_storage->throws
+                    ) {
+                        $method_storage->throws = $declaring_method_storage->throws;
+                    }
+
+                    if (count($storage->overridden_method_ids[$method_name]) === 1
+                        && $method_storage->signature_return_type
+                        && !$method_storage->signature_return_type->isVoid()
+                        && $method_storage->return_type === $method_storage->signature_return_type
+                    ) {
+                        if (isset($declaring_class_storage->methods[$method_name])) {
+                            $declaring_method_storage = $declaring_class_storage->methods[$method_name];
+
+                            if ($declaring_method_storage->return_type
+                                && $declaring_method_storage->signature_return_type
+                                && $declaring_method_storage->return_type
+                                    !== $declaring_method_storage->signature_return_type
+                            ) {
+                                $method_storage->return_type = $declaring_method_storage->return_type;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -323,28 +370,21 @@ class Populator
                                     continue;
                                 }
 
-                                if ($type instanceof Type\Atomic\TTemplateParam
-                                    && $type->defining_class
-                                    && ($referenced_type
-                                        = $storage->template_type_extends
-                                            [strtolower($type->defining_class)]
-                                            [$type->param_name]
-                                            ?? null)
-                                    && (!$referenced_type instanceof Type\Atomic\TTemplateParam)
-                                ) {
-                                    $storage->template_type_extends[$t_storage_class][$i] = $referenced_type;
-                                } else {
-                                    $storage->template_type_extends[$t_storage_class][$i] = $type;
-                                }
+                                $storage->template_type_extends[$t_storage_class][$i] = self::extendType(
+                                    $type,
+                                    $storage
+                                );
                             }
                         }
                     }
                 } else {
                     $storage->template_type_extends[$used_trait_lc] = [];
 
-                    foreach ($trait_storage->template_types as $template_name => $template_type) {
-                        $storage->template_type_extends[$used_trait_lc][$template_name]
-                            = array_values($template_type[0]->getTypes())[0];
+                    foreach ($trait_storage->template_types as $template_name => $template_type_map) {
+                        foreach ($template_type_map as $template_type) {
+                            $storage->template_type_extends[$used_trait_lc][$template_name]
+                                = $template_type[0];
+                        }
                     }
                 }
             } elseif ($trait_storage->template_type_extends) {
@@ -354,6 +394,41 @@ class Populator
                 );
             }
         }
+    }
+
+    private static function extendType(
+        Type\Union $type,
+        ClassLikeStorage $storage
+    ) : Type\Union {
+        $extended_types = [];
+
+        foreach ($type->getTypes() as $atomic_type) {
+            if ($atomic_type instanceof Type\Atomic\TTemplateParam
+                && $atomic_type->defining_class
+            ) {
+                $referenced_type
+                    = $storage->template_type_extends
+                        [strtolower($atomic_type->defining_class)]
+                        [$atomic_type->param_name]
+                        ?? null;
+
+                if ($referenced_type) {
+                    foreach ($referenced_type->getTypes() as $atomic_referenced_type) {
+                        if (!$atomic_referenced_type instanceof Type\Atomic\TTemplateParam) {
+                            $extended_types[] = $atomic_referenced_type;
+                        } else {
+                            $extended_types[] = $atomic_type;
+                        }
+                    }
+                } else {
+                    $extended_types[] = $atomic_type;
+                }
+            } else {
+                $extended_types[] = $atomic_type;
+            }
+        }
+
+        return new Type\Union($extended_types);
     }
 
     /**
@@ -406,28 +481,21 @@ class Populator
                                     continue;
                                 }
 
-                                if ($type instanceof Type\Atomic\TTemplateParam
-                                    && $type->defining_class
-                                    && ($referenced_type
-                                        = $storage->template_type_extends
-                                            [strtolower($type->defining_class)]
-                                            [$type->param_name]
-                                            ?? null)
-                                    && (!$referenced_type instanceof Type\Atomic\TTemplateParam)
-                                ) {
-                                    $storage->template_type_extends[$t_storage_class][$i] = $referenced_type;
-                                } else {
-                                    $storage->template_type_extends[$t_storage_class][$i] = $type;
-                                }
+                                $storage->template_type_extends[$t_storage_class][$i] = self::extendType(
+                                    $type,
+                                    $storage
+                                );
                             }
                         }
                     }
                 } else {
                     $storage->template_type_extends[$parent_storage_class] = [];
 
-                    foreach ($parent_storage->template_types as $template_name => $template_type) {
-                        $storage->template_type_extends[$parent_storage_class][$template_name]
-                            = array_values($template_type[0]->getTypes())[0];
+                    foreach ($parent_storage->template_types as $template_name => $template_type_map) {
+                        foreach ($template_type_map as $template_type) {
+                            $storage->template_type_extends[$parent_storage_class][$template_name]
+                                = $template_type[0];
+                        }
                     }
                 }
             } elseif ($parent_storage->template_type_extends) {
@@ -539,28 +607,21 @@ class Populator
                                     continue;
                                 }
 
-                                if ($type instanceof Type\Atomic\TTemplateParam
-                                    && $type->defining_class
-                                    && ($referenced_type
-                                        = $storage->template_type_extends
-                                            [strtolower($type->defining_class)]
-                                            [$type->param_name]
-                                            ?? null)
-                                    && (!$referenced_type instanceof Type\Atomic\TTemplateParam)
-                                ) {
-                                    $storage->template_type_extends[$t_storage_class][$i] = $referenced_type;
-                                } else {
-                                    $storage->template_type_extends[$t_storage_class][$i] = $type;
-                                }
+                                $storage->template_type_extends[$t_storage_class][$i] = self::extendType(
+                                    $type,
+                                    $storage
+                                );
                             }
                         }
                     }
                 } else {
                     $storage->template_type_extends[$parent_interface_lc] = [];
 
-                    foreach ($parent_interface_storage->template_types as $template_name => $template_type) {
-                        $storage->template_type_extends[$parent_interface_lc][$template_name]
-                            = array_values($template_type[0]->getTypes())[0];
+                    foreach ($parent_interface_storage->template_types as $template_name => $template_type_map) {
+                        foreach ($template_type_map as $template_type) {
+                            $storage->template_type_extends[$parent_interface_lc][$template_name]
+                                = $template_type[0];
+                        }
                     }
                 }
             }
@@ -639,9 +700,11 @@ class Populator
                 } else {
                     $storage->template_type_extends[$implemented_interface_lc] = [];
 
-                    foreach ($implemented_interface_storage->template_types as $template_name => $template_type) {
-                        $storage->template_type_extends[$implemented_interface_lc][$template_name]
-                            = array_values($template_type[0]->getTypes())[0];
+                    foreach ($implemented_interface_storage->template_types as $template_name => $template_type_map) {
+                        foreach ($template_type_map as $template_type) {
+                            $storage->template_type_extends[$implemented_interface_lc][$template_name]
+                                = $template_type[0];
+                        }
                     }
                 }
             }
@@ -836,26 +899,30 @@ class Populator
             $iterator_name = null;
             $generic_params = null;
 
-            foreach ($atomic_types as $type) {
-                if ($type instanceof Type\Atomic\TIterable
-                    || ($type instanceof Type\Atomic\TNamedObject
-                        && (!$type->from_docblock || $is_property)
-                        && (
-                            strtolower($type->value) === 'traversable'
-                            || $this->classlikes->interfaceExtends(
-                                $type->value,
-                                'Traversable'
-                            )
-                            || $this->classlikes->classImplements(
-                                $type->value,
-                                'Traversable'
-                            )
-                        ))
-                ) {
-                    $iterator_name = $type->value;
-                } elseif ($type instanceof Type\Atomic\TArray) {
-                    $generic_params = $type->type_params;
+            try {
+                foreach ($atomic_types as $type) {
+                    if ($type instanceof Type\Atomic\TIterable
+                        || ($type instanceof Type\Atomic\TNamedObject
+                            && (!$type->from_docblock || $is_property)
+                            && (
+                                strtolower($type->value) === 'traversable'
+                                || $this->classlikes->interfaceExtends(
+                                    $type->value,
+                                    'Traversable'
+                                )
+                                || $this->classlikes->classImplements(
+                                    $type->value,
+                                    'Traversable'
+                                )
+                            ))
+                    ) {
+                        $iterator_name = $type->value;
+                    } elseif ($type instanceof Type\Atomic\TArray) {
+                        $generic_params = $type->type_params;
+                    }
                 }
+            } catch (\InvalidArgumentException $e) {
+                // ignore class-not-found issues
             }
 
             if ($iterator_name && $generic_params) {
@@ -928,7 +995,7 @@ class Populator
 
         // register where they're declared
         foreach ($parent_storage->inheritable_method_ids as $method_name => $declaring_method_id) {
-            if (!$parent_storage->is_trait) {
+            if (!$parent_storage->is_trait && $method_name !== '__construct') {
                 $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
             }
 
@@ -959,46 +1026,6 @@ class Populator
 
                 $storage->declaring_method_ids[$aliased_method_name] = $declaring_method_id;
                 $storage->inheritable_method_ids[$aliased_method_name] = $declaring_method_id;
-            }
-        }
-
-        foreach ($storage->methods as $method_name => $method_storage) {
-            if (isset($storage->overridden_method_ids[$method_name])) {
-                foreach ($storage->overridden_method_ids[$method_name] as $declaring_method_id) {
-                    list($declaring_class, $declaring_method_name) = explode('::', $declaring_method_id);
-                    $declaring_class_storage = $this->classlike_storage_provider->get($declaring_class);
-
-                    $declaring_method_storage = $declaring_class_storage->methods[strtolower($declaring_method_name)];
-
-                    // tell the declaring class it's overridden downstream
-                    $declaring_method_storage->overridden_downstream = true;
-                    $declaring_method_storage->overridden_somewhere = true;
-
-                    if (!$method_storage->throws
-                        && $method_storage->inheritdoc
-                        && $declaring_method_storage->throws
-                    ) {
-                        $method_storage->throws = $declaring_method_storage->throws;
-                    }
-
-                    if (count($storage->overridden_method_ids[$method_name]) === 1
-                        && $method_storage->signature_return_type
-                        && !$method_storage->signature_return_type->isVoid()
-                        && $method_storage->return_type === $method_storage->signature_return_type
-                    ) {
-                        if (isset($declaring_class_storage->methods[$method_name])) {
-                            $declaring_method_storage = $declaring_class_storage->methods[$method_name];
-
-                            if ($declaring_method_storage->return_type
-                                && $declaring_method_storage->signature_return_type
-                                && $declaring_method_storage->return_type
-                                    !== $declaring_method_storage->signature_return_type
-                            ) {
-                                $method_storage->return_type = $declaring_method_storage->return_type;
-                            }
-                        }
-                    }
-                }
             }
         }
     }

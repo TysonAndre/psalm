@@ -77,13 +77,18 @@ class PropertyAssignmentAnalyzer
             $property_id = $context->self . '::$' . $prop_name;
             $property_ids[] = $property_id;
 
-            if (!$codebase->properties->propertyExists($property_id)) {
+            if (!$codebase->properties->propertyExists($property_id, false, $statements_analyzer, $context)) {
                 return null;
             }
 
             $property_exists = true;
 
-            $class_property_type = $codebase->properties->getPropertyType($property_id, true);
+            $class_property_type = $codebase->properties->getPropertyType(
+                $property_id,
+                true,
+                $statements_analyzer,
+                $context
+            );
 
             $class_property_types[] = $class_property_type ? clone $class_property_type : Type::getMixed();
 
@@ -128,7 +133,15 @@ class PropertyAssignmentAnalyzer
             }
 
             if ($lhs_type->hasMixed()) {
-                $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                if (!$context->collect_initializations
+                    && !$context->collect_mutations
+                    && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                    && (!(($parent_source = $statements_analyzer->getSource())
+                            instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                        || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+                ) {
+                    $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                }
 
                 if (IssueBuffer::accepts(
                     new MixedPropertyAssignment(
@@ -143,7 +156,15 @@ class PropertyAssignmentAnalyzer
                 return null;
             }
 
-            $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            if (!$context->collect_initializations
+                && !$context->collect_mutations
+                && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                && (!(($parent_source = $statements_analyzer->getSource())
+                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+            ) {
+                $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+            }
 
             if ($lhs_type->isNull()) {
                 if (IssueBuffer::accepts(
@@ -289,12 +310,12 @@ class PropertyAssignmentAnalyzer
                 $property_ids[] = $property_id;
 
                 if ($codebase->methodExists($fq_class_name . '::__set')
-                    && (!$codebase->properties->propertyExists($property_id)
+                    && (!$codebase->properties->propertyExists($property_id, false, $statements_analyzer, $context)
                         || ($lhs_var_id !== '$this'
                             && $fq_class_name !== $context->self
                             && ClassLikeAnalyzer::checkPropertyVisibility(
                                 $property_id,
-                                $context->self,
+                                $context,
                                 $statements_analyzer,
                                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                                 $statements_analyzer->getSuppressedIssues(),
@@ -352,7 +373,12 @@ class PropertyAssignmentAnalyzer
                     $self_property_id = $context->self . '::$' . $prop_name;
 
                     if ($self_property_id !== $property_id
-                        && $codebase->properties->propertyExists($self_property_id)
+                        && $codebase->properties->propertyExists(
+                            $self_property_id,
+                            false,
+                            $statements_analyzer,
+                            $context
+                        )
                     ) {
                         $property_id = $self_property_id;
                     }
@@ -360,7 +386,9 @@ class PropertyAssignmentAnalyzer
 
                 if (!$codebase->properties->propertyExists(
                     $property_id,
-                    $context->calling_method_id,
+                    false,
+                    $statements_analyzer,
+                    $context,
                     new CodeLocation($statements_analyzer->getSource(), $stmt)
                 )) {
                     if ($stmt->var instanceof PhpParser\Node\Expr\Variable && $stmt->var->name === 'this') {
@@ -377,7 +405,7 @@ class PropertyAssignmentAnalyzer
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // fall through
                         }
                     } else {
                         if (IssueBuffer::accepts(
@@ -388,7 +416,7 @@ class PropertyAssignmentAnalyzer
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // fall through
                         }
                     }
 
@@ -412,7 +440,7 @@ class PropertyAssignmentAnalyzer
                     if (!$context->collect_mutations) {
                         if (ClassLikeAnalyzer::checkPropertyVisibility(
                             $property_id,
-                            $context->self,
+                            $context,
                             $statements_analyzer,
                             new CodeLocation($statements_analyzer->getSource(), $stmt),
                             $statements_analyzer->getSuppressedIssues()
@@ -422,7 +450,7 @@ class PropertyAssignmentAnalyzer
                     } else {
                         if (ClassLikeAnalyzer::checkPropertyVisibility(
                             $property_id,
-                            $context->self,
+                            $context,
                             $statements_analyzer,
                             new CodeLocation($statements_analyzer->getSource(), $stmt),
                             $statements_analyzer->getSuppressedIssues(),
@@ -434,34 +462,21 @@ class PropertyAssignmentAnalyzer
                 }
 
                 $declaring_property_class = (string) $codebase->properties->getDeclaringClassForProperty(
-                    $property_id
+                    $property_id,
+                    false
                 );
 
                 $class_storage = $codebase->classlike_storage_provider->get($declaring_property_class);
 
-                $property_storage = $class_storage->properties[$prop_name];
+                $property_storage = null;
 
-                if ($property_storage->deprecated) {
-                    if (IssueBuffer::accepts(
-                        new DeprecatedProperty(
-                            $property_id . ' is marked deprecated',
-                            new CodeLocation($statements_analyzer->getSource(), $stmt),
-                            $property_id
-                        ),
-                        $statements_analyzer->getSuppressedIssues()
-                    )) {
-                        // fall through
-                    }
-                }
+                if (isset($class_storage->properties[$prop_name])) {
+                    $property_storage = $class_storage->properties[$prop_name];
 
-                if ($property_storage->internal && $context->self) {
-                    $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
-                    $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $declaring_property_class);
-
-                    if (strtolower($self_root) !== strtolower($declaring_root)) {
+                    if ($property_storage->deprecated) {
                         if (IssueBuffer::accepts(
-                            new InternalProperty(
-                                $property_id . ' is marked internal',
+                            new DeprecatedProperty(
+                                $property_id . ' is marked deprecated',
                                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                                 $property_id
                             ),
@@ -470,14 +485,37 @@ class PropertyAssignmentAnalyzer
                             // fall through
                         }
                     }
+
+                    if ($property_storage->internal && $context->self) {
+                        $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
+                        $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $declaring_property_class);
+
+                        if (strtolower($self_root) !== strtolower($declaring_root)) {
+                            if (IssueBuffer::accepts(
+                                new InternalProperty(
+                                    $property_id . ' is marked internal',
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                    $property_id
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+                    }
                 }
 
-                $class_property_type = $codebase->properties->getPropertyType($property_id, true);
+                $class_property_type = $codebase->properties->getPropertyType(
+                    $property_id,
+                    true,
+                    $statements_analyzer,
+                    $context
+                );
 
                 if (!$class_property_type) {
                     $class_property_type = Type::getMixed();
 
-                    if (!$assignment_value_type->hasMixed()) {
+                    if (!$assignment_value_type->hasMixed() && $property_storage) {
                         if ($property_storage->suggested_type) {
                             $property_storage->suggested_type = Type::combineUnionTypes(
                                 $assignment_value_type,
@@ -502,7 +540,7 @@ class PropertyAssignmentAnalyzer
                     if (!$class_property_type->hasMixed() && $assignment_value_type->hasMixed()) {
                         if (IssueBuffer::accepts(
                             new MixedAssignment(
-                                'Cannot assign ' . $var_id . ' to a mixed type',
+                                'Cannot assign' . ($var_id ? ' ' . $var_id . ' ' : ' ') . 'to a mixed type',
                                 new CodeLocation($statements_analyzer->getSource(), $stmt)
                             ),
                             $statements_analyzer->getSuppressedIssues()
@@ -548,6 +586,13 @@ class PropertyAssignmentAnalyzer
             }
 
             if ($var_id) {
+                if ($context->collect_initializations
+                    && $var_id
+                    && $lhs_var_id === '$this'
+                ) {
+                    $assignment_value_type->initialized_class = $context->self;
+                }
+
                 // because we don't want to be assigning for property declarations
                 $context->vars_in_scope[$var_id] = $assignment_value_type;
             }
@@ -782,7 +827,7 @@ class PropertyAssignmentAnalyzer
 
         $property_id = $fq_class_name . '::$' . $prop_name;
 
-        if (!$codebase->properties->propertyExists($property_id, $context->calling_method_id)) {
+        if (!$codebase->properties->propertyExists($property_id, false, $statements_analyzer, $context)) {
             if (IssueBuffer::accepts(
                 new UndefinedPropertyAssignment(
                     'Static property ' . $property_id . ' is not defined',
@@ -791,7 +836,7 @@ class PropertyAssignmentAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
 
             return;
@@ -799,7 +844,7 @@ class PropertyAssignmentAnalyzer
 
         if (ClassLikeAnalyzer::checkPropertyVisibility(
             $property_id,
-            $context->self,
+            $context,
             $statements_analyzer,
             new CodeLocation($statements_analyzer->getSource(), $stmt),
             $statements_analyzer->getSuppressedIssues()
@@ -808,7 +853,8 @@ class PropertyAssignmentAnalyzer
         }
 
         $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-            $fq_class_name . '::$' . $prop_name->name
+            $fq_class_name . '::$' . $prop_name->name,
+            false
         );
 
         $class_storage = $codebase->classlike_storage_provider->get((string)$declaring_property_class);
@@ -819,7 +865,12 @@ class PropertyAssignmentAnalyzer
             $context->vars_in_scope[$var_id] = $assignment_value_type;
         }
 
-        $class_property_type = $codebase->properties->getPropertyType($property_id, true);
+        $class_property_type = $codebase->properties->getPropertyType(
+            $property_id,
+            true,
+            $statements_analyzer,
+            $context
+        );
 
         if (!$class_property_type) {
             $class_property_type = Type::getMixed();

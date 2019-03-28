@@ -80,7 +80,7 @@ class IncludeTest extends TestCase
 
         $config = $codebase->config;
 
-        $this->expectException('\Psalm\Exception\CodeException');
+        $this->expectException(\Psalm\Exception\CodeException::class);
         $this->expectExceptionMessageRegExp('/\b' . preg_quote($error_message, '/') . '\b/');
 
         $codebase->scanFiles();
@@ -92,7 +92,7 @@ class IncludeTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return array<string,array{files:array<string,string>,files_to_check:array<int,string>}>
      */
     public function providerTestValidIncludes()
     {
@@ -368,7 +368,7 @@ class IncludeTest extends TestCase
                 ],
                 'files_to_check' => [
                     getcwd() . DIRECTORY_SEPARATOR . 'file1.php',
-                ]
+                ],
             ],
             'returnNamespacedFunctionCallType' => [
                 'files' => [
@@ -414,7 +414,7 @@ class IncludeTest extends TestCase
                         foo();
                         array_filter([1, 2, 3, 4], "bar");',
                     getcwd() . DIRECTORY_SEPARATOR . 'file3.php' => '<?php
-                        function bar(int $i) : bool { return (bool) rand(0, 1); }'
+                        function bar(int $i) : bool { return (bool) rand(0, 1); }',
                 ],
                 'files_to_check' => [
                     getcwd() . DIRECTORY_SEPARATOR . 'file1.php',
@@ -491,11 +491,59 @@ class IncludeTest extends TestCase
                 'hoist_constants' => false,
                 'error_levels' => ['DuplicateClass', 'MissingPropertyType'],
             ],
+            'functionsDefined' => [
+                'files' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'index.php' => '<?php
+                        include "func.php";
+                        include "Base.php";
+                        include "Child.php";',
+                    getcwd() . DIRECTORY_SEPARATOR . 'func.php' => '<?php
+                        namespace ns;
+
+                        function func(): void {}
+
+                        define("ns\\cons", 0);
+
+                        cons;',
+                    getcwd() . DIRECTORY_SEPARATOR . 'Base.php' => '<?php
+                        namespace ns;
+
+                        func();
+
+                        cons;
+
+                        class Base {
+                            public function __construct() {}
+                        }',
+                    getcwd() . DIRECTORY_SEPARATOR . 'Child.php' => '<?php
+                        namespace ns;
+
+                        func();
+
+                        cons;
+
+                        class Child extends Base {
+                            /**
+                             * @var int
+                             */
+                            public $x;
+
+                            public function __construct() {
+                                parent::__construct();
+
+                                $this->x = 5;
+                            }
+                        }',
+                ],
+                'files_to_check' => [
+                    getcwd() . DIRECTORY_SEPARATOR . 'index.php',
+                ],
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return array<string,array{files:array<string,string>,files_to_check:array<int,string>,error_message:string}>
      */
     public function providerTestInvalidIncludes()
     {
@@ -626,7 +674,7 @@ class IncludeTest extends TestCase
                 'files_to_check' => [
                     getcwd() . DIRECTORY_SEPARATOR . 'file1.php',
                 ],
-                'error_message' => 'UndefinedVariable'
+                'error_message' => 'UndefinedVariable',
             ],
             'invalidTraitFunctionReturnInUncheckedFile' => [
                 'files' => [

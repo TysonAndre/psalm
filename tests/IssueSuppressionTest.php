@@ -7,7 +7,7 @@ class IssueSuppressionTest extends TestCase
     use Traits\InvalidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -62,7 +62,7 @@ class IssueSuppressionTest extends TestCase
                             },
                             $bar
                         );
-                    }'
+                    }',
             ],
             'crossClosureBoundariesOnReturn' => [
                 '<?php
@@ -77,13 +77,13 @@ class IssueSuppressionTest extends TestCase
                             },
                             $bar
                         );
-                    }'
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -99,7 +99,7 @@ class IssueSuppressionTest extends TestCase
                             new C();
                         }
                     }',
-                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:8 - Class or interface C',
+                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:33 - Class or interface C',
             ],
             'undefinedClassOneLineInFileAfter' => [
                 '<?php
@@ -108,7 +108,7 @@ class IssueSuppressionTest extends TestCase
                      */
                     new B();
                     new C();',
-                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:6 - Class or interface C',
+                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:25 - Class or interface C',
             ],
         ];
     }

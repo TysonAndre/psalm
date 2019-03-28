@@ -7,7 +7,7 @@ class MagicPropertyTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -367,7 +367,7 @@ class MagicPropertyTest extends TestCase
                         {
                             $this->service->getById(123);
                         }
-                    }'
+                    }',
             ],
             'magicInterfacePropertyRead' => [
                 '<?php
@@ -503,7 +503,7 @@ class MagicPropertyTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -561,7 +561,7 @@ class MagicPropertyTest extends TestCase
 
                     $a = new A();
                     $a->foo = new SomeOtherPropertyType();',
-                'error_message' => 'InvalidPropertyAssignmentValue - src' . DIRECTORY_SEPARATOR . 'somefile.php:29 - $a->foo with declared type'
+                'error_message' => 'InvalidPropertyAssignmentValue - src' . DIRECTORY_SEPARATOR . 'somefile.php:29:31 - $a->foo with declared type'
                     . ' \'Bar\PropertyType\' cannot',
             ],
             'propertyWriteDocblockInvalidAssignment' => [

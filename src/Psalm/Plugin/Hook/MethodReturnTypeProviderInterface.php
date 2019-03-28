@@ -13,18 +13,22 @@ interface MethodReturnTypeProviderInterface
     /**
      * @return array<string>
      */
-    public static function getMethodIds() : array;
+    public static function getClassLikeNames() : array;
 
     /**
      * @param  array<PhpParser\Node\Arg>    $call_args
+     * @param  ?array<Type\Union> $template_type_parameters
+     * @return ?Type\Union
      */
-    public static function getFunctionReturnType(
-        StatementsSource $statements_srouce,
-        string $method_id,
-        string $appearing_method_id,
-        string $declaring_method_id,
+    public static function getMethodReturnType(
+        StatementsSource $source,
+        string $fq_classlike_name,
+        string $method_name_lowercase,
         array $call_args,
         Context $context,
-        CodeLocation $code_location
-    ) : Type\Union;
+        CodeLocation $code_location,
+        array $template_type_parameters = null,
+        string $called_fq_classlike_name = null,
+        string $called_method_name_lowercase = null
+    );
 }

@@ -9,7 +9,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -691,7 +691,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
                     function doSomethingUseful($object) : void {
                         echo count($object);
                         foreach ($object as $foo) {}
-                    }'
+                    }',
             ],
             'rawIteratorIteration' => [
                 '<?php
@@ -786,7 +786,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
                     $collection->add(new Item());
                     foreach ($collection as $item) {
                         echo $item->prop;
-                    }'
+                    }',
             ],
             'foreachIntersectionTraversable' => [
                 '<?php
@@ -807,7 +807,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
 
                             return $max;
                         }
-                    }'
+                    }',
             ],
             'ifSpecificMaybeEmptyValues' => [
                 '<?php
@@ -829,7 +829,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
                 '<?php
                     function foo(DOMNodeList $list) : void {
                         foreach ($list as $item) {}
-                    }'
+                    }',
             ],
             'loopOverArrayChunk' => [
                 '<?php
@@ -844,13 +844,13 @@ class ForeachTest extends \Psalm\Tests\TestCase
 
                     foreach(Foo(1, 2, 3, 4, 5) as $ints) {
                       echo $ints[0], ", ", ($ints[1] ?? "n/a"), "\n";
-                    }'
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -880,7 +880,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
                     }
 
                     echo $array;',
-                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Possibly undefined ' .
+                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:25 - Possibly undefined ' .
                     'global variable $array, first seen on line 3',
             ],
             'possibleUndefinedVariableInForeachAndIfWithBreak' => [
@@ -893,7 +893,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
                     }
 
                     echo $a;',
-                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:9 - Possibly undefined ' .
+                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:26 - Possibly undefined ' .
                     'global variable $a, first seen on line 4',
             ],
             'possibleUndefinedVariableInForeachAndIf' => [
@@ -905,7 +905,7 @@ class ForeachTest extends \Psalm\Tests\TestCase
 
                         echo $a;
                     }',
-                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:7 - Possibly undefined ' .
+                'error_message' => 'PossiblyUndefinedGlobalVariable - src' . DIRECTORY_SEPARATOR . 'somefile.php:7:30 - Possibly undefined ' .
                     'global variable $a, first seen on line 4',
             ],
             'implicitFourthLoopWithBadReturnType' => [

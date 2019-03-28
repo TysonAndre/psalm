@@ -35,6 +35,7 @@ use Psalm\Issue\ForbiddenCode;
 use Psalm\Issue\InvalidCast;
 use Psalm\Issue\InvalidClone;
 use Psalm\Issue\InvalidDocblock;
+use Psalm\Issue\PossiblyInvalidCast;
 use Psalm\Issue\PossiblyUndefinedVariable;
 use Psalm\Issue\UndefinedConstant;
 use Psalm\Issue\UndefinedVariable;
@@ -121,7 +122,7 @@ class ExpressionAnalyzer
         } elseif ($stmt instanceof PhpParser\Node\Expr\ConstFetch) {
             ConstFetchAnalyzer::analyze($statements_analyzer, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\String_) {
-            $stmt->inferredType = Type::getString(strlen($stmt->value) < 50 ? $stmt->value : null);
+            $stmt->inferredType = Type::getString($stmt->value);
         } elseif ($stmt instanceof PhpParser\Node\Scalar\EncapsedStringPart) {
             // do nothing
         } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst) {
@@ -256,7 +257,7 @@ class ExpressionAnalyzer
                 $fake_right_expr = new PhpParser\Node\Scalar\LNumber(1, $stmt->getAttributes());
                 $fake_right_expr->inferredType = Type::getInt();
 
-                BinaryOpAnalyzer::analyzeNonDivArithmenticOp(
+                BinaryOpAnalyzer::analyzeNonDivArithmeticOp(
                     $statements_analyzer,
                     $stmt->var,
                     $fake_right_expr,
@@ -362,12 +363,19 @@ class ExpressionAnalyzer
                 }
             }
 
+            $byref_uses = [];
+
             foreach ($stmt->uses as $use) {
                 if (!is_string($use->var->name)) {
                     continue;
                 }
 
                 $use_var_id = '$' . $use->var->name;
+
+                if ($use->byRef) {
+                    $byref_uses[$use_var_id] = true;
+                }
+
                 // insert the ref into the current context if passed by ref, as whatever we're passing
                 // the closure to could execute it straight away.
                 if (!$context->hasVariable($use_var_id, $statements_analyzer) && $use->byRef) {
@@ -382,7 +390,7 @@ class ExpressionAnalyzer
                 $use_context->vars_possibly_in_scope[$use_var_id] = true;
             }
 
-            $closure_analyzer->analyze($use_context, $context);
+            $closure_analyzer->analyze($use_context, $context, false, $byref_uses);
 
             if (!isset($stmt->inferredType)) {
                 $stmt->inferredType = Type::getClosure();
@@ -418,33 +426,11 @@ class ExpressionAnalyzer
                 return false;
             }
 
-            $container_type = Type::getString();
-
-            if (isset($stmt->expr->inferredType)
-                && !$stmt->expr->inferredType->hasMixed()
-                && !isset($stmt->expr->inferredType->getTypes()['resource'])
-                && !TypeAnalyzer::isContainedBy(
-                    $statements_analyzer->getCodebase(),
-                    $stmt->expr->inferredType,
-                    $container_type,
-                    true,
-                    false,
-                    $has_scalar_match
-                )
-                && !$has_scalar_match
-            ) {
-                if (IssueBuffer::accepts(
-                    new InvalidCast(
-                        $stmt->expr->inferredType->getId() . ' cannot be cast to ' . $container_type,
-                        new CodeLocation($statements_analyzer->getSource(), $stmt)
-                    ),
-                    $statements_analyzer->getSuppressedIssues()
-                )) {
-                    return false;
-                }
+            if (isset($stmt->expr->inferredType)) {
+                self::castStringAttempt($statements_analyzer, $stmt->expr);
             }
 
-            $stmt->inferredType = $container_type;
+            $stmt->inferredType = Type::getString();
         } elseif ($stmt instanceof PhpParser\Node\Expr\Cast\Object_) {
             if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
                 return false;
@@ -564,7 +550,7 @@ class ExpressionAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // continue
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Print_) {
             if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
@@ -644,6 +630,7 @@ class ExpressionAnalyzer
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr $stmt,
         Type\Union $by_ref_type,
+        Type\Union $by_ref_out_type,
         Context $context,
         bool $constrain_type = true,
         bool $prevent_null = false
@@ -690,6 +677,9 @@ class ExpressionAnalyzer
 
                     $context->hasVariable($var_id, $statements_analyzer);
                 }
+            } elseif ($var_id === '$this') {
+                // don't allow changing $this
+                return;
             } else {
                 $existing_type = $context->vars_in_scope[$var_id];
 
@@ -702,7 +692,7 @@ class ExpressionAnalyzer
                 );
 
                 if ($existing_type->getId() !== 'array<empty, empty>') {
-                    $context->vars_in_scope[$var_id] = clone $by_ref_type;
+                    $context->vars_in_scope[$var_id] = clone $by_ref_out_type;
 
                     if (!isset($stmt->inferredType) || $stmt->inferredType->isEmpty()) {
                         $stmt->inferredType = clone $by_ref_type;
@@ -712,7 +702,7 @@ class ExpressionAnalyzer
                 }
             }
 
-            $context->vars_in_scope[$var_id] = $by_ref_type;
+            $context->vars_in_scope[$var_id] = $by_ref_out_type;
 
             if (!isset($stmt->inferredType) || $stmt->inferredType->isEmpty()) {
                 $stmt->inferredType = clone $by_ref_type;
@@ -1085,6 +1075,29 @@ class ExpressionAnalyzer
             }
         }
 
+        if ($return_type instanceof Type\Atomic\TCallable) {
+            if ($return_type->params) {
+                foreach ($return_type->params as $param) {
+                    if ($param->type) {
+                        $param->type = self::fleshOutType(
+                            $codebase,
+                            $param->type,
+                            $self_class,
+                            $static_class_type
+                        );
+                    }
+                }
+            }
+            if ($return_type->return_type) {
+                $return_type->return_type = self::fleshOutType(
+                    $codebase,
+                    $return_type->return_type,
+                    $self_class,
+                    $static_class_type
+                );
+            }
+        }
+
         return $return_type;
     }
 
@@ -1294,7 +1307,7 @@ class ExpressionAnalyzer
         if ($source instanceof FunctionLikeAnalyzer
             && !($source->getSource() instanceof TraitAnalyzer)
         ) {
-            $source->addPossibleParamTypes($context, $codebase);
+            $source->examineParamTypes($statements_analyzer, $context, $codebase, $stmt);
 
             $storage = $source->getFunctionLikeStorage($statements_analyzer);
 
@@ -1373,11 +1386,15 @@ class ExpressionAnalyzer
     ) {
         $stmt->inferredType = Type::getBool();
 
-        $context->inside_negation = !$context->inside_negation;
+        $inside_negation = $context->inside_negation;
+
+        $context->inside_negation = !$inside_negation;
 
         if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
             return false;
         }
+
+        $context->inside_negation = $inside_negation;
     }
 
     /**
@@ -1424,6 +1441,10 @@ class ExpressionAnalyzer
                 return false;
             }
 
+            if (isset($part->inferredType)) {
+                self::castStringAttempt($statements_analyzer, $part);
+            }
+
             if ($function_storage
                 && $part instanceof PhpParser\Node\Expr\Variable
                 && is_string($part->name)
@@ -1442,6 +1463,65 @@ class ExpressionAnalyzer
         $stmt->inferredType = Type::getString();
 
         return null;
+    }
+
+    /**
+     * @return  void
+     */
+    private static function castStringAttempt(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Expr $stmt
+    ) {
+        if (!isset($stmt->inferredType)) {
+            return;
+        }
+
+        $has_valid_cast = false;
+        $invalid_casts = [];
+
+        foreach ($stmt->inferredType->getTypes() as $atomic_type) {
+            if (!$atomic_type instanceof TMixed
+                && !$atomic_type instanceof Type\Atomic\TResource
+                && !$atomic_type instanceof TNull
+                && !TypeAnalyzer::isAtomicContainedBy(
+                    $statements_analyzer->getCodebase(),
+                    $atomic_type,
+                    new TString(),
+                    false,
+                    true,
+                    $has_scalar_match
+                )
+                && !$has_scalar_match
+            ) {
+                $invalid_casts[] = $atomic_type->getId();
+            } else {
+                $has_valid_cast = true;
+            }
+        }
+
+        if ($invalid_casts) {
+            if ($has_valid_cast) {
+                if (IssueBuffer::accepts(
+                    new PossiblyInvalidCast(
+                        $invalid_casts[0] . ' cannot be cast to string',
+                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            } else {
+                if (IssueBuffer::accepts(
+                    new InvalidCast(
+                        $invalid_casts[0] . ' cannot be cast to string',
+                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            }
+        }
     }
 
     /**

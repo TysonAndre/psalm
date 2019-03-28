@@ -65,6 +65,7 @@ class Reflection
 
         $storage = $this->storage_provider->create($class_name);
         $storage->abstract = $reflected_class->isAbstract();
+        $storage->is_interface = $reflected_class->isInterface();
 
         $storage->potential_declaring_method_ids['__construct'][$class_name_lower . '::__construct'] = true;
 
@@ -83,7 +84,7 @@ class Reflection
             $storage->protected_class_constants = $parent_storage->protected_class_constants;
             $parent_class_name_lc = strtolower($parent_class_name);
             $storage->parent_classes = array_merge(
-                [$parent_class_name_lc => $parent_class_name_lc],
+                [$parent_class_name_lc => $parent_class_name],
                 $parent_storage->parent_classes
             );
 
@@ -162,8 +163,8 @@ class Reflection
 
         if ($class_name_lower === 'generator') {
             $storage->template_types = [
-                'TKey' => [Type::getMixed(), 'Generator'],
-                'TValue' => [Type::getMixed(), 'Generator']
+                'TKey' => ['Generator' => [Type::getMixed()]],
+                'TValue' => ['Generator' => [Type::getMixed()]],
             ];
         }
 
@@ -203,6 +204,8 @@ class Reflection
                 continue;
             }
         }
+
+        $storage->populated = true;
     }
 
     /**
@@ -287,7 +290,7 @@ class Reflection
         $storage->required_param_count = 0;
 
         foreach ($storage->params as $i => $param) {
-            if (!$param->is_optional) {
+            if (!$param->is_optional && !$param->is_variadic) {
                 $storage->required_param_count = $i + 1;
             }
         }
@@ -358,7 +361,7 @@ class Reflection
             $storage->required_param_count = 0;
 
             foreach ($storage->params as $i => $param) {
-                if (!$param->is_optional) {
+                if (!$param->is_optional && !$param->is_variadic) {
                     $storage->required_param_count = $i + 1;
                 }
             }

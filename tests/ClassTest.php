@@ -45,7 +45,7 @@ class ClassTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -317,7 +317,7 @@ class ClassTest extends TestCase
                     }',
                 'assertions' => [],
                 'error_levels' => [
-                    'UndefinedClass'
+                    'UndefinedClass',
                 ],
             ],
             'noCrashWhenIgnoringUndefinedParam' => [
@@ -375,7 +375,7 @@ class ClassTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -569,6 +569,20 @@ class ClassTest extends TestCase
                         }
                     }',
                 'error_message' => 'AbstractInstantiation',
+            ],
+            'preventExtendingInterface' => [
+                '<?php
+                    interface Foo {}
+
+                    class Bar extends Foo {}',
+                'error_message' => 'UndefinedClass',
+            ],
+            'preventImplementingClass' => [
+                '<?php
+                    class Foo {}
+
+                    class Bar implements Foo {}',
+                'error_message' => 'UndefinedInterface',
             ],
         ];
     }

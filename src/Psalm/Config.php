@@ -220,6 +220,11 @@ class Config
     /**
      * @var bool
      */
+    public $check_for_throws_in_global_scope = false;
+
+    /**
+     * @var bool
+     */
     public $ignore_internal_falsable_issues = true;
 
     /**
@@ -246,6 +251,16 @@ class Config
      * @var bool
      */
     public $forbid_echo = false;
+
+    /**
+     * @var bool
+     */
+    public $find_unused_code = false;
+
+    /**
+     * @var bool
+     */
+    public $find_unused_variables = false;
 
     /**
      * @var string[]
@@ -319,6 +334,12 @@ class Config
      */
     public $after_codebase_populated = [];
 
+    /**
+     * Static methods to be called after codebase has been populated
+     * @var class-string<Hook\AfterAnalysisInterface>[]
+     */
+    public $after_analysis = [];
+
     /** @var array<string, mixed> */
     private $predefined_constants;
 
@@ -342,6 +363,14 @@ class Config
 
     /** @var string|null */
     public $error_baseline = null;
+
+    /** @var string */
+    public $spirit_host = 'spirit.psalm.dev';
+
+    /**
+     * @var array<string, string>
+     */
+    public $globals = [];
 
     protected function __construct()
     {
@@ -618,9 +647,25 @@ class Config
             $config->check_for_throws_docblock = $attribute_text === 'true' || $attribute_text === '1';
         }
 
+        if (isset($config_xml['checkForThrowsInGlobalScope'])) {
+            $attribute_text = (string) $config_xml['checkForThrowsInGlobalScope'];
+            $config->check_for_throws_in_global_scope = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml['forbidEcho'])) {
             $attribute_text = (string) $config_xml['forbidEcho'];
             $config->forbid_echo = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
+        if (isset($config_xml['findUnusedCode'])) {
+            $attribute_text = (string) $config_xml['findUnusedCode'];
+            $config->find_unused_code = $attribute_text === 'true' || $attribute_text === '1';
+            $config->find_unused_variables = $config->find_unused_code;
+        }
+
+        if (isset($config_xml['findUnusedVariablesAndParams'])) {
+            $attribute_text = (string) $config_xml['findUnusedVariablesAndParams'];
+            $config->find_unused_variables = $attribute_text === 'true' || $attribute_text === '1';
         }
 
         if (isset($config_xml['ignoreInternalFunctionFalseReturn'])) {
@@ -746,6 +791,13 @@ class Config
             }
         }
 
+        if (isset($config_xml->globals) && isset($config_xml->globals->var)) {
+            /** @var \SimpleXMLElement $var */
+            foreach ($config_xml->globals->var as $var) {
+                $config->globals['$' . (string) $var['name']] = (string) $var['type'];
+            }
+        }
+
         return $config;
     }
 
@@ -868,7 +920,7 @@ class Config
     {
         $codebase = $project_analyzer->getCodebase();
 
-        $socket = new PluginRegistrationSocket($this);
+        $socket = new PluginRegistrationSocket($this, $codebase);
         // initialize plugin classes earlier to let them hook into subsequent load process
         foreach ($this->plugin_classes as $plugin_class_entry) {
             $plugin_class_name = $plugin_class_entry['class'];
@@ -976,6 +1028,17 @@ class Config
                 count($declared_plugin_classes),
                 count($declared_classes)
             ));
+        }
+        $fq_class_name = reset($declared_classes);
+
+        if (!$codebase->classlikes->classExtends(
+            $fq_class_name,
+            $must_extend
+        )
+        ) {
+            throw new \InvalidArgumentException(
+                'This plugin must extend ' . $must_extend . ' - ' . $path . ' does not'
+            );
         }
 
         return \reset($declared_plugin_classes);;
@@ -1153,7 +1216,9 @@ class Config
      */
     public function reportTypeStatsForFile($file_path)
     {
-        return $this->project_files && $this->project_files->reportTypeStats($file_path);
+        return $this->project_files
+            && $this->project_files->allows($file_path)
+            && $this->project_files->reportTypeStats($file_path);
     }
 
     /**

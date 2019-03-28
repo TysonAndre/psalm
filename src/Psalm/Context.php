@@ -1,10 +1,12 @@
 <?php
 namespace Psalm;
 
+use Psalm\Config;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Clause;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Type\Reconciler;
+use Psalm\Type;
 use Psalm\Type\Union;
 
 class Context
@@ -211,7 +213,7 @@ class Context
     /**
      * A list of classes or interfaces that may have been thrown
      *
-     * @var array<string, bool>
+     * @var array<string, CodeLocation>
      */
     public $possibly_thrown_exceptions = [];
 
@@ -741,5 +743,29 @@ class Context
             $summary[$k] = $v->getId();
         }
         return json_encode($summary);
+    }
+
+    /**
+     * @return void
+     */
+    public function defineGlobals()
+    {
+        $globals = [
+            '$argv' => new Type\Union([
+                new Type\Atomic\TArray([Type::getInt(), Type::getString()]),
+            ]),
+            '$argc' => Type::getInt(),
+        ];
+
+        $config = Config::getInstance();
+
+        foreach ($config->globals as $global_id => $type_string) {
+            $globals[$global_id] = Type::parseString($type_string);
+        }
+
+        foreach ($globals as $global_id => $type) {
+            $this->vars_in_scope[$global_id] = $type;
+            $this->vars_possibly_in_scope[$global_id] = true;
+        }
     }
 }

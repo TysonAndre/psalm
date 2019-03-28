@@ -7,7 +7,7 @@ class FunctionCallTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -205,18 +205,25 @@ class FunctionCallTest extends TestCase
                     '$d' => 'array{0:string, 1:string, 2:string, 3:int, 4:int, 5:int}',
                 ],
             ],
-            'arrayReverse' => [
+            'arrayReverseDontPreserveKey' => [
                 '<?php
-                    $d = array_reverse(["a", "b", 1]);',
+                    $d = array_reverse(["a", "b", 1, "d" => 4]);',
                 'assertions' => [
-                    '$d' => 'array<int, string|int>',
+                    '$d' => 'non-empty-array<string|int, string|int>',
+                ],
+            ],
+            'arrayReverseDontPreserveKeyExplicitArg' => [
+                '<?php
+                    $d = array_reverse(["a", "b", 1, "d" => 4], false);',
+                'assertions' => [
+                    '$d' => 'non-empty-array<string|int, string|int>',
                 ],
             ],
             'arrayReversePreserveKey' => [
                 '<?php
                     $d = array_reverse(["a", "b", 1], true);',
                 'assertions' => [
-                    '$d' => 'array<int, string|int>',
+                    '$d' => 'non-empty-array<int, string|int>',
                 ],
             ],
             'arrayDiff' => [
@@ -290,7 +297,7 @@ class FunctionCallTest extends TestCase
                         if (!count($a)) {}
                     }',
                 'assertions' => [],
-                'error_levels' => ['MixedAssignment', 'MixedArgument']
+                'error_levels' => ['MixedAssignment', 'MixedArgument'],
             ],
             'objectLikeArrayAssignmentInConditional' => [
                 '<?php
@@ -812,7 +819,7 @@ class FunctionCallTest extends TestCase
 
                     ["a", "b"]();
                     "A::b"();
-                    "c"();'
+                    "c"();',
             ],
             'arrayMapParamDefault' => [
                 '<?php
@@ -835,7 +842,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     function hasZeroByteOffset(string $s) : bool {
                         return strpos($s, 0) !== false;
-                    }'
+                    }',
             ],
             'functionCallInGlobalScope' => [
                 '<?php
@@ -884,7 +891,7 @@ class FunctionCallTest extends TestCase
             ],
             'allowPossiblyUndefinedClassInClassExists' => [
                 '<?php
-                    if (class_exists(Foo::class)) {}'
+                    if (class_exists(Foo::class)) {}',
             ],
             'allowConstructorAfterClassExists' => [
                 '<?php
@@ -1321,13 +1328,13 @@ class FunctionCallTest extends TestCase
                     function matchesTypes($maybe) : void {
                         $t = gettype($maybe);
                         if ($t === "object") {}
-                    }'
+                    }',
             ],
             'functionResolutionInNamespace' => [
                 '<?php
                     namespace Foo;
                     function sort(int $_) : void {}
-                    sort(5);'
+                    sort(5);',
             ],
             'rangeWithIntStep' => [
                 '<?php
@@ -1439,7 +1446,7 @@ class FunctionCallTest extends TestCase
                     '$h' => 'resource',
                 ],
                 [],
-                '7.1'
+                '7.1',
             ],
             'hashInit71' => [
                 '<?php
@@ -1448,7 +1455,7 @@ class FunctionCallTest extends TestCase
                     '$h' => 'resource',
                 ],
                 [],
-                '7.1'
+                '7.1',
             ],
             'hashInit72' => [
                 '<?php
@@ -1457,7 +1464,7 @@ class FunctionCallTest extends TestCase
                     '$h' => 'HashContext',
                 ],
                 [],
-                '7.2'
+                '7.2',
             ],
             'hashInit73' => [
                 '<?php
@@ -1466,7 +1473,7 @@ class FunctionCallTest extends TestCase
                     '$h' => 'HashContext',
                 ],
                 [],
-                '7.3'
+                '7.3',
             ],
             'nullableByRef' => [
                 '<?php
@@ -1474,13 +1481,76 @@ class FunctionCallTest extends TestCase
 
                     function bar() : void {
                         foo($bar);
-                    }'
+                    }',
+            ],
+            'getClassNewInstance' => [
+                '<?php
+                    interface I {}
+                    class C implements I {}
+
+                    class Props {
+                        /** @var class-string<I>[] */
+                        public $arr = [];
+                    }
+
+                    (new Props)->arr[] = get_class(new C);',
+            ],
+            'getClassVariable' => [
+                '<?php
+                    interface I {}
+                    class C implements I {}
+                    $c_instance = new C;
+
+                    class Props {
+                        /** @var class-string<I>[] */
+                        public $arr = [];
+                    }
+
+                    (new Props)->arr[] = get_class($c_instance);',
+            ],
+            'getClassAnonymousNewInstance' => [
+                '<?php
+                    interface I {}
+
+                    class Props {
+                        /** @var class-string<I>[] */
+                        public $arr = [];
+                    }
+
+                    (new Props)->arr[] = get_class(new class implements I{});',
+            ],
+            'getClassAnonymousVariable' => [
+                '<?php
+                    interface I {}
+                    $anon_instance = new class implements I {};
+
+                    class Props {
+                        /** @var class-string<I>[] */
+                        public $arr = [];
+                    }
+
+                    (new Props)->arr[] = get_class($anon_instance);',
+            ],
+            'arrayReversePreserveNonEmptiness' => [
+                '<?php
+                    /** @param string[] $arr */
+                    function getOrderings(array $arr): int {
+                        if ($arr) {
+                            $next = null;
+                            foreach (array_reverse($arr) as $v) {
+                                $next = 1;
+                            }
+                            return $next;
+                        }
+
+                        return 2;
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1552,7 +1622,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     function fooFoo(int $a): void {}
                     fooFoo(5, "dfd");',
-                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:3 - Too many arguments for method fooFoo '
+                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:3:21 - Too many arguments for method fooFoo '
                     . '- expecting 1 but saw 2',
             ],
             'tooManyArgumentsForConstructor' => [
@@ -1987,7 +2057,7 @@ class FunctionCallTest extends TestCase
                     $a = rand(0, 1) ? null : 5;
                     /** @psalm-suppress MixedArgument */
                     foo((int) $a);',
-                'InvalidPassByReference'
+                'InvalidPassByReference',
             ],
         ];
     }

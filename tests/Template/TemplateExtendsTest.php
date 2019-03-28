@@ -10,7 +10,7 @@ class TemplateExtendsTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -199,7 +199,7 @@ class TemplateExtendsTest extends TestCase
                     $b = $a->getValue();',
                 [
                     '$a' => 'KeyValueContainer<string, int>',
-                    '$b' => 'int'
+                    '$b' => 'int',
                 ],
             ],
             'templateExtendsDifferentName' => [
@@ -261,7 +261,7 @@ class TemplateExtendsTest extends TestCase
                     $b = $a->getValue();',
                 [
                     '$a' => 'KeyValueContainer<string, int>',
-                    '$b' => 'int'
+                    '$b' => 'int',
                 ],
             ],
             'extendsWithNonTemplate' => [
@@ -312,7 +312,7 @@ class TemplateExtendsTest extends TestCase
                     '$fc' => 'FooContainer',
                     '$f1' => 'Foo',
                     '$f2' => 'Foo',
-                ]
+                ],
             ],
             'supportBareExtends' => [
                 '<?php
@@ -362,7 +362,7 @@ class TemplateExtendsTest extends TestCase
                     '$fc' => 'FooContainer',
                     '$f1' => 'Foo',
                     '$f2' => 'Foo',
-                ]
+                ],
             ],
             'allowExtendingParameterisedTypeParam' => [
                 '<?php
@@ -387,7 +387,7 @@ class TemplateExtendsTest extends TestCase
                         public function uri($obj) : string {
                             return "hello";
                         }
-                    }'
+                    }',
             ],
             'extendsWithNonTemplateWithoutImplementing' => [
                 '<?php
@@ -426,9 +426,9 @@ class TemplateExtendsTest extends TestCase
                 [
                     '$au' => 'AppUser',
                     '$id' => 'int',
-                ]
+                ],
             ],
-            'extendsTwiceSameName' => [
+            'extendsTwiceSameNameCorrect' => [
                 '<?php
                     /**
                      * @template T
@@ -471,7 +471,7 @@ class TemplateExtendsTest extends TestCase
                     $a = $fc->getValue();',
                 [
                     '$a' => 'int',
-                ]
+                ],
             ],
             'extendsTwiceDifferentNameUnbrokenChain' => [
                 '<?php
@@ -516,7 +516,7 @@ class TemplateExtendsTest extends TestCase
                     $a = $fc->getValue();',
                 [
                     '$a' => 'int',
-                ]
+                ],
             ],
             'templateExtendsOnceAndBound' => [
                 '<?php
@@ -536,7 +536,7 @@ class TemplateExtendsTest extends TestCase
                 [
                     '$a' => 'AnotherRepo',
                     '$b' => 'null|SpecificEntity',
-                ]
+                ],
             ],
             'templateExtendsTwiceAndBound' => [
                 '<?php
@@ -562,7 +562,7 @@ class TemplateExtendsTest extends TestCase
                 [
                     '$a' => 'SpecificRepo',
                     '$b' => 'null|SpecificEntity',
-                ]
+                ],
             ],
             'multipleArgConstraints' => [
                 '<?php
@@ -590,7 +590,7 @@ class TemplateExtendsTest extends TestCase
                         function(A $_a) : void {},
                         function(A $_a) : void {},
                         new AChild()
-                    );'
+                    );',
             ],
             'templatedInterfaceExtendedMethodInheritReturnType' => [
                 '<?php
@@ -609,7 +609,7 @@ class TemplateExtendsTest extends TestCase
                     $i = (new SomeIterator())->getIterator();',
                 [
                     '$i' => 'Traversable<int, Foo>',
-                ]
+                ],
             ],
             'templateCountOnExtendedAndImplemented' => [
                 '<?php
@@ -630,7 +630,7 @@ class TemplateExtendsTest extends TestCase
                     /**
                      * @template-extends Repository<SomeEntity>
                      */
-                    class SomeRepository extends Repository {}'
+                    class SomeRepository extends Repository {}',
             ],
             'iterateOverExtendedArrayObjectWithParam' => [
                 '<?php
@@ -1012,7 +1012,7 @@ class TemplateExtendsTest extends TestCase
                     $a = (new Service)->first();',
                 [
                     '$a' => 'null|int',
-                ]
+                ],
             ],
             'splObjectStorage' => [
                 '<?php
@@ -1041,7 +1041,7 @@ class TemplateExtendsTest extends TestCase
                     $b = $storage->offsetGet($c);',
                 [
                     '$b' => 'string',
-                ]
+                ],
             ],
             'extendsArrayIterator' => [
                 '<?php
@@ -1056,39 +1056,6 @@ class TemplateExtendsTest extends TestCase
                             parent::__construct($users);
                         }
                     }',
-            ],
-            'extendsAndCallsParent' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    abstract class Foo
-                    {
-                        /**
-                         * @param T::class $str
-                         *
-                         * @return T::class
-                         */
-                        public static function DoThing(string $str)
-                        {
-                            return $str;
-                        }
-                    }
-                    /**
-                     * @template-extends Foo<DateTimeInterface>
-                     */
-                    class Bar extends Foo
-                    {
-                        /**
-                         * @param class-string<DateTimeInterface> $str
-                         *
-                         * @return class-string<DateTimeInterface>
-                         */
-                        public static function DoThing(string $str)
-                        {
-                            return parent::DoThing($str);
-                        }
-                    }'
             ],
             'genericStaticAndSelf' => [
                 '<?php
@@ -1361,13 +1328,357 @@ class TemplateExtendsTest extends TestCase
                 [
                     '$c' => 'C<string, int>',
                     '$i' => 'ArrayIterator<string, int>',
-                ]
+                ],
+            ],
+            'extendsParamCountDifference' => [
+                '<?php
+                    /**
+                     * @template E
+                     * @implements \Iterator<int,E>
+                     */
+                    abstract class Collection implements \Iterator {}
+
+                    /**
+                     * @param Collection<string> $collection
+                     * @return \Iterator<int,string>
+                     */
+                    function foo(Collection $collection) {
+                        return $collection;
+                    }',
+            ],
+            'dontInheritParamTemplatedTypeSameName' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface I {
+                      /**
+                       * @param T $t
+                       */
+                      public function add($t) : void;
+                    }
+
+                    /**
+                     * @template T
+                     */
+                    class C implements I {
+                      /** @var array<T> */
+                      private $t;
+
+                      /**
+                       * @param array<T> $t
+                       */
+                      public function __construct(array $t) {
+                        $this->t = $t;
+                      }
+
+                      /**
+                       * @inheritdoc
+                       */
+                      public function add($t) : void {
+                        $this->t[] = $t;
+                      }
+                    }
+
+                    /** @param C<string> $c */
+                    function foo(C $c) : void {
+                        $c->add(new stdClass);
+                    }',
+            ],
+            'dontInheritParamTemplatedTypeDifferentTemplateNames' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface I {
+                      /**
+                       * @param T1 $t
+                       */
+                      public function add($t) : void;
+                    }
+
+                    /**
+                     * @template T2
+                     */
+                    class C implements I {
+                      /** @var array<T2> */
+                      private $t;
+
+                      /**
+                       * @param array<T2> $t
+                       */
+                      public function __construct(array $t) {
+                        $this->t = $t;
+                      }
+
+                      /**
+                       * @inheritdoc
+                       */
+                      public function add($t) : void {
+                        $this->t[] = $t;
+                      }
+                    }
+
+                    /** @param C<string> $c */
+                    function foo(C $c) : void {
+                        $c->add(new stdClass);
+                    }',
+            ],
+            'templateExtendsUnionType' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class A {
+                        /** @var T */
+                        public $t;
+
+                        /** @param T $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template TT
+                     * @template-extends A<int|string>
+                     */
+                    class B extends A {}',
+            ],
+            'badTemplateImplementsUnionType' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface I {
+                        /** @param T $t */
+                        public function __construct($t);
+                    }
+
+                    /**
+                     * @template TT
+                     * @template-implements I<int|string>
+                     */
+                    class B implements I {
+                        /** @var int|string */
+                        public $t;
+
+                        /** @param int|string $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }',
+            ],
+            'badTemplateUseUnionType' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    trait T {
+                        /** @var T */
+                        public $t;
+
+                        /** @param T $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template TT
+                     */
+                    class B {
+                        /**
+                         * @template-use T<int|string>
+                         */
+                        use T;
+                    }',
+            ],
+            'extendWithTooFewArgs' => [
+                '<?php
+                    /**
+                     * @template TKey of array-key
+                     * @template T
+                     * @template-extends IteratorAggregate<TKey, T>
+                     */
+                    interface Collection extends IteratorAggregate
+                    {
+                    }
+
+                    /**
+                     * @psalm-suppress MissingTemplateParam
+                     * @template T
+                     * @template TKey of array-key
+                     * @template-implements Collection<TKey>
+                     */
+                    class ArrayCollection implements Collection
+                    {
+                        /**
+                         * @psalm-var T[]
+                         */
+                        private $elements;
+
+                        /**
+                         * @psalm-param array<T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        public function getIterator()
+                        {
+                            return new ArrayIterator($this->elements);
+                        }
+
+                        /**
+                         * @psalm-suppress MissingTemplateParam
+                         *
+                         * @psalm-param array<T> $elements
+                         * @psalm-return ArrayCollection<T>
+                         */
+                        protected function createFrom(array $elements)
+                        {
+                            return new static($elements);
+                        }
+                    }',
+            ],
+            'abstractGetIterator' => [
+                '<?php
+                    /**
+                     * @template E
+                     */
+                    interface Collection extends \IteratorAggregate
+                    {
+                        /**
+                         * @return \Iterator<int,E>
+                         */
+                        public function getIterator(): \Iterator;
+                    }
+
+                    abstract class Set implements Collection {
+                        public function forEach(callable $action): void {
+                            $i = $this->getIterator();
+                            foreach ($this as $bar) {
+                                $action($bar);
+                            }
+                        }
+                    }',
+            ],
+            'paramInsideTemplatedFunctionShouldKnowRestriction' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface Hasher {
+                        /**
+                         * @param T $value
+                         */
+                        function hash($value): int;
+                    }
+
+                    /**
+                     * @implements Hasher<int>
+                     */
+                    class IntHasher implements Hasher {
+                        function hash($value): int {
+                            return $value % 10;
+                        }
+                    }
+
+                    /**
+                     * @implements Hasher<string>
+                     */
+                    class StringHasher implements Hasher {
+                        function hash($value): int {
+                            return strlen($value);
+                        }
+                    }',
+            ],
+            'implementsAndExtendsWithTemplate' => [
+                '<?php
+                    /**
+                     * @template TReal
+                     */
+                    interface Collection
+                    {
+                        /**
+                         * @return array<TReal>
+                         */
+                        function toArray();
+                    }
+
+                    /**
+                     * @template TDummy
+                     * @implements Collection<string>
+                     */
+                    class IntCollection implements Collection
+                    {
+                        /** @param TDummy $t */
+                        public function __construct($t) {
+
+                        }
+
+                        public function toArray() {
+                            return ["foo"];
+                        }
+                    }',
+            ],
+            'templateNotExtendedButSignatureInherited' => [
+                '<?php
+                    class Base {
+                        /**
+                         * @template T
+                         * @param T $x
+                         * @return T
+                         */
+                        function example($x) {
+                            return $x;
+                        }
+                    }
+
+                    class Child extends Base {
+                        function example($x) {
+                            return $x;
+                        }
+                    }
+
+                    ord((new Child())->example("str"));'
+            ],
+            'allowWiderParentType' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    abstract class Stringer {
+                        /**
+                         * @param T $t
+                         */
+                        public static function getString($t, object $o = null) : string {
+                            return "hello";
+                        }
+                    }
+
+                    class A {}
+
+                    /**
+                     * @template-extends Stringer<A>
+                     */
+                    class AStringer extends Stringer {
+                        public static function getString($t, object $o = null) : string {
+                            if ($o) {
+                                return parent::getString($o);
+                            }
+
+                            return "a";
+                        }
+                    }'
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1408,7 +1719,7 @@ class TemplateExtendsTest extends TestCase
                             return new Foo();
                         }
                     }',
-                'error_message' => 'ImplementedReturnTypeMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:29 - The return type \'A\Bar\' for',
+                'error_message' => 'ImplementedReturnTypeMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:29:36 - The return type \'A\Bar\' for',
             ],
             'extendTemplateAndDoesNotOverrideWithWrongArg' => [
                 '<?php
@@ -1628,7 +1939,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-extends A<Z>
                      */
                     class B extends A {}',
-                'error_message' => 'UndefinedClass'
+                'error_message' => 'UndefinedClass',
             ],
             'badTemplateExtendsInt' => [
                 '<?php
@@ -1650,7 +1961,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-extends int
                      */
                     class B extends A {}',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateExtendsBadFormat' => [
                 '<?php
@@ -1672,29 +1983,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-extends A< >
                      */
                     class B extends A {}',
-                'error_message' => 'InvalidDocblock'
-            ],
-            'badTemplateExtendsUnionType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    class A {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     * @template-extends A<int|string>
-                     */
-                    class B extends A {}',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateImplementsShouldBeExtends' => [
                 '<?php
@@ -1716,7 +2005,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-implements A<int>
                      */
                     class B extends A {}',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateImplements' => [
                 '<?php
@@ -1733,7 +2022,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-implements I<Z>
                      */
                     class B implements I {}',
-                'error_message' => 'UndefinedClass'
+                'error_message' => 'UndefinedClass',
             ],
             'badTemplateImplementsInt' => [
                 '<?php
@@ -1750,7 +2039,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-implements int
                      */
                     class B implements I {}',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateImplementsBadFormat' => [
                 '<?php
@@ -1767,24 +2056,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-implements I< >
                      */
                     class B implements I {}',
-                'error_message' => 'InvalidDocblock'
-            ],
-            'badTemplateImplementsUnionType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    interface I {
-                        /** @param T $t */
-                        public function __construct($t);
-                    }
-
-                    /**
-                     * @template TT
-                     * @template-implements I<int|string>
-                     */
-                    class B implements I {}',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateExtendsShouldBeImplements' => [
                 '<?php
@@ -1801,7 +2073,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-extends I<string>
                      */
                     class B implements I {}',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateUse' => [
                 '<?php
@@ -1827,7 +2099,7 @@ class TemplateExtendsTest extends TestCase
                          */
                         use T;
                     }',
-                'error_message' => 'UndefinedClass'
+                'error_message' => 'UndefinedClass',
             ],
             'badTemplateUseBadFormat' => [
                 '<?php
@@ -1853,7 +2125,7 @@ class TemplateExtendsTest extends TestCase
                          */
                         use T;
                     }',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateUseInt' => [
                 '<?php
@@ -1879,7 +2151,7 @@ class TemplateExtendsTest extends TestCase
                          */
                         use T;
                     }',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'badTemplateExtendsShouldBeUse' => [
                 '<?php
@@ -1905,33 +2177,7 @@ class TemplateExtendsTest extends TestCase
                          */
                         use T;
                     }',
-                'error_message' => 'InvalidDocblock'
-            ],
-            'badTemplateUseUnionType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait T {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     */
-                    class B {
-                        /**
-                         * @template-use T<int|string>
-                         */
-                        use T;
-                    }',
-                'error_message' => 'InvalidDocblock'
+                'error_message' => 'InvalidDocblock',
             ],
             'templateExtendsWithoutAllParams' => [
                 '<?php
@@ -1946,7 +2192,7 @@ class TemplateExtendsTest extends TestCase
                      * @extends A<int>
                      */
                     class CC extends A {}',
-                'error_message' => 'MissingTemplateParam'
+                'error_message' => 'MissingTemplateParam',
             ],
             'templateImplementsWithoutAllParams' => [
                 '<?php
@@ -1961,7 +2207,7 @@ class TemplateExtendsTest extends TestCase
                      * @implements I<int>
                      */
                     class CC implements I {}',
-                'error_message' => 'MissingTemplateParam'
+                'error_message' => 'MissingTemplateParam',
             ],
             'extendsTemplateButLikeBadly' => [
                 '<?php
@@ -1980,7 +2226,215 @@ class TemplateExtendsTest extends TestCase
 
                     /** @template-extends Base<int> */
                     class SpecializedByInheritance extends Base {}',
-                'error_message' => 'InvalidTemplateParam'
+                'error_message' => 'InvalidTemplateParam',
+            ],
+            'doInheritParamTemplatedTypeSameName' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface I {
+                      /**
+                       * @param T $t
+                       */
+                      public function add($t) : void;
+                    }
+
+                    /**
+                     * @template T
+                     * @template-implements I<T>
+                     */
+                    class C implements I {
+                      /** @var array<T> */
+                      private $t;
+
+                      /**
+                       * @param array<T> $t
+                       */
+                      public function __construct(array $t) {
+                        $this->t = $t;
+                      }
+
+                      /**
+                       * @inheritdoc
+                       */
+                      public function add($t) : void {
+                        $this->t[] = $t;
+                      }
+                    }
+
+                    /** @param C<string> $c */
+                    function foo(C $c) : void {
+                        $c->add(new stdClass);
+                    }',
+                'error_message' => 'InvalidArgument',
+            ],
+            'doInheritParamTemplatedTypeDifferentTemplateNames' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface I {
+                      /**
+                       * @param T1 $t
+                       */
+                      public function add($t) : void;
+                    }
+
+                    /**
+                     * @template T2
+                     * @template-implements I<T2>
+                     */
+                    class C implements I {
+                      /** @var array<T2> */
+                      private $t;
+
+                      /**
+                       * @param array<T2> $t
+                       */
+                      public function __construct(array $t) {
+                        $this->t = $t;
+                      }
+
+                      /**
+                       * @inheritdoc
+                       */
+                      public function add($t) : void {
+                        $this->t[] = $t;
+                      }
+                    }
+
+                    /** @param C<string> $c */
+                    function foo(C $c) : void {
+                        $c->add(new stdClass);
+                    }',
+                'error_message' => 'InvalidArgument',
+            ],
+            'invalidArgumentForInheritedImplementedInterfaceMethodParam' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface I1 {
+                        /** @param T $t */
+                        public function takeT($t) : void;
+                    }
+
+                    /**
+                     * @template T as array-key
+                     * @template-extends I1<T>
+                     */
+                    interface I2 extends I1 {}
+
+                    /**
+                     * @template T as array-key
+                     * @template-implements I2<T>
+                     */
+                    class C implements I2 {
+                        /** @var T */
+                        private $t;
+
+                        /** @param T $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                        public function takeT($t) : void {}
+                    }
+
+                    /** @param C<string> $c */
+                    function bar(C $c) : void {
+                        $c->takeT(new stdClass);
+                    }',
+                'error_message' => 'InvalidArgument',
+            ],
+            'implementsAndExtendsWithoutTemplate' => [
+                '<?php
+                    /**
+                     * @template E
+                     */
+                    interface Collection
+                    {
+                        /**
+                         * @return array<E>
+                         */
+                        function toArray();
+                    }
+
+                    /**
+                     * @implements Collection<int>
+                     */
+                    class IntCollection implements Collection
+                    {
+                        function toArray() {
+                            return ["foo"];
+                        }
+                    }',
+                'error_message' => 'InvalidReturnType',
+            ],
+            'implementsAndExtendsWithTemplate' => [
+                '<?php
+                    /**
+                     * @template TReal
+                     */
+                    interface Collection
+                    {
+                        /**
+                         * @return array<TReal>
+                         */
+                        function toArray();
+                    }
+
+                    /**
+                     * @template TDummy
+                     * @implements Collection<int>
+                     */
+                    class IntCollection implements Collection
+                    {
+                        /** @param TDummy $t */
+                        public function __construct($t) {
+
+                        }
+
+                        public function toArray() {
+                            return ["foo"];
+                        }
+                    }',
+                'error_message' => 'InvalidReturnType',
+            ],
+            'implementsChildClassWithNonExtendedTemplate' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Base {
+                        /** @var T */
+                        private $t;
+
+                        /** @param T $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+
+                        /**
+                         * @param T $x
+                         * @return T
+                         */
+                        function example($x) {
+                            return $x;
+                        }
+                    }
+
+                    class Child extends Base {
+                        function example($x) {
+                            return $x;
+                        }
+                    }
+
+                    /** @param Child $c */
+                    function bar(Child $c) : void {
+                        ord($c->example("boris"));
+                    }',
+                'error_message' => 'MixedArgument - src/somefile.php:31:29 - Argument 1 of ord cannot be mixed, expecting string'
             ],
         ];
     }

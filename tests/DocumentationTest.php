@@ -1,9 +1,9 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 
 class DocumentationTest extends TestCase
@@ -126,7 +126,7 @@ class DocumentationTest extends TestCase
             $this->project_analyzer->getCodebase()->config->setCustomErrorLevel($error_level, Config::REPORT_SUPPRESS);
         }
 
-        $this->expectException('\Psalm\Exception\CodeException');
+        $this->expectException(\Psalm\Exception\CodeException::class);
         $this->expectExceptionMessageRegExp('/\b' . preg_quote($error_message, '/') . '\b/');
 
         $file_path = self::$src_dir_path . 'somefile.php';
@@ -144,7 +144,7 @@ class DocumentationTest extends TestCase
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,string,string[],bool}>
      */
     public function providerInvalidCodeParse()
     {
@@ -153,6 +153,9 @@ class DocumentationTest extends TestCase
         foreach (self::getCodeBlocksFromDocs() as $issue_name => $blocks) {
             switch ($issue_name) {
                 case 'MissingThrowsDocblock':
+                    continue 2;
+
+                case 'UncaughtThrowInGlobalScope':
                     continue 2;
 
                 case 'InvalidStringClass':

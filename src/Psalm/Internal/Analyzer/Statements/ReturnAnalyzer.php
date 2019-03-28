@@ -120,12 +120,9 @@ class ReturnAnalyzer
         if ($source instanceof FunctionLikeAnalyzer
             && !($source->getSource() instanceof TraitAnalyzer)
         ) {
-            $source->addReturnTypes(
-                $stmt->expr ? (string) $stmt->inferredType : '',
-                $context
-            );
+            $source->addReturnTypes($context);
 
-            $source->addPossibleParamTypes($context, $codebase);
+            $source->examineParamTypes($statements_analyzer, $context, $codebase, $stmt);
 
             // TODO: Undo this after https://github.com/vimeo/psalm/issues/797 is fixed in upstream
             try {
@@ -165,7 +162,13 @@ class ReturnAnalyzer
                             }
                         }
 
-                        $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                        if (!$context->collect_initializations
+                            && !$context->collect_mutations
+                            && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                            && !($source->getSource() instanceof TraitAnalyzer)
+                        ) {
+                            $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
+                        }
 
                         if (IssueBuffer::accepts(
                             new MixedReturnStatement(
@@ -180,7 +183,13 @@ class ReturnAnalyzer
                         return null;
                     }
 
-                    $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+                    if (!$context->collect_initializations
+                        && !$context->collect_mutations
+                        && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                        && !($source->getSource() instanceof TraitAnalyzer)
+                    ) {
+                        $codebase->analyzer->incrementNonMixedCount($statements_analyzer->getFilePath());
+                    }
 
                     if ($local_return_type->isVoid()) {
                         if (IssueBuffer::accepts(

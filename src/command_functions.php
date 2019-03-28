@@ -16,7 +16,18 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
 
     $psalm_dir = dirname(__DIR__);
 
-    if (realpath($psalm_dir) !== realpath($current_dir)) {
+    /** @psalm-suppress UndefinedConstant */
+    $in_phar = \Phar::running() || strpos(__NAMESPACE__, 'HumbugBox');
+
+    if ($in_phar) {
+        require_once(__DIR__ . '/../vendor/autoload.php');
+
+        // hack required for JsonMapper
+        require_once __DIR__ . '/../vendor/netresearch/jsonmapper/src/JsonMapper.php';
+        require_once __DIR__ . '/../vendor/netresearch/jsonmapper/src/JsonMapper/Exception.php';
+    }
+
+    if (\realpath($psalm_dir) !== \realpath($current_dir) && !$in_phar) {
         $autoload_roots[] = $psalm_dir;
     }
 
@@ -64,17 +75,21 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
     foreach ($autoload_files as $file) {
         /**
          * @psalm-suppress UnresolvableInclude
-         * @var \Composer\Autoload\ClassLoader
+         * @psalm-suppress MixedAssignment
+         * @var mixed
          */
         $autoloader = require_once $file;
 
-        if (!$first_autoloader) {
+        if (!$first_autoloader
+            && $autoloader instanceof \Composer\Autoload\ClassLoader
+        ) {
             $first_autoloader = $autoloader;
         }
     }
 
     if ($first_autoloader === null) {
-        throw new \LogicException('Cannot be null here');
+        echo 'Failed to find a valid Composer ClassLoader in ' . implode(', ', $autoload_files) . "\n";
+        exit(1);
     }
 
     define('PSALM_VERSION', (string) \Muglug\PackageVersions\Versions::getVersion('vimeo/psalm'));

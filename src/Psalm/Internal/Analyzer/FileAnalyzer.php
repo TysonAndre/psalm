@@ -3,9 +3,11 @@ namespace Psalm\Internal\Analyzer;
 
 use PhpParser;
 use Psalm\Codebase;
+use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\UnpreparedAnalysisException;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
+use Psalm\Issue\UncaughtThrowInGlobalScope;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Type;
@@ -142,6 +144,8 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
         }
 
         $this->context->is_global = true;
+        $this->context->defineGlobals();
+        $this->context->collect_exceptions = $codebase->config->check_for_throws_in_global_scope;
 
         try {
             $stmts = $codebase->getStatementsForFile($this->file_path);
@@ -173,6 +177,21 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
         if (!$preserve_analyzers) {
             $this->class_analyzers_to_analyze = [];
             $this->interface_analyzers_to_analyze = [];
+        }
+
+        if ($codebase->config->check_for_throws_in_global_scope) {
+            $uncaught_throws = $statements_analyzer->getUncaughtThrows($this->context);
+            foreach ($uncaught_throws as $possibly_thrown_exception => $codelocation) {
+                if (IssueBuffer::accepts(
+                    new UncaughtThrowInGlobalScope(
+                        $possibly_thrown_exception . ' is thrown but not caught in global scope',
+                        $codelocation
+                    ),
+                    $this->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            }
         }
     }
 
@@ -269,20 +288,27 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
      *
      * @return void
      */
-    public function getMethodMutations($method_id, Context $this_context)
+    public function getMethodMutations($method_id, Context $this_context, bool $from_project_analyzer = false)
     {
         list($fq_class_name, $method_name) = explode('::', $method_id);
 
         if (isset($this->class_analyzers_to_analyze[strtolower($fq_class_name)])) {
             $class_analyzer_to_examine = $this->class_analyzers_to_analyze[strtolower($fq_class_name)];
         } else {
-            $this->project_analyzer->getMethodMutations($method_id, $this_context);
+            if (!$from_project_analyzer) {
+                $this->project_analyzer->getMethodMutations(
+                    $method_id,
+                    $this_context,
+                    $this->getRootFilePath(),
+                    $this->getRootFileName()
+                );
+            }
 
             return;
         }
 
         $call_context = new Context($this_context->self);
-        $call_context->collect_mutations = true;
+        $call_context->collect_mutations = $this_context->collect_mutations;
         $call_context->collect_initializations = $this_context->collect_initializations;
         $call_context->initialized_methods = $this_context->initialized_methods;
         $call_context->include_location = $this_context->include_location;
@@ -500,7 +526,7 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
     }
 
     /**
-     * @return null|array<string,array{Type\Union, ?string}>
+     * @return array<string, array<string, array{Type\Union}>>|null
      */
     public function getTemplateTypeMap()
     {

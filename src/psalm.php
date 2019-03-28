@@ -52,12 +52,28 @@ $valid_long_options = [
     'version',
     'php-version:',
     'generate-json-map:',
+    'alter',
+    'language-server',
+    'with-spirit::',
 ];
 
 gc_collect_cycles();
 gc_disable();
 
 $args = array_slice($argv, 1);
+
+// get options from command line
+$options = getopt(implode('', $valid_short_options), $valid_long_options);
+
+if (isset($options['alter'])) {
+    include 'psalter.php';
+    exit;
+}
+
+if (isset($options['language-server'])) {
+    include 'psalm-language-server.php';
+    exit;
+}
 
 array_map(
     /**
@@ -89,9 +105,6 @@ array_map(
     },
     $args
 );
-
-// get options from command line
-$options = getopt(implode('', $valid_short_options), $valid_long_options);
 
 if (!array_key_exists('use-ini-defaults', $options)) {
     ini_set('display_errors', '1');
@@ -223,7 +236,21 @@ Options:
 
     --generate-json-map=PATH
         Generate a map of node references and types in JSON format, saved to the given path.
+
+    --alter
+        Run Psalter
+
+    --language-server
+        Run Psalm Language Server
+
 HELP;
+
+    /*
+    --with-spirit[=host]
+        Send data to Spirit, Psalm's GitHub integration tool.
+        `host` is the location of the Spirit server. It defaults to spirit.psalm.dev
+        More information is available at https://psalm.dev/spirit
+    */
 
     exit;
 }
@@ -362,14 +389,6 @@ if (isset($options['i'])) {
         $template
     );
 
-    if (!\Phar::running(false)) {
-        $template = str_replace(
-            'vendor/vimeo/psalm/config.xsd',
-            'file://' . realpath(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'config.xsd'),
-            $template
-        );
-    }
-
     if (!file_put_contents($current_dir . 'psalm.xml', $template)) {
         die('Could not write to psalm.xml' . PHP_EOL);
     }
@@ -431,6 +450,19 @@ try {
 } catch (Psalm\Exception\ConfigException $e) {
     echo $e->getMessage();
     exit(1);
+}
+
+if (isset($options['with-spirit'])) {
+    if (is_string($options['with-spirit'])) {
+        $config->spirit_host = $options['with-spirit'];
+    }
+    $spirit_plugin = __DIR__ . '/Psalm/Plugin/SpiritGuide.php';
+
+    if (!file_exists($spirit_plugin)) {
+        die('Could not find Spirit plugin location ' . $spirit_plugin . PHP_EOL);
+    }
+
+    $plugins[] = $spirit_plugin;
 }
 
 $config->setComposerClassLoader($first_autoloader);
@@ -518,6 +550,10 @@ if (array_key_exists('debug-by-line', $options)) {
     $project_analyzer->debug_lines = true;
 }
 
+if ($config->find_unused_code) {
+    $find_dead_code = 'auto';
+}
+
 if ($find_dead_code || $find_references_to !== null) {
     $project_analyzer->getCodebase()->collectReferences();
 
@@ -530,9 +566,13 @@ if ($find_dead_code) {
     $project_analyzer->getCodebase()->reportUnusedCode();
 }
 
+if ($config->find_unused_variables) {
+    $project_analyzer->getCodebase()->reportUnusedVariables();
+}
+
 /** @var string $plugin_path */
 foreach ($plugins as $plugin_path) {
-    Config::getInstance()->addPluginPath($current_dir . $plugin_path);
+    $config->addPluginPath($plugin_path);
 }
 
 if ($paths_to_check === null) {

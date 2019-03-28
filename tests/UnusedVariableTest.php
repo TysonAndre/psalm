@@ -1,9 +1,9 @@
 <?php
 namespace Psalm\Tests;
 
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Config;
 use Psalm\Context;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 
 class UnusedVariableTest extends TestCase
@@ -29,7 +29,7 @@ class UnusedVariableTest extends TestCase
         );
 
         $this->project_analyzer->setPhpVersion('7.3');
-        $this->project_analyzer->getCodebase()->reportUnusedCode();
+        $this->project_analyzer->getCodebase()->reportUnusedVariables();
     }
 
     /**
@@ -62,8 +62,6 @@ class UnusedVariableTest extends TestCase
         $context->collect_references = true;
 
         $this->analyzeFile($file_path, $context);
-
-        $this->project_analyzer->checkClassReferences();
     }
 
     /**
@@ -81,7 +79,7 @@ class UnusedVariableTest extends TestCase
             $this->markTestSkipped();
         }
 
-        $this->expectException('\Psalm\Exception\CodeException');
+        $this->expectException(\Psalm\Exception\CodeException::class);
         $this->expectExceptionMessageRegExp('/\b' . preg_quote($error_message, '/') . '\b/');
 
         $file_path = self::$src_dir_path . 'somefile.php';
@@ -99,12 +97,10 @@ class UnusedVariableTest extends TestCase
         $context->collect_references = true;
 
         $this->analyzeFile($file_path, $context);
-
-        $this->project_analyzer->checkClassReferences();
     }
 
     /**
-     * @return array
+     * @return array<string, array{string,error_levels?:string[]}
      */
     public function providerValidCodeParse()
     {
@@ -367,7 +363,7 @@ class UnusedVariableTest extends TestCase
                             $a = 1;
                     }
 
-                    echo $a;'
+                    echo $a;',
             ],
             'throwWithMessageCall' => [
                 '<?php
@@ -564,6 +560,17 @@ class UnusedVariableTest extends TestCase
                         echo "token is $token\n";
                     }',
             ],
+            'staticVarUsedLater' => [
+                '<?php
+                    function use_static() : int {
+                        static $x = null;
+                        if ($x) {
+                            return (int) $x;
+                        }
+                        $x = rand(0, 1);
+                        return -1;
+                    }',
+            ],
             'tryCatchWithUseInIf' => [
                 '<?php
                     function example_string() : string {
@@ -726,7 +733,7 @@ class UnusedVariableTest extends TestCase
                     }
 
                     echo $a;
-                    echo $b;'
+                    echo $b;',
             ],
             'varCheckAfterNestedAssignmentAndBreak' => [
                 '<?php
@@ -877,11 +884,39 @@ class UnusedVariableTest extends TestCase
                         return new $type($data[0]);
                     }',
             ],
+            'byRefVariableUsedInAddition' => [
+                '<?php
+                    $i = 0;
+                    $a = function () use (&$i) : void {
+                        $i = 1;
+                    };
+                    $a();',
+            ],
+            'superGlobalInFunction' => [
+                '<?php
+                    function example1() : void {
+                        $_SESSION = [];
+                    }
+                    function example2() : int {
+                        return (int) $_SESSION["str"];
+                    }',
+            ],
+            'usedInArray' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedMethodCall
+                     * @psalm-suppress MissingParamType
+                     */
+                    function foo($a) : void {
+                      $b = "b";
+                      $a->bar([$b]);
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return array<string,array{string,error_message:string}>
      */
     public function providerInvalidCodeParse()
     {

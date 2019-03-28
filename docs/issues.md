@@ -278,7 +278,7 @@ class B extends A {
 
 ### ImplicitToStringCast
 
-Emitted when implictly converting an object with a `__toString` method to a string
+Emitted when implicitly converting an object with a `__toString` method to a string
 
 ```php
 class A {
@@ -1496,6 +1496,20 @@ $arr = rand(0, 1) ? 5 : [4, 3, 2, 1];
 $arr[0] = "hello";
 ```
 
+### PossiblyInvalidCast
+
+Emitted when attempting to cast a value that may not be castable
+
+```php
+class A {}
+class B {
+    public function __toString() {
+        return 'hello';
+    }
+}
+$c = (string) (rand(0, 1) ? new A() : new B());
+```
+
 ### PossiblyInvalidArrayOffset
 
 Emitted when it’s possible that the array offset is not applicable to the value you’re trying to access.
@@ -1975,6 +1989,20 @@ $a = "hello";
 if ($a === 5) {}
 ```
 
+### UncaughtThrowInGlobalScope
+
+Emitted when a possible exception isn't caught in global scope
+
+```php
+/**
+ * @throws \Exception
+ */
+function foo() : int {
+    return random_int(0, 1);
+}
+foo();
+```
+
 ### UndefinedClass
 
 Emitted when referencing a class that doesn’t exist
@@ -2005,6 +2033,16 @@ Emitted when referencing a variable that doesn't exist
 
 ```php
 echo $a;
+```
+
+### UndefinedInterface
+
+Emitted when referencing an interface that doesn’t exist but does have an identically-named class.
+
+```php
+class C {}
+
+interface I extends C {}
 ```
 
 ### UndefinedMethod
@@ -2182,6 +2220,23 @@ class A {
     private function bar() : void {}
 }
 $a = new A();
+```
+
+### UnusedClosureParam
+
+Emitted when `--find-dead-code` is turned on and Psalm cannot find any uses of a particular parameter in a closure.
+
+```php
+$a = function (int $a, int $b) : int {
+    return $a + 4;
+};
+
+/**
+ * @param callable(int,int):int $c
+ */
+function foo(callable $c) : int {
+    return $c(2, 4);
+}
 ```
 
 ### UnusedParam

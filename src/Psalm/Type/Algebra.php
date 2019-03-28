@@ -75,7 +75,8 @@ class Algebra
         PhpParser\Node\Expr $conditional,
         $this_class_name,
         FileSource $source,
-        Codebase $codebase = null
+        Codebase $codebase = null,
+        bool $inside_negation = false
     ) {
         if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd ||
             $conditional instanceof PhpParser\Node\Expr\BinaryOp\LogicalAnd
@@ -84,14 +85,16 @@ class Algebra
                 $conditional->left,
                 $this_class_name,
                 $source,
-                $codebase
+                $codebase,
+                $inside_negation
             );
 
             $right_assertions = self::getFormula(
                 $conditional->right,
                 $this_class_name,
                 $source,
-                $codebase
+                $codebase,
+                $inside_negation
             );
 
             return array_merge(
@@ -109,14 +112,16 @@ class Algebra
                 $conditional->left,
                 $this_class_name,
                 $source,
-                $codebase
+                $codebase,
+                $inside_negation
             );
 
             $right_clauses = self::getFormula(
                 $conditional->right,
                 $this_class_name,
                 $source,
-                $codebase
+                $codebase,
+                $inside_negation
             );
 
             return self::combineOredClauses($left_clauses, $right_clauses);
@@ -126,7 +131,8 @@ class Algebra
             $conditional,
             $this_class_name,
             $source,
-            $codebase
+            $codebase,
+            $inside_negation
         );
 
         if (isset($conditional->assertions) && $conditional->assertions) {
@@ -527,10 +533,10 @@ class Algebra
 
         $impossibilities = [];
 
-        foreach ($clause->possibilities as $var_id => $possiblity) {
+        foreach ($clause->possibilities as $var_id => $possibility) {
             $impossibility = [];
 
-            foreach ($possiblity as $type) {
+            foreach ($possibility as $type) {
                 if (($type[0] !== '=' && $type[0] !== '~'
                         && (!isset($type[1]) || ($type[1] !== '=' && $type[1] !== '~')))
                     || strpos($type, '(')

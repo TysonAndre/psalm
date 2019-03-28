@@ -7,7 +7,7 @@ class CallableTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -325,7 +325,7 @@ class CallableTest extends TestCase
                         return function (int $x) use ($f, $g) : int {
                             return $f($g($x));
                         };
-                    }'
+                    }',
             ],
             'returnsTypedClosureWithClasses' => [
                 '<?php
@@ -591,7 +591,7 @@ class CallableTest extends TestCase
                         if (is_object($c)) {
                             $c();
                         }
-                    }'
+                    }',
             ],
             'objectsCanBeCallable' => [
                 '<?php
@@ -599,7 +599,7 @@ class CallableTest extends TestCase
                         if (is_callable($c)) {
                             $c();
                         }
-                    }'
+                    }',
             ],
             'unionCanBeCallable' => [
                 '<?php
@@ -616,7 +616,7 @@ class CallableTest extends TestCase
                         if (is_callable($c)) {
                             $c();
                         }
-                    }'
+                    }',
             ],
             'goodCallableArgs' => [
                 '<?php
@@ -631,14 +631,14 @@ class CallableTest extends TestCase
 
                     f("strcmp");
                     f([new C, "m"]);
-                    f([C::class, "m"]);'
+                    f([C::class, "m"]);',
             ],
             'callableWithSpaces' => [
                 '<?php
                     /**
                      * @param callable(string, string) : int $p
                      */
-                    function f(callable $p): void {}'
+                    function f(callable $p): void {}',
             ],
             'fileExistsCallable' => [
                 '<?php
@@ -648,7 +648,7 @@ class CallableTest extends TestCase
                             glob($prospective_file_path),
                             "file_exists"
                         );
-                    }'
+                    }',
             ],
             'PHP71-closureFromCallableInvokableNamedClass' => [
                 '<?php
@@ -664,7 +664,7 @@ class CallableTest extends TestCase
                         }
                     }
 
-                    acceptsIntToBool(Closure::fromCallable(new NamedInvokable));'
+                    acceptsIntToBool(Closure::fromCallable(new NamedInvokable));',
             ],
             'PHP71-closureFromCallableInvokableAnonymousClass' => [
                 '<?php
@@ -680,7 +680,7 @@ class CallableTest extends TestCase
                         }
                     };
 
-                    acceptsIntToBool(Closure::fromCallable($anonInvokable));'
+                    acceptsIntToBool(Closure::fromCallable($anonInvokable));',
             ],
             'noExceptionWhenSuppressingUndefinedClass' => [
                 '<?php
@@ -693,7 +693,9 @@ class CallableTest extends TestCase
             ],
             'callableSelfArg' => [
                 '<?php
-                    class Clazz {
+                    class A {}
+
+                    class B extends A {
                         /**
                          * @param callable(static) $f
                          */
@@ -714,7 +716,48 @@ class CallableTest extends TestCase
                         function func3(callable $f): void {
                             $f($this);
                         }
-                    }',
+                    }
+
+                    class C extends B {}
+
+                    $b = new B();
+                    $c = new C();
+
+                    $b->func1(function(B $x): void {});
+                    $c->func1(function(C $x): void {});
+                    $b->func2(function(B $x): void {});
+                    $c->func2(function(B $x): void {});',
+            ],
+            'callableSelfReturn' => [
+                '<?php
+                    class A {}
+
+                    class B extends A {
+                        /**
+                         * @param callable():static $f
+                         */
+                        function func1(callable $f): void {}
+
+                        /**
+                         * @param callable():self $f
+                         */
+                        function func2(callable $f): void {}
+
+                        /**
+                         * @param callable():parent $f
+                         */
+                        function func3(callable $f): void {}
+                    }
+
+                    class C extends B {}
+
+                    $b = new B();
+                    $c = new C();
+
+                    $b->func1(function(): B { return new B(); });
+                    $c->func1(function(): C { return new C(); });
+                    $b->func2(function(): B { return new B(); });
+                    $c->func2(function(): B { return new B(); });',
             ],
             'selfArrayMapCallableWrongClass' => [
                 '<?php
@@ -740,7 +783,7 @@ class CallableTest extends TestCase
                         public function bat() {
                             return array_map([Foo::class, "baz"], [1]);
                         }
-                    }'
+                    }',
             ],
             'dynamicCallableArray' => [
                 '<?php
@@ -755,13 +798,57 @@ class CallableTest extends TestCase
                         public function modifyFoo(string $value): void {
                             $this->value = $value;
                         }
-                    }'
+                    }',
+            ],
+            'PHP71-publicCallableFromInside' => [
+                '<?php
+                    class Base  {
+                        public function publicMethod() : void {}
+                    }
+
+                    class Example extends Base {
+                        public function test() : Closure {
+                            return Closure::fromCallable([$this, "publicMethod"]);
+                        }
+                    }',
+            ],
+            'PHP71-protectedCallableFromInside' => [
+                '<?php
+                    class Base  {
+                        protected function protectedMethod() : void {}
+                    }
+
+                    class Example extends Base {
+                        public function test() : Closure {
+                            return Closure::fromCallable([$this, "protectedMethod"]);
+                        }
+                    }',
+            ],
+            'callableIsArrayAssertion' => [
+                '<?php
+                    function foo(callable $c) : void {
+                        if (is_array($c)) {
+                            echo $c[1];
+                        }
+                    }',
+            ],
+            'callableOrArrayIsArrayAssertion' => [
+                '<?php
+                    /**
+                     * @param callable|array $c
+                     * @psalm-suppress MixedArgument
+                     */
+                    function foo($c) : void {
+                        if (is_array($c)) {
+                            echo $c[2];
+                        }
+                    }',
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -1178,7 +1265,7 @@ class CallableTest extends TestCase
                     $a = function (string $foo) use ($foo) : string {
                       return $foo;
                     };',
-                'error_message' => 'DuplicateParam'
+                'error_message' => 'DuplicateParam',
             ],
             'callableWithSpaceAfterColonBadVarArg' => [
                 '<?php
@@ -1232,7 +1319,20 @@ class CallableTest extends TestCase
                 '<?php
                     class one { public function two(string $_p): void {} }
                     array_map(["two", "three"], ["one", "two"]);',
-                'error_message' => 'InvalidArgument'
+                'error_message' => 'InvalidArgument',
+            ],
+            'PHP71-privateCallable' => [
+                '<?php
+                    class Base  {
+                        private function privateMethod() : void {}
+                    }
+
+                    class Example extends Base {
+                        public function test() : Closure {
+                            return Closure::fromCallable([$this, "privateMethod"]);
+                        }
+                    }',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

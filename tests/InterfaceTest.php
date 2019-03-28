@@ -7,7 +7,7 @@ class InterfaceTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -523,13 +523,35 @@ class InterfaceTest extends TestCase
                         public function foo(array $f) : void {
                             $this->f = $f;
                         }
+                    }
+
+                    class C2 implements I {
+                        /** @var string[] */
+                        private $f = [];
+
+                        /**
+                         * {@inheritDoc}
+                         */
+                        public function foo(array $f) : void {
+                            $this->f = $f;
+                        }
                     }',
+            ],
+            'allowStaticCallOnInterfaceMethod' => [
+                '<?php
+                    interface IFoo {
+                        public static function doFoo();
+                    }
+
+                    function bar(IFoo $i) : void {
+                        $i::doFoo();
+                    }'
             ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {
@@ -731,6 +753,25 @@ class InterfaceTest extends TestCase
                     interface myInterface{}
                     new myInterface();',
                 'error_message' => 'InterfaceInstantiation',
+            ],
+            'nonStaticInterfaceMethod' => [
+                '<?php
+                    interface I {
+                        public static function m(): void;
+                    }
+                    class C implements I {
+                        public function m(): void {}
+                    }',
+                'error_message' => 'MethodSignatureMismatch',
+            ],
+            'staticInterfaceCall' => [
+                '<?php
+                    interface Foo {
+                        public static function doFoo();
+                    }
+
+                    Foo::doFoo();',
+                'error_message' => 'UndefinedClass',
             ],
         ];
     }

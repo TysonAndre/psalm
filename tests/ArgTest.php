@@ -7,7 +7,7 @@ class ArgTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
-     * @return array
+     * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
     {
@@ -67,11 +67,38 @@ class ArgTest extends TestCase
                     function foo($b) : void {}
                     foo(null);',
             ],
+            'allowArrayIntScalarForArrayStringWithScalarIgnored' => [
+                '<?php
+                    /** @param array<int|string> $arr */
+                    function foo(array $arr) : void {
+                    }
+
+                    /** @return array<int, scalar> */
+                    function bar() : array {
+                      return [];
+                    }
+
+                    /** @psalm-suppress InvalidScalarArgument */
+                    foo(bar());',
+            ],
+            'allowArrayScalarForArrayStringWithScalarIgnored' => [
+                '<?php declare(strict_types=1);
+                    /** @param array<string> $arr */
+                    function foo(array $arr) : void {}
+
+                    /** @return array<int, scalar> */
+                    function bar() : array {
+                        return [];
+                    }
+
+                    /** @psalm-suppress InvalidScalarArgument */
+                    foo(bar());',
+            ],
         ];
     }
 
     /**
-     * @return array
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
     public function providerInvalidCodeParse()
     {

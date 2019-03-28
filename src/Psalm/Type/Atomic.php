@@ -20,6 +20,8 @@ use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TCallableArray;
+use Psalm\Type\Atomic\TCallableObjectLikeArray;
 use Psalm\Type\Atomic\TCallableObject;
 use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TClassString;
@@ -67,7 +69,7 @@ abstract class Atomic
     /**
      * @param  string $value
      * @param  array{int,int}|null   $php_version
-     * @param  array<string, array{Union, ?string}> $template_type_map
+     * @param  array<string, array<string, array{Union}>> $template_type_map
      *
      * @return Atomic
      */
@@ -182,7 +184,12 @@ abstract class Atomic
         }
 
         if (isset($template_type_map[$value])) {
-            return new TTemplateParam($value, $template_type_map[$value][0], $template_type_map[$value][1]);
+            $first_class = array_keys($template_type_map[$value])[0];
+            return new TTemplateParam(
+                $value,
+                $template_type_map[$value][$first_class][0],
+                $first_class
+            );
         }
 
         return new TNamedObject($value);
@@ -209,7 +216,10 @@ abstract class Atomic
      */
     public function isObjectType()
     {
-        return $this instanceof TObject || $this instanceof TNamedObject;
+        return $this instanceof TObject
+            || $this instanceof TNamedObject
+            || ($this instanceof TTemplateParam
+                && $this->as->hasObjectType());
     }
 
     /**
@@ -220,7 +230,8 @@ abstract class Atomic
         return $this instanceof TCallable
             || $this instanceof TCallableObject
             || $this instanceof TCallableString
-            || (($this instanceof TArray || $this instanceof ObjectLike) && $this->callable);
+            || $this instanceof TCallableArray
+            || $this instanceof TCallableObjectLikeArray;
     }
 
     /**
@@ -442,7 +453,14 @@ abstract class Atomic
 
                 $expected_type_params = $class_storage->template_types ?: [];
             } else {
-                $expected_type_params = [[Type::getMixed(), null], [Type::getMixed(), null]];
+                $expected_type_params = [
+                    'TKey' => [
+                        '' =>  [Type::getMixed(), null],
+                    ],
+                    'TValue' => [
+                        '' =>  [Type::getMixed(), null],
+                    ]
+                ];
             }
 
             $template_type_count = count($expected_type_params);
@@ -484,7 +502,7 @@ abstract class Atomic
                 }
 
                 if (isset(array_values($expected_type_params)[$i])) {
-                    $expected_type_param = array_values($expected_type_params)[$i][0];
+                    $expected_type_param = reset(array_values($expected_type_params)[$i])[0];
                     $template_name = array_keys($expected_type_params)[$i];
 
                     $type_param = ExpressionAnalyzer::fleshOutType(
@@ -697,8 +715,8 @@ abstract class Atomic
     }
 
     /**
-     * @param  array<string, array{Type\Union, ?string}> $template_types
-     * @param  array<string, array{Type\Union, ?string, ?int}> $generic_params
+     * @param  array<string, array<string, array{Type\Union}>> $template_types
+     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
      * @param  Type\Atomic|null          $input_type
      *
      * @return void
@@ -716,7 +734,7 @@ abstract class Atomic
     }
 
     /**
-     * @param  array<string, array{Type\Union, ?string}>     $template_types
+     * @param  array<string, array<string, array{Type\Union, 1?:int}>>     $template_types
      *
      * @return void
      */
