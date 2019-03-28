@@ -29,7 +29,6 @@ use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TSingleLetter;
-use Psalm\Type\Atomic\TSqlSelectString;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
@@ -944,21 +943,7 @@ abstract class Type
         $type = null;
 
         if ($value !== null) {
-            if (stripos($value, 'select ') !== false) {
-                try {
-                    $parser = new \PhpMyAdmin\SqlParser\Parser($value);
-
-                    if (!$parser->errors) {
-                        $type = new TSqlSelectString($value);
-                    }
-                } catch (\Throwable $e) {
-                    if (strlen($value) < 1000) {
-                        $type = new TLiteralString($value);
-                    }
-                }
-            }
-
-            if (!$type && strlen($value) < 1000) {
+            if (strlen($value) < 1000) {
                 $type = new TLiteralString($value);
             }
         }
