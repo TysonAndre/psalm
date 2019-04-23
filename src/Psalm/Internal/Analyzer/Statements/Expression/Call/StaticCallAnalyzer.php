@@ -106,7 +106,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 if ($context->calling_method_id
                     && !$stmt->class instanceof PhpParser\Node\Name\FullyQualified
                 ) {
-                    $codebase->file_reference_provider->addReferenceToClassMethod(
+                    $codebase->file_reference_provider->addMethodReferenceToClassMember(
                         $context->calling_method_id,
                         'use:' . $stmt->class->parts[0] . ':' . \md5($statements_analyzer->getFilePath())
                     );
@@ -260,6 +260,10 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     || $lhs_type_part instanceof Type\Atomic\TTemplateParam
                     || $lhs_type_part instanceof Type\Atomic\TClassString
                 ) {
+                    if ($stmt->name instanceof PhpParser\Node\Identifier) {
+                        $codebase->analyzer->addMixedMemberName(strtolower($stmt->name->name));
+                    }
+
                     if (IssueBuffer::accepts(
                         new MixedMethodCall(
                             'Cannot call method on an unknown class',
@@ -345,7 +349,13 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
                 }
 
-                if (!$codebase->methods->methodExists($method_id)
+                if (!$codebase->methods->methodExists(
+                    $method_id,
+                    $context->calling_method_id,
+                    $codebase->collect_references ? new CodeLocation($source, $stmt->name) : null,
+                    null,
+                    $statements_analyzer->getFilePath()
+                )
                     || !MethodAnalyzer::isMethodVisible(
                         $method_id,
                         $context,
@@ -354,7 +364,10 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 ) {
                     if ($codebase->methods->methodExists(
                         $fq_class_name . '::__callStatic',
-                        $context->calling_method_id
+                        $context->calling_method_id,
+                        $codebase->collect_references ? new CodeLocation($source, $stmt->name) : null,
+                        null,
+                        $statements_analyzer->getFilePath()
                     )) {
                         $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
@@ -827,6 +840,10 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
                 }
             } else {
+                if (!$context->ignore_variable_method) {
+                    $codebase->analyzer->addMixedMemberName(strtolower($fq_class_name) . '::');
+                }
+
                 if (self::checkFunctionArguments(
                     $statements_analyzer,
                     $stmt->args,

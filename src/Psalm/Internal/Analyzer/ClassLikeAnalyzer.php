@@ -231,11 +231,17 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
             return null;
         }
 
-        $class_exists = $codebase->classExists($fq_class_name);
-        $interface_exists = $codebase->interfaceExists($fq_class_name);
+        $class_exists = $codebase->classlikes->classExists(
+            $fq_class_name,
+            !$inferred ? $code_location : null
+        );
+        $interface_exists = $codebase->classlikes->interfaceExists(
+            $fq_class_name,
+            !$inferred ? $code_location : null
+        );
 
         if (!$class_exists && !$interface_exists) {
-            if (!$allow_trait || !$codebase->classlikes->traitExists($fq_class_name)) {
+            if (!$allow_trait || !$codebase->classlikes->traitExists($fq_class_name, $code_location)) {
                 if (IssueBuffer::accepts(
                     new UndefinedClass(
                         'Class or interface ' . $fq_class_name . ' does not exist',
@@ -277,6 +283,12 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
         }
 
         foreach ($class_storage->invalid_dependencies as $dependency_class_name) {
+            // if the implemented/extended class is stubbed, it may not yet have
+            // been hydrated
+            if ($codebase->classlike_storage_provider->has($dependency_class_name)) {
+                continue;
+            }
+
             if (IssueBuffer::accepts(
                 new MissingDependency(
                     $fq_class_name . ' depends on class or interface '
@@ -288,13 +300,6 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
             )) {
                 return false;
             }
-        }
-
-        if ($codebase->collect_references && !$inferred) {
-            if ($class_storage->referencing_locations === null) {
-                $class_storage->referencing_locations = [];
-            }
-            $class_storage->referencing_locations[$code_location->file_path][] = $code_location;
         }
 
         if (($class_exists && !$codebase->classHasCorrectCasing($fq_class_name)) ||
@@ -313,11 +318,6 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                 }
             }
         }
-
-        $codebase->file_reference_provider->addFileReferenceToClass(
-            $code_location->file_path,
-            $aliased_name_lc
-        );
 
         if (!$inferred) {
             $plugin_classes = $codebase->config->after_classlike_exists_checks;

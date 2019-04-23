@@ -505,6 +505,10 @@ class Reconciler
                         $existing_var_type->removeType('class-string');
                     }
 
+                    if ($existing_var_type->hasType('callable-string')) {
+                        $existing_var_type->removeType('callable-string');
+                    }
+
                     if ($existing_var_type->hasType('string')) {
                         $existing_var_type->removeType('string');
                         $existing_var_type->addType(new Type\Atomic\TLiteralString(''));
@@ -2145,7 +2149,7 @@ class Reconciler
                     }
                 }
             }
-        } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
+        } elseif ($scalar_type === 'string' || $scalar_type === 'class-string' || $scalar_type === 'callable-string') {
             if ($existing_var_type->hasMixed() || $existing_var_type->hasScalar()) {
                 if ($scalar_type === 'class-string') {
                     return new Type\Union([new Type\Atomic\TLiteralClassString($value)]);
@@ -2329,7 +2333,7 @@ class Reconciler
                     $did_remove_type = true;
                 }
             }
-        } elseif ($scalar_type === 'string' || $scalar_type === 'class-string') {
+        } elseif ($scalar_type === 'string' || $scalar_type === 'class-string' || $scalar_type === 'callable-string') {
             if ($existing_var_type->hasString() && $existing_string_types = $existing_var_type->getLiteralStrings()) {
                 $did_match_literal_type = true;
 

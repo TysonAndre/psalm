@@ -66,12 +66,16 @@ class FileStorageProvider
      *
      * @return bool
      */
-    public function has($file_path, $file_contents)
+    public function has($file_path, string $file_contents = null)
     {
         $file_path = strtolower($file_path);
 
         if (isset(self::$storage[$file_path])) {
             return true;
+        }
+
+        if ($file_contents === null) {
+            return false;
         }
 
         if (!$this->cache) {

@@ -189,7 +189,7 @@ class ConfigTest extends TestCase
         if ($check_symlink_error) {
             $last_error = error_get_last();
 
-            if (is_array($last_error) && isset($last_error['message']) && $no_symlinking_error === $last_error['message']) {
+            if (is_array($last_error) && $no_symlinking_error === $last_error['message']) {
                 $this->markTestSkipped($no_symlinking_error);
 
                 return;
@@ -217,7 +217,28 @@ class ConfigTest extends TestCase
         $this->assertFalse($config->isInProjectDirs(realpath('tests/symlinktest/a/ignoreme.php')));
         $this->assertFalse($config->isInProjectDirs(realpath('examples/StringAnalyzer.php')));
 
-        unlink(__DIR__ . '/symlinktest/ignored/b');
+        $regex = '/^unlink\([^\)]+\): (?:Permission denied|No such file or directory)$/';
+        $last_error = error_get_last();
+
+        $check_unlink_error =
+            !is_array($last_error) ||
+            !preg_match($regex, $last_error['message']);
+
+        @unlink(__DIR__ . '/symlinktest/ignored/b');
+
+        if ($check_unlink_error) {
+            $last_error = error_get_last();
+
+            if (is_array($last_error) && !preg_match($regex, $last_error['message'])) {
+                throw new \ErrorException(
+                    $last_error['message'],
+                    0,
+                    $last_error['type'],
+                    $last_error['file'],
+                    $last_error['line']
+                );
+            }
+        }
     }
 
     /**
@@ -1215,6 +1236,88 @@ class ConfigTest extends TestCase
                         ord($glob1 ?? "str");
                         ord($_GET["str"] ?? "str");
                     }
+                }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testIgnoreExceptions()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm checkForThrowsDocblock="true" checkForThrowsInGlobalScope="true">
+                    <ignoreExceptions>
+                        <class name="Exc1" />
+                        <class name="Exc2" onlyGlobalScope="true" />
+                        <classAndDescendants name="Exc3" />
+                        <classAndDescendants name="Exc4" onlyGlobalScope="true" />
+                    </ignoreExceptions>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                class Exc1 extends Exception {}
+                class Exc2 extends Exception {}
+                class Exc3 extends Exception {}
+                class Exc4 extends Exception {}
+
+                throw new Exc1();
+                throw new Exc2();
+                throw new Exc3();
+                throw new Exc4();
+
+                function example() : void {
+                    throw new Exc1();
+                    throw new Exc3();
+                }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @expectedException        \Psalm\Exception\CodeException
+     * @expectedExceptionMessage MissingThrowsDocblock
+     *
+     * @return void
+     */
+    public function testNotIgnoredException()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm checkForThrowsDocblock="true" checkForThrowsInGlobalScope="true">
+                    <ignoreExceptions>
+                        <class name="Exc1" />
+                        <class name="Exc2" onlyGlobalScope="true" />
+                        <classAndDescendants name="Exc3" />
+                        <classAndDescendants name="Exc4" onlyGlobalScope="true" />
+                    </ignoreExceptions>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                class Exc2 extends Exception {}
+
+                function example() : void {
+                    throw new Exc2();
                 }'
         );
 

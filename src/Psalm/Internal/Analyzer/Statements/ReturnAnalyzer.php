@@ -154,7 +154,7 @@ class ReturnAnalyzer
                             if (IssueBuffer::accepts(
                                 new InvalidReturnStatement(
                                     'No return values are expected for ' . $cased_method_id,
-                                    new CodeLocation($source, $stmt)
+                                    new CodeLocation($source, $stmt->expr)
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
@@ -173,7 +173,7 @@ class ReturnAnalyzer
                         if (IssueBuffer::accepts(
                             new MixedReturnStatement(
                                 'Could not infer a return type',
-                                new CodeLocation($source, $stmt)
+                                new CodeLocation($source, $stmt->expr)
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -195,7 +195,7 @@ class ReturnAnalyzer
                         if (IssueBuffer::accepts(
                             new InvalidReturnStatement(
                                 'No return values are expected for ' . $cased_method_id,
-                                new CodeLocation($source, $stmt)
+                                new CodeLocation($source, $stmt->expr)
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -228,7 +228,7 @@ class ReturnAnalyzer
                                         'The type \'' . $stmt->inferredType->getId() . '\' is more general than the'
                                             . ' declared return type \'' . $local_return_type->getId() . '\''
                                             . ' for ' . $cased_method_id,
-                                        new CodeLocation($source, $stmt)
+                                        new CodeLocation($source, $stmt->expr)
                                     ),
                                     $statements_analyzer->getSuppressedIssues()
                                 )) {
@@ -240,7 +240,7 @@ class ReturnAnalyzer
                                         'The type \'' . $stmt->inferredType->getId() . '\' is more general than the'
                                             . ' declared return type \'' . $local_return_type->getId() . '\''
                                             . ' for ' . $cased_method_id,
-                                        new CodeLocation($source, $stmt)
+                                        new CodeLocation($source, $stmt->expr)
                                     ),
                                     $statements_analyzer->getSuppressedIssues()
                                 )) {
@@ -300,7 +300,7 @@ class ReturnAnalyzer
                                     'The type \'' . $stmt->inferredType->getId()
                                         . '\' does not match the declared return '
                                         . 'type \'' . $local_return_type->getId() . '\' for ' . $cased_method_id,
-                                    new CodeLocation($source, $stmt)
+                                    new CodeLocation($source, $stmt->expr)
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
@@ -318,7 +318,7 @@ class ReturnAnalyzer
                                 'The declared return type \'' . $local_return_type . '\' for '
                                     . $cased_method_id . ' is not nullable, but the function returns \''
                                         . $inferred_type . '\'',
-                                new CodeLocation($source, $stmt)
+                                new CodeLocation($source, $stmt->expr)
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -330,13 +330,14 @@ class ReturnAnalyzer
                         && $inferred_type->isFalsable()
                         && !$local_return_type->isFalsable()
                         && !$local_return_type->hasBool()
+                        && !$local_return_type->hasScalar()
                     ) {
                         if (IssueBuffer::accepts(
                             new FalsableReturnStatement(
                                 'The declared return type \'' . $local_return_type . '\' for '
                                     . $cased_method_id . ' does not allow false, but the function returns \''
                                         . $inferred_type . '\'',
-                                new CodeLocation($source, $stmt)
+                                new CodeLocation($source, $stmt->expr)
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {

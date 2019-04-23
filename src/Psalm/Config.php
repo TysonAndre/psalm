@@ -87,7 +87,7 @@ class Config
     /**
      * The directory to store all Psalm project caches
      *
-     * @var string
+     * @var string|null
      */
     public $global_cache_directory;
 
@@ -240,7 +240,17 @@ class Config
     /**
      * @var array<string, bool>
      */
+    public $ignored_exceptions_in_global_scope = [];
+
+    /**
+     * @var array<string, bool>
+     */
     public $ignored_exceptions_and_descendants = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    public $ignored_exceptions_and_descendants_in_global_scope = [];
 
     /**
      * @var array<string, bool>
@@ -343,7 +353,7 @@ class Config
     /** @var array<string, mixed> */
     private $predefined_constants;
 
-    /** @var array<string, bool> */
+    /** @var array<callable-string, bool> */
     private $predefined_functions = [];
 
     /** @var ClassLoader|null */
@@ -365,12 +375,22 @@ class Config
     public $error_baseline = null;
 
     /** @var string */
-    public $spirit_host = 'spirit.psalm.dev';
+    public $shepherd_host = 'shepherd.dev';
 
     /**
      * @var array<string, string>
      */
     public $globals = [];
+
+    /**
+     * @var bool
+     */
+    public $parse_sql = false;
+
+    /**
+     * @var int
+     */
+    public $max_string_length = 1000;
 
     protected function __construct()
     {
@@ -571,7 +591,7 @@ class Config
 
         $config->cache_directory .= DIRECTORY_SEPARATOR . sha1($base_dir);
 
-        if (@mkdir($config->cache_directory, 0777, true) === false && is_dir($config->cache_directory) === false) {
+        if (is_dir($config->cache_directory) === false && @mkdir($config->cache_directory, 0777, true) === false) {
             trigger_error('Could not create cache directory: ' . $config->cache_directory, E_USER_ERROR);
         }
 
@@ -683,6 +703,16 @@ class Config
             $config->error_baseline = $attribute_text;
         }
 
+        if (isset($config_xml['maxStringLength'])) {
+            $attribute_text = intval($config_xml['maxStringLength']);
+            $config->max_string_length = $attribute_text;
+        }
+
+        if (isset($config_xml['parseSql'])) {
+            $attribute_text = (string) $config_xml['parseSql'];
+            $config->parse_sql = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
         }
@@ -704,13 +734,23 @@ class Config
             if (isset($config_xml->ignoreExceptions->class)) {
                 /** @var \SimpleXMLElement $exception_class */
                 foreach ($config_xml->ignoreExceptions->class as $exception_class) {
-                    $config->ignored_exceptions[(string) $exception_class['name']] = true;
+                    $exception_name = (string) $exception_class['name'];
+                    $global_attribute_text = (string) $exception_class['onlyGlobalScope'];
+                    if ($global_attribute_text !== 'true' && $global_attribute_text !== '1') {
+                        $config->ignored_exceptions[$exception_name] = true;
+                    }
+                    $config->ignored_exceptions_in_global_scope[$exception_name] = true;
                 }
             }
             if (isset($config_xml->ignoreExceptions->classAndDescendants)) {
                 /** @var \SimpleXMLElement $exception_class */
                 foreach ($config_xml->ignoreExceptions->classAndDescendants as $exception_class) {
-                    $config->ignored_exceptions_and_descendants[(string) $exception_class['name']] = true;
+                    $exception_name = (string) $exception_class['name'];
+                    $global_attribute_text = (string) $exception_class['onlyGlobalScope'];
+                    if ($global_attribute_text !== 'true' && $global_attribute_text !== '1') {
+                        $config->ignored_exceptions_and_descendants[$exception_name] = true;
+                    }
+                    $config->ignored_exceptions_and_descendants_in_global_scope[$exception_name] = true;
                 }
             }
         }
@@ -828,7 +868,7 @@ class Config
     /**
      * @return void
      */
-    public function setComposerClassLoader(ClassLoader $loader)
+    public function setComposerClassLoader(ClassLoader $loader = null)
     {
         $this->composer_class_loader = $loader;
     }
@@ -890,6 +930,8 @@ class Config
         if (!file_exists($path)) {
             throw new \InvalidArgumentException('Cannot find plugin file ' . $path);
         }
+
+        $path = realpath($path);
 
         $this->plugin_paths[] = $path;
     }
@@ -1320,7 +1362,7 @@ class Config
     }
 
     /**
-     * @return string
+     * @return ?string
      */
     public function getGlobalCacheDirectory()
     {
@@ -1345,7 +1387,7 @@ class Config
     }
 
     /**
-     * @return array<string, bool>
+     * @return array<callable-string, bool>
      */
     public function getPredefinedFunctions()
     {

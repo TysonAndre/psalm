@@ -34,14 +34,22 @@ use Psalm\Internal\Provider\FileStorageProvider;
  *
  * @psalm-type  WorkerData = array{
  *     issues: array<int, IssueData>,
- *     file_references: array<string, array<string,bool>>,
+ *     file_references_to_classes: array<string, array<string,bool>>,
+ *     file_references_to_class_members: array<string, array<string,bool>>,
+ *     file_references_to_missing_class_members: array<string, array<string,bool>>,
  *     mixed_counts: array<string, array{0: int, 1: int}>,
- *     method_references: array<string, array<string,bool>>,
+ *     mixed_member_names: array<string, bool>,
+ *     file_manipulations: array<string, FileManipulation[]>,
+ *     method_references_to_class_members: array<string, array<string,bool>>,
+ *     method_references_to_missing_class_members: array<string, array<string,bool>>,
  *     analyzed_methods: array<string, array<string, int>>,
  *     file_maps: array<
  *         string,
  *         array{0: TaggedCodeType, 1: TaggedCodeType}
- *     >
+ *     >,
+ *     class_locations: array<string, array<int, \Psalm\CodeLocation>>,
+ *     class_method_locations: array<string, array<int, \Psalm\CodeLocation>>,
+ *     class_property_locations: array<string, array<int, \Psalm\CodeLocation>>
  * }
  */
 
@@ -78,6 +86,13 @@ class Analyzer
      * @var array<string, array{0: int, 1: int}
      */
     private $mixed_counts = [];
+
+    /**
+     * Used to store member names of mixed property/method access
+     *
+     * @var array<string, bool>
+     */
+    private $mixed_member_names = [];
 
     /**
      * @var bool
@@ -229,6 +244,15 @@ class Analyzer
                 $process_file_paths,
                 /** @return void */
                 function () {
+                    $project_analyzer = ProjectAnalyzer::getInstance();
+                    $codebase = $project_analyzer->getCodebase();
+
+                    $file_reference_provider = $codebase->file_reference_provider;
+
+                    $file_reference_provider->setCallingMethodReferencesToClassMembers([]);
+                    $file_reference_provider->setFileReferencesToClassMembers([]);
+                    $file_reference_provider->setCallingMethodReferencesToMissingClassMembers([]);
+                    $file_reference_provider->setFileReferencesToMissingClassMembers([]);
                 },
                 $analysis_worker,
                 /** @return WorkerData */
@@ -238,22 +262,47 @@ class Analyzer
                     $analyzer = $codebase->analyzer;
                     $file_reference_provider = $codebase->file_reference_provider;
 
+                    if ($this->debug_output) {
+                        echo 'Gathering data for forked process' . "\n";
+                    }
+
                     return [
                         'issues' => IssueBuffer::getIssuesData(),
-                        'file_references' => $file_reference_provider->getAllFileReferences(),
-                        'method_references' => $file_reference_provider->getClassMethodReferences(),
+                        'file_references_to_classes'
+                            => $file_reference_provider->getAllFileReferencesToClasses(),
+                        'file_references_to_class_members'
+                            => $file_reference_provider->getAllFileReferencesToClassMembers(),
+                        'method_references_to_class_members'
+                            => $file_reference_provider->getAllMethodReferencesToClassMembers(),
+                        'file_references_to_missing_class_members'
+                            => $file_reference_provider->getAllFileReferencesToMissingClassMembers(),
+                        'method_references_to_missing_class_members'
+                            => $file_reference_provider->getAllMethodReferencesToMissingClassMembers(),
+                        'mixed_member_names' => $analyzer->getMixedMemberNames(),
+                        'file_manipulations' => FileManipulationBuffer::getAll(),
                         'mixed_counts' => $analyzer->getMixedCounts(),
                         'analyzed_methods' => $analyzer->getAnalyzedMethods(),
                         'file_maps' => $analyzer->getFileMaps(),
+                        'class_locations' => $file_reference_provider->getAllClassLocations(),
+                        'class_method_locations' => $file_reference_provider->getAllClassMethodLocations(),
+                        'class_property_locations' => $file_reference_provider->getAllClassPropertyLocations(),
                     ];
                 }
             );
+
+            if ($this->debug_output) {
+                echo 'Forking analysis' . "\n";
+            }
 
             // Wait for all tasks to complete and collect the results.
             /**
              * @var array<int, WorkerData>
              */
             $forked_pool_data = $pool->wait();
+
+            if ($this->debug_output) {
+                echo 'Collecting forked analysis results' . "\n";
+            }
 
             foreach ($forked_pool_data as $pool_data) {
                 IssueBuffer::addIssues($pool_data['issues']);
@@ -262,8 +311,34 @@ class Analyzer
                     $codebase->file_reference_provider->addIssue($issue_data['file_path'], $issue_data);
                 }
 
-                $codebase->file_reference_provider->addFileReferences($pool_data['file_references']);
-                $codebase->file_reference_provider->addClassMethodReferences($pool_data['method_references']);
+                $codebase->file_reference_provider->addFileReferencesToClasses(
+                    $pool_data['file_references_to_classes']
+                );
+                $codebase->file_reference_provider->addFileReferencesToClassMembers(
+                    $pool_data['file_references_to_class_members']
+                );
+                $codebase->file_reference_provider->addMethodReferencesToClassMembers(
+                    $pool_data['method_references_to_class_members']
+                );
+                $codebase->file_reference_provider->addFileReferencesToMissingClassMembers(
+                    $pool_data['file_references_to_missing_class_members']
+                );
+                $codebase->file_reference_provider->addMethodReferencesToMissingClassMembers(
+                    $pool_data['method_references_to_missing_class_members']
+                );
+                $this->addMixedMemberNames(
+                    $pool_data['mixed_member_names']
+                );
+                $codebase->file_reference_provider->addClassLocations(
+                    $pool_data['class_locations']
+                );
+                $codebase->file_reference_provider->addClassMethodLocations(
+                    $pool_data['class_method_locations']
+                );
+                $codebase->file_reference_provider->addClassPropertyLocations(
+                    $pool_data['class_property_locations']
+                );
+
                 $this->analyzed_methods = array_merge($pool_data['analyzed_methods'], $this->analyzed_methods);
 
                 foreach ($pool_data['mixed_counts'] as $file_path => list($mixed_count, $nonmixed_count)) {
@@ -273,6 +348,10 @@ class Analyzer
                         $this->mixed_counts[$file_path][0] += $mixed_count;
                         $this->mixed_counts[$file_path][1] += $nonmixed_count;
                     }
+                }
+
+                foreach ($pool_data['file_manipulations'] as $file_path => $manipulations) {
+                    FileManipulationBuffer::add($file_path, $manipulations);
                 }
 
                 foreach ($pool_data['file_maps'] as $file_path => list($reference_map, $type_map)) {
@@ -298,6 +377,13 @@ class Analyzer
         }
 
         $codebase = $project_analyzer->getCodebase();
+
+        if ($codebase->find_unused_code
+            && ($project_analyzer->full_run || $codebase->find_unused_code === 'always')
+        ) {
+            $project_analyzer->checkClassReferences();
+        }
+
         $scanned_files = $codebase->scanner->getScannedFiles();
         $codebase->file_reference_provider->setAnalyzedMethods($this->analyzed_methods);
         $codebase->file_reference_provider->setFileMaps($this->getFileMaps());
@@ -335,14 +421,25 @@ class Analyzer
         }
 
         $statements_provider = $codebase->statements_provider;
+        $file_reference_provider = $codebase->file_reference_provider;
 
         $changed_members = $statements_provider->getChangedMembers();
         $unchanged_signature_members = $statements_provider->getUnchangedSignatureMembers();
 
         $diff_map = $statements_provider->getDiffMap();
 
-        $all_referencing_methods = $codebase->file_reference_provider->getMethodsReferencing();
-        $this->mixed_counts = $codebase->file_reference_provider->getTypeCoverage();
+        $method_references_to_class_members
+            = $file_reference_provider->getAllMethodReferencesToClassMembers();
+        $method_references_to_missing_class_members =
+            $file_reference_provider->getAllMethodReferencesToMissingClassMembers();
+
+        $all_referencing_methods = $method_references_to_class_members + $method_references_to_missing_class_members;
+
+        $file_references_to_class_members
+            = $file_reference_provider->getAllFileReferencesToClassMembers();
+        $file_references_to_missing_class_members
+            = $file_reference_provider->getAllFileReferencesToMissingClassMembers();
+        $this->mixed_counts = $file_reference_provider->getTypeCoverage();
 
         $classlikes = $codebase->classlikes;
 
@@ -392,6 +489,11 @@ class Analyzer
                     );
                 }
 
+                unset($method_references_to_class_members[$member_id]);
+                unset($file_references_to_class_members[$member_id]);
+                unset($method_references_to_missing_class_members[$member_id]);
+                unset($file_references_to_missing_class_members[$member_id]);
+
                 $member_stub = preg_replace('/::.*$/', '::*', $member_id);
 
                 if (isset($all_referencing_methods[$member_stub])) {
@@ -400,6 +502,16 @@ class Analyzer
                         $newly_invalidated_methods
                     );
                 }
+            }
+        }
+
+        foreach ($newly_invalidated_methods as $method_id => $_) {
+            foreach ($method_references_to_class_members as &$referencing_method_ids) {
+                unset($referencing_method_ids[$method_id]);
+            }
+
+            foreach ($method_references_to_missing_class_members as &$referencing_method_ids) {
+                unset($referencing_method_ids[$method_id]);
             }
         }
 
@@ -423,10 +535,63 @@ class Analyzer
         $this->shiftFileOffsets($diff_map);
 
         foreach ($this->files_to_analyze as $file_path) {
-            $codebase->file_reference_provider->clearExistingIssuesForFile($file_path);
-            $codebase->file_reference_provider->clearExistingFileMapsForFile($file_path);
+            $file_reference_provider->clearExistingIssuesForFile($file_path);
+            $file_reference_provider->clearExistingFileMapsForFile($file_path);
+
             $this->setMixedCountsForFile($file_path, [0, 0]);
+
+            foreach ($file_references_to_class_members as &$referencing_file_paths) {
+                unset($referencing_file_paths[$file_path]);
+            }
+
+            foreach ($file_references_to_missing_class_members as &$referencing_file_paths) {
+                unset($referencing_file_paths[$file_path]);
+            }
         }
+
+        $method_references_to_class_members = array_filter(
+            $method_references_to_class_members,
+            function (array $a) : bool {
+                return !!$a;
+            }
+        );
+
+        $method_references_to_missing_class_members = array_filter(
+            $method_references_to_missing_class_members,
+            function (array $a) : bool {
+                return !!$a;
+            }
+        );
+
+        $file_references_to_class_members = array_filter(
+            $file_references_to_class_members,
+            function (array $a) : bool {
+                return !!$a;
+            }
+        );
+
+        $file_references_to_missing_class_members = array_filter(
+            $file_references_to_missing_class_members,
+            function (array $a) : bool {
+                return !!$a;
+            }
+        );
+
+        $file_reference_provider->setCallingMethodReferencesToClassMembers(
+            $method_references_to_class_members
+        );
+
+        $file_reference_provider->setFileReferencesToClassMembers(
+            $file_references_to_class_members
+        );
+
+        $file_reference_provider->setCallingMethodReferencesToMissingClassMembers(
+            $method_references_to_missing_class_members
+        );
+
+        $file_reference_provider->setFileReferencesToMissingClassMembers(
+            $file_references_to_missing_class_members
+        );
     }
 
     /**
@@ -546,6 +711,36 @@ class Analyzer
     }
 
     /**
+     * @return array<string, bool>
+     */
+    public function getMixedMemberNames() : array
+    {
+        return $this->mixed_member_names;
+    }
+
+    /**
+     * @return void
+     */
+    public function addMixedMemberName(string $member_id)
+    {
+        $this->mixed_member_names[$member_id] = true;
+    }
+
+    public function hasMixedMemberName(string $member_id) : bool
+    {
+        return isset($this->mixed_member_names[$member_id]);
+    }
+
+    /**
+     * @var array<string, bool> $names
+     * @return void
+     */
+    public function addMixedMemberNames(array $names)
+    {
+        $this->mixed_member_names += $names;
+    }
+
+    /**
      * @param  string $file_path
      *
      * @return array{0:int, 1:int}
@@ -654,24 +849,6 @@ class Analyzer
     }
 
     /**
-     * @return array<string, array{int, int}>
-     */
-    public function getTypeCoverageMap(\Psalm\Codebase $codebase)
-    {
-        $type_coverage_map = [];
-
-        foreach ($codebase->file_reference_provider->getTypeCoverage() as $file_path => $counts) {
-            if (!$this->config->reportTypeStatsForFile($file_path)) {
-                continue;
-            }
-
-            $type_coverage_map[$this->config->shortenFileName($file_path)] = $counts;
-        }
-
-        return $type_coverage_map;
-    }
-
-    /**
      * @return array{int, int}
      */
     public function getTotalTypeCoverage(\Psalm\Codebase $codebase)
@@ -754,9 +931,12 @@ class Analyzer
         foreach ($all_deep_scanned_files as $file_path => $_) {
             if (isset($this->mixed_counts[$file_path])) {
                 list($path_mixed_count, $path_nonmixed_count) = $this->mixed_counts[$file_path];
-                $stats .= number_format(100 * $path_nonmixed_count / ($path_mixed_count + $path_nonmixed_count), 0)
-                    . '% ' . $this->config->shortenFileName($file_path)
-                    . ' (' . $path_mixed_count . ' mixed)' . "\n";
+
+                if ($path_mixed_count + $path_nonmixed_count) {
+                    $stats .= number_format(100 * $path_nonmixed_count / ($path_mixed_count + $path_nonmixed_count), 0)
+                        . '% ' . $this->config->shortenFileName($file_path)
+                        . ' (' . $path_mixed_count . ' mixed)' . "\n";
+                }
             }
         }
 

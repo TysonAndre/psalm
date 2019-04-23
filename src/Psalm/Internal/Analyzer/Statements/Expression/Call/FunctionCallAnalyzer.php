@@ -390,9 +390,9 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                             }
                         }
 
-                        if ($function_storage && $context->collect_exceptions) {
-                            $context->possibly_thrown_exceptions += array_fill_keys(
-                                array_keys($function_storage->throws),
+                        if ($function_storage && !$context->isSuppressingExceptions($statements_analyzer)) {
+                            $context->mergeFunctionExceptions(
+                                $function_storage,
                                 new CodeLocation($statements_analyzer->getSource(), $stmt)
                             );
                         }
@@ -634,7 +634,8 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 $context->check_consts = false;
             } elseif ($function->parts === ['extract']) {
                 $context->check_variables = false;
-            } elseif ($function->parts === ['var_dump'] || $function->parts === ['shell_exec']) {
+            } elseif (strtolower($function->parts[0]) === 'var_dump'
+                || strtolower($function->parts[0]) === 'shell_exec') {
                 if (IssueBuffer::accepts(
                     new ForbiddenCode(
                         'Unsafe ' . implode('', $function->parts),

@@ -480,33 +480,38 @@ class AssertionFinder
                 throw new \UnexpectedValueException('Unrecognised position');
             }
 
+            $var_type = isset($base_conditional->inferredType) ? $base_conditional->inferredType : null;
+
             if ($base_conditional instanceof PhpParser\Node\Expr\FuncCall) {
-                $conditional->assertions = self::processFunctionCall(
+                $if_types = self::processFunctionCall(
                     $base_conditional,
                     $this_class_name,
                     $source,
                     false
                 );
-                return;
-            }
-
-            $var_name = ExpressionAnalyzer::getArrayVarId(
-                $base_conditional,
-                $this_class_name,
-                $source
-            );
-
-            $var_type = isset($base_conditional->inferredType) ? $base_conditional->inferredType : null;
-
-            if ($var_name) {
-                if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical) {
-                    $if_types[$var_name] = [['true']];
-                } else {
-                    $if_types[$var_name] = [['!falsy']];
-                }
             } else {
-                self::scrapeAssertions($base_conditional, $this_class_name, $source, $codebase, $inside_negation);
-                $if_types = $base_conditional->assertions;
+                $var_name = ExpressionAnalyzer::getArrayVarId(
+                    $base_conditional,
+                    $this_class_name,
+                    $source
+                );
+
+                if ($var_name) {
+                    if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical) {
+                        $if_types[$var_name] = [['true']];
+                    } else {
+                        $if_types[$var_name] = [['!falsy']];
+                    }
+                } else {
+                    self::scrapeAssertions(
+                        $base_conditional,
+                        $this_class_name,
+                        $source,
+                        $codebase,
+                        $inside_negation
+                    );
+                    $if_types = $base_conditional->assertions;
+                }
             }
 
             if ($codebase && $var_type) {
@@ -562,41 +567,40 @@ class AssertionFinder
                 throw new \UnexpectedValueException('$false_position value');
             }
 
+            $var_type = isset($base_conditional->inferredType) ? $base_conditional->inferredType : null;
+
             if ($base_conditional instanceof PhpParser\Node\Expr\FuncCall) {
-                $conditional->assertions = self::processFunctionCall(
+                $if_types = self::processFunctionCall(
                     $base_conditional,
                     $this_class_name,
                     $source,
                     true
                 );
-                return;
-            }
+            } else {
+                $var_name = ExpressionAnalyzer::getArrayVarId(
+                    $base_conditional,
+                    $this_class_name,
+                    $source
+                );
 
-            $var_name = ExpressionAnalyzer::getArrayVarId(
-                $base_conditional,
-                $this_class_name,
-                $source
-            );
+                if ($var_name) {
+                    if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical) {
+                        $if_types[$var_name] = [['false']];
+                    } else {
+                        $if_types[$var_name] = [['falsy']];
+                    }
+                } elseif ($var_type) {
+                    self::scrapeAssertions($base_conditional, $this_class_name, $source, $codebase, $inside_negation);
 
-            $var_type = isset($base_conditional->inferredType) ? $base_conditional->inferredType : null;
+                    if (!isset($base_conditional->assertions)) {
+                        throw new \UnexpectedValueException('Assertions should be set');
+                    }
 
-            if ($var_name) {
-                if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical) {
-                    $if_types[$var_name] = [['false']];
-                } else {
-                    $if_types[$var_name] = [['falsy']];
-                }
-            } elseif ($var_type) {
-                self::scrapeAssertions($base_conditional, $this_class_name, $source, $codebase, $inside_negation);
+                    $notif_types = $base_conditional->assertions;
 
-                if (!isset($base_conditional->assertions)) {
-                    throw new \UnexpectedValueException('Assertions should be set');
-                }
-
-                $notif_types = $base_conditional->assertions;
-
-                if (count($notif_types) === 1) {
-                    $if_types = \Psalm\Type\Algebra::negateTypes($notif_types);
+                    if (count($notif_types) === 1) {
+                        $if_types = \Psalm\Type\Algebra::negateTypes($notif_types);
+                    }
                 }
             }
 
@@ -1133,58 +1137,53 @@ class AssertionFinder
 
         if ($true_position) {
             if ($true_position === self::ASSIGNMENT_TO_RIGHT) {
-                if ($conditional->left instanceof PhpParser\Node\Expr\FuncCall) {
-                    $conditional->assertions = self::processFunctionCall(
-                        $conditional->left,
-                        $this_class_name,
-                        $source,
-                        true
-                    );
-                    return;
-                }
-
                 $base_conditional = $conditional->left;
             } elseif ($true_position === self::ASSIGNMENT_TO_LEFT) {
-                if ($conditional->right instanceof PhpParser\Node\Expr\FuncCall) {
-                    $conditional->assertions = self::processFunctionCall(
-                        $conditional->right,
-                        $this_class_name,
-                        $source,
-                        true
-                    );
-                    return;
-                }
-
                 $base_conditional = $conditional->right;
             } else {
                 throw new \UnexpectedValueException('Bad null variable position');
             }
 
-            $var_name = ExpressionAnalyzer::getArrayVarId(
-                $base_conditional,
-                $this_class_name,
-                $source
-            );
-
             $var_type = isset($base_conditional->inferredType) ? $base_conditional->inferredType : null;
 
-            if ($var_name) {
-                if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\NotIdentical) {
-                    $if_types[$var_name] = [['!true']];
-                } else {
-                    $if_types[$var_name] = [['falsy']];
-                }
-            } elseif ($var_type) {
-                self::scrapeAssertions($base_conditional, $this_class_name, $source, $codebase, $inside_negation);
+            if ($base_conditional instanceof PhpParser\Node\Expr\FuncCall) {
+                $if_types = self::processFunctionCall(
+                    $base_conditional,
+                    $this_class_name,
+                    $source,
+                    true
+                );
+            } else {
+                $var_name = ExpressionAnalyzer::getArrayVarId(
+                    $base_conditional,
+                    $this_class_name,
+                    $source
+                );
 
-                if (!isset($base_conditional->assertions)) {
-                    throw new \UnexpectedValueException('Assertions should be set');
-                }
+                if ($var_name) {
+                    if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\NotIdentical) {
+                        $if_types[$var_name] = [['!true']];
+                    } else {
+                        $if_types[$var_name] = [['falsy']];
+                    }
+                } elseif ($var_type) {
+                    self::scrapeAssertions(
+                        $base_conditional,
+                        $this_class_name,
+                        $source,
+                        $codebase,
+                        $inside_negation
+                    );
 
-                $notif_types = $base_conditional->assertions;
+                    if (!isset($base_conditional->assertions)) {
+                        throw new \UnexpectedValueException('Assertions should be set');
+                    }
 
-                if (count($notif_types) === 1) {
-                    $if_types = \Psalm\Type\Algebra::negateTypes($notif_types);
+                    $notif_types = $base_conditional->assertions;
+
+                    if (count($notif_types) === 1) {
+                        $if_types = \Psalm\Type\Algebra::negateTypes($notif_types);
+                    }
                 }
             }
 
@@ -1668,6 +1667,10 @@ class AssertionFinder
         } elseif (self::hasClassExistsCheck($expr)) {
             if ($first_var_name) {
                 $if_types[$first_var_name] = [[$prefix . 'class-string']];
+            }
+        } elseif (self::hasFunctionExistsCheck($expr)) {
+            if ($first_var_name) {
+                $if_types[$first_var_name] = [[$prefix . 'callable-string']];
             }
         } elseif (self::hasInArrayCheck($expr)) {
             if ($first_var_name && isset($expr->args[1]->value->inferredType)) {
@@ -2276,6 +2279,20 @@ class AssertionFinder
     protected static function hasClassExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'class_exists') {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param   PhpParser\Node\Expr\FuncCall    $stmt
+     *
+     * @return  bool
+     */
+    protected static function hasFunctionExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    {
+        if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'function_exists') {
             return true;
         }
 

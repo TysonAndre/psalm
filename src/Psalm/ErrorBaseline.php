@@ -207,13 +207,16 @@ class ErrorBaseline
 
         foreach ($groupedIssues as $file => $issueTypes) {
             $fileNode = $baselineDoc->createElement('file');
+
             $fileNode->setAttribute('src', $file);
 
             foreach ($issueTypes as $issueType => $existingIssueType) {
                 $issueNode = $baselineDoc->createElement($issueType);
+
                 $issueNode->setAttribute('occurrences', (string)$existingIssueType['o']);
                 foreach ($existingIssueType['s'] as $selection) {
                     $codeNode = $baselineDoc->createElement('code');
+
                     $codeNode->textContent = $selection;
                     $issueNode->appendChild($codeNode);
                 }

@@ -319,7 +319,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[189, 144, 332, 290], [338, 296], []],
+                'error_positions' => [[196, 144, 339, 290], [345, 296], []],
                 [
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
                 ],
@@ -409,7 +409,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[136, 273], [279], [186, 144]],
+                'error_positions' => [[136, 273], [279], [193, 144]],
                 [
                     'MissingReturnType' => \Psalm\Config::REPORT_INFO,
                 ],
@@ -1072,7 +1072,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                     ],
                     [
                         getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
-                            function variadic_arguments(string $_foo, ...$bars ) : void {}
+                            function variadic_arguments(string $_foo, string ...$bars ) : void {}
 
                             function foo(string $baz, string $qux) : void {
                                 variadic_arguments(
@@ -1082,7 +1082,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[238, 238], []],
+                'error_positions' => [[79, 238, 238], []],
             ],
             'fixClassRef' => [
                 [

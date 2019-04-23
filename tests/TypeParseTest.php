@@ -883,30 +883,50 @@ class TypeParseTest extends TestCase
 
             if ($return_type && $return_type !== 'void') {
                 if (stripos($return_type, 'oci-') !== false) {
-                    return;
+                    continue;
                 }
 
-                \Psalm\Type::parseString($return_type);
+                try {
+                    \Psalm\Type::parseString($return_type);
+                } catch (\Psalm\Exception\TypeParseTreeException $e) {
+                    self::assertTrue(false, $e . ' | ' . print_r($signature, true));
+                }
             }
 
             if ($param_type_1 && $param_type_1 !== 'mixed') {
                 if (stripos($param_type_1, 'oci-') !== false) {
-                    return;
+                    continue;
                 }
 
-                \Psalm\Type::parseString($param_type_1);
+                try {
+                    \Psalm\Type::parseString($param_type_1);
+                } catch (\Psalm\Exception\TypeParseTreeException $e) {
+                    self::assertTrue(false, $e . ' | ' . print_r($signature, true));
+                }
             }
 
             if ($param_type_2 && $param_type_2 !== 'mixed') {
-                \Psalm\Type::parseString($param_type_2);
+                try {
+                    \Psalm\Type::parseString($param_type_2);
+                } catch (\Psalm\Exception\TypeParseTreeException $e) {
+                    self::assertTrue(false, $e . ' | ' . print_r($signature, true));
+                }
             }
 
             if ($param_type_3 && $param_type_3 !== 'mixed') {
-                \Psalm\Type::parseString($param_type_3);
+                try {
+                    \Psalm\Type::parseString($param_type_3);
+                } catch (\Psalm\Exception\TypeParseTreeException $e) {
+                    self::assertTrue(false, $e . ' | ' . print_r($signature, true));
+                }
             }
 
             if ($param_type_4 && $param_type_4 !== 'mixed') {
-                \Psalm\Type::parseString($param_type_4);
+                try {
+                    \Psalm\Type::parseString($param_type_4);
+                } catch (\Psalm\Exception\TypeParseTreeException $e) {
+                    self::assertTrue(false, $e . ' | ' . print_r($signature, true));
+                }
             }
         }
     }

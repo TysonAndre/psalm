@@ -51,6 +51,13 @@ class CommitInfo
      */
     protected $message;
 
+    /**
+     * Commit message.
+     *
+     * @var null|int
+     */
+    protected $date;
+
     public function toArray() : array
     {
         return [
@@ -60,6 +67,7 @@ class CommitInfo
             'committer_name' => $this->committer_name,
             'committer_email' => $this->committer_email,
             'message' => $this->message,
+            'date' => $this->date,
         ];
     }
 
@@ -180,5 +188,24 @@ class CommitInfo
     public function getMessage()
     {
         return $this->message;
+    }
+
+    /**
+     * Set commit date
+     */
+    public function setDate(int $date) : self
+    {
+        $this->date = $date;
+
+        return $this;
+    }
+
+    /**
+     * Return commit date.
+     * @return null|int
+     */
+    public function getDate()
+    {
+        return $this->date;
     }
 }

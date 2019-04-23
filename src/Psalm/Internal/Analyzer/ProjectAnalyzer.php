@@ -110,6 +110,11 @@ class ProjectAnalyzer
     /**
      * @var bool
      */
+    public $full_run = false;
+
+    /**
+     * @var bool
+     */
     public $only_replace_php_types_with_non_docblock_types = false;
 
     /**
@@ -335,6 +340,8 @@ class ProjectAnalyzer
         $diff_files = null;
         $deleted_files = null;
 
+        $this->full_run = !$is_diff;
+
         $reference_cache = $this->file_reference_provider->loadReferenceCache(true);
 
         if ($is_diff
@@ -426,7 +433,10 @@ class ProjectAnalyzer
             throw new \UnexpectedValueException('Should not be checking references');
         }
 
-        $this->codebase->classlikes->checkClassReferences($this->codebase->methods);
+        $this->codebase->classlikes->checkClassReferences(
+            $this->codebase->methods,
+            $this->debug_output
+        );
     }
 
     /**
@@ -436,35 +446,25 @@ class ProjectAnalyzer
      */
     public function findReferencesTo($symbol)
     {
-        $locations_by_files = $this->codebase->findReferencesToSymbol($symbol);
+        $locations = $this->codebase->findReferencesToSymbol($symbol);
 
-        foreach ($locations_by_files as $locations) {
-            $bounds_starts = [];
+        foreach ($locations as $location) {
+            $snippet = $location->getSnippet();
 
-            foreach ($locations as $location) {
-                $snippet = $location->getSnippet();
+            $snippet_bounds = $location->getSnippetBounds();
+            $selection_bounds = $location->getSelectionBounds();
 
-                $snippet_bounds = $location->getSnippetBounds();
-                $selection_bounds = $location->getSelectionBounds();
+            $selection_start = $selection_bounds[0] - $snippet_bounds[0];
+            $selection_length = $selection_bounds[1] - $selection_bounds[0];
 
-                if (isset($bounds_starts[$selection_bounds[0]])) {
-                    continue;
-                }
-
-                $bounds_starts[$selection_bounds[0]] = true;
-
-                $selection_start = $selection_bounds[0] - $snippet_bounds[0];
-                $selection_length = $selection_bounds[1] - $selection_bounds[0];
-
-                echo $location->file_name . ':' . $location->getLineNumber() . "\n" .
-                    (
-                        $this->use_color
-                        ? substr($snippet, 0, $selection_start) .
-                        "\e[97;42m" . substr($snippet, $selection_start, $selection_length) .
-                        "\e[0m" . substr($snippet, $selection_length + $selection_start)
-                        : $snippet
-                    ) . "\n" . "\n";
-            }
+            echo $location->file_name . ':' . $location->getLineNumber() . "\n" .
+                (
+                    $this->use_color
+                    ? substr($snippet, 0, $selection_start) .
+                    "\e[97;42m" . substr($snippet, $selection_start, $selection_length) .
+                    "\e[0m" . substr($snippet, $selection_length + $selection_start)
+                    : $snippet
+                ) . "\n" . "\n";
         }
     }
 
@@ -818,10 +818,6 @@ class ProjectAnalyzer
     ) {
         list($fq_class_name) = explode('::', $original_method_id);
 
-        $file_analyzer = $this->getFileAnalyzerForClassLike($fq_class_name);
-
-        $file_analyzer->setRootFilePath($root_file_path, $root_file_name);
-
         $appearing_method_id = $this->codebase->methods->getAppearingMethodId($original_method_id);
 
         if (!$appearing_method_id) {
@@ -836,6 +832,10 @@ class ProjectAnalyzer
         if (!$appearing_class_storage->user_defined) {
             return;
         }
+
+        $file_analyzer = $this->getFileAnalyzerForClassLike($fq_class_name);
+
+        $file_analyzer->setRootFilePath($root_file_path, $root_file_name);
 
         if (strtolower($appearing_fq_class_name) !== strtolower($fq_class_name)) {
             $file_analyzer = $this->getFileAnalyzerForClassLike($appearing_fq_class_name);

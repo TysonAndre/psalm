@@ -413,12 +413,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     ) {
                         $reflection_function = new \ReflectionFunction($node->cond->expr->args[0]->value->value);
 
-                        if ($reflection_function->getFileName() !== $this->file_path) {
+                        if ($reflection_function->isInternal()) {
                             return PhpParser\NodeTraverser::DONT_TRAVERSE_CHILDREN;
                         }
-                    }
-
-                    if ($node->cond->expr->name->parts === ['class_exists']
+                    } elseif ($node->cond->expr->name->parts === ['class_exists']
                         && isset($node->cond->expr->args[0])
                         && $node->cond->expr->args[0]->value instanceof PhpParser\Node\Scalar\String_
                         && class_exists($node->cond->expr->args[0]->value->value, false)
@@ -1319,6 +1317,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                     return $this->file_storage->functions[$function_id];
                 } elseif (isset($this->config->getPredefinedFunctions()[$function_id])) {
+                    /** @psalm-suppress TypeCoercion */
                     $reflection_function = new \ReflectionFunction($function_id);
 
                     if ($reflection_function->getFileName() !== $this->file_path) {
@@ -1447,7 +1446,13 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $stmt->name->name;
         }
 
-        $storage->location = new CodeLocation($this->file_scanner, $stmt, null, true);
+        if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod || $stmt instanceof PhpParser\Node\Stmt\Function_) {
+            $storage->location = new CodeLocation($this->file_scanner, $stmt->name, null, true);
+        } else {
+            $storage->location = new CodeLocation($this->file_scanner, $stmt, null, true);
+        }
+
+        $storage->stmt_location = new CodeLocation($this->file_scanner, $stmt);
 
         $required_param_count = 0;
         $i = 0;
@@ -2166,23 +2171,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 if ($is_nullable) {
                     $param_type->addType(new Type\Atomic\TNull);
                 }
-
-                if ($param->variadic) {
-                    $param_type = new Type\Union([
-                        new Type\Atomic\TArray([
-                            Type::getInt(),
-                            $param_type,
-                        ]),
-                    ]);
-                }
             }
-        } elseif ($param->variadic) {
-            $param_type = new Type\Union([
-                new Type\Atomic\TArray([
-                    Type::getInt(),
-                    Type::getMixed(),
-                ]),
-            ]);
         }
 
         $is_optional = $param->default !== null;
@@ -2343,13 +2332,15 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->template_types ?: []
             );
 
-            if ($docblock_param_variadic) {
-                $new_param_type = new Type\Union([
-                    new Type\Atomic\TArray([
-                        Type::getInt(),
-                        $new_param_type,
-                    ]),
-                ]);
+            if (!$docblock_param_variadic && $storage_param->is_variadic && $new_param_type->hasArray()) {
+                /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                $array_type = $new_param_type->getTypes()['array'];
+
+                if ($array_type instanceof Type\Atomic\ObjectLike) {
+                    $new_param_type = $array_type->getGenericValueType();
+                } else {
+                    $new_param_type = $array_type->type_params[1];
+                }
             }
 
             $existing_param_type_nullable = $storage_param->is_nullable;
@@ -2549,6 +2540,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $property_storage->signature_type_location = $signature_type_location;
             $property_storage->type_location = $signature_type_location;
             $property_storage->location = new CodeLocation($this->file_scanner, $property->name);
+            $property_storage->stmt_location = new CodeLocation($this->file_scanner, $stmt);
             $property_storage->has_default = $property->default ? true : false;
             $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
             $property_storage->internal = $var_comment ? $var_comment->internal : false;

@@ -71,21 +71,22 @@ class GitInfoCollector
      */
     protected function collectCommit() : CommitInfo
     {
-        $commitResult = $this->executor->execute("git log -1 --pretty=format:'%H%n%aN%n%ae%n%cN%n%ce%n%s'");
+        $commitResult = $this->executor->execute("git log -1 --pretty=format:%H%n%aN%n%ae%n%cN%n%ce%n%s%n%at");
 
-        if (count($commitResult) !== 6 || array_keys($commitResult) !== range(0, 5)) {
+        if (count($commitResult) !== 7 || array_keys($commitResult) !== range(0, 6)) {
             throw new \RuntimeException();
         }
 
         $commit = new CommitInfo();
 
         return $commit
-            ->setId($commitResult[0])
-            ->setAuthorName($commitResult[1])
-            ->setAuthorEmail($commitResult[2])
-            ->setCommitterName($commitResult[3])
-            ->setCommitterEmail($commitResult[4])
-            ->setMessage($commitResult[5]);
+            ->setId(trim($commitResult[0]))
+            ->setAuthorName(trim($commitResult[1]))
+            ->setAuthorEmail(trim($commitResult[2]))
+            ->setCommitterName(trim($commitResult[3]))
+            ->setCommitterEmail(trim($commitResult[4]))
+            ->setMessage($commitResult[5])
+            ->setDate((int) $commitResult[6]);
     }
 
     /**
@@ -125,7 +126,7 @@ class GitInfoCollector
                 list($name, $url) = explode("\t", $result, 2);
 
                 $remote = new RemoteInfo();
-                $remotes[] = $remote->setName($name)->setUrl($url);
+                $remotes[] = $remote->setName(trim($name))->setUrl(trim($url));
             }
         }
 

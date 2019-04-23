@@ -863,11 +863,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 continue;
             }
 
-            $codebase->file_reference_provider->addReferenceToClassMethod(
-                strtolower($fq_class_name) . '::__construct',
-                strtolower($property_class_name) . '::$' . $property_name
-            );
-
             if ($property->has_default || !$property->type || $property_is_initialized) {
                 continue;
             }
@@ -875,6 +870,11 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             if ($property->type->isMixed() || $property->type->isNullable()) {
                 continue;
             }
+
+            $codebase->file_reference_provider->addMethodReferenceToMissingClassMember(
+                strtolower($fq_class_name) . '::__construct',
+                strtolower($property_class_name) . '::$' . $property_name
+            );
 
             $uninitialized_variables[] = '$this->' . $property_name;
             $uninitialized_properties[$property_class_name . '::$' . $property_name] = $property;
@@ -933,8 +933,23 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                 'startLine' => $class->extends->getLine(),
                                 'startFilePos' => $class->extends->getAttribute('startFilePos'),
                                 'endFilePos' => $class->extends->getAttribute('endFilePos'),
+                                'comments' => [new PhpParser\Comment\Doc(
+                                    '/** @psalm-suppress InaccessibleMethod */',
+                                    $class->extends->getLine(),
+                                    (int) $class->extends->getAttribute('startFilePos')
+                                )],
                             ]
-                        )
+                        ),
+                        [
+                            'startLine' => $class->extends->getLine(),
+                            'startFilePos' => $class->extends->getAttribute('startFilePos'),
+                            'endFilePos' => $class->extends->getAttribute('endFilePos'),
+                            'comments' => [new PhpParser\Comment\Doc(
+                                '/** @psalm-suppress InaccessibleMethod */',
+                                $class->extends->getLine(),
+                                (int) $class->extends->getAttribute('startFilePos')
+                            )],
+                        ]
                     ),
                 ];
 
@@ -987,6 +1002,14 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
                 $constructor_class_property_storage = $property_storage;
 
+                $error_location = $property_storage->location;
+
+                if ($storage->declaring_property_ids[$property_name] !== $fq_class_name) {
+                    $error_location = $this->class->name
+                        ? new CodeLocation($this, $this->class->name)
+                        : $storage->location;
+                }
+
                 if ($fq_class_name !== $constructor_appearing_fqcln
                     && $property_storage->visibility === ClassLikeAnalyzer::VISIBILITY_PRIVATE
                 ) {
@@ -1005,13 +1028,14 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 }
 
                 if ($property_storage->location
+                    && $error_location
                     && (!$end_type->initialized || $property_storage !== $constructor_class_property_storage)
                 ) {
                     if (IssueBuffer::accepts(
                         new PropertyNotSetInConstructor(
                             'Property ' . $property_id . ' is not defined in constructor of ' .
                                 $this->fq_class_name . ' or in any methods called in the constructor',
-                            $property_storage->location,
+                            $error_location,
                             $property_id
                         ),
                         array_merge($this->source->getSuppressedIssues(), $storage->suppressed_issues)
@@ -1065,6 +1089,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         $previous_context_include_location = $class_context->include_location;
 
         foreach ($stmt->traits as $trait_name) {
+            $trait_location = new CodeLocation($this, $trait_name, null, true);
             $class_context->include_location = new CodeLocation($this, $trait_name, null, true);
 
             $fq_trait_name = self::getFQCLNFromNameObject(
@@ -1072,7 +1097,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $aliases
             );
 
-            if (!$codebase->classlikes->hasFullyQualifiedTraitName($fq_trait_name)) {
+            if (!$codebase->classlikes->hasFullyQualifiedTraitName($fq_trait_name, $trait_location)) {
                 if (IssueBuffer::accepts(
                     new UndefinedTrait(
                         'Trait ' . $fq_trait_name . ' does not exist',
@@ -1266,8 +1291,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         $analyzed_method_id = $actual_method_id;
 
-        $classlike_storage_provider = $codebase->classlike_storage_provider;
-
         $included_file_path = $source->getFilePath();
 
         if ($class_context->include_location) {
@@ -1289,13 +1312,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 }
 
                 if ($declaring_method_id && $declaring_method_storage->abstract) {
-                    $appearing_storage = $classlike_storage_provider->get($class_context->self);
                     $implementer_method_storage = $codebase->methods->getStorage($declaring_method_id);
+                    $declaring_storage = $codebase->classlike_storage_provider->get(
+                        explode('::', $actual_method_id)[0]
+                    );
 
                     MethodAnalyzer::compareMethods(
                         $codebase,
                         $class_storage,
-                        $appearing_storage,
+                        $declaring_storage,
                         $implementer_method_storage,
                         $declaring_method_storage,
                         $this->fq_class_name,

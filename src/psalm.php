@@ -54,7 +54,7 @@ $valid_long_options = [
     'generate-json-map:',
     'alter',
     'language-server',
-    'with-spirit::',
+    'shepherd::',
 ];
 
 gc_collect_cycles();
@@ -194,7 +194,7 @@ Options:
         If greater than one, Psalm will run analysis on multiple threads, speeding things up.
 
     --report=PATH
-        The path where to output report file. The output format is base on the file extension.
+        The path where to output report file. The output format is based on the file extension.
         (Currently supported format: ".json", ".xml", ".txt", ".emacs")
 
     --clear-cache
@@ -246,10 +246,10 @@ Options:
 HELP;
 
     /*
-    --with-spirit[=host]
-        Send data to Spirit, Psalm's GitHub integration tool.
-        `host` is the location of the Spirit server. It defaults to spirit.psalm.dev
-        More information is available at https://psalm.dev/spirit
+    --shepherd[=host]
+        Send data to Shepherd, Psalm's GitHub integration tool.
+        `host` is the location of the Shepherd server. It defaults to shepherd.dev
+        More information is available at https://psalm.dev/shepherd
     */
 
     exit;
@@ -309,8 +309,8 @@ if ($threads > 1) {
 
 $type_map_location = null;
 
-if (isset($options['generate-type-map']) && is_string($options['generate-type-map'])) {
-    $type_map_location = $options['generate-type-map'];
+if (isset($options['generate-json-map']) && is_string($options['generate-json-map'])) {
+    $type_map_location = $options['generate-json-map'];
 }
 
 // If XDebug is enabled, restart without it
@@ -426,13 +426,13 @@ $show_info = isset($options['show-info'])
 
 $is_diff = isset($options['diff']);
 
-/** @var false|'always'|'auto' $find_dead_code */
-$find_dead_code = false;
+/** @var false|'always'|'auto' $find_unused_code */
+$find_unused_code = false;
 if (isset($options['find-dead-code'])) {
     if ($options['find-dead-code'] === 'always') {
-        $find_dead_code = 'always';
+        $find_unused_code = 'always';
     } else {
-        $find_dead_code = 'auto';
+        $find_unused_code = 'auto';
     }
 }
 
@@ -452,17 +452,17 @@ try {
     exit(1);
 }
 
-if (isset($options['with-spirit'])) {
-    if (is_string($options['with-spirit'])) {
-        $config->spirit_host = $options['with-spirit'];
+if (isset($options['shepherd'])) {
+    if (is_string($options['shepherd'])) {
+        $config->shepherd_host = $options['shepherd'];
     }
-    $spirit_plugin = __DIR__ . '/Psalm/Plugin/SpiritGuide.php';
+    $shepherd_plugin = __DIR__ . '/Psalm/Plugin/Shepherd.php';
 
-    if (!file_exists($spirit_plugin)) {
-        die('Could not find Spirit plugin location ' . $spirit_plugin . PHP_EOL);
+    if (!file_exists($shepherd_plugin)) {
+        die('Could not find Shepherd plugin location ' . $shepherd_plugin . PHP_EOL);
     }
 
-    $plugins[] = $spirit_plugin;
+    $plugins[] = $shepherd_plugin;
 }
 
 $config->setComposerClassLoader($first_autoloader);
@@ -478,8 +478,11 @@ if (isset($options['clear-cache'])) {
 if (isset($options['clear-global-cache'])) {
     $cache_directory = $config->getGlobalCacheDirectory();
 
-    Config::removeCacheDirectory($cache_directory);
-    echo 'Global cache directory deleted' . PHP_EOL;
+    if ($cache_directory) {
+        Config::removeCacheDirectory($cache_directory);
+        echo 'Global cache directory deleted' . PHP_EOL;
+    }
+
     exit;
 }
 
@@ -551,19 +554,16 @@ if (array_key_exists('debug-by-line', $options)) {
 }
 
 if ($config->find_unused_code) {
-    $find_dead_code = 'auto';
+    $find_unused_code = 'auto';
 }
 
-if ($find_dead_code || $find_references_to !== null) {
-    $project_analyzer->getCodebase()->collectReferences();
-
-    if ($find_references_to) {
-        $project_analyzer->show_issues = false;
-    }
+if ($find_references_to !== null) {
+    $project_analyzer->getCodebase()->collectLocations();
+    $project_analyzer->show_issues = false;
 }
 
-if ($find_dead_code) {
-    $project_analyzer->getCodebase()->reportUnusedCode();
+if ($find_unused_code) {
+    $project_analyzer->getCodebase()->reportUnusedCode($find_unused_code);
 }
 
 if ($config->find_unused_variables) {
@@ -583,95 +583,99 @@ if ($paths_to_check === null) {
 
 if ($find_references_to) {
     $project_analyzer->findReferencesTo($find_references_to);
-} elseif (($find_dead_code === 'always') || ($find_dead_code === 'auto' && !$paths_to_check && !$is_diff)) {
-    if ($threads > 1) {
-        if ($output_format === ProjectAnalyzer::TYPE_CONSOLE) {
-            echo 'Unused classes and methods cannot currently be found in multithreaded mode' . PHP_EOL;
-        }
-    } else {
-        $project_analyzer->checkClassReferences();
-    }
 }
 
 if (isset($options['set-baseline']) && is_string($options['set-baseline'])) {
-    echo 'Writing error baseline to file...', PHP_EOL;
-
-    ErrorBaseline::create(
-        new \Psalm\Internal\Provider\FileProvider,
-        $options['set-baseline'],
-        IssueBuffer::getIssuesData()
-    );
-
-    echo "Baseline saved to {$options['set-baseline']}.";
-
-    /** @var string $configFile */
-    $configFile = Config::locateConfigFile($path_to_config ?? $current_dir);
-    $configFileContents = $amendedConfigFileContents = file_get_contents($configFile);
-
-    if ($config->error_baseline) {
-        $amendedConfigFileContents = preg_replace(
-            '/errorBaseline=".*?"/',
-            "errorBaseline=\"{$options['set-baseline']}\"",
-            $configFileContents
-        );
+    if ($is_diff) {
+        if ($output_format === ProjectAnalyzer::TYPE_CONSOLE) {
+            echo 'Cannot set baseline in --diff mode' . PHP_EOL;
+        }
     } else {
-        $endPsalmOpenTag = strpos($configFileContents, '>', (int)strpos($configFileContents, '<psalm'));
+        echo 'Writing error baseline to file...', PHP_EOL;
 
-        if (!$endPsalmOpenTag) {
-            echo " Don't forget to set errorBaseline=\"{$options['set-baseline']}\" in your config.";
-        } elseif ($configFileContents[$endPsalmOpenTag - 1] === "\n") {
-            $amendedConfigFileContents = substr_replace(
-                $configFileContents,
-                "    errorBaseline=\"{$options['set-baseline']}\"\n>",
-                $endPsalmOpenTag,
-                1
+        ErrorBaseline::create(
+            new \Psalm\Internal\Provider\FileProvider,
+            $options['set-baseline'],
+            IssueBuffer::getIssuesData()
+        );
+
+        echo "Baseline saved to {$options['set-baseline']}.";
+
+        /** @var string $configFile */
+        $configFile = Config::locateConfigFile($path_to_config ?? $current_dir);
+        $configFileContents = $amendedConfigFileContents = file_get_contents($configFile);
+
+        if ($config->error_baseline) {
+            $amendedConfigFileContents = preg_replace(
+                '/errorBaseline=".*?"/',
+                "errorBaseline=\"{$options['set-baseline']}\"",
+                $configFileContents
             );
         } else {
-            $amendedConfigFileContents = substr_replace(
-                $configFileContents,
-                " errorBaseline=\"{$options['set-baseline']}\">",
-                $endPsalmOpenTag,
-                1
-            );
+            $endPsalmOpenTag = strpos($configFileContents, '>', (int)strpos($configFileContents, '<psalm'));
+
+            if (!$endPsalmOpenTag) {
+                echo " Don't forget to set errorBaseline=\"{$options['set-baseline']}\" in your config.";
+            } elseif ($configFileContents[$endPsalmOpenTag - 1] === "\n") {
+                $amendedConfigFileContents = substr_replace(
+                    $configFileContents,
+                    "    errorBaseline=\"{$options['set-baseline']}\"\n>",
+                    $endPsalmOpenTag,
+                    1
+                );
+            } else {
+                $amendedConfigFileContents = substr_replace(
+                    $configFileContents,
+                    " errorBaseline=\"{$options['set-baseline']}\">",
+                    $endPsalmOpenTag,
+                    1
+                );
+            }
         }
+
+        file_put_contents($configFile, $amendedConfigFileContents);
+
+        echo PHP_EOL;
     }
-
-    file_put_contents($configFile, $amendedConfigFileContents);
-
-    echo PHP_EOL;
 }
 
 $issue_baseline = [];
 
 if (isset($options['update-baseline'])) {
-    $baselineFile = Config::getInstance()->error_baseline;
-
-    if (empty($baselineFile)) {
-        die('Cannot update baseline, because no baseline file is configured.' . PHP_EOL);
-    }
-
-    try {
-        $issue_current_baseline = ErrorBaseline::read(
-            new \Psalm\Internal\Provider\FileProvider,
-            $baselineFile
-        );
-        $total_issues_current_baseline = ErrorBaseline::countTotalIssues($issue_current_baseline);
-
-        $issue_baseline = ErrorBaseline::update(
-            new \Psalm\Internal\Provider\FileProvider,
-            $baselineFile,
-            IssueBuffer::getIssuesData()
-        );
-        $total_issues_updated_baseline = ErrorBaseline::countTotalIssues($issue_baseline);
-
-        $total_fixed_issues = $total_issues_current_baseline - $total_issues_updated_baseline;
-
-        if ($total_fixed_issues > 0) {
-            echo str_repeat('-', 30) . "\n";
-            echo $total_fixed_issues . ' errors fixed' . "\n";
+    if ($is_diff) {
+        if ($output_format === ProjectAnalyzer::TYPE_CONSOLE) {
+            echo 'Cannot update baseline in --diff mode' . PHP_EOL;
         }
-    } catch (\Psalm\Exception\ConfigException $exception) {
-        die('Could not update baseline file: ' . $exception->getMessage());
+    } else {
+        $baselineFile = Config::getInstance()->error_baseline;
+
+        if (empty($baselineFile)) {
+            die('Cannot update baseline, because no baseline file is configured.' . PHP_EOL);
+        }
+
+        try {
+            $issue_current_baseline = ErrorBaseline::read(
+                new \Psalm\Internal\Provider\FileProvider,
+                $baselineFile
+            );
+            $total_issues_current_baseline = ErrorBaseline::countTotalIssues($issue_current_baseline);
+
+            $issue_baseline = ErrorBaseline::update(
+                new \Psalm\Internal\Provider\FileProvider,
+                $baselineFile,
+                IssueBuffer::getIssuesData()
+            );
+            $total_issues_updated_baseline = ErrorBaseline::countTotalIssues($issue_baseline);
+
+            $total_fixed_issues = $total_issues_current_baseline - $total_issues_updated_baseline;
+
+            if ($total_fixed_issues > 0) {
+                echo str_repeat('-', 30) . "\n";
+                echo $total_fixed_issues . ' errors fixed' . "\n";
+            }
+        } catch (\Psalm\Exception\ConfigException $exception) {
+            die('Could not update baseline file: ' . $exception->getMessage());
+        }
     }
 }
 
@@ -745,9 +749,11 @@ if ($type_map_location) {
         }
     }
 
+    $type_map_string = json_encode(['files' => $name_file_map, 'references' => $reference_dictionary]);
+
     $providers->file_provider->setContents(
         $type_map_location,
-        json_encode(['files' => $name_file_map, 'references' => $reference_dictionary])
+        $type_map_string
     );
 }
 

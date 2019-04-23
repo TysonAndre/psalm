@@ -392,23 +392,6 @@ class TypeReconciliationTest extends TestCase
                 ],
                 'error_levels' => [],
             ],
-            'typeArguments' => [
-                '<?php
-                    $a = min(0, 1);
-                    $b = min([0, 1]);
-                    $c = min("a", "b");
-                    $d = min(1, 2, 3, 4);
-                    $e = min(1, 2, 3, 4, 5);
-                    sscanf("10:05:03", "%d:%d:%d", $hours, $minutes, $seconds);',
-                'assertions' => [
-                    '$a' => 'int',
-                    '$b' => 'int',
-                    '$c' => 'string',
-                    '$hours' => 'string|int|float|null',
-                    '$minutes' => 'string|int|float|null',
-                    '$seconds' => 'string|int|float|null',
-                ],
-            ],
             'typeRefinementWithIsNumericOnIntOrFalse' => [
                 '<?php
                     /** @return void */
@@ -1310,6 +1293,22 @@ class TypeReconciliationTest extends TestCase
                         example($x);
                     }',
             ],
+            'allowNumericToFoldIntoType' => [
+                '<?php
+                    /**
+                     * @param mixed $width
+                     * @param mixed $height
+                     *
+                     * @throws RuntimeException
+                     */
+                    function Foo($width, $height) : void {
+                        if (!is_numeric($width) || !is_numeric($height)) {
+                            throw new RuntimeException("Width & Height were not numeric!");
+                        }
+
+                        echo sprintf("padding-top:%s%%;", 100 * ($height/$width));
+                    }'
+            ],
         ];
     }
 
@@ -1558,6 +1557,40 @@ class TypeReconciliationTest extends TestCase
                     }
 
                     if ($a instanceof A) {}',
+                'error_message' => 'RedundantCondition',
+            ],
+            'preventImpossibleComparisonToTrue' => [
+                '<?php
+                    /** @return false|string */
+                    function firstChar(string $s) {
+                      return empty($s) ? false : $s[0];
+                    }
+
+                    if (true === firstChar("sdf")) {}',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'preventAlwaysPossibleComparisonToTrue' => [
+                '<?php
+                    /** @return false|string */
+                    function firstChar(string $s) {
+                      return empty($s) ? false : $s[0];
+                    }
+
+                    if (true !== firstChar("sdf")) {}',
+                'error_message' => 'RedundantConditionGivenDocblockType',
+            ],
+            'preventAlwaysImpossibleComparisonToFalse' => [
+                '<?php
+                    function firstChar(string $s) : string { return $s; }
+
+                    if (false === firstChar("sdf")) {}',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'preventAlwaysPossibleComparisonToFalse' => [
+                '<?php
+                    function firstChar(string $s) : string { return $s; }
+
+                    if (false !== firstChar("sdf")) {}',
                 'error_message' => 'RedundantCondition',
             ],
         ];

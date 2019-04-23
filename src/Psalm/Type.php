@@ -67,6 +67,7 @@ abstract class Type
         'mixed' => true,
         'numeric-string' => true,
         'class-string' => true,
+        'callable-string' => true,
         'mysql-escaped-string' => true,
         'html-escaped-string' => true,
         'boolean' => true,
@@ -943,7 +944,8 @@ abstract class Type
         $type = null;
 
         if ($value !== null) {
-            if (strlen($value) < 1000) {
+            $config = \Psalm\Config::getInstance();
+            if (\strlen($value) < $config->max_string_length) {
                 $type = new TLiteralString($value);
             }
         }

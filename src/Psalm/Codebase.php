@@ -27,7 +27,7 @@ class Codebase
      * A map of fully-qualified use declarations to the files
      * that reference them (keyed by filename)
      *
-     * @var array<string, array<string, array<int, \Psalm\CodeLocation>>>
+     * @var array<string, array<int, \Psalm\CodeLocation>>
      */
     public $use_referencing_locations = [];
 
@@ -53,6 +53,16 @@ class Codebase
      * @var bool
      */
     public $collect_references = false;
+
+    /**
+     * @var bool
+     */
+    public $collect_locations = false;
+
+    /**
+     * @var null|'always'|'auto'
+     */
+    public $find_unused_code = null;
 
     /**
      * @var FileProvider
@@ -92,11 +102,6 @@ class Codebase
      * @var bool
      */
     public $register_stub_files = false;
-
-    /**
-     * @var bool
-     */
-    public $find_unused_code = false;
 
     /**
      * @var bool
@@ -223,6 +228,7 @@ class Codebase
         $this->classlikes = new Internal\Codebase\ClassLikes(
             $this->config,
             $providers->classlike_storage_provider,
+            $providers->file_reference_provider,
             $this->scanner
         );
 
@@ -328,21 +334,24 @@ class Codebase
     /**
      * @return void
      */
-    public function collectReferences()
+    public function collectLocations()
     {
-        $this->collect_references = true;
-        $this->classlikes->collect_references = true;
-        $this->methods->collect_references = true;
-        $this->properties->collect_references = true;
+        $this->collect_locations = true;
+        $this->classlikes->collect_locations = true;
+        $this->methods->collect_locations = true;
+        $this->properties->collect_locations = true;
     }
 
     /**
+     * @param 'always'|'auto' $find_unused_code
+     *
      * @return void
      */
-    public function reportUnusedCode()
+    public function reportUnusedCode(string $find_unused_code = 'auto')
     {
-        $this->collectReferences();
-        $this->find_unused_code = true;
+        $this->collect_references = true;
+        $this->classlikes->collect_references = true;
+        $this->find_unused_code = $find_unused_code;
         $this->find_unused_variables = true;
     }
 
@@ -468,11 +477,11 @@ class Codebase
     /**
      * @param  string $symbol
      *
-     * @return array<string, \Psalm\CodeLocation[]>
+     * @return \Psalm\CodeLocation[]
      */
     public function findReferencesToSymbol($symbol)
     {
-        if (!$this->collect_references) {
+        if (!$this->collect_locations) {
             throw new \UnexpectedValueException('Should not be checking references');
         }
 
@@ -490,96 +499,39 @@ class Codebase
     /**
      * @param  string $method_id
      *
-     * @return array<string, \Psalm\CodeLocation[]>
+     * @return \Psalm\CodeLocation[]
      */
     public function findReferencesToMethod($method_id)
     {
-        list($fq_class_name, $method_name) = explode('::', $method_id);
-
-        try {
-            $class_storage = $this->classlike_storage_provider->get($fq_class_name);
-        } catch (\InvalidArgumentException $e) {
-            die('Class ' . $fq_class_name . ' cannot be found' . PHP_EOL);
-        }
-
-        $method_name_lc = strtolower($method_name);
-
-        if (!isset($class_storage->methods[$method_name_lc])) {
-            die('Method ' . $method_id . ' cannot be found' . PHP_EOL);
-        }
-
-        $method_storage = $class_storage->methods[$method_name_lc];
-
-        if ($method_storage->referencing_locations === null) {
-            die('No references found for ' . $method_id . PHP_EOL);
-        }
-
-        return $method_storage->referencing_locations;
+        return $this->file_reference_provider->getClassMethodLocations(strtolower($method_id));
     }
 
     /**
-     * @param  string $property_id
-     *
-     * @return array<string, \Psalm\CodeLocation[]>
+     * @return \Psalm\CodeLocation[]
      */
-    public function findReferencesToProperty($property_id)
+    public function findReferencesToProperty(string $property_id)
     {
-        list($fq_class_name, $property_name) = explode('::$', $property_id);
-
-        try {
-            $class_storage = $this->classlike_storage_provider->get($fq_class_name);
-        } catch (\InvalidArgumentException $e) {
-            die('Class ' . $fq_class_name . ' cannot be found' . PHP_EOL);
-        }
-
-        if (!isset($class_storage->properties[$property_name])) {
-            die('Property ' . $property_id . ' cannot be found' . PHP_EOL);
-        }
-
-        $property_storage = $class_storage->properties[$property_name];
-
-        if ($property_storage->referencing_locations === null) {
-            die('No references found for ' . $property_id . PHP_EOL);
-        }
-
-        return $property_storage->referencing_locations;
+        list($fq_class_name, $property_name) = explode('::', $property_id);
+        return $this->file_reference_provider->getClassPropertyLocations(
+            strtolower($fq_class_name) . '::' . $property_name
+        );
     }
 
     /**
      * @param  string $fq_class_name
      *
-     * @return array<string, \Psalm\CodeLocation[]>
+     * @return \Psalm\CodeLocation[]
      */
     public function findReferencesToClassLike($fq_class_name)
     {
-        try {
-            $class_storage = $this->classlike_storage_provider->get($fq_class_name);
-        } catch (\InvalidArgumentException $e) {
-            die('Class ' . $fq_class_name . ' cannot be found' . PHP_EOL);
-        }
-
-        if ($class_storage->referencing_locations === null) {
-            die('No references found for ' . $fq_class_name . PHP_EOL);
-        }
-
-        $classlike_references_by_file = $class_storage->referencing_locations;
-
         $fq_class_name_lc = strtolower($fq_class_name);
+        $locations = $this->file_reference_provider->getClassLocations($fq_class_name_lc);
 
         if (isset($this->use_referencing_locations[$fq_class_name_lc])) {
-            foreach ($this->use_referencing_locations[$fq_class_name_lc] as $file_path => $locations) {
-                if (!isset($classlike_references_by_file[$file_path])) {
-                    $classlike_references_by_file[$file_path] = $locations;
-                } else {
-                    $classlike_references_by_file[$file_path] = array_merge(
-                        $locations,
-                        $classlike_references_by_file[$file_path]
-                    );
-                }
-            }
+            $locations = array_merge($locations, $this->use_referencing_locations[$fq_class_name_lc]);
         }
 
-        return $classlike_references_by_file;
+        return $locations;
     }
 
     /**
@@ -770,9 +722,19 @@ class Codebase
      *
      * @return bool
      */
-    public function methodExists($method_id, CodeLocation $code_location = null, $calling_method_id = null)
-    {
-        return $this->methods->methodExists($method_id, $calling_method_id, $code_location);
+    public function methodExists(
+        string $method_id,
+        CodeLocation $code_location = null,
+        $calling_method_id = null,
+        string $file_path = null
+    ) {
+        return $this->methods->methodExists(
+            $method_id,
+            $calling_method_id,
+            $code_location,
+            null,
+            $file_path
+        );
     }
 
     /**

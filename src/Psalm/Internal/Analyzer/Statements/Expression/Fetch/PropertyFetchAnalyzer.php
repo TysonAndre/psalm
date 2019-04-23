@@ -235,6 +235,10 @@ class PropertyFetchAnalyzer
                 $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
             }
 
+            if ($stmt->name instanceof PhpParser\Node\Identifier) {
+                $codebase->analyzer->addMixedMemberName('$' . $stmt->name->name);
+            }
+
             if (IssueBuffer::accepts(
                 new MixedPropertyFetch(
                     'Cannot fetch property on mixed var ' . $stmt_var_id,
@@ -288,6 +292,14 @@ class PropertyFetchAnalyzer
         }
 
         if (!$prop_name) {
+            if ($stmt_var_type->hasObjectType() && !$context->ignore_variable_property) {
+                foreach ($stmt_var_type->getTypes() as $type) {
+                    if ($type instanceof Type\Atomic\TNamedObject) {
+                        $codebase->analyzer->addMixedMemberName(strtolower($type->value) . '::$');
+                    }
+                }
+            }
+
             return null;
         }
 
@@ -762,7 +774,7 @@ class PropertyFetchAnalyzer
                 if ($context->calling_method_id
                     && !$stmt->class instanceof PhpParser\Node\Name\FullyQualified
                 ) {
-                    $codebase->file_reference_provider->addReferenceToClassMethod(
+                    $codebase->file_reference_provider->addMethodReferenceToClassMember(
                         $context->calling_method_id,
                         'use:' . $stmt->class->parts[0] . ':' . \md5($statements_analyzer->getFilePath())
                     );
@@ -803,125 +815,134 @@ class PropertyFetchAnalyzer
             $prop_name = null;
         }
 
-        if ($fq_class_name &&
-            $context->check_classes &&
-            $context->check_variables &&
-            $prop_name &&
-            !ExpressionAnalyzer::isMock($fq_class_name)
+        if (!$prop_name) {
+            if ($fq_class_name) {
+                $codebase->analyzer->addMixedMemberName(strtolower($fq_class_name) . '::$');
+            }
+
+            return null;
+        }
+
+        if (!$fq_class_name
+            || !$context->check_classes
+            || !$context->check_variables
+            || ExpressionAnalyzer::isMock($fq_class_name)
         ) {
-            $var_id = ExpressionAnalyzer::getVarId(
-                $stmt,
-                $context->self ?: $statements_analyzer->getFQCLN(),
-                $statements_analyzer
+            return null;
+        }
+
+        $var_id = ExpressionAnalyzer::getVarId(
+            $stmt,
+            $context->self ?: $statements_analyzer->getFQCLN(),
+            $statements_analyzer
+        );
+
+        $property_id = $fq_class_name . '::$' . $prop_name;
+
+        if ($codebase->store_node_types) {
+            $codebase->analyzer->addNodeReference(
+                $statements_analyzer->getFilePath(),
+                $stmt->name,
+                $property_id
             );
+        }
 
-            $property_id = $fq_class_name . '::$' . $prop_name;
+        if ($var_id && $context->hasVariable($var_id, $statements_analyzer)) {
+            // we don't need to check anything
+            $stmt->inferredType = $context->vars_in_scope[$var_id];
 
-            if ($codebase->store_node_types) {
-                $codebase->analyzer->addNodeReference(
-                    $statements_analyzer->getFilePath(),
-                    $stmt->name,
-                    $property_id
+            if ($context->collect_references) {
+                // log the appearance
+                $codebase->properties->propertyExists(
+                    $property_id,
+                    false,
+                    $statements_analyzer,
+                    $context,
+                    new CodeLocation($statements_analyzer->getSource(), $stmt)
                 );
             }
 
-            if ($var_id && $context->hasVariable($var_id, $statements_analyzer)) {
-                // we don't need to check anything
-                $stmt->inferredType = $context->vars_in_scope[$var_id];
-
-                if ($context->collect_references) {
-                    // log the appearance
-                    $codebase->properties->propertyExists(
-                        $property_id,
-                        false,
-                        $statements_analyzer,
-                        $context,
-                        new CodeLocation($statements_analyzer->getSource(), $stmt)
-                    );
-                }
-
-                if ($codebase->store_node_types
-                    && (!$context->collect_initializations
-                        && !$context->collect_mutations)
-                    && isset($stmt->inferredType)
-                ) {
-                    $codebase->analyzer->addNodeType(
-                        $statements_analyzer->getFilePath(),
-                        $stmt->name,
-                        (string) $stmt->inferredType
-                    );
-                }
-
-                return null;
-            }
-
-            if (!$codebase->properties->propertyExists(
-                $property_id,
-                false,
-                $statements_analyzer,
-                $context,
-                $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
-            )
+            if ($codebase->store_node_types
+                && (!$context->collect_initializations
+                    && !$context->collect_mutations)
+                && isset($stmt->inferredType)
             ) {
-                if (IssueBuffer::accepts(
-                    new UndefinedPropertyFetch(
-                        'Static property ' . $property_id . ' is not defined',
-                        new CodeLocation($statements_analyzer->getSource(), $stmt),
-                        $property_id
-                    ),
-                    $statements_analyzer->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-
-                return;
+                $codebase->analyzer->addNodeType(
+                    $statements_analyzer->getFilePath(),
+                    $stmt->name,
+                    (string) $stmt->inferredType
+                );
             }
 
-            if (ClassLikeAnalyzer::checkPropertyVisibility(
-                $property_id,
-                $context,
-                $statements_analyzer,
-                new CodeLocation($statements_analyzer->getSource(), $stmt),
+            return null;
+        }
+
+        if (!$codebase->properties->propertyExists(
+            $property_id,
+            false,
+            $statements_analyzer,
+            $context,
+            $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null
+        )
+        ) {
+            if (IssueBuffer::accepts(
+                new UndefinedPropertyFetch(
+                    'Static property ' . $property_id . ' is not defined',
+                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                    $property_id
+                ),
                 $statements_analyzer->getSuppressedIssues()
-            ) === false) {
-                return false;
+            )) {
+                // fall through
             }
 
-            $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-                $fq_class_name . '::$' . $prop_name,
-                true
-            );
+            return;
+        }
 
-            $class_storage = $codebase->classlike_storage_provider->get((string)$declaring_property_class);
-            $property = $class_storage->properties[$prop_name];
+        if (ClassLikeAnalyzer::checkPropertyVisibility(
+            $property_id,
+            $context,
+            $statements_analyzer,
+            new CodeLocation($statements_analyzer->getSource(), $stmt),
+            $statements_analyzer->getSuppressedIssues()
+        ) === false) {
+            return false;
+        }
 
-            if ($var_id) {
-                if ($property->type) {
-                    $context->vars_in_scope[$var_id] = ExpressionAnalyzer::fleshOutType(
-                        $codebase,
-                        clone $property->type,
-                        $declaring_property_class,
-                        $declaring_property_class
-                    );
-                } else {
-                    $context->vars_in_scope[$var_id] = Type::getMixed();
-                }
+        $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
+            $fq_class_name . '::$' . $prop_name,
+            true
+        );
 
-                $stmt->inferredType = clone $context->vars_in_scope[$var_id];
+        $class_storage = $codebase->classlike_storage_provider->get((string)$declaring_property_class);
+        $property = $class_storage->properties[$prop_name];
 
-                if ($codebase->store_node_types
-                    && (!$context->collect_initializations
-                        && !$context->collect_mutations)
-                ) {
-                    $codebase->analyzer->addNodeType(
-                        $statements_analyzer->getFilePath(),
-                        $stmt->name,
-                        (string) $stmt->inferredType
-                    );
-                }
+        if ($var_id) {
+            if ($property->type) {
+                $context->vars_in_scope[$var_id] = ExpressionAnalyzer::fleshOutType(
+                    $codebase,
+                    clone $property->type,
+                    $declaring_property_class,
+                    $declaring_property_class
+                );
             } else {
-                $stmt->inferredType = Type::getMixed();
+                $context->vars_in_scope[$var_id] = Type::getMixed();
             }
+
+            $stmt->inferredType = clone $context->vars_in_scope[$var_id];
+
+            if ($codebase->store_node_types
+                && (!$context->collect_initializations
+                    && !$context->collect_mutations)
+            ) {
+                $codebase->analyzer->addNodeType(
+                    $statements_analyzer->getFilePath(),
+                    $stmt->name,
+                    (string) $stmt->inferredType
+                );
+            }
+        } else {
+            $stmt->inferredType = Type::getMixed();
         }
 
         return null;

@@ -335,6 +335,58 @@ class UnusedCodeTest extends TestCase
                     $myFooBar = new MyFooBar();
                     $myFooBar->doIt();',
             ],
+            'methodUsedAsCallable' => [
+                '<?php
+                    class C {
+                        public static function foo() : void {}
+                    }
+
+                    function takesCallable(callable $c) : void {
+                        $c();
+                    }
+
+                    takesCallable([C::class, "foo"]);',
+            ],
+            'propertyAndMethodOverriddenDownstream' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo = "hello";
+
+                        public function bar() : void {}
+                    }
+
+                    class B extends A {
+                        /** @var string */
+                        public $foo = "goodbye";
+
+                        public function bar() : void {}
+                    }
+
+                    function foo(A $a) : void {
+                        echo $a->foo;
+                        $a->bar();
+                    }
+
+                    foo(new B());',
+            ],
+            'protectedPropertyOverriddenDownstream' => [
+                '<?php
+
+                class C {
+                    /** @var int */
+                    protected $foo = 1;
+                    public function bar() : int {
+                        return $this->foo;
+                    }
+                }
+
+                class D extends C {
+                    protected $foo = 2;
+                }
+
+                (new D)->bar();'
+            ],
         ];
     }
 
@@ -464,6 +516,21 @@ class UnusedCodeTest extends TestCase
 
                     (new C)->bar();',
                 'error_message' => 'PossiblyUnusedMethod',
+            ],
+            'propertyOverriddenDownstreamAndNotUsed' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo = "hello";
+                    }
+
+                    class B extends A {
+                        /** @var string */
+                        public $foo = "goodbye";
+                    }
+
+                    new B();',
+                'error_message' => 'PossiblyUnusedProperty',
             ],
         ];
     }

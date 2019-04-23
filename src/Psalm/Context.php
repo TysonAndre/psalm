@@ -213,7 +213,7 @@ class Context
     /**
      * A list of classes or interfaces that may have been thrown
      *
-     * @var array<string, CodeLocation>
+     * @var array<string, array<array-key, CodeLocation>>
      */
     public $possibly_thrown_exceptions = [];
 
@@ -275,6 +275,16 @@ class Context
      * @var bool
      */
     public $inside_negation = false;
+
+    /**
+     * @var bool
+     */
+    public $ignore_variable_property = false;
+
+    /**
+     * @var bool
+     */
+    public $ignore_variable_method = false;
 
     /**
      * @param string|null $self
@@ -766,6 +776,49 @@ class Context
         foreach ($globals as $global_id => $type) {
             $this->vars_in_scope[$global_id] = $type;
             $this->vars_possibly_in_scope[$global_id] = true;
+        }
+    }
+
+    /**
+     * @return void
+     */
+    public function mergeExceptions(Context $other_context)
+    {
+        foreach ($other_context->possibly_thrown_exceptions as $possibly_thrown_exception => $codelocations) {
+            foreach ($codelocations as $hash => $codelocation) {
+                $this->possibly_thrown_exceptions[$possibly_thrown_exception][$hash] = $codelocation;
+            }
+        }
+    }
+
+    /**
+     * @return bool
+     */
+    public function isSuppressingExceptions(StatementsAnalyzer $statements_analyzer)
+    {
+        if (!$this->collect_exceptions) {
+            return true;
+        }
+
+        $issue_type = $this->is_global ? 'UncaughtThrowInGlobalScope' : 'MissingThrowsDocblock';
+        $suppressed_issues = $statements_analyzer->getSuppressedIssues();
+        if (in_array($issue_type, $suppressed_issues, true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @return void
+     */
+    public function mergeFunctionExceptions(
+        FunctionLikeStorage $function_storage,
+        CodeLocation $codelocation
+    ) {
+        $hash = $codelocation->getHash();
+        foreach ($function_storage->throws as $possibly_thrown_exception => $_) {
+            $this->possibly_thrown_exceptions[$possibly_thrown_exception][$hash] = $codelocation;
         }
     }
 }

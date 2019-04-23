@@ -78,10 +78,6 @@ class Populator
         }
 
         foreach ($this->classlike_storage_provider->getNew() as $class_storage) {
-            if (!$class_storage->user_defined && !$class_storage->stubbed) {
-                continue;
-            }
-
             $this->populateClassLikeStorage($class_storage);
         }
 
@@ -272,6 +268,19 @@ class Populator
             }
         }
 
+        $this->populateOverriddenMethods($storage);
+
+        if ($this->debug_output) {
+            echo 'Have populated ' . $storage->name . "\n";
+        }
+
+        $storage->populated = true;
+    }
+
+    /** @return void */
+    private function populateOverriddenMethods(
+        ClassLikeStorage $storage
+    ) {
         foreach ($storage->methods as $method_name => $method_storage) {
             if (isset($storage->overridden_method_ids[$method_name])) {
                 foreach ($storage->overridden_method_ids[$method_name] as $declaring_method_id) {
@@ -318,12 +327,6 @@ class Populator
                 }
             }
         }
-
-        if ($this->debug_output) {
-            echo 'Have populated ' . $storage->name . "\n";
-        }
-
-        $storage->populated = true;
     }
 
     /**
@@ -995,8 +998,19 @@ class Populator
 
         // register where they're declared
         foreach ($parent_storage->inheritable_method_ids as $method_name => $declaring_method_id) {
-            if (!$parent_storage->is_trait && $method_name !== '__construct') {
-                $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
+            if ($method_name !== '__construct') {
+                if ($parent_storage->is_trait) {
+                    $declaring_class = explode('::', $declaring_method_id)[0];
+                    $declaring_class_storage = $this->classlike_storage_provider->get($declaring_class);
+
+                    if (isset($declaring_class_storage->methods[$method_name])
+                        && $declaring_class_storage->methods[$method_name]->abstract
+                    ) {
+                        $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
+                    }
+                } else {
+                    $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
+                }
             }
 
             $aliased_method_names = [$method_name];

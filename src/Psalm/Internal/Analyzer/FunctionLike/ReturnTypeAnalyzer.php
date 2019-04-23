@@ -568,6 +568,7 @@ class ReturnTypeAnalyzer
                 && $inferred_return_type->isFalsable()
                 && !$declared_return_type->isFalsable()
                 && !$declared_return_type->hasBool()
+                && !$declared_return_type->hasScalar()
             ) {
                 if ($codebase->alter_code
                     && isset($project_analyzer->getIssuesToFix()['InvalidFalsableReturnType'])

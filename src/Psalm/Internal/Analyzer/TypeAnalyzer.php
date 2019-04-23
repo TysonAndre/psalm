@@ -13,6 +13,7 @@ use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TEmptyMixed;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
@@ -138,6 +139,15 @@ class TypeAnalyzer
                     $atomic_to_string_cast,
                     $type_coerced_from_scalar
                 );
+
+                if ($input_type_part instanceof TNumeric
+                    && $container_type->hasString()
+                    && $container_type->hasInt()
+                    && $container_type->hasFloat()
+                ) {
+                    $scalar_type_match_found = false;
+                    $is_atomic_contained_by = true;
+                }
 
                 if ($is_atomic_contained_by) {
                     $type_match_found = true;
@@ -1024,6 +1034,13 @@ class TypeAnalyzer
             return true;
         }
 
+        if ($input_type_part instanceof TCallableString
+            && (get_class($container_type_part) === TString::class
+                || get_class($container_type_part) === TSingleLetter::class)
+        ) {
+            return true;
+        }
+
         if ($container_type_part instanceof TString
             && ($input_type_part instanceof TNumericString
                 || $input_type_part instanceof THtmlEscapedString)
@@ -1040,7 +1057,39 @@ class TypeAnalyzer
             return false;
         }
 
-        if (($container_type_part instanceof TClassString || $container_type_part instanceof TLiteralClassString)
+        if ($container_type_part instanceof TCallableString
+            && $input_type_part instanceof TLiteralString
+        ) {
+            $input_callable = self::getCallableFromAtomic($codebase, $input_type_part);
+            $container_callable = self::getCallableFromAtomic($codebase, $container_type_part);
+
+            if ($input_callable && $container_callable) {
+                $all_types_contain = true;
+
+                if (self::compareCallable(
+                    $codebase,
+                    $input_callable,
+                    $container_callable,
+                    $type_coerced,
+                    $type_coerced_from_mixed,
+                    $has_scalar_match,
+                    $all_types_contain
+                ) === false
+                ) {
+                    return false;
+                }
+
+                if (!$all_types_contain) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (($container_type_part instanceof TClassString
+                || $container_type_part instanceof TLiteralClassString
+                || $container_type_part instanceof TCallableString)
             && $input_type_part instanceof TString
         ) {
             $type_coerced = true;
@@ -1327,7 +1376,7 @@ class TypeAnalyzer
     }
 
     /** @return ?string */
-    private static function getCallableMethodIdFromObjectLike(ObjectLike $input_type_part)
+    public static function getCallableMethodIdFromObjectLike(ObjectLike $input_type_part)
     {
         if (!isset($input_type_part->properties[0])
             || !isset($input_type_part->properties[1])
@@ -1682,58 +1731,66 @@ class TypeAnalyzer
             return false;
         }
 
-        if ($container_type_part->params !== null) {
-            foreach ($container_type_part->params as $i => $container_param) {
-                if (!isset($input_type_part->params[$i])) {
-                    if ($container_param->is_optional) {
+        if ($input_type_part->params !== null && $container_type_part->params !== null) {
+            foreach ($input_type_part->params as $i => $input_param) {
+                $container_param = null;
+
+                if (isset($container_type_part->params[$i])) {
+                    $container_param = $container_type_part->params[$i];
+                } elseif ($container_type_part->params) {
+                    $last_param = end($container_type_part->params);
+
+                    if ($last_param->is_variadic) {
+                        $container_param = $last_param;
+                    }
+                }
+
+                if (!$container_param) {
+                    if ($input_param->is_optional) {
                         break;
                     }
 
-                    $type_coerced = true;
-                    $type_coerced_from_mixed = true;
-
-                    $all_types_contain = false;
-                    break;
+                    return false;
                 }
 
-                $input_param = $input_type_part->params[$i];
-
-                if (!self::isContainedBy(
-                    $codebase,
-                    $input_param->type ?: Type::getMixed(),
-                    $container_param->type ?: Type::getMixed(),
-                    false,
-                    false,
-                    $has_scalar_match,
-                    $type_coerced,
-                    $type_coerced_from_mixed
-                )
+                if ($container_param->type
+                    && !$container_param->type->hasMixed()
+                    && !self::isContainedBy(
+                        $codebase,
+                        $container_param->type,
+                        $input_param->type ?: Type::getMixed(),
+                        false,
+                        false,
+                        $has_scalar_match,
+                        $type_coerced,
+                        $type_coerced_from_mixed
+                    )
                 ) {
                     $all_types_contain = false;
                 }
             }
+        }
 
-            if (isset($container_type_part->return_type)) {
-                if (!isset($input_type_part->return_type)) {
-                    $type_coerced = true;
-                    $type_coerced_from_mixed = true;
+        if (isset($container_type_part->return_type)) {
+            if (!isset($input_type_part->return_type)) {
+                $type_coerced = true;
+                $type_coerced_from_mixed = true;
 
+                $all_types_contain = false;
+            } else {
+                if (!$container_type_part->return_type->isVoid()
+                    && !self::isContainedBy(
+                        $codebase,
+                        $input_type_part->return_type,
+                        $container_type_part->return_type,
+                        false,
+                        false,
+                        $has_scalar_match,
+                        $type_coerced,
+                        $type_coerced_from_mixed
+                    )
+                ) {
                     $all_types_contain = false;
-                } else {
-                    if (!$container_type_part->return_type->isVoid()
-                        && !self::isContainedBy(
-                            $codebase,
-                            $input_type_part->return_type,
-                            $container_type_part->return_type,
-                            false,
-                            false,
-                            $has_scalar_match,
-                            $type_coerced,
-                            $type_coerced_from_mixed
-                        )
-                    ) {
-                        $all_types_contain = false;
-                    }
                 }
             }
         }

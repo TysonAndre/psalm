@@ -439,7 +439,18 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 }
             }
 
-            $context->vars_in_scope['$' . $function_param->name] = $param_type;
+            $var_type = $param_type;
+
+            if ($function_param->is_variadic) {
+                $var_type = new Type\Union([
+                    new Type\Atomic\TArray([
+                        Type::getInt(),
+                        $param_type,
+                    ]),
+                ]);
+            }
+
+            $context->vars_in_scope['$' . $function_param->name] = $var_type;
             $context->vars_possibly_in_scope['$' . $function_param->name] = true;
 
             if ($context->collect_references && $function_param->location) {
@@ -835,7 +846,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             }
         }
 
-        foreach ($statements_analyzer->getUncaughtThrows($context) as $possibly_thrown_exception => $codelocation) {
+        foreach ($statements_analyzer->getUncaughtThrows($context) as $possibly_thrown_exception => $codelocations) {
             $is_expected = false;
 
             foreach ($storage->throws as $expected_exception => $_) {
@@ -848,15 +859,17 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             }
 
             if (!$is_expected) {
-                if (IssueBuffer::accepts(
-                    new MissingThrowsDocblock(
-                        $possibly_thrown_exception . ' is thrown but not caught - please either catch'
-                            . ' or add a @throws annotation',
-                        $codelocation
-                    ),
-                    $this->getSuppressedIssues()
-                )) {
-                    // fall through
+                foreach ($codelocations as $codelocation) {
+                    // issues are suppressed in ThrowAnalyzer, CallAnalyzer, etc.
+                    if (IssueBuffer::accepts(
+                        new MissingThrowsDocblock(
+                            $possibly_thrown_exception . ' is thrown but not caught - please either catch'
+                                . ' or add a @throws annotation',
+                            $codelocation
+                        )
+                    )) {
+                        // fall through
+                    }
                 }
             }
         }
@@ -1021,7 +1034,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             $storage = $this->getFunctionLikeStorage($statements_analyzer);
 
             foreach ($storage->params as $i => $param) {
-                if ($param->by_ref && isset($context->vars_in_scope['$' . $param->name])) {
+                if ($param->by_ref && isset($context->vars_in_scope['$' . $param->name]) && !$param->is_variadic) {
                     $actual_type = $context->vars_in_scope['$' . $param->name];
                     $param_out_type = $param->type;
 
@@ -1224,50 +1237,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
      *
      * @return array<int, FunctionLikeParameter>
      */
-    public static function getMethodParamsById(
-        StatementsAnalyzer $statements_analyzer,
-        $method_id,
-        array $args
-    ) {
-        $fq_class_name = strpos($method_id, '::') !== false ? explode('::', $method_id)[0] : null;
-
-        $codebase = $statements_analyzer->getCodebase();
-
-        if ($fq_class_name) {
-            $fq_class_name = $codebase->classlikes->getUnAliasedName($fq_class_name);
-
-            $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
-
-            if ($class_storage->user_defined || $class_storage->stubbed) {
-                $method_params = $codebase->methods->getMethodParams($method_id, $statements_analyzer, $args);
-
-                return $method_params;
-            }
-        }
-
-        $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
-
-        if (CallMap::inCallMap($declaring_method_id ?: $method_id)) {
-            $function_param_options = CallMap::getParamsFromCallMap($declaring_method_id ?: $method_id);
-
-            if ($function_param_options === null) {
-                throw new \UnexpectedValueException(
-                    'Not expecting $function_param_options to be null for ' . $method_id
-                );
-            }
-
-            return self::getMatchingParamsFromCallMapOptions($codebase, $function_param_options, $args);
-        }
-
-        return $codebase->methods->getMethodParams($method_id);
-    }
-
-    /**
-     * @param  string                           $method_id
-     * @param  array<int, PhpParser\Node\Arg>   $args
-     *
-     * @return array<int, FunctionLikeParameter>
-     */
     public static function getFunctionParamsFromCallMapById(Codebase $codebase, $method_id, array $args)
     {
         $function_param_options = CallMap::getParamsFromCallMap($method_id);
@@ -1287,7 +1256,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
      *
      * @return array<int, FunctionLikeParameter>
      */
-    protected static function getMatchingParamsFromCallMapOptions(
+    public static function getMatchingParamsFromCallMapOptions(
         Codebase $codebase,
         array $function_param_options,
         array $args
@@ -1312,7 +1281,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 }
             }
 
-            if ($mandatory_param_count > count($args)) {
+            if ($mandatory_param_count > count($args) && !($last_param && $last_param->is_variadic)) {
                 continue;
             }
 
@@ -1320,12 +1289,15 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 if ($argument_offset >= count($possible_function_params)) {
                     if (!$last_param || !$last_param->is_variadic) {
                         $all_args_match = false;
+                        break;
                     }
 
-                    break;
+                    $function_param = $last_param;
+                } else {
+                    $function_param = $possible_function_params[$argument_offset];
                 }
 
-                $param_type = $possible_function_params[$argument_offset]->type;
+                $param_type = $function_param->type;
 
                 if (!$param_type) {
                     continue;
@@ -1335,13 +1307,28 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     continue;
                 }
 
-                if ($arg->value->inferredType->hasMixed()) {
+                $arg_type = $arg->value->inferredType;
+
+                if ($arg_type->hasMixed()) {
                     continue;
+                }
+
+                if ($arg->unpack && !$function_param->is_variadic) {
+                    if ($arg_type->hasArray()) {
+                        /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                        $array_atomic_type = $arg_type->getTypes()['array'];
+
+                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                            $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                        }
+
+                        $arg_type = $array_atomic_type->type_params[1];
+                    }
                 }
 
                 if (TypeAnalyzer::isContainedBy(
                     $codebase,
-                    $arg->value->inferredType,
+                    $arg_type,
                     $param_type,
                     true,
                     true

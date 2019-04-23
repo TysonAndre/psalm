@@ -77,10 +77,6 @@ class PropertyAssignmentAnalyzer
             $property_id = $context->self . '::$' . $prop_name;
             $property_ids[] = $property_id;
 
-            if (!$codebase->properties->propertyExists($property_id, false, $statements_analyzer, $context)) {
-                return null;
-            }
-
             $property_exists = true;
 
             $class_property_type = $codebase->properties->getPropertyType(
@@ -143,6 +139,10 @@ class PropertyAssignmentAnalyzer
                     $codebase->analyzer->incrementMixedCount($statements_analyzer->getFilePath());
                 }
 
+                if ($stmt->name instanceof PhpParser\Node\Identifier) {
+                    $codebase->analyzer->addMixedMemberName('$' . $stmt->name->name);
+                }
+
                 if (IssueBuffer::accepts(
                     new MixedPropertyAssignment(
                         $lhs_var_id . ' of type mixed cannot be assigned to',
@@ -200,6 +200,13 @@ class PropertyAssignmentAnalyzer
 
             foreach ($lhs_type->getTypes() as $lhs_type_part) {
                 if ($lhs_type_part instanceof TNull) {
+                    continue;
+                }
+
+                if ($lhs_type_part instanceof Type\Atomic\TFalse
+                    && $lhs_type->ignore_falsable_issues
+                    && count($lhs_type->getTypes()) > 1
+                ) {
                     continue;
                 }
 
@@ -731,6 +738,7 @@ class PropertyAssignmentAnalyzer
                 if (!$assignment_value_type->ignore_falsable_issues
                     && $assignment_value_type->isFalsable()
                     && !$class_property_type->hasBool()
+                    && !$class_property_type->hasScalar()
                 ) {
                     if (IssueBuffer::accepts(
                         new PossiblyFalsePropertyAssignmentValue(
@@ -822,6 +830,10 @@ class PropertyAssignmentAnalyzer
         $prop_name = $stmt->name;
 
         if (!$prop_name instanceof PhpParser\Node\Identifier) {
+            if ($fq_class_name && !$context->ignore_variable_property) {
+                $codebase->analyzer->addMixedMemberName(strtolower($fq_class_name) . '::$');
+            }
+
             return;
         }
 

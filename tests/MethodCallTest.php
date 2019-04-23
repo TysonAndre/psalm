@@ -7,6 +7,26 @@ class MethodCallTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
+     * @return void
+     */
+    public function testExtendDocblockParamType()
+    {
+        if (class_exists('SoapClient') === false) {
+            $this->markTestSkipped('Cannot run test, base class "SoapClient" does not exist!');
+
+            return;
+        }
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                new SoapFault("1", "faultstring", "faultactor");'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
@@ -78,7 +98,7 @@ class MethodCallTest extends TestCase
 
                     $b = (new DateTimeImmutable())->modify("+3 hours");',
                 'assertions' => [
-                    '$yesterday' => 'MyDate',
+                    '$yesterday' => 'false|MyDate',
                     '$b' => 'DateTimeImmutable',
                 ],
             ],
@@ -133,8 +153,10 @@ class MethodCallTest extends TestCase
                 '<?php
                     $doc = new DOMDocument("1.0");
                     $node = $doc->createElement("foo");
-                    $newnode = $doc->appendChild($node);
-                    $newnode->setAttribute("bar", "baz");',
+                    if ($node instanceof DOMElement) {
+                        $newnode = $doc->appendChild($node);
+                        $newnode->setAttribute("bar", "baz");
+                    }',
             ],
             'nonStaticSelfCall' => [
                 '<?php
@@ -158,7 +180,7 @@ class MethodCallTest extends TestCase
                     $b = $xml->asXML("foo.xml");',
                 'assertions' => [
                     '$a' => 'string|false',
-                    '$b' => 'string|bool',
+                    '$b' => 'bool',
                 ],
             ],
             'datetimeformatNotFalse' => [
@@ -290,6 +312,31 @@ class MethodCallTest extends TestCase
                     }
 
                     Foo::$current->bar();',
+            ],
+            'pdoStatementSetFetchMode' => [
+                '<?php
+                    class A {
+                        /** @var ?string */
+                        public $a;
+                    }
+
+                    $db = new PDO("sqlite::memory:");
+                    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                    $stmt = $db->prepare("select \"a\" as a");
+                    $stmt->setFetchMode(PDO::FETCH_CLASS, A::class);
+                    $stmt->execute();
+                    /** @psalm-suppress MixedAssignment */
+                    $a = $stmt->fetch();'
+            ],
+            'datePeriodConstructor' => [
+                '<?php
+                    function foo(DateTime $d1, DateTime $d2) : void {
+                        new DatePeriod(
+                            $d1,
+                            DateInterval::createFromDateString("1 month"),
+                            $d2
+                        );
+                    }'
             ],
         ];
     }
@@ -529,6 +576,16 @@ class MethodCallTest extends TestCase
                         }
                     }',
                 'error_message' => 'UndefinedClass',
+            ],
+            'checkMixedMethodCallStaticMethodCallArg' => [
+                '<?php
+                    class B {}
+                    /** @param mixed $a */
+                    function foo($a) : void {
+                        /** @psalm-suppress MixedMethodCall */
+                        $a->bar(B::bat());
+                    }',
+                'error_message' => 'UndefinedMethod',
             ],
         ];
     }

@@ -4,6 +4,8 @@ namespace Psalm\Internal\Codebase;
 use PhpParser;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\Context;
+use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Provider\{
     ClassLikeStorageProvider,
     FileReferenceProvider,
@@ -38,7 +40,7 @@ class Methods
     /**
      * @var bool
      */
-    public $collect_references = false;
+    public $collect_locations = false;
 
     /**
      * @var FileReferenceProvider
@@ -94,7 +96,8 @@ class Methods
         $method_id,
         $calling_method_id = null,
         CodeLocation $code_location = null,
-        StatementsSource $source = null
+        StatementsSource $source = null,
+        string $file_path = null
     ) {
         // remove trailing backslash if it exists
         $method_id = preg_replace('/^\\\\/', '', $method_id);
@@ -119,7 +122,11 @@ class Methods
 
         $fq_class_name = $this->classlikes->getUnAliasedName($fq_class_name);
 
-        $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        try {
+            $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
 
         if (isset($class_storage->declaring_method_ids[$method_name])) {
             $declaring_method_id = $class_storage->declaring_method_ids[$method_name];
@@ -130,60 +137,95 @@ class Methods
                 return true;
             }
 
-            if ($calling_method_id) {
-                $method_id_lc = strtolower($method_id);
+            $method_id_lc = strtolower($method_id);
 
-                if ($method_id_lc !== $declaring_method_id_lc
-                    && $class_storage->user_defined
-                    && isset($class_storage->potential_declaring_method_ids[$method_name])
-                ) {
-                    foreach ($class_storage->potential_declaring_method_ids[$method_name] as $potential_id => $_) {
-                        $this->file_reference_provider->addReferenceToClassMethod(
+            if ($method_id_lc !== $declaring_method_id_lc
+                && $class_storage->user_defined
+                && isset($class_storage->potential_declaring_method_ids[$method_name])
+            ) {
+                foreach ($class_storage->potential_declaring_method_ids[$method_name] as $potential_id => $_) {
+                    if ($calling_method_id) {
+                        $this->file_reference_provider->addMethodReferenceToClassMember(
                             $calling_method_id,
                             $potential_id
                         );
+                    } elseif ($file_path) {
+                        $this->file_reference_provider->addFileReferenceToClassMember(
+                            $file_path,
+                            $potential_id
+                        );
                     }
-                } else {
-                    $this->file_reference_provider->addReferenceToClassMethod(
+                }
+            } else {
+                if ($calling_method_id) {
+                    $this->file_reference_provider->addMethodReferenceToClassMember(
                         $calling_method_id,
+                        $declaring_method_id_lc
+                    );
+                } elseif ($file_path) {
+                    $this->file_reference_provider->addFileReferenceToClassMember(
+                        $file_path,
                         $declaring_method_id_lc
                     );
                 }
             }
 
-            if ($this->collect_references && $code_location) {
-                list($declaring_method_class, $declaring_method_name) = explode('::', $declaring_method_id);
+            if ($this->collect_locations && $code_location) {
+                $this->file_reference_provider->addCallingLocationForClassMethod(
+                    $code_location,
+                    $declaring_method_id_lc
+                );
+            }
 
-                $declaring_class_storage = $this->classlike_storage_provider->get($declaring_method_class);
-                $declaring_method_storage = $declaring_class_storage->methods[strtolower($declaring_method_name)];
-                if ($declaring_method_storage->referencing_locations === null) {
-                    $declaring_method_storage->referencing_locations = [];
+            foreach ($class_storage->class_implements as $fq_interface_name) {
+                $interface_method_id_lc = strtolower($fq_interface_name . '::' . $method_name);
+
+                if ($this->collect_locations && $code_location) {
+                    $this->file_reference_provider->addCallingLocationForClassMethod(
+                        $code_location,
+                        $interface_method_id_lc
+                    );
                 }
-                $declaring_method_storage->referencing_locations[$code_location->file_path][] = $code_location;
 
-                foreach ($class_storage->class_implements as $fq_interface_name) {
-                    $interface_storage = $this->classlike_storage_provider->get($fq_interface_name);
-                    if (isset($interface_storage->methods[$method_name])) {
-                        $interface_method_storage = $interface_storage->methods[$method_name];
-                        if (!isset($interface_method_storage->referencing_locations)) {
-                            $interface_method_storage->referencing_locations = [];
-                        }
-                        $interface_method_storage->referencing_locations[$code_location->file_path][] = $code_location;
+                if ($calling_method_id) {
+                    $this->file_reference_provider->addMethodReferenceToClassMember(
+                        $calling_method_id,
+                        $interface_method_id_lc
+                    );
+                } elseif ($file_path) {
+                    $this->file_reference_provider->addFileReferenceToClassMember(
+                        $file_path,
+                        $interface_method_id_lc
+                    );
+                }
+            }
+
+            list($declaring_method_class, $declaring_method_name) = explode('::', $declaring_method_id);
+
+            $declaring_class_storage = $this->classlike_storage_provider->get($declaring_method_class);
+
+            if (isset($declaring_class_storage->overridden_method_ids[$declaring_method_name])) {
+                $overridden_method_ids = $declaring_class_storage->overridden_method_ids[$declaring_method_name];
+
+                foreach ($overridden_method_ids as $overridden_method_id) {
+                    if ($this->collect_locations && $code_location) {
+                        $this->file_reference_provider->addCallingLocationForClassMethod(
+                            $code_location,
+                            strtolower($overridden_method_id)
+                        );
                     }
-                }
 
-                if (isset($declaring_class_storage->overridden_method_ids[$declaring_method_name])) {
-                    $overridden_method_ids = $declaring_class_storage->overridden_method_ids[$declaring_method_name];
-
-                    foreach ($overridden_method_ids as $overridden_method_id) {
-                        list($overridden_method_class, $overridden_method_name) = explode('::', $overridden_method_id);
-
-                        $class_storage = $this->classlike_storage_provider->get($overridden_method_class);
-                        $method_storage = $class_storage->methods[strtolower($overridden_method_name)];
-                        if ($method_storage->referencing_locations === null) {
-                            $method_storage->referencing_locations = [];
-                        }
-                        $method_storage->referencing_locations[$code_location->file_path][] = $code_location;
+                    if ($calling_method_id) {
+                        // also store failures in case the method is added later
+                        $this->file_reference_provider->addMethodReferenceToClassMember(
+                            $calling_method_id,
+                            strtolower($overridden_method_id)
+                        );
+                    } elseif ($file_path) {
+                        $this->file_reference_provider->addFileReferenceToClassMember(
+                            $file_path,
+                            strtolower($overridden_method_id)
+                        );
                     }
                 }
             }
@@ -208,10 +250,32 @@ class Methods
             return true;
         }
 
+        foreach ($class_storage->parent_classes + $class_storage->used_traits as $potential_future_declaring_fqcln) {
+            $potential_id = strtolower($potential_future_declaring_fqcln) . '::' . $method_name;
+
+            if ($calling_method_id) {
+                // also store failures in case the method is added later
+                $this->file_reference_provider->addMethodReferenceToMissingClassMember(
+                    $calling_method_id,
+                    $potential_id
+                );
+            } elseif ($file_path) {
+                $this->file_reference_provider->addFileReferenceToMissingClassMember(
+                    $file_path,
+                    $potential_id
+                );
+            }
+        }
+
         if ($calling_method_id) {
             // also store failures in case the method is added later
-            $this->file_reference_provider->addReferenceToClassMethod(
+            $this->file_reference_provider->addMethodReferenceToMissingClassMember(
                 $calling_method_id,
+                strtolower($method_id)
+            );
+        } elseif ($file_path) {
+            $this->file_reference_provider->addFileReferenceToMissingClassMember(
+                $file_path,
                 strtolower($method_id)
             );
         }
@@ -221,12 +285,16 @@ class Methods
 
     /**
      * @param  string $method_id
-     * @param  array<PhpParser\Node\Arg> $args
+     * @param  array<int, PhpParser\Node\Arg> $args
      *
      * @return array<int, FunctionLikeParameter>
      */
-    public function getMethodParams($method_id, StatementsSource $source = null, array $args = null)
-    {
+    public function getMethodParams(
+        $method_id,
+        StatementsSource $source = null,
+        array $args = null,
+        Context $context = null
+    ) : array {
         list($fq_class_name, $method_name) = explode('::', $method_id);
 
         if ($this->params_provider->has($fq_class_name)) {
@@ -234,7 +302,8 @@ class Methods
                 $fq_class_name,
                 $method_name,
                 $args,
-                $source
+                $source,
+                $context
             );
 
             if ($method_params !== null) {
@@ -242,7 +311,46 @@ class Methods
             }
         }
 
-        if ($declaring_method_id = $this->getDeclaringMethodId($method_id)) {
+        $declaring_method_id = $this->getDeclaringMethodId($method_id);
+
+        // functions
+        if (CallMap::inCallMap($declaring_method_id ?: $method_id)) {
+            $declaring_fq_class_name = explode('::', $declaring_method_id ?: $method_id)[0];
+
+            $class_storage = $this->classlike_storage_provider->get($declaring_fq_class_name);
+
+            if (!$class_storage->stubbed) {
+                $function_param_options = CallMap::getParamsFromCallMap($declaring_method_id ?: $method_id);
+
+                if ($function_param_options === null) {
+                    throw new \UnexpectedValueException(
+                        'Not expecting $function_param_options to be null for ' . $declaring_method_id
+                    );
+                }
+
+                if (!$source || $args === null || count($function_param_options) === 1) {
+                    return $function_param_options[0];
+                }
+
+                if ($context && $source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
+                    foreach ($args as $arg) {
+                        \Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer::analyze(
+                            $source,
+                            $arg->value,
+                            $context
+                        );
+                    }
+                }
+
+                return FunctionLikeAnalyzer::getMatchingParamsFromCallMapOptions(
+                    $source->getCodebase(),
+                    $function_param_options,
+                    $args
+                );
+            }
+        }
+
+        if ($declaring_method_id) {
             $storage = $this->getStorage($declaring_method_id);
 
             $params = $storage->params;
@@ -501,7 +609,14 @@ class Methods
                     }
                 }
             }
-            return CallMap::getReturnTypeFromCallMap($appearing_method_id);
+
+            $return_type_candidate = CallMap::getReturnTypeFromCallMap($appearing_method_id);
+
+            if ($return_type_candidate->isFalsable()) {
+                $return_type_candidate->ignore_falsable_issues = true;
+            }
+
+            return $return_type_candidate;
         }
 
         $storage = $this->getStorage($declaring_method_id);

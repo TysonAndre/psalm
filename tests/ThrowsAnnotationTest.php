@@ -126,6 +126,29 @@ class ThrowsAnnotationTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testNoThrowWhenSuppressingInline()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function foo() : void {
+                    if (rand(0, 1)) {
+                        /** @psalm-suppress MissingThrowsDocblock */
+                        throw new \UnexpectedValueException();
+                    }
+                }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
      * @expectedException        \Psalm\Exception\CodeException
      * @expectedExceptionMessage MissingThrowsDocblock
      *
@@ -167,7 +190,7 @@ class ThrowsAnnotationTest extends TestCase
     /**
      * @return                   void
      */
-    public function testDocumentedThrowInFunctionCall()
+    public function testDocumentedThrowInFunctionCallWithThrow()
     {
         Config::getInstance()->check_for_throws_docblock = true;
 
@@ -382,148 +405,6 @@ class ThrowsAnnotationTest extends TestCase
                         foo($x, $y);
                     } catch (Exception $e) {}
                 }'
-        );
-
-        $context = new Context();
-
-        $this->analyzeFile('somefile.php', $context);
-    }
-
-    /**
-     * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage UncaughtThrowInGlobalScope
-     *
-     * @return                   void
-     */
-    public function testUncaughtDocumentedThrowCallInGlobalScope()
-    {
-        Config::getInstance()->check_for_throws_in_global_scope = true;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                /**
-                 * @throws RangeException
-                 * @throws InvalidArgumentException
-                 */
-                function foo(int $x, int $y) : int {
-                    if ($y === 0) {
-                        throw new \RangeException("Cannot divide by zero");
-                    }
-
-                    if ($y < 0) {
-                        throw new \InvalidArgumentException("This is also bad");
-                    }
-
-                    return intdiv($x, $y);
-                }
-
-                foo(0, 0);'
-        );
-
-        $context = new Context();
-
-        $this->analyzeFile('somefile.php', $context);
-    }
-
-    /**
-     * @return                   void
-     */
-    public function testCaughtDocumentedThrowCallInGlobalScope()
-    {
-        Config::getInstance()->check_for_throws_docblock = true;
-        Config::getInstance()->check_for_throws_in_global_scope = true;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                /**
-                 * @throws RangeException
-                 * @throws InvalidArgumentException
-                 */
-                function foo(int $x, int $y) : int {
-                    if ($y === 0) {
-                        throw new \RangeException("Cannot divide by zero");
-                    }
-
-                    if ($y < 0) {
-                        throw new \InvalidArgumentException("This is also bad");
-                    }
-
-                    return intdiv($x, $y);
-                }
-
-                try {
-                    foo(0, 0);
-                } catch (Exception $e) {}'
-        );
-
-        $context = new Context();
-
-        $this->analyzeFile('somefile.php', $context);
-    }
-
-    /**
-     * @return                   void
-     */
-    public function testUncaughtUndocumentedThrowCallInGlobalScope()
-    {
-        Config::getInstance()->check_for_throws_in_global_scope = true;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                function foo(int $x, int $y) : int {
-                    if ($y === 0) {
-                        throw new \RangeException("Cannot divide by zero");
-                    }
-
-                    if ($y < 0) {
-                        throw new \InvalidArgumentException("This is also bad");
-                    }
-
-                    return intdiv($x, $y);
-                }
-
-                foo(0, 0);'
-        );
-
-        $context = new Context();
-
-        $this->analyzeFile('somefile.php', $context);
-    }
-
-    /**
-     * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage UncaughtThrowInGlobalScope
-     *
-     * @return                   void
-     */
-    public function testUncaughtDocumentedThrowCallInNamespace()
-    {
-        Config::getInstance()->check_for_throws_in_global_scope = true;
-
-        $this->addFile(
-            'somefile.php',
-            '<?php
-                namespace ns;
-                /**
-                 * @throws RangeException
-                 * @throws InvalidArgumentException
-                 */
-                function foo(int $x, int $y) : int {
-                    if ($y === 0) {
-                        throw new \RangeException("Cannot divide by zero");
-                    }
-
-                    if ($y < 0) {
-                        throw new \InvalidArgumentException("This is also bad");
-                    }
-
-                    return intdiv($x, $y);
-                }
-
-                foo(0, 0);'
         );
 
         $context = new Context();

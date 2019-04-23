@@ -9,14 +9,15 @@ use Psalm\IssueBuffer;
 error_reporting(-1);
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
-ini_set('memory_limit', '2048M');
+ini_set('memory_limit', '4096M');
 
 // get options from command line
 $options = getopt(
     'f:mhr:',
     [
-        'help', 'debug', 'config:', 'file:', 'root:',
+        'help', 'debug', 'debug-by-line', 'config:', 'file:', 'root:',
         'plugin:', 'issues:', 'php-version:', 'dry-run', 'safe-types',
+        'find-unused-code', 'threads:',
     ]
 );
 
@@ -45,7 +46,7 @@ Options:
     -h, --help
         Display this help message
 
-    --debug
+    --debug, --debug-by-line
         Debug information
 
     -c, --config=psalm.xml
@@ -72,6 +73,11 @@ Options:
     --issues=IssueType1,IssueType2
         If any issues can be fixed automatically, Psalm will update the codebase
 
+    --find-dead-code
+        Include unused code as a candidate for removal
+
+    --threads=INT
+        If greater than one, Psalm will run analysis on multiple threads, speeding things up.
 HELP;
 
     exit;
@@ -127,6 +133,8 @@ if ($path_to_config) {
 
 $config->setComposerClassLoader($first_autoloader);
 
+$threads = isset($options['threads']) ? (int)$options['threads'] : 1;
+
 $project_analyzer = new ProjectAnalyzer(
     $config,
     new Psalm\Internal\Provider\Providers(
@@ -138,9 +146,13 @@ $project_analyzer = new ProjectAnalyzer(
     !array_key_exists('m', $options),
     false,
     ProjectAnalyzer::TYPE_CONSOLE,
-    1,
+    $threads,
     array_key_exists('debug', $options)
 );
+
+if (array_key_exists('debug-by-line', $options)) {
+    $project_analyzer->debug_lines = true;
+}
 
 $config->visitComposerAutoloadFiles($project_analyzer);
 
@@ -181,6 +193,16 @@ if (isset($options['plugin'])) {
 /** @var string $plugin_path */
 foreach ($plugins as $plugin_path) {
     Config::getInstance()->addPluginPath($current_dir . $plugin_path);
+}
+
+$find_unused_code = array_key_exists('find-unused-code', $options);
+
+if ($config->find_unused_code) {
+    $find_unused_code = true;
+}
+
+if ($find_unused_code) {
+    $project_analyzer->getCodebase()->reportUnusedCode();
 }
 
 $project_analyzer->alterCodeAfterCompletion(

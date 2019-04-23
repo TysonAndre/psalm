@@ -1682,7 +1682,7 @@ function foo(?array $arr) : void {
 
 ### PossiblyNullOperand
 
-Emitted when using a possibly `null` value as part of an operation (e.g. `+`, `.`, `^` etc.`)
+Emitted when using a possibly `null` value as part of an operation (e.g. `+`, `.`, `^` etc.)
 
 ```php
 function foo(?int $a) : void {
@@ -1920,6 +1920,22 @@ Emitted when using a reserved word as a class name
 
 ```php
 function foo(resource $res) : void {}
+```
+
+### TraitMethodSignatureMismatch
+
+Emitted when a method's signature or return type differs from corresponding trait-defined method
+
+```php
+trait T {
+    abstract public function foo(int $i);
+}
+
+class A {
+    use T;
+
+    public function foo(string $s) : void {}
+}
 ```
 
 ### TooFewArguments

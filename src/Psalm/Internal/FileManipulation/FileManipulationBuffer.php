@@ -25,6 +25,42 @@ class FileManipulationBuffer
     }
 
     /**
+     * @return void
+     */
+    public static function addForCodeLocation(
+        \Psalm\CodeLocation $code_location,
+        string $replacement_text,
+        bool $swallow_newlines = false
+    ) {
+        $bounds = $code_location->getSnippetBounds();
+
+        if ($swallow_newlines) {
+            $project_analyzer = \Psalm\Internal\Analyzer\ProjectAnalyzer::getInstance();
+
+            $codebase = $project_analyzer->getCodebase();
+
+            $file_contents = $codebase->getFileContents($code_location->file_path);
+
+            if (($file_contents[$bounds[0] - 1] ?? null) === PHP_EOL
+                && ($file_contents[$bounds[0] - 2] ?? null) === PHP_EOL
+            ) {
+                $bounds[0] -= 2;
+            }
+        }
+
+        self::add(
+            $code_location->file_path,
+            [
+                new FileManipulation(
+                    $bounds[0],
+                    $bounds[1],
+                    $replacement_text
+                )
+            ]
+        );
+    }
+
+    /**
      * @param string $file_path
      *
      * @return FileManipulation[]
@@ -36,6 +72,14 @@ class FileManipulationBuffer
         }
 
         return self::$file_manipulations[$file_path];
+    }
+
+    /**
+     * @return array<string, FileManipulation[]>
+     */
+    public static function getAll()
+    {
+        return self::$file_manipulations;
     }
 
     /**

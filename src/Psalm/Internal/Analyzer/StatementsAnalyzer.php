@@ -172,6 +172,9 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
         $plugin_classes = $codebase->config->after_statement_checks;
 
         foreach ($stmts as $stmt) {
+            $ignore_variable_property = false;
+            $ignore_variable_method = false;
+
             if ($has_returned && !($stmt instanceof PhpParser\Node\Stmt\Nop) &&
                 !($stmt instanceof PhpParser\Node\Stmt\InlineHTML)
             ) {
@@ -216,6 +219,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
                     $comments = [];
                 }
+
                 if (isset($comments['specials']['psalm-suppress'])) {
                     $suppressed = array_filter(
                         array_map(
@@ -236,6 +240,14 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         /** @psalm-suppress MixedTypeCoercion */
                         $this->addSuppressedIssues($new_issues);
                     }
+                }
+
+                if (isset($comments['specials']['psalm-ignore-variable-method'])) {
+                    $context->ignore_variable_method = $ignore_variable_method = true;
+                }
+
+                if (isset($comments['specials']['psalm-ignore-variable-property'])) {
+                    $context->ignore_variable_property = $ignore_variable_property = true;
                 }
             }
 
@@ -715,6 +727,16 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             if ($new_issues) {
                 /** @psalm-suppress MixedTypeCoercion */
                 $this->removeSuppressedIssues($new_issues);
+            }
+
+            if ($ignore_variable_property) {
+                $context->ignore_variable_property = false;
+                $ignore_variable_property = false;
+            }
+
+            if ($ignore_variable_method) {
+                $context->ignore_variable_method = false;
+                $ignore_variable_method = false;
             }
         }
 
@@ -1692,7 +1714,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
     }
 
     /**
-     * @return array<string, CodeLocation>
+     * @return array<string, array<array-key, CodeLocation>>
      */
     public function getUncaughtThrows(Context $context)
     {
@@ -1700,14 +1722,19 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
         if ($context->collect_exceptions) {
             if ($context->possibly_thrown_exceptions) {
+                $config = $this->codebase->config;
                 $ignored_exceptions = array_change_key_case(
-                    $this->codebase->config->ignored_exceptions
+                    $context->is_global ?
+                        $config->ignored_exceptions_in_global_scope :
+                        $config->ignored_exceptions
                 );
                 $ignored_exceptions_and_descendants = array_change_key_case(
-                    $this->codebase->config->ignored_exceptions_and_descendants
+                    $context->is_global ?
+                        $config->ignored_exceptions_and_descendants_in_global_scope :
+                        $config->ignored_exceptions_and_descendants
                 );
 
-                foreach ($context->possibly_thrown_exceptions as $possibly_thrown_exception => $codelocation) {
+                foreach ($context->possibly_thrown_exceptions as $possibly_thrown_exception => $codelocations) {
                     if (isset($ignored_exceptions[strtolower($possibly_thrown_exception)])) {
                         continue;
                     }
@@ -1724,7 +1751,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     }
 
                     if (!$is_expected) {
-                        $uncaught_throws[$possibly_thrown_exception] = $codelocation;
+                        $uncaught_throws[$possibly_thrown_exception] = $codelocations;
                     }
                 }
             }

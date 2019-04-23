@@ -47,7 +47,7 @@ class TryAnalyzer
         $existing_thrown_exceptions = $context->possibly_thrown_exceptions;
 
         /**
-         * @var array<string, CodeLocation>
+         * @var array<string, array<array-key, CodeLocation>>
          */
         $context->possibly_thrown_exceptions = [];
 
@@ -399,7 +399,11 @@ class TryAnalyzer
             }
         }
 
-        $context->possibly_thrown_exceptions += $existing_thrown_exceptions;
+        foreach ($existing_thrown_exceptions as $possibly_thrown_exception => $codelocations) {
+            foreach ($codelocations as $hash => $codelocation) {
+                $context->possibly_thrown_exceptions[$possibly_thrown_exception][$hash] = $codelocation;
+            }
+        }
 
         return null;
     }

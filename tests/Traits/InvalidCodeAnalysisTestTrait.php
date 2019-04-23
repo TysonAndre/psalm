@@ -57,10 +57,12 @@ trait InvalidCodeAnalysisTestTrait
 
         $this->project_analyzer->setPhpVersion($php_version);
 
+        $error_message = preg_replace('/ src[\/\\\\]somefile\.php/', ' src/somefile.php', $error_message);
+
         $this->expectException(\Psalm\Exception\CodeException::class);
         $this->expectExceptionMessageRegExp('/\b' . preg_quote($error_message, '/') . '\b/');
 
-        $file_path = self::$src_dir_path . 'somefile.php';
+        $file_path = 'src/somefile.php';
 
         $this->addFile($file_path, $code);
         $this->analyzeFile($file_path, new Context());

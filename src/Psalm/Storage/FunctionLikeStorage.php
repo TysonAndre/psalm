@@ -15,6 +15,11 @@ class FunctionLikeStorage
     public $location;
 
     /**
+     * @var CodeLocation|null
+     */
+    public $stmt_location;
+
+    /**
      * @var array<int, FunctionLikeParameter>
      */
     public $params = [];
@@ -108,11 +113,6 @@ class FunctionLikeStorage
      * @var bool
      */
     public $has_template_return_type;
-
-    /**
-     * @var array<string, array<int, CodeLocation>>|null
-     */
-    public $referencing_locations;
 
     /**
      * @var array<int, Assertion>
