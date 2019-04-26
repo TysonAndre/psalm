@@ -2257,16 +2257,32 @@ class CallAnalyzer
 
             if ($scalar_type_match_found) {
                 if ($cased_method_id !== 'echo') {
-                    if (IssueBuffer::accepts(
-                        new InvalidScalarArgument(
-                            'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                $param_type->getId() . ', ' . $input_type->getId() . ' provided',
-                            $code_location,
-                            $cased_method_id
-                        ),
-                        $statements_analyzer->getSuppressedIssues()
-                    )) {
-                        // fall through
+
+                    // TODO: Better check for scalar being part of a compound type that matched.
+                    if (stripos((string)$param_type, 'array') !== false) {
+                        if (IssueBuffer::accepts(
+                            new InvalidScalarInComplexArgument(
+                                'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
+                                    $param_type->getId() . ', ' . $input_type->getId() . ' provided',
+                                $code_location,
+                                $cased_method_id
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new InvalidScalarArgument(
+                                'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
+                                    $param_type->getId() . ', ' . $input_type->getId() . ' provided',
+                                $code_location,
+                                $cased_method_id
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
                     }
                 }
             } elseif ($types_can_be_identical) {
