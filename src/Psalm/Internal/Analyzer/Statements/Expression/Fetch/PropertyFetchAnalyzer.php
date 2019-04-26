@@ -361,7 +361,7 @@ class PropertyFetchAnalyzer
             // but we don't want to throw an error
             // Hack has a similar issue: https://github.com/facebook/hhvm/issues/5164
             if ($lhs_type_part instanceof TObject
-                || in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement'], true)
+                || in_array(strtolower($lhs_type_part->value), ['stdclass', 'simplexmlelement', 'savant3'], true)
             ) {
                 $stmt->inferredType = Type::getMixed();
 
