@@ -2070,6 +2070,34 @@ class TemplateTest extends TestCase
                          }
                     }'
             ],
+            'allowTemplateParamsToCoerceToMinimumTypes' => [
+                '<?php
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     */
+                    class ArrayCollection
+                    {
+                        /**
+                         * @var array<TKey,T>
+                         */
+                        private $elements;
+
+                        /**
+                         * @param array<TKey,T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+                    }
+
+                    /** @psalm-suppress MixedArgument */
+                    $c = new ArrayCollection($_GET["a"]);',
+                [
+                    '$c' => 'ArrayCollection<array-key, mixed>',
+                ],
+            ],
         ];
     }
 
@@ -2157,7 +2185,7 @@ class TemplateTest extends TestCase
 
                     /** @param array<stdClass> $p */
                     function takesArrayOfStdClass(array $p): void {}',
-                'error_message' => 'MixedTypeCoercion',
+                'error_message' => 'MixedArgumentTypeCoercion',
             ],
             'restrictTemplateInputWithClassString' => [
                 '<?php
@@ -2337,7 +2365,7 @@ class TemplateTest extends TestCase
                     function bar(Traversable $t) : void {
                         foo(get_class($t));
                     }',
-                'error_message' => 'MixedTypeCoercion',
+                'error_message' => 'MixedArgumentTypeCoercion',
             ],
             'bindFirstTemplatedClosureParameter' => [
                 '<?php
@@ -2372,7 +2400,7 @@ class TemplateTest extends TestCase
                     class AChild extends A {}
 
                     apply(function(AChild $_i) : void {}, new A());',
-                'error_message' => 'TypeCoercion',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
 
             'callableDoesNotReturnItself' => [
@@ -2417,7 +2445,7 @@ class TemplateTest extends TestCase
                       function(A $_a) : void {},
                       new A()
                     );',
-                'error_message' => 'TypeCoercion',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
             'multipleArgConstraintWithMoreRestrictiveSecondArg' => [
                 '<?php
@@ -2440,7 +2468,7 @@ class TemplateTest extends TestCase
                       function(AChild $_a) : void {},
                       new A()
                     );',
-                'error_message' => 'TypeCoercion',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
             'multipleArgConstraintWithLessRestrictiveThirdArg' => [
                 '<?php
@@ -2463,7 +2491,7 @@ class TemplateTest extends TestCase
                       function(AChild $_a) : void {},
                       new A()
                     );',
-                'error_message' => 'TypeCoercion',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
             'possiblyInvalidArgumentWithUnionFirstArg' => [
                 '<?php

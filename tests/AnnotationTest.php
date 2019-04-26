@@ -1349,7 +1349,7 @@ class AnnotationTest extends TestCase
                     function bar(array $arr) {
                         foo($arr);
                     }',
-                'error_message' => 'TypeCoercion',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
             'automaticInheritDoc' => [
                 '<?php

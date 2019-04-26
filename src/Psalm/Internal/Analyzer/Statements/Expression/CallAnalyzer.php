@@ -19,7 +19,7 @@ use Psalm\Issue\InvalidPassByReference;
 use Psalm\Issue\InvalidScalarArgument;
 use Psalm\Issue\InvalidScalarInComplexArgument;
 use Psalm\Issue\MixedArgument;
-use Psalm\Issue\MixedTypeCoercion;
+use Psalm\Issue\MixedArgumentTypeCoercion;
 use Psalm\Issue\NoValue;
 use Psalm\Issue\NullArgument;
 use Psalm\Issue\PossiblyFalseArgument;
@@ -27,7 +27,7 @@ use Psalm\Issue\PossiblyInvalidArgument;
 use Psalm\Issue\PossiblyNullArgument;
 use Psalm\Issue\TooFewArguments;
 use Psalm\Issue\TooManyArguments;
-use Psalm\Issue\TypeCoercion;
+use Psalm\Issue\ArgumentTypeCoercion;
 use Psalm\Issue\UndefinedFunction;
 use Psalm\IssueBuffer;
 use Psalm\Storage\ClassLikeStorage;
@@ -1217,7 +1217,8 @@ class CallAnalyzer
                         new MixedArgument(
                             'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
                                 . ' cannot be mixed, expecting ' . $param_type,
-                            new CodeLocation($statements_analyzer->getSource(), $arg->value)
+                            new CodeLocation($statements_analyzer->getSource(), $arg->value),
+                            $cased_method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -1485,7 +1486,8 @@ class CallAnalyzer
                         new MixedArgument(
                             'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
                                 . ' cannot be mixed, expecting array',
-                            new CodeLocation($statements_analyzer->getSource(), $arg->value)
+                            new CodeLocation($statements_analyzer->getSource(), $arg->value),
+                            $cased_method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -1511,7 +1513,8 @@ class CallAnalyzer
                                 new InvalidArgument(
                                     'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
                                         . ' expects array, ' . $atomic_type->getId() . ' provided',
-                                    new CodeLocation($statements_analyzer->getSource(), $arg->value)
+                                    new CodeLocation($statements_analyzer->getSource(), $arg->value),
+                                    $cased_method_id
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
@@ -1964,10 +1967,11 @@ class CallAnalyzer
             if ($type_coerced) {
                 if ($type_coerced_from_mixed) {
                     if (IssueBuffer::accepts(
-                        new MixedTypeCoercion(
+                        new MixedArgumentTypeCoercion(
                             'First parameter of closure passed to function ' . $method_id . ' expects ' .
                                 $closure_param_type->getId() . ', parent type ' . $input_type->getId() . ' provided',
-                            new CodeLocation($statements_analyzer->getSource(), $closure_arg)
+                            new CodeLocation($statements_analyzer->getSource(), $closure_arg),
+                            $method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -1975,10 +1979,11 @@ class CallAnalyzer
                     }
                 } else {
                     if (IssueBuffer::accepts(
-                        new TypeCoercion(
+                        new ArgumentTypeCoercion(
                             'First parameter of closure passed to function ' . $method_id . ' expects ' .
                                 $closure_param_type->getId() . ', parent type ' . $input_type->getId() . ' provided',
-                            new CodeLocation($statements_analyzer->getSource(), $closure_arg)
+                            new CodeLocation($statements_analyzer->getSource(), $closure_arg),
+                            $method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -1999,7 +2004,8 @@ class CallAnalyzer
                         new InvalidScalarArgument(
                             'First parameter of closure passed to function ' . $method_id . ' expects ' .
                                 $closure_param_type->getId() . ', ' . $input_type->getId() . ' provided',
-                            new CodeLocation($statements_analyzer->getSource(), $closure_arg)
+                            new CodeLocation($statements_analyzer->getSource(), $closure_arg),
+                            $method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -2011,7 +2017,8 @@ class CallAnalyzer
                             'First parameter of closure passed to function ' . $method_id . ' expects '
                                 . $closure_param_type->getId() . ', possibly different type '
                                 . $input_type->getId() . ' provided',
-                            new CodeLocation($statements_analyzer->getSource(), $closure_arg)
+                            new CodeLocation($statements_analyzer->getSource(), $closure_arg),
+                            $method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -2021,7 +2028,8 @@ class CallAnalyzer
                     new InvalidArgument(
                         'First parameter of closure passed to function ' . $method_id . ' expects ' .
                             $closure_param_type->getId() . ', ' . $input_type->getId() . ' provided',
-                        new CodeLocation($statements_analyzer->getSource(), $closure_arg)
+                        new CodeLocation($statements_analyzer->getSource(), $closure_arg),
+                        $method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2099,7 +2107,8 @@ class CallAnalyzer
                 new MixedArgument(
                     'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be mixed, expecting ' .
                         $param_type,
-                    $code_location
+                    $code_location,
+                    $cased_method_id
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
@@ -2158,7 +2167,8 @@ class CallAnalyzer
             foreach ($input_type->getTypes() as $input_type_part) {
                 if ($input_type_part instanceof Type\Atomic\ObjectLike) {
                     $potential_method_id = TypeAnalyzer::getCallableMethodIdFromObjectLike(
-                        $input_type_part
+                        $input_type_part,
+                        $codebase
                     );
 
                     if ($potential_method_id) {
@@ -2198,10 +2208,11 @@ class CallAnalyzer
         if ($type_coerced) {
             if ($type_coerced_from_mixed) {
                 if (IssueBuffer::accepts(
-                    new MixedTypeCoercion(
+                    new MixedArgumentTypeCoercion(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' . $param_type->getId() .
                             ', parent type ' . $input_type->getId() . ' provided',
-                        $code_location
+                        $code_location,
+                        $cased_method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2209,10 +2220,11 @@ class CallAnalyzer
                 }
             } else {
                 if (IssueBuffer::accepts(
-                    new TypeCoercion(
+                    new ArgumentTypeCoercion(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' . $param_type->getId() .
                             ', parent type ' . $input_type->getId() . ' provided',
-                        $code_location
+                        $code_location,
+                        $cased_method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2245,29 +2257,16 @@ class CallAnalyzer
 
             if ($scalar_type_match_found) {
                 if ($cased_method_id !== 'echo') {
-                    // TODO: Better check for scalar being part of a compound type that matched.
-                    if (stripos((string)$param_type, 'array') !== false) {
-                        if (IssueBuffer::accepts(
-                            new InvalidScalarInComplexArgument(
-                                'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                    $param_type->getId() . ', ' . $input_type->getId() . ' provided',
-                                $code_location
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
-                        }
-                    } else {
-                        if (IssueBuffer::accepts(
-                            new InvalidScalarArgument(
-                                'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
-                                    $param_type->getId() . ', ' . $input_type->getId() . ' provided',
-                                $code_location
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
-                        }
+                    if (IssueBuffer::accepts(
+                        new InvalidScalarArgument(
+                            'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
+                                $param_type->getId() . ', ' . $input_type->getId() . ' provided',
+                            $code_location,
+                            $cased_method_id
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
                     }
                 }
             } elseif ($types_can_be_identical) {
@@ -2275,7 +2274,8 @@ class CallAnalyzer
                     new PossiblyInvalidArgument(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' . $param_type->getId() .
                             ', possibly different type ' . $input_type->getId() . ' provided',
-                        $code_location
+                        $code_location,
+                        $cased_method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2286,7 +2286,8 @@ class CallAnalyzer
                     new InvalidArgument(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' . $param_type->getId() .
                             ', ' . $input_type->getId() . ' provided',
-                        $code_location
+                        $code_location,
+                        $cased_method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2425,7 +2426,8 @@ class CallAnalyzer
                     new NullArgument(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be null, ' .
                             'null value provided to parameter with type ' . $param_type->getId(),
-                        $code_location
+                        $code_location,
+                        $cased_method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2440,7 +2442,8 @@ class CallAnalyzer
                     new PossiblyNullArgument(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be null, possibly ' .
                             'null value provided',
-                        $code_location
+                        $code_location,
+                        $cased_method_id
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -2458,7 +2461,8 @@ class CallAnalyzer
                 new PossiblyFalseArgument(
                     'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be false, possibly ' .
                         'false value provided',
-                    $code_location
+                    $code_location,
+                    $cased_method_id
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {

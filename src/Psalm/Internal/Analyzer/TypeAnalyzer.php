@@ -1156,7 +1156,7 @@ class TypeAnalyzer
                     return false;
                 }
             } elseif ($input_type_part instanceof ObjectLike) {
-                $method_id = self::getCallableMethodIdFromObjectLike($input_type_part);
+                $method_id = self::getCallableMethodIdFromObjectLike($input_type_part, $codebase);
 
                 if ($method_id === 'not-callable') {
                     return false;
@@ -1357,7 +1357,7 @@ class TypeAnalyzer
                 }
             }
         } elseif ($input_type_part instanceof ObjectLike) {
-            if ($method_id = self::getCallableMethodIdFromObjectLike($input_type_part)) {
+            if ($method_id = self::getCallableMethodIdFromObjectLike($input_type_part, $codebase)) {
                 try {
                     $method_storage = $codebase->methods->getStorage($method_id);
 
@@ -1376,7 +1376,7 @@ class TypeAnalyzer
     }
 
     /** @return ?string */
-    public static function getCallableMethodIdFromObjectLike(ObjectLike $input_type_part)
+    public static function getCallableMethodIdFromObjectLike(ObjectLike $input_type_part, Codebase $codebase)
     {
         if (!isset($input_type_part->properties[0])
             || !isset($input_type_part->properties[1])
@@ -1384,20 +1384,27 @@ class TypeAnalyzer
             return 'not-callable';
         }
 
-        if ($input_type_part->properties[1]->hasMixed() || $input_type_part->properties[1]->hasScalar()) {
-            return null;
-        }
+        $lhs = $input_type_part->properties[0];
+        $rhs = $input_type_part->properties[1];
 
-        if (!$input_type_part->properties[1]->hasString()) {
-            return 'not-callable';
-        }
+        $rhs_low_info = $rhs->hasMixed() || $rhs->hasScalar();
 
-        if (!$input_type_part->properties[1]->isSingleStringLiteral()) {
+        if ($rhs_low_info || !$rhs->isSingleStringLiteral()) {
+            if (!$rhs_low_info && !$rhs->hasString()) {
+                return 'not-callable';
+            }
+
+            foreach ($lhs->getTypes() as $lhs_atomic_type) {
+                if ($lhs_atomic_type instanceof TNamedObject) {
+                    $codebase->analyzer->addMixedMemberName(strtolower($lhs_atomic_type->value) . '::');
+                }
+            }
+
             return null;
         }
 
         $lhs = $input_type_part->properties[0];
-        $method_name = $input_type_part->properties[1]->getSingleStringLiteral()->value;
+        $method_name = $rhs->getSingleStringLiteral()->value;
 
         $class_name = null;
 
@@ -1412,6 +1419,8 @@ class TypeAnalyzer
         }
 
         if (!$class_name) {
+            $codebase->analyzer->addMixedMemberName(strtolower($method_name));
+
             return null;
         }
 

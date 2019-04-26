@@ -1771,6 +1771,83 @@ class FileManipulationTest extends TestCase
                 ['PossiblyUnusedMethod'],
                 true,
             ],
+            'dontRemovePossiblyUnusedMethodWithVariableCallableCall' => [
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                    }
+
+                    function takeCallable(callable $c) : void {}
+
+                    function foo(A $a, string $var) {
+                        takeCallable([$a, $var]);
+                    }',
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                    }
+
+                    function takeCallable(callable $c) : void {}
+
+                    function foo(A $a, string $var) {
+                        takeCallable([$a, $var]);
+                    }',
+                '7.1',
+                ['PossiblyUnusedMethod'],
+                true,
+            ],
+            'dontRemovePossiblyUnusedMethodWithCallUserFuncCall' => [
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                    }
+
+                    function foo(A $a, string $var) {
+                        call_user_func([$a, $var]);
+                    }',
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                    }
+
+                    function foo(A $a, string $var) {
+                        call_user_func([$a, $var]);
+                    }',
+                '7.1',
+                ['PossiblyUnusedMethod'],
+                true,
+            ],
+            'dontRemovePossiblyUnusedMethodWithVariableCallableLhsCall' => [
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                        public function bar() : void {}
+                    }
+
+                    function takeCallable(callable $c) : void {}
+
+                    function foo($a) {
+                        takeCallable([$a, "foo"]);
+                    }
+
+                    foo(new A);',
+                '<?php
+                    class A {
+                        public function foo() : void {}
+
+                    }
+
+                    function takeCallable(callable $c) : void {}
+
+                    function foo($a) {
+                        takeCallable([$a, "foo"]);
+                    }
+
+                    foo(new A);',
+                '7.1',
+                ['PossiblyUnusedMethod'],
+                true,
+            ],
             'dontRemovePossiblyUnusedMethodWithVariableCallOnParent' => [
                 '<?php
                     class A { }

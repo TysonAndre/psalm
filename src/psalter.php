@@ -11,14 +11,50 @@ ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 ini_set('memory_limit', '4096M');
 
+gc_collect_cycles();
+gc_disable();
+
+$args = array_slice($argv, 1);
+
+$valid_short_options = ['f:', 'm', 'h', 'r:'];
+$valid_long_options = [
+    'help', 'debug', 'debug-by-line', 'config:', 'file:', 'root:',
+    'plugin:', 'issues:', 'php-version:', 'dry-run', 'safe-types',
+    'find-unused-code', 'threads:', 'codeowner:',
+];
+
 // get options from command line
-$options = getopt(
-    'f:mhr:',
-    [
-        'help', 'debug', 'debug-by-line', 'config:', 'file:', 'root:',
-        'plugin:', 'issues:', 'php-version:', 'dry-run', 'safe-types',
-        'find-unused-code', 'threads:',
-    ]
+$options = getopt(implode('', $valid_short_options), $valid_long_options);
+
+array_map(
+    /**
+     * @param string $arg
+     *
+     * @return void
+     */
+    function ($arg) use ($valid_long_options, $valid_short_options) {
+        if (substr($arg, 0, 2) === '--' && $arg !== '--') {
+            $arg_name = preg_replace('/=.*$/', '', substr($arg, 2));
+
+            if (!in_array($arg_name, $valid_long_options)
+                && !in_array($arg_name . ':', $valid_long_options)
+                && !in_array($arg_name . '::', $valid_long_options)
+            ) {
+                echo 'Unrecognised argument "--' . $arg_name . '"' . PHP_EOL
+                    . 'Type --help to see a list of supported arguments'. PHP_EOL;
+                exit(1);
+            }
+        } elseif (substr($arg, 0, 2) === '-' && $arg !== '-' && $arg !== '--') {
+            $arg_name = preg_replace('/=.*$/', '', substr($arg, 1));
+
+            if (!in_array($arg_name, $valid_short_options) && !in_array($arg_name . ':', $valid_short_options)) {
+                echo 'Unrecognised argument "-' . $arg_name . '"' . PHP_EOL
+                    . 'Type --help to see a list of supported arguments'. PHP_EOL;
+                exit(1);
+            }
+        }
+    },
+    $args
 );
 
 if (array_key_exists('help', $options)) {
@@ -73,11 +109,14 @@ Options:
     --issues=IssueType1,IssueType2
         If any issues can be fixed automatically, Psalm will update the codebase
 
-    --find-dead-code
+    --find-unused-code
         Include unused code as a candidate for removal
 
     --threads=INT
         If greater than one, Psalm will run analysis on multiple threads, speeding things up.
+
+    --codeowner=[codeowner]
+        You can specify a GitHub code ownership group, and only that owner's code will be updated.
 HELP;
 
     exit;
@@ -113,10 +152,6 @@ $first_autoloader = requireAutoloaders($current_dir, isset($options['r']), $vend
 
 $paths_to_check = getPathsToCheck(isset($options['f']) ? $options['f'] : null);
 
-if ($paths_to_check && count($paths_to_check) > 1) {
-    die('Psalter can currently only be run on one path at a time' . PHP_EOL);
-}
-
 $path_to_config = isset($options['c']) && is_string($options['c']) ? realpath($options['c']) : null;
 
 if ($path_to_config === false) {
@@ -135,14 +170,16 @@ $config->setComposerClassLoader($first_autoloader);
 
 $threads = isset($options['threads']) ? (int)$options['threads'] : 1;
 
+$providers = new Psalm\Internal\Provider\Providers(
+    new Psalm\Internal\Provider\FileProvider(),
+    new Psalm\Internal\Provider\ParserCacheProvider($config),
+    new Psalm\Internal\Provider\FileStorageCacheProvider($config),
+    new Psalm\Internal\Provider\ClassLikeStorageCacheProvider($config)
+);
+
 $project_analyzer = new ProjectAnalyzer(
     $config,
-    new Psalm\Internal\Provider\Providers(
-        new Psalm\Internal\Provider\FileProvider(),
-        new Psalm\Internal\Provider\ParserCacheProvider($config),
-        new Psalm\Internal\Provider\FileStorageCacheProvider($config),
-        new Psalm\Internal\Provider\ClassLikeStorageCacheProvider($config)
-    ),
+    $providers,
     !array_key_exists('m', $options),
     false,
     ProjectAnalyzer::TYPE_CONSOLE,
@@ -180,6 +217,91 @@ if (isset($options['php-version'])) {
     $project_analyzer->setPhpVersion($options['php-version']);
 }
 
+if (isset($options['codeowner'])) {
+    if (file_exists('CODEOWNERS')) {
+        $codeowners_file_path = realpath('CODEOWNERS');
+    } elseif (file_exists('.github/CODEOWNERS')) {
+        $codeowners_file_path = realpath('.github/CODEOWNERS');
+    } elseif (file_exists('docs/CODEOWNERS')) {
+        $codeowners_file_path = realpath('docs/CODEOWNERS');
+    } else {
+        die('Cannot use --codeowner without a CODEOWNERS file' . PHP_EOL);
+    }
+
+    $codeowners_file = file_get_contents($codeowners_file_path);
+
+    $codeowner_lines = array_map(
+        function (string $line) : array {
+            $line_parts = preg_split('/\s+/', $line);
+
+            $file_selector = substr(array_shift($line_parts), 1);
+            return [$file_selector, $line_parts];
+        },
+        array_filter(
+            explode("\n", $codeowners_file),
+            function (string $line) : bool {
+                $line = trim($line);
+
+                // currently we don’t match wildcard files or files that could appear anywhere
+                // in the repo
+                return $line && $line[0] === '/' && strpos($line, '*') === false;
+            }
+        )
+    );
+
+    $codeowner_files = [];
+
+    foreach ($codeowner_lines as list($path, $owners)) {
+        if (!file_exists($path)) {
+            continue;
+        }
+
+        foreach ($owners as $i => $owner) {
+            $owners[$i] = strtolower($owner);
+        }
+
+        if (!is_dir($path)) {
+            if (pathinfo($path, PATHINFO_EXTENSION) === 'php') {
+                $codeowner_files[$path] = $owners;
+            }
+        } else {
+            foreach ($providers->file_provider->getFilesInDir($path, ['php']) as $php_file_path) {
+                $codeowner_files[$php_file_path] = $owners;
+            }
+        }
+    }
+
+    if (!$codeowner_files) {
+        die('Could not find any available entries in CODEOWNERS' . PHP_EOL);
+    }
+
+    $desired_codeowners = is_array($options['codeowner']) ? $options['codeowner'] : [$options['codeowner']];
+
+    /** @psalm-suppress MixedAssignment */
+    foreach ($desired_codeowners as $desired_codeowner) {
+        if (!is_string($desired_codeowner)) {
+            die('Invalid --codeowner ' . (string)$desired_codeowner . PHP_EOL);
+        }
+
+        if ($desired_codeowner[0] !== '@') {
+            die('--codeowner option must start with @' . PHP_EOL);
+        }
+
+        $matched_file = false;
+
+        foreach ($codeowner_files as $file_path => $owners) {
+            if (in_array(strtolower($desired_codeowner), $owners)) {
+                $paths_to_check[] = $file_path;
+                $matched_file = true;
+            }
+        }
+
+        if (!$matched_file) {
+            die('User/group ' . $desired_codeowner . ' does not own any PHP files' . PHP_EOL);
+        }
+    }
+}
+
 $plugins = [];
 
 if (isset($options['plugin'])) {
@@ -213,7 +335,23 @@ $project_analyzer->setIssuesToFix($keyed_issues);
 
 $start_time = microtime(true);
 
-if ($paths_to_check === null) {
+if ($paths_to_check === null || count($paths_to_check) > 1 || $find_unused_code) {
+    if ($paths_to_check) {
+        $files_to_update = [];
+
+        foreach ($paths_to_check as $path_to_check) {
+            if (!is_dir($path_to_check)) {
+                $files_to_update[] = (string) realpath($path_to_check);
+            } else {
+                foreach ($providers->file_provider->getFilesInDir($path_to_check, ['php']) as $php_file_path) {
+                    $files_to_update[] = $php_file_path;
+                }
+            }
+        }
+
+        $project_analyzer->getCodebase()->analyzer->setFilesToUpdate($files_to_update);
+    }
+
     $project_analyzer->check($current_dir);
 } elseif ($paths_to_check) {
     foreach ($paths_to_check as $path_to_check) {

@@ -900,7 +900,7 @@ class ReturnTypeTest extends TestCase
                     function foo(array $a) : array {
                         return $a;
                     }',
-                'error_message' => 'MixedTypeCoercion',
+                'error_message' => 'MixedReturnTypeCoercion',
             ],
             'detectMagicMethodBadReturnType' => [
                 '<?php
