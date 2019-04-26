@@ -41,6 +41,10 @@ class PluginRegistrationSocket implements RegistrationInterface
             $this->config->before_analyze_files[$handler] = $handler;
         }
 
+        if (is_subclass_of($handler, Hook\BeforeAnalyzeFileInterface::class)) {
+            $this->config->before_analyze_file[$handler] = $handler;
+        }
+
         if (is_subclass_of($handler, Hook\AfterMethodCallAnalysisInterface::class)) {
             $this->config->after_method_checks[$handler] = $handler;
         }

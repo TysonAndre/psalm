@@ -113,8 +113,6 @@ class APIFilterPlugin implements
         ClassLikeStorage $storage,
         ProjectAnalyzer $analyzer
     ) {
-        $name = $storage->name;
-        // var_export($storage);
         if (!\in_array('baseclass', $storage->parent_classes)) {
             return;
         }

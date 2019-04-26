@@ -175,6 +175,7 @@ class Analyzer
 
         $file_name = $this->config->shortenFileName($file_path);
 
+        // TODO: Could hook into this based on directory, regex, etc
         if (isset($filetype_analyzers[$extension])) {
             $file_analyzer = new $filetype_analyzers[$extension]($project_analyzer, $file_path, $file_name);
         } else {
