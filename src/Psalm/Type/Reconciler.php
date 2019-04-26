@@ -2690,7 +2690,7 @@ class Reconciler
                             || $existing_key_type_part instanceof TTemplateParam
                             || $existing_key_type_part instanceof TObject
                             || ($existing_key_type_part instanceof TNamedObject
-                                && strtolower($existing_key_type_part->value) === 'stdclass')
+                                && \in_array(strtolower($existing_key_type_part->value), ['stdclass', 'savant3'], true))
                         ) {
                             $class_property_type = Type::getMixed();
                         } elseif ($existing_key_type_part instanceof TNamedObject) {
