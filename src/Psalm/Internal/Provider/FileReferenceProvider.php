@@ -94,6 +94,11 @@ class FileReferenceProvider
     private static $method_references_to_missing_class_members = [];
 
     /**
+     * @var array<string, array<string, bool>>
+     */
+    private static $references_to_mixed_member_names = [];
+
+    /**
      * @var array<string, array<int, CodeLocation>>
      */
     private static $class_method_locations = [];
@@ -363,6 +368,14 @@ class FileReferenceProvider
     }
 
     /**
+     * @return array<string, array<string,bool>>
+     */
+    public function getAllReferencesToMixedMemberNames()
+    {
+        return self::$references_to_mixed_member_names;
+    }
+
+    /**
      * @param bool $force_reload
      * @return bool
      * @psalm-suppress MixedAssignment
@@ -380,6 +393,14 @@ class FileReferenceProvider
             }
 
             self::$file_references = $file_references;
+
+            $file_class_references = $this->cache->getCachedFileClassReferences();
+
+            if ($file_class_references === null) {
+                return false;
+            }
+
+            self::$file_references_to_classes = $file_class_references;
 
             $method_references_to_class_members = $this->cache->getCachedMethodMemberReferences();
 
@@ -412,6 +433,14 @@ class FileReferenceProvider
             }
 
             self::$file_references_to_missing_class_members = $file_references_to_missing_class_members;
+
+            $references_to_mixed_member_names = $this->cache->getCachedMixedMemberNameReferences();
+
+            if ($references_to_mixed_member_names === null) {
+                return false;
+            }
+
+            self::$references_to_mixed_member_names = $references_to_mixed_member_names;
 
             $analyzed_methods = $this->cache->getAnalyzedMethodCache();
 
@@ -475,10 +504,12 @@ class FileReferenceProvider
 
         if ($this->cache) {
             $this->cache->setCachedFileReferences(self::$file_references);
+            $this->cache->setCachedFileClassReferences(self::$file_references_to_classes);
             $this->cache->setCachedMethodMemberReferences(self::$method_references_to_class_members);
             $this->cache->setCachedFileMemberReferences(self::$file_references_to_class_members);
             $this->cache->setCachedMethodMissingMemberReferences(self::$method_references_to_missing_class_members);
             $this->cache->setCachedFileMissingMemberReferences(self::$file_references_to_missing_class_members);
+            $this->cache->setCachedMixedMemberNameReferences(self::$references_to_mixed_member_names);
             $this->cache->setCachedIssues(self::$issues);
             $this->cache->setFileMapCache(self::$file_maps);
             $this->cache->setTypeCoverage(self::$mixed_counts);
@@ -561,6 +592,17 @@ class FileReferenceProvider
     public function isClassReferenced(string $fq_class_name_lc) : bool
     {
         return isset(self::$file_references_to_classes[$fq_class_name_lc]);
+    }
+
+    /**
+     * @param array<string, array<string,bool>> $references
+     * @psalm-suppress MixedTypeCoercion
+     *
+     * @return void
+     */
+    public function setFileReferencesToClasses(array $references)
+    {
+        self::$file_references_to_classes = $references;
     }
 
     /**
@@ -681,6 +723,17 @@ class FileReferenceProvider
     public function setFileReferencesToMissingClassMembers(array $references)
     {
         self::$file_references_to_missing_class_members = $references;
+    }
+
+    /**
+     * @param array<string, array<string,bool>> $references
+     * @psalm-suppress MixedTypeCoercion
+     *
+     * @return void
+     */
+    public function setReferencesToMixedMemberNames(array $references)
+    {
+        self::$references_to_mixed_member_names = $references;
     }
 
     /**
@@ -853,6 +906,7 @@ class FileReferenceProvider
         self::$method_references_to_class_members = [];
         self::$file_references_to_missing_class_members = [];
         self::$method_references_to_missing_class_members = [];
+        self::$references_to_mixed_member_names = [];
         self::$class_method_locations = [];
         self::$class_property_locations = [];
         self::$analyzed_methods = [];
