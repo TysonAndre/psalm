@@ -2,16 +2,13 @@
 namespace Psalm;
 
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
-use Psalm\Issue\ClassIssue;
 use Psalm\Issue\CodeIssue;
-use Psalm\Issue\FunctionIssue;
-use Psalm\Issue\MethodIssue;
-use Psalm\Issue\ArgumentIssue;
-use Psalm\Issue\PropertyIssue;
+use Psalm\Output\Checkstyle;
 use Psalm\Output\Compact;
 use Psalm\Output\Console;
 use Psalm\Output\Emacs;
 use Psalm\Output\Json;
+use Psalm\Output\JsonSummary;
 use Psalm\Output\Pylint;
 use Psalm\Output\Text;
 use Psalm\Output\Xml;
@@ -74,42 +71,14 @@ class IssueBuffer
         $fqcn_parts = explode('\\', get_class($e));
         $issue_type = array_pop($fqcn_parts);
 
-        if (in_array($issue_type, $suppressed_issues, true)) {
-            return true;
-        }
-
         if (!$config->reportIssueInFile($issue_type, $e->getFilePath())) {
             return true;
         }
 
-        if ($e instanceof ClassIssue
-            && $config->getReportingLevelForClass($issue_type, $e->fq_classlike_name) === Config::REPORT_SUPPRESS
-        ) {
+        $reporting_level = $config->getReportingLevelForIssue($e, $suppressed_issues);
+
+        if ($reporting_level === Config::REPORT_SUPPRESS) {
             return true;
-        }
-
-        if ($e instanceof MethodIssue
-            && $config->getReportingLevelForMethod($issue_type, $e->method_id) === Config::REPORT_SUPPRESS
-        ) {
-            return true;
-        }
-
-        if ($e instanceof PropertyIssue
-            && $config->getReportingLevelForProperty($issue_type, $e->property_id) === Config::REPORT_SUPPRESS
-        ) {
-            return true;
-        }
-
-        $parent_issue_type = self::getParentIssueType($issue_type);
-
-        if ($parent_issue_type) {
-            if (in_array($parent_issue_type, $suppressed_issues, true)) {
-                return true;
-            }
-
-            if (!$config->reportIssueInFile($parent_issue_type, $e->getFilePath())) {
-                return true;
-            }
         }
 
         if ($e->getLocation()->getLineNumber() === -1) {
@@ -123,63 +92,6 @@ class IssueBuffer
         }
 
         return false;
-    }
-
-    /**
-     * @param  string $issue_type
-     * @return string|null
-     */
-    private static function getParentIssueType($issue_type)
-    {
-        if (strpos($issue_type, 'Possibly') === 0) {
-            $stripped_issue_type = preg_replace('/^Possibly(False|Null)?/', '', $issue_type);
-
-            if (strpos($stripped_issue_type, 'Invalid') === false && strpos($stripped_issue_type, 'Un') !== 0) {
-                $stripped_issue_type = 'Invalid' . $stripped_issue_type;
-            }
-
-            return $stripped_issue_type;
-        }
-
-        if (preg_match('/^(False|Null)[A-Z]/', $issue_type)) {
-            return preg_replace('/^(False|Null)/', 'Invalid', $issue_type);
-        }
-
-        if ($issue_type === 'UndefinedInterfaceMethod') {
-            return 'UndefinedMethod';
-        }
-
-        if ($issue_type === 'UninitializedProperty') {
-            return 'PropertyNotSetInConstructor';
-        }
-
-        if ($issue_type === 'InvalidDocblockParamName') {
-            return 'InvalidDocblock';
-        }
-
-        if ($issue_type === 'UnusedClosureParam') {
-            return 'UnusedParam';
-        }
-
-        if ($issue_type === 'TraitMethodSignatureMismatch') {
-            return 'MethodSignatureMismatch';
-        }
-
-        if ($issue_type === 'MixedArgumentTypeCoercion'
-            || $issue_type === 'MixedPropertyTypeCoercion'
-            || $issue_type === 'MixedReturnTypeCoercion'
-        ) {
-            return 'MixedTypeCoercion';
-        }
-
-        if ($issue_type === 'ArgumentTypeCoercion'
-            || $issue_type === 'PropertyTypeCoercion'
-            || $issue_type === 'ReturnTypeCoercion'
-        ) {
-            return 'TypeCoercion';
-        }
-
-        return null;
     }
 
     /**
@@ -202,40 +114,7 @@ class IssueBuffer
             return false;
         }
 
-        if ($e instanceof ClassIssue
-            && $config->getReportingLevelForClass($issue_type, $e->fq_classlike_name) === Config::REPORT_INFO
-        ) {
-            $reporting_level = Config::REPORT_INFO;
-        } elseif ($e instanceof MethodIssue
-            && $config->getReportingLevelForMethod($issue_type, $e->method_id) === Config::REPORT_INFO
-        ) {
-            $reporting_level = Config::REPORT_INFO;
-        } elseif ($e instanceof FunctionIssue
-            && $config->getReportingLevelForFunction($issue_type, $e->function_id) === Config::REPORT_INFO
-        ) {
-            $reporting_level = Config::REPORT_INFO;
-        } elseif ($e instanceof ArgumentIssue
-            && $e->function_id
-            && $config->getReportingLevelForArgument($issue_type, $e->function_id) === Config::REPORT_INFO
-        ) {
-            $reporting_level = Config::REPORT_INFO;
-        } elseif ($e instanceof PropertyIssue
-            && $config->getReportingLevelForProperty($issue_type, $e->property_id) === Config::REPORT_INFO
-        ) {
-            $reporting_level = Config::REPORT_INFO;
-        } else {
-            $reporting_level = $config->getReportingLevelForFile($issue_type, $e->getFilePath());
-        }
-
-        $parent_issue_type = self::getParentIssueType($issue_type);
-
-        if ($parent_issue_type && $reporting_level === Config::REPORT_ERROR) {
-            $parent_reporting_level = $config->getReportingLevelForFile($parent_issue_type, $e->getFilePath());
-
-            if ($parent_reporting_level !== $reporting_level) {
-                $reporting_level = $parent_reporting_level;
-            }
-        }
+        $reporting_level = $config->getReportingLevelForIssue($e);
 
         if ($reporting_level === Config::REPORT_SUPPRESS) {
             return false;
@@ -392,7 +271,8 @@ class IssueBuffer
                 $project_analyzer->output_format,
                 $project_analyzer->use_color,
                 $project_analyzer->show_snippet,
-                $project_analyzer->show_info
+                $project_analyzer->show_info,
+                $codebase->analyzer->getTotalTypeCoverage($codebase)
             );
         }
 
@@ -421,7 +301,13 @@ class IssueBuffer
         foreach ($project_analyzer->reports as $format => $path) {
             file_put_contents(
                 $path,
-                self::getOutput($format, $project_analyzer->use_color)
+                self::getOutput(
+                    $format,
+                    $project_analyzer->use_color,
+                    true,
+                    true,
+                    $codebase->analyzer->getTotalTypeCoverage($codebase)
+                )
             );
         }
 
@@ -482,11 +368,20 @@ class IssueBuffer
      * @param bool   $use_color
      * @param bool   $show_snippet
      * @param bool   $show_info
+     * @param array{int, int} $mixed_counts
      *
      * @return string
      */
-    public static function getOutput($format, $use_color, $show_snippet = true, $show_info = true)
-    {
+    public static function getOutput(
+        string $format,
+        bool $use_color,
+        bool $show_snippet = true,
+        bool $show_info = true,
+        array $mixed_counts = [0, 0]
+    ) {
+        $total_expression_count = $mixed_counts[0] + $mixed_counts[1];
+        $mixed_expression_count = $mixed_counts[0];
+
         switch ($format) {
             case ProjectAnalyzer::TYPE_COMPACT:
                 $output = new Compact(self::$issues_data, $use_color, $show_snippet, $show_info);
@@ -504,8 +399,23 @@ class IssueBuffer
                 $output = new Json(self::$issues_data, $use_color, $show_snippet, $show_info);
                 break;
 
+            case ProjectAnalyzer::TYPE_JSON_SUMMARY:
+                $output = new JsonSummary(
+                    self::$issues_data,
+                    $use_color,
+                    $show_snippet,
+                    $show_info,
+                    $mixed_expression_count,
+                    $total_expression_count
+                );
+                break;
+
             case ProjectAnalyzer::TYPE_PYLINT:
                 $output = new Pylint(self::$issues_data, $use_color, $show_snippet, $show_info);
+                break;
+
+            case ProjectAnalyzer::TYPE_CHECKSTYLE:
+                $output = new Checkstyle(self::$issues_data, $use_color, $show_snippet, $show_info);
                 break;
 
             case ProjectAnalyzer::TYPE_XML:

@@ -2,6 +2,7 @@
 namespace Psalm\Internal\Codebase;
 
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Config;
 use Psalm\Issue\CircularReference;
 use Psalm\IssueBuffer;
@@ -316,11 +317,17 @@ class Populator
                             $declaring_method_storage = $declaring_class_storage->methods[$method_name];
 
                             if ($declaring_method_storage->return_type
-                                && $declaring_method_storage->signature_return_type
                                 && $declaring_method_storage->return_type
                                     !== $declaring_method_storage->signature_return_type
                             ) {
-                                $method_storage->return_type = $declaring_method_storage->return_type;
+                                if ($declaring_method_storage->signature_return_type) {
+                                    $method_storage->return_type = $declaring_method_storage->return_type;
+                                } elseif (TypeAnalyzer::isSimplyContainedBy(
+                                    $declaring_method_storage->return_type,
+                                    $method_storage->signature_return_type
+                                )) {
+                                    $method_storage->return_type = $declaring_method_storage->return_type;
+                                }
                             }
                         }
                     }
@@ -898,7 +905,7 @@ class Populator
     {
         $atomic_types = $candidate->getTypes();
 
-        if (isset($atomic_types['array']) && count($atomic_types) > 1) {
+        if (isset($atomic_types['array']) && count($atomic_types) > 1 && !isset($atomic_types['null'])) {
             $iterator_name = null;
             $generic_params = null;
 
@@ -940,6 +947,7 @@ class Populator
                 }
 
                 $candidate->removeType('array');
+                $candidate->removeType($iterator_name);
                 $candidate->addType($generic_iterator);
             }
         }

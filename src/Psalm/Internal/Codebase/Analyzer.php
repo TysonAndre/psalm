@@ -42,6 +42,7 @@ use Psalm\Internal\Provider\FileStorageProvider;
  *     file_manipulations: array<string, FileManipulation[]>,
  *     method_references_to_class_members: array<string, array<string,bool>>,
  *     method_references_to_missing_class_members: array<string, array<string,bool>>,
+ *     method_param_uses: array<string, array<int, array<string, bool>>>,
  *     analyzed_methods: array<string, array<string, int>>,
  *     file_maps: array<
  *         string,
@@ -273,6 +274,7 @@ class Analyzer
                     $file_reference_provider->setCallingMethodReferencesToMissingClassMembers([]);
                     $file_reference_provider->setFileReferencesToMissingClassMembers([]);
                     $file_reference_provider->setReferencesToMixedMemberNames([]);
+                    $file_reference_provider->setMethodParamUses([]);
                 },
                 $analysis_worker,
                 /** @return WorkerData */
@@ -298,6 +300,7 @@ class Analyzer
                             => $file_reference_provider->getAllFileReferencesToMissingClassMembers(),
                         'method_references_to_missing_class_members'
                             => $file_reference_provider->getAllMethodReferencesToMissingClassMembers(),
+                        'method_param_uses' => $file_reference_provider->getAllMethodParamUses(),
                         'mixed_member_names' => $analyzer->getMixedMemberNames(),
                         'file_manipulations' => FileManipulationBuffer::getAll(),
                         'mixed_counts' => $analyzer->getMixedCounts(),
@@ -345,6 +348,9 @@ class Analyzer
                 );
                 $codebase->file_reference_provider->addMethodReferencesToMissingClassMembers(
                     $pool_data['method_references_to_missing_class_members']
+                );
+                $codebase->file_reference_provider->addMethodParamUses(
+                    $pool_data['method_param_uses']
                 );
                 $this->addMixedMemberNames(
                     $pool_data['mixed_member_names']
@@ -459,6 +465,8 @@ class Analyzer
 
         $file_references_to_classes = $file_reference_provider->getAllFileReferencesToClasses();
 
+        $method_param_uses = $file_reference_provider->getAllMethodParamUses();
+
         $file_references_to_class_members
             = $file_reference_provider->getAllFileReferencesToClassMembers();
         $file_references_to_missing_class_members
@@ -521,6 +529,7 @@ class Analyzer
                 unset($method_references_to_missing_class_members[$member_id]);
                 unset($file_references_to_missing_class_members[$member_id]);
                 unset($references_to_mixed_member_names[$member_id]);
+                unset($method_param_uses[$member_id]);
 
                 $member_stub = preg_replace('/::.*$/', '::*', $member_id);
 
@@ -549,6 +558,12 @@ class Analyzer
 
             foreach ($references_to_mixed_member_names as &$references) {
                 unset($references[$method_id]);
+            }
+
+            foreach ($method_param_uses as &$references) {
+                foreach ($references as &$method_refs) {
+                    unset($method_refs[$method_id]);
+                }
             }
         }
 
@@ -636,6 +651,13 @@ class Analyzer
             }
         );
 
+        $method_param_uses = array_filter(
+            $method_param_uses,
+            function (array $a) : bool {
+                return !!$a;
+            }
+        );
+
         $file_reference_provider->setCallingMethodReferencesToClassMembers(
             $method_references_to_class_members
         );
@@ -658,6 +680,10 @@ class Analyzer
 
         $file_reference_provider->setFileReferencesToClasses(
             $file_references_to_classes
+        );
+
+        $file_reference_provider->setMethodParamUses(
+            $method_param_uses
         );
     }
 

@@ -221,6 +221,38 @@ class TypeAnalyzer
     }
 
     /**
+     * Used for comparing docblock types to signature types before we know about all types
+     *
+     * @param  Type\Union   $input_type
+     * @param  Type\Union   $container_type
+     *
+     * @return bool
+     */
+    public static function isSimplyContainedBy(
+        Type\Union $input_type,
+        Type\Union $container_type
+    ) {
+        if ($input_type->getId() === $container_type->getId()) {
+            return true;
+        }
+
+        if ($input_type->isNullable() && !$container_type->isNullable()) {
+            return false;
+        }
+
+        $input_type_not_null = clone $input_type;
+        $input_type_not_null->removeType('null');
+
+        $container_type_not_null = clone $container_type;
+        $container_type_not_null->removeType('null');
+
+        return !array_diff_key(
+            $input_type_not_null->getTypes(),
+            $container_type_not_null->getTypes()
+        );
+    }
+
+    /**
      * Does the input param type match the given param type
      *
      * @param  Type\Union   $input_type
@@ -961,7 +993,7 @@ class TypeAnalyzer
             return false;
         }
 
-        if ((get_class($input_type_part) === TString::class || get_class($container_type_part) === TSingleLetter::class)
+        if ((get_class($input_type_part) === TString::class || get_class($input_type_part) === TSingleLetter::class)
             && $container_type_part instanceof TLiteralString
         ) {
             $type_coerced = true;
@@ -1574,22 +1606,54 @@ class TypeAnalyzer
                     continue;
                 }
 
-                if (!$input_param->isEmpty() &&
-                    !self::isContainedBy(
-                        $codebase,
-                        $input_param,
-                        $container_param,
-                        $input_param->ignore_nullable_issues,
-                        $input_param->ignore_falsable_issues,
-                        $has_scalar_match,
-                        $type_coerced,
-                        $type_coerced_from_mixed,
-                        $to_string_cast,
-                        $type_coerced_from_scalar,
-                        $allow_interface_equality
-                    )
-                ) {
+                if (!self::isContainedBy(
+                    $codebase,
+                    $input_param,
+                    $container_param,
+                    $input_param->ignore_nullable_issues,
+                    $input_param->ignore_falsable_issues,
+                    $has_scalar_match,
+                    $type_coerced,
+                    $type_coerced_from_mixed,
+                    $to_string_cast,
+                    $type_coerced_from_scalar,
+                    $allow_interface_equality
+                )) {
                     $all_types_contain = false;
+                } elseif (!$input_type_part instanceof TIterable
+                    && !$container_param->had_template
+                    && !$input_param->had_template
+                    && !$container_param->hasTemplate()
+                    && !$input_param->hasTemplate()
+                    && !$input_param->hasLiteralValue()
+                ) {
+                    $input_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
+
+                    if (!($input_storage->template_covariants[$i] ?? false)) {
+                        // Make sure types are basically the same
+                        if (!self::isContainedBy(
+                            $codebase,
+                            $container_param,
+                            $input_param,
+                            $container_param->ignore_nullable_issues,
+                            $container_param->ignore_falsable_issues,
+                            $has_scalar_match,
+                            $type_coerced,
+                            $type_coerced_from_mixed,
+                            $to_string_cast,
+                            $type_coerced_from_scalar,
+                            $allow_interface_equality
+                        ) || $type_coerced
+                        ) {
+                            if ($container_param->hasMixed() || $container_param->isArrayKey()) {
+                                $type_coerced_from_mixed = true;
+                            } else {
+                                $all_types_contain = false;
+                            }
+
+                            $type_coerced = false;
+                        }
+                    }
                 }
             }
         }

@@ -837,7 +837,11 @@ class ClassLikes
                     }
 
                     foreach ($classlike_storage->class_implements as $fq_interface_name) {
-                        $interface_storage = $this->classlike_storage_provider->get($fq_interface_name);
+                        try {
+                            $interface_storage = $this->classlike_storage_provider->get($fq_interface_name);
+                        } catch (\InvalidArgumentException $e) {
+                            continue;
+                        }
 
                         if ($codebase->analyzer->hasMixedMemberName(
                             strtolower($fq_interface_name) . '::'
@@ -937,7 +941,9 @@ class ClassLikes
                         }
                     }
 
-                    if (!$has_parent_references && !isset($method_storage->used_params[$offset])) {
+                    if (!$has_parent_references
+                        && !$this->file_reference_provider->isMethodParamUsed(strtolower($method_id), $offset)
+                    ) {
                         if (IssueBuffer::accepts(
                             new PossiblyUnusedParam(
                                 'Param #' . $offset . ' is never referenced in this method',

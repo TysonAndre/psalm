@@ -908,8 +908,17 @@ class UnusedVariableTest extends TestCase
                      * @psalm-suppress MissingParamType
                      */
                     function foo($a) : void {
-                      $b = "b";
-                      $a->bar([$b]);
+                        $b = "b";
+                        $a->bar([$b]);
+                    }',
+            ],
+            'paramUsedInsideLoop' => [
+                '<?php
+                    function foo(int $counter) : void {
+                        foreach ([1, 2, 3] as $_) {
+                            echo ($counter = $counter + 1);
+                            echo rand(0, 1) ? 1 : 0;
+                        }
                     }',
             ],
         ];
@@ -1415,6 +1424,17 @@ class UnusedVariableTest extends TestCase
                     foreach ($arr as $key => $v) {
                         list($key) = explode(".", $v);
                         echo $key;
+                    }',
+                'error_message' => 'UnusedVariable',
+            ],
+            'detectUnusedVarBeforeTryInsideForeach' => [
+                '<?php
+                    function foo() : void {
+                        $unused = 1;
+
+                        while (rand(0, 1)) {
+                            try {} catch (\Exception $e) {}
+                        }
                     }',
                 'error_message' => 'UnusedVariable',
             ],

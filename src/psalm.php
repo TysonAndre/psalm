@@ -30,6 +30,7 @@ $valid_long_options = [
     'diff-methods',
     'disable-extension:',
     'find-dead-code::',
+    'find-unused-code::',
     'find-references-to:',
     'help',
     'ignore-baseline',
@@ -181,10 +182,11 @@ Options:
         Only checks methods that have changed (and their dependents)
 
     --output-format=console
-        Changes the output format. Possible values: compact, console, emacs, json, pylint, xml
+        Changes the output format. Possible values: compact, console, emacs, json, pylint, xml, checkstyle
 
     --find-dead-code[=auto]
-        Look for dead code. Options are 'auto' or 'always'. If no value is specified, default is 'auto'
+    --find-unused-code[=auto]
+        Look for unused code. Options are 'auto' or 'always'. If no value is specified, default is 'auto'
 
     --find-references-to=[class|method|property]
         Searches the codebase for references to the given fully-qualified class or method,
@@ -347,7 +349,7 @@ if (isset($options['i'])) {
     ));
 
     $level = 3;
-    $source_dir = 'src';
+    $source_dir = null;
 
     if (count($args)) {
         if (count($args) > 2) {
@@ -365,31 +367,13 @@ if (isset($options['i'])) {
         $source_dir = $args[0];
     }
 
-    if (!is_dir($source_dir)) {
-        $bad_dir_path = getcwd() . DIRECTORY_SEPARATOR . $source_dir;
-
-        if (!isset($args[0])) {
-            die('Please specify a directory - the default, "src", was not found in this project.' . PHP_EOL);
-        }
-
-        die('The given path "' . $bad_dir_path . '" does not appear to be a directory' . PHP_EOL);
+    try {
+        $template_contents = Psalm\Config\Creator::getContents($current_dir, $source_dir, $level);
+    } catch (Psalm\Exception\ConfigCreationException $e) {
+        die($e->getMessage() . PHP_EOL);
     }
 
-    $template_file_name = dirname(__DIR__) . '/assets/config_levels/' . $level . '.xml';
-
-    if (!file_exists($template_file_name)) {
-        die('Could not open config template ' . $template_file_name . PHP_EOL);
-    }
-
-    $template = (string)file_get_contents($template_file_name);
-
-    $template = str_replace(
-        '<directory name="src" />',
-        '<directory name="' . $source_dir . '" />',
-        $template
-    );
-
-    if (!file_put_contents($current_dir . 'psalm.xml', $template)) {
+    if (!file_put_contents($current_dir . 'psalm.xml', $template_contents)) {
         die('Could not write to psalm.xml' . PHP_EOL);
     }
 
@@ -429,7 +413,11 @@ $is_diff = isset($options['diff']);
 /** @var false|'always'|'auto' $find_unused_code */
 $find_unused_code = false;
 if (isset($options['find-dead-code'])) {
-    if ($options['find-dead-code'] === 'always') {
+    $options['find-unused-code'] = $options['find-dead-code'];
+}
+
+if (isset($options['find-unused-code'])) {
+    if ($options['find-unused-code'] === 'always') {
         $find_unused_code = 'always';
     } else {
         $find_unused_code = 'auto';
@@ -448,7 +436,7 @@ try {
         $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
     }
 } catch (Psalm\Exception\ConfigException $e) {
-    echo $e->getMessage();
+    echo $e->getMessage() . PHP_EOL;
     exit(1);
 }
 
