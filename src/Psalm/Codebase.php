@@ -176,6 +176,11 @@ class Codebase
     public $diff_methods = false;
 
     /**
+     * @var bool
+     */
+    public $allow_backwards_incompatible_changes = true;
+
+    /**
      * @var int
      */
     public $php_major_version = PHP_MAJOR_VERSION;
@@ -988,6 +993,8 @@ class Codebase
         } catch (\UnexpectedValueException $e) {
             error_log($e->getMessage());
             return null;
+        } catch (\InvalidArgumentException $e) {
+            return null;
         }
     }
 
@@ -1084,15 +1091,22 @@ class Codebase
 
         krsort($type_map);
 
+        $gap = null;
+
         foreach ($type_map as $start_pos => list($end_pos, $possible_type)) {
             if ($offset < $start_pos) {
                 continue;
             }
 
             if ($offset - $end_pos === 2 || $offset - $end_pos === 3) {
-                $recent_type = $possible_type;
+                $candidate_gap = substr($file_contents, $end_pos, 2);
 
-                break;
+                if ($candidate_gap === '->' || $candidate_gap === '::') {
+                    $gap = $candidate_gap;
+                    $recent_type = $possible_type;
+
+                    break;
+                }
             }
 
             if ($offset - $end_pos > 3) {
@@ -1102,13 +1116,93 @@ class Codebase
 
         if (!$recent_type
             || $recent_type === 'mixed'
+            || !$gap
         ) {
             return null;
         }
 
-        $gap = substr($file_contents, $end_pos, $offset - $end_pos);
-
         return [$recent_type, $gap];
+    }
+
+    /**
+     * @return array<int, \LanguageServerProtocol\CompletionItem>
+     */
+    public function getCompletionItemsForClassishThing(string $type_string, string $gap) : array
+    {
+        $instance_completion_items = [];
+        $static_completion_items = [];
+
+        $type = Type::parseString($type_string);
+
+        $completion_items = [];
+
+        foreach ($type->getTypes() as $atomic_type) {
+            if ($atomic_type instanceof Type\Atomic\TNamedObject) {
+                try {
+                    $class_storage = $this->classlike_storage_provider->get($atomic_type->value);
+
+                    foreach ($class_storage->appearing_method_ids as $declaring_method_id) {
+                        $method_storage = $this->methods->getStorage($declaring_method_id);
+
+                        $instance_completion_items[] = new \LanguageServerProtocol\CompletionItem(
+                            (string)$method_storage,
+                            \LanguageServerProtocol\CompletionItemKind::METHOD,
+                            null,
+                            null,
+                            null,
+                            null,
+                            $method_storage->cased_name . '()'
+                        );
+                    }
+
+                    foreach ($class_storage->declaring_property_ids as $property_name => $declaring_class) {
+                        $property_storage = $this->properties->getStorage(
+                            $declaring_class . '::$' . $property_name
+                        );
+
+                        $instance_completion_items[] = new \LanguageServerProtocol\CompletionItem(
+                            $property_storage->getInfo() . ' $' . $property_name,
+                            \LanguageServerProtocol\CompletionItemKind::PROPERTY,
+                            null,
+                            null,
+                            null,
+                            null,
+                            ($gap === '::' ? '$' : '') . $property_name
+                        );
+                    }
+
+                    foreach ($class_storage->class_constant_locations as $const_name => $_) {
+                        $static_completion_items[] = new \LanguageServerProtocol\CompletionItem(
+                            'const ' . $const_name,
+                            \LanguageServerProtocol\CompletionItemKind::VARIABLE,
+                            null,
+                            null,
+                            null,
+                            null,
+                            $const_name
+                        );
+                    }
+                } catch (\Exception $e) {
+                    error_log($e->getMessage());
+                    continue;
+                }
+            }
+
+            if ($gap === '->') {
+                $completion_items = array_merge(
+                    $completion_items,
+                    $instance_completion_items
+                );
+            } else {
+                $completion_items = array_merge(
+                    $completion_items,
+                    $instance_completion_items,
+                    $static_completion_items
+                );
+            }
+        }
+
+        return $completion_items;
     }
 
     private static function getPositionFromOffset(int $offset, string $file_contents) : Position

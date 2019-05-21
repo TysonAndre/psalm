@@ -163,6 +163,7 @@ abstract class Atomic
                 return $php_version !== null ? new TNamedObject($value) : new TMixed();
 
             case 'class-string':
+            case 'interface-string':
                 return new TClassString();
 
             case 'callable-string':
@@ -280,7 +281,8 @@ abstract class Atomic
         CodeLocation $code_location,
         array $suppressed_issues,
         array $phantom_classes = [],
-        $inferred = true
+        bool $inferred = true,
+        bool $prevent_template_covariance = false
     ) {
         if ($this->checked) {
             return;
@@ -293,7 +295,10 @@ abstract class Atomic
                     $this->value,
                     $code_location,
                     $suppressed_issues,
-                    $inferred
+                    $inferred,
+                    false,
+                    true,
+                    $this->from_docblock
                 ) === false
             ) {
                 return false;
@@ -311,7 +316,10 @@ abstract class Atomic
                             $extra_type->value,
                             $code_location,
                             $suppressed_issues,
-                            $inferred
+                            $inferred,
+                            false,
+                            true,
+                            $this->from_docblock
                         ) === false
                     ) {
                         return false;
@@ -326,7 +334,10 @@ abstract class Atomic
                 $this->value,
                 $code_location,
                 $suppressed_issues,
-                $inferred
+                $inferred,
+                false,
+                true,
+                $this->from_docblock
             ) === false
             ) {
                 return false;
@@ -350,7 +361,10 @@ abstract class Atomic
                     $this->as,
                     $code_location,
                     $suppressed_issues,
-                    $inferred
+                    $inferred,
+                    false,
+                    true,
+                    $this->from_docblock
                 ) === false
                 ) {
                     return false;
@@ -359,6 +373,32 @@ abstract class Atomic
         }
 
         if ($this instanceof TTemplateParam) {
+            if ($prevent_template_covariance && $this->defining_class) {
+                $codebase = $source->getCodebase();
+
+                $class_storage = $codebase->classlike_storage_provider->get($this->defining_class);
+
+                $template_offset = $class_storage->template_types
+                    ? array_search($this->param_name, array_keys($class_storage->template_types))
+                    : false;
+
+                if ($template_offset !== false
+                    && isset($class_storage->template_covariants[$template_offset])
+                    && $class_storage->template_covariants[$template_offset]
+                ) {
+                    if (IssueBuffer::accepts(
+                        new InvalidTemplateParam(
+                            'Template param ' . $this->defining_class . ' is marked covariant and cannot be used'
+                                . ' as input to a function',
+                            $code_location
+                        ),
+                        $source->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+            }
+
             $this->as->check($source, $code_location, $suppressed_issues, $phantom_classes, $inferred);
         }
 
@@ -376,7 +416,10 @@ abstract class Atomic
                 $fq_classlike_name,
                 $code_location,
                 $suppressed_issues,
-                $inferred
+                $inferred,
+                false,
+                true,
+                $this->from_docblock
             ) === false
             ) {
                 return false;
@@ -424,7 +467,8 @@ abstract class Atomic
                             $code_location,
                             $suppressed_issues,
                             $phantom_classes,
-                            $inferred
+                            $inferred,
+                            $prevent_template_covariance
                         );
                     }
                 }
@@ -436,7 +480,8 @@ abstract class Atomic
                     $code_location,
                     $suppressed_issues,
                     $phantom_classes,
-                    $inferred
+                    $inferred,
+                    $prevent_template_covariance
                 );
             }
         }
@@ -499,7 +544,8 @@ abstract class Atomic
                     $code_location,
                     $suppressed_issues,
                     $phantom_classes,
-                    $inferred
+                    $inferred,
+                    $prevent_template_covariance
                 ) === false) {
                     return false;
                 }
@@ -556,6 +602,21 @@ abstract class Atomic
 
                 if ($file_storage) {
                     $file_storage->referenced_classlikes[strtolower($this->value)] = $this->value;
+                }
+            }
+        }
+
+        if ($this instanceof TNamedObject
+            || $this instanceof TIterable
+            || $this instanceof TTemplateParam
+        ) {
+            if ($this->extra_types) {
+                foreach ($this->extra_types as $extra_type) {
+                    $extra_type->queueClassLikesForScanning(
+                        $codebase,
+                        $file_storage,
+                        $phantom_classes
+                    );
                 }
             }
         }

@@ -69,6 +69,11 @@ class PropertyStorage
      */
     public $internal = false;
 
+    /**
+     * @var null|string
+     */
+    public $psalm_internal = null;
+
     public function getInfo() : string
     {
         switch ($this->visibility) {

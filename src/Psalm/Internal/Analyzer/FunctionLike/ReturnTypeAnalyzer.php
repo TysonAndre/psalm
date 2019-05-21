@@ -251,6 +251,7 @@ class ReturnTypeAnalyzer
                 if (!$closure_inside_call || $inferred_return_type->isMixed()) {
                     if ($codebase->alter_code
                         && isset($project_analyzer->getIssuesToFix()['MissingClosureReturnType'])
+                        && !in_array('MissingClosureReturnType', $suppressed_issues)
                     ) {
                         if ($inferred_return_type->hasMixed() || $inferred_return_type->isNull()) {
                             return null;
@@ -263,7 +264,7 @@ class ReturnTypeAnalyzer
                             $source,
                             $function_like_analyzer,
                             ($project_analyzer->only_replace_php_types_with_non_docblock_types
-                                || $unsafe_return_type)
+                                    || $unsafe_return_type)
                                 && $inferred_return_type->from_docblock,
                             $function_like_storage
                         );
@@ -287,6 +288,7 @@ class ReturnTypeAnalyzer
 
             if ($codebase->alter_code
                 && isset($project_analyzer->getIssuesToFix()['MissingReturnType'])
+                && !in_array('MissingReturnType', $suppressed_issues)
             ) {
                 if ($inferred_return_type->hasMixed() || $inferred_return_type->isNull()) {
                     return null;
@@ -299,9 +301,9 @@ class ReturnTypeAnalyzer
                     $source,
                     $function_like_analyzer,
                     $compatible_method_ids
-                    || (($project_analyzer->only_replace_php_types_with_non_docblock_types
-                            || $unsafe_return_type)
-                        && $inferred_return_type->from_docblock),
+                        || (($project_analyzer->only_replace_php_types_with_non_docblock_types
+                                || $unsafe_return_type)
+                            && $inferred_return_type->from_docblock),
                     $function_like_storage
                 );
 
@@ -343,13 +345,20 @@ class ReturnTypeAnalyzer
                 return null;
             }
 
-            if ($codebase->alter_code && isset($project_analyzer->getIssuesToFix()['InvalidReturnType'])) {
+            if ($codebase->alter_code
+                && isset($project_analyzer->getIssuesToFix()['InvalidReturnType'])
+                && !in_array('InvalidReturnType', $suppressed_issues)
+            ) {
                 self::addOrUpdateReturnType(
                     $function,
                     $project_analyzer,
                     Type::getVoid(),
                     $source,
-                    $function_like_analyzer
+                    $function_like_analyzer,
+                    $compatible_method_ids
+                        || (($project_analyzer->only_replace_php_types_with_non_docblock_types
+                                || $unsafe_return_type)
+                            && $inferred_return_type->from_docblock)
                 );
 
                 return null;
@@ -434,6 +443,7 @@ class ReturnTypeAnalyzer
                 } else {
                     if ($codebase->alter_code
                         && isset($project_analyzer->getIssuesToFix()['InvalidReturnType'])
+                        && !in_array('InvalidReturnType', $suppressed_issues)
                     ) {
                         self::addOrUpdateReturnType(
                             $function,
@@ -442,7 +452,7 @@ class ReturnTypeAnalyzer
                             $source,
                             $function_like_analyzer,
                             ($project_analyzer->only_replace_php_types_with_non_docblock_types
-                                || $unsafe_return_type)
+                                    || $unsafe_return_type)
                                 && $inferred_return_type->from_docblock,
                             $function_like_storage
                         );
@@ -475,7 +485,8 @@ class ReturnTypeAnalyzer
                     }
                 }
             } elseif ($codebase->alter_code
-                    && isset($project_analyzer->getIssuesToFix()['LessSpecificReturnType'])
+                && isset($project_analyzer->getIssuesToFix()['LessSpecificReturnType'])
+                && !in_array('LessSpecificReturnType', $suppressed_issues)
             ) {
                 if (!TypeAnalyzer::isContainedBy(
                     $codebase,
@@ -491,9 +502,9 @@ class ReturnTypeAnalyzer
                         $source,
                         $function_like_analyzer,
                         $compatible_method_ids
-                        || (($project_analyzer->only_replace_php_types_with_non_docblock_types
-                            || $unsafe_return_type)
-                        && $inferred_return_type->from_docblock),
+                            || (($project_analyzer->only_replace_php_types_with_non_docblock_types
+                                    || $unsafe_return_type)
+                                && $inferred_return_type->from_docblock),
                         $function_like_storage
                     );
 
@@ -538,6 +549,7 @@ class ReturnTypeAnalyzer
             ) {
                 if ($codebase->alter_code
                     && isset($project_analyzer->getIssuesToFix()['InvalidNullableReturnType'])
+                    && !in_array('InvalidNullableReturnType', $suppressed_issues)
                     && !$inferred_return_type->isNull()
                 ) {
                     self::addOrUpdateReturnType(
@@ -547,7 +559,7 @@ class ReturnTypeAnalyzer
                         $source,
                         $function_like_analyzer,
                         ($project_analyzer->only_replace_php_types_with_non_docblock_types
-                            || $unsafe_return_type)
+                                || $unsafe_return_type)
                             && $inferred_return_type->from_docblock,
                         $function_like_storage
                     );
@@ -583,7 +595,7 @@ class ReturnTypeAnalyzer
                         $source,
                         $function_like_analyzer,
                         ($project_analyzer->only_replace_php_types_with_non_docblock_types
-                            || $unsafe_return_type)
+                                || $unsafe_return_type)
                             && $inferred_return_type->from_docblock,
                         $function_like_storage
                     );
@@ -726,14 +738,32 @@ class ReturnTypeAnalyzer
             $function_like_analyzer->getMethodId(),
             $function
         );
+
+        $codebase = $project_analyzer->getCodebase();
+        $is_final = true;
+        $fqcln = $source->getFQCLN();
+        if ($fqcln !== null) {
+            $class_storage = $codebase->classlike_storage_provider->get($fqcln);
+            assert($function instanceof ClassMethod);
+            $is_final = $function->isFinal() || $class_storage->final;
+        }
+
+        $allow_native_type = !$docblock_only
+            && $codebase->php_major_version >= 7
+            && (
+                $codebase->allow_backwards_incompatible_changes
+                || $is_final
+                || !$function instanceof PhpParser\Node\Stmt\ClassMethod
+            );
+
         $manipulator->setReturnType(
-            !$docblock_only && $project_analyzer->getCodebase()->php_major_version >= 7
-                ? $inferred_return_type->toPhpString(
+            $allow_native_type
+                ? (string) $inferred_return_type->toPhpString(
                     $source->getNamespace(),
                     $source->getAliasedClassesFlipped(),
                     $source->getFQCLN(),
-                    $project_analyzer->getCodebase()->php_major_version,
-                    $project_analyzer->getCodebase()->php_minor_version
+                    $codebase->php_major_version,
+                    $codebase->php_minor_version
                 ) : null,
             $inferred_return_type->toNamespacedString(
                 $source->getNamespace(),

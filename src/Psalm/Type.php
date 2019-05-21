@@ -40,6 +40,8 @@ use function array_merge;
 use function array_values;
 use function count;
 use function in_array;
+use function is_string;
+use function strlen;
 use function strpos;
 use function str_split;
 use function strtolower;
@@ -941,16 +943,10 @@ abstract class Type
      */
     public static function getString($value = null)
     {
-        $type = null;
-
-        if ($value !== null) {
-            $config = \Psalm\Config::getInstance();
-            if (\strlen($value) < $config->max_string_length) {
-                $type = new TLiteralString($value);
-            }
-        }
-
-        if (!$type) {
+        $config = Config::getInstance();
+        if (is_string($value) && strlen($value) < $config->max_string_length) {
+            $type = new TLiteralString($value);
+        } else {
             $type = new TString();
         }
 
@@ -1232,5 +1228,10 @@ abstract class Type
         }
 
         return $combined_type;
+    }
+
+    public static function clearCache() : void
+    {
+        self::$memoized_tokens = [];
     }
 }

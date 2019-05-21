@@ -4,6 +4,7 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Call;
 use PhpParser;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\MethodAnalyzer;
+use Psalm\Internal\Analyzer\NamespaceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\CodeLocation;
@@ -579,15 +580,27 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
                 }
 
+                if ($class_storage->psalm_internal
+                    && $context->self
+                    && ! NamespaceAnalyzer::isWithin($context->self, $class_storage->psalm_internal)
+                ) {
+                    if (IssueBuffer::accepts(
+                        new InternalClass(
+                            $fq_class_name . ' is marked internal to ' . $class_storage->psalm_internal,
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
                 if ($class_storage->internal
                     && $context->self
                     && !$context->collect_initializations
                     && !$context->collect_mutations
                 ) {
-                    $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
-                    $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $fq_class_name);
-
-                    if (strtolower($self_root) !== strtolower($declaring_root)) {
+                    if (! NamespaceAnalyzer::nameSpaceRootsMatch($context->self, $fq_class_name)) {
                         if (IssueBuffer::accepts(
                             new InternalClass(
                                 $fq_class_name . ' is marked internal',
@@ -877,7 +890,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 $codebase->analyzer->addNodeType(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
-                    (string) $stmt->inferredType
+                    (string) $stmt->inferredType,
+                    $stmt
                 );
             }
         }

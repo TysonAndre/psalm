@@ -73,7 +73,7 @@ trait GenericTrait
 
             $value_type = $this->type_params[1];
 
-            if ($value_type->isMixed()) {
+            if ($value_type->isMixed() || $value_type->isEmpty()) {
                 return $base_value;
             }
 
@@ -196,6 +196,10 @@ trait GenericTrait
     {
         foreach ($this->type_params as $type_param) {
             $type_param->replaceTemplateTypesWithArgTypes($template_types);
+        }
+
+        if ($this instanceof TGenericObject || $this instanceof TIterable) {
+            $this->replaceIntersectionTemplateTypesWithArgTypes($template_types);
         }
     }
 }

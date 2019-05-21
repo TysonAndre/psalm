@@ -274,6 +274,7 @@ class TypeCombination
             if (!$combination->has_mixed || $combination->mixed_from_loop_isset) {
                 if ($combination->array_type_params
                     && $combination->array_type_params[0]->allStringLiterals()
+                    && $combination->array_always_filled
                 ) {
                     foreach ($combination->array_type_params[0]->getTypes() as $atomic_key_type) {
                         if ($atomic_key_type instanceof TLiteralString) {
@@ -283,6 +284,7 @@ class TypeCombination
                     }
 
                     $combination->array_type_params = [];
+                    $combination->objectlike_sealed = false;
                 }
 
                 if (!$combination->array_type_params

@@ -333,7 +333,8 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             $codebase->analyzer->addNodeType(
                 $statements_analyzer->getFilePath(),
                 $stmt->name,
-                (string) $stmt->inferredType
+                (string) $stmt->inferredType,
+                $stmt
             );
         }
 
@@ -562,12 +563,17 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 $statements_analyzer,
                 $fq_class_name,
                 new CodeLocation($source, $stmt->var),
-                $statements_analyzer->getSuppressedIssues()
+                $statements_analyzer->getSuppressedIssues(),
+                true,
+                false,
+                true,
+                $lhs_type_part->from_docblock
             );
         }
 
         if (!$does_class_exist) {
-            return $does_class_exist;
+            $non_existent_class_method_ids[] = $fq_class_name . '::*';
+            return false;
         }
 
         if (!$stmt->name instanceof PhpParser\Node\Identifier) {
@@ -790,7 +796,11 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $statements_analyzer,
                     $fq_class_name,
                     new CodeLocation($source, $stmt->var),
-                    $statements_analyzer->getSuppressedIssues()
+                    $statements_analyzer->getSuppressedIssues(),
+                    false,
+                    false,
+                    true,
+                    $intersection_type->from_docblock
                 );
 
                 if (!$does_class_exist) {

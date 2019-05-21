@@ -5,6 +5,7 @@ use PhpParser;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Stmt\PropertyProperty;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\NamespaceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
@@ -496,11 +497,23 @@ class PropertyAssignmentAnalyzer
                         }
                     }
 
-                    if ($property_storage->internal && $context->self) {
-                        $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
-                        $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $declaring_property_class);
+                    if ($property_storage->psalm_internal && $context->self) {
+                        if (! NamespaceAnalyzer::isWithin($context->self, $property_storage->psalm_internal)) {
+                            if (IssueBuffer::accepts(
+                                new InternalProperty(
+                                    $property_id . ' is marked internal to ' . $property_storage->psalm_internal,
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                    $property_id
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+                    }
 
-                        if (strtolower($self_root) !== strtolower($declaring_root)) {
+                    if ($property_storage->internal && $context->self) {
+                        if (! NamespaceAnalyzer::nameSpaceRootsMatch($context->self, $declaring_property_class)) {
                             if (IssueBuffer::accepts(
                                 new InternalProperty(
                                     $property_id . ' is marked internal',

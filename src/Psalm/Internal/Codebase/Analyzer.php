@@ -912,10 +912,14 @@ class Analyzer
     /**
      * @return void
      */
-    public function addNodeType(string $file_path, PhpParser\Node $node, string $node_type)
-    {
+    public function addNodeType(
+        string $file_path,
+        PhpParser\Node $node,
+        string $node_type,
+        PhpParser\Node $parent_node = null
+    ) {
         $this->type_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
-            (int)$node->getAttribute('endFilePos') + 1,
+            ($parent_node ? (int)$parent_node->getAttribute('endFilePos') : (int)$node->getAttribute('endFilePos')) + 1,
             $node_type
         ];
     }
@@ -1101,8 +1105,8 @@ class Analyzer
             if ($dry_run) {
                 echo $file_path . ':' . "\n";
 
-                $differ = new \PhpCsFixer\Diff\v2_0\Differ(
-                    new \PhpCsFixer\Diff\GeckoPackages\DiffOutputBuilder\UnifiedDiffOutputBuilder([
+                $differ = new \SebastianBergmann\Diff\Differ(
+                    new \SebastianBergmann\Diff\Output\StrictUnifiedDiffOutputBuilder([
                         'fromFile' => 'Original',
                         'toFile' => 'New',
                     ])

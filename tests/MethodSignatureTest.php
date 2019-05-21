@@ -11,7 +11,7 @@ class MethodSignatureTest extends TestCase
     /**
      * @return void
      */
-    public function testExtendDocblockParamType()
+    public function testExtendSoapClientWithDocblockTypes()
     {
         if (class_exists('SoapClient') === false) {
             $this->markTestSkipped('Cannot run test, base class "SoapClient" does not exist!');
@@ -28,7 +28,7 @@ class MethodSignatureTest extends TestCase
                      * @param string $function_name
                      * @param array<mixed> $arguments
                      * @param array<mixed> $options default null
-                     * @param array<mixed> $input_headers default null
+                     * @param array|SoapHeader $input_headers default null
                      * @param array<mixed> $output_headers default null
                      * @return mixed
                      */
@@ -41,21 +41,26 @@ class MethodSignatureTest extends TestCase
                     ) {
                         return $_GET["foo"];
                     }
-                }
+                }'
+        );
 
-                class B extends SoapClient
-                {
-                    public function __soapCall(
-                        $function_name,
-                        $arguments,
-                        $options = [],
-                        $input_headers = [],
-                        &$output_headers = []
-                    ) {
-                        return $_GET["foo"];
-                    }
-                }
+        $this->analyzeFile('somefile.php', new Context());
+    }
 
+    /**
+     * @return void
+     */
+    public function testExtendSoapClientWithNoDocblockTypes()
+    {
+        if (class_exists('SoapClient') === false) {
+            $this->markTestSkipped('Cannot run test, base class "SoapClient" does not exist!');
+
+            return;
+        }
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
                 class C extends SoapClient
                 {
                     public function __soapCall(
@@ -74,13 +79,43 @@ class MethodSignatureTest extends TestCase
     }
 
     /**
-     * @expectedException        \Psalm\Exception\CodeException
-     * @expectedExceptionMessage MethodSignatureMismatch
-     *
-     * @return                   void
+     * @return void
      */
-    public function testExtendDocblockParamTypeWithWrongParam()
+    public function testExtendSoapClientWithParamType()
     {
+        if (class_exists('SoapClient') === false) {
+            $this->markTestSkipped('Cannot run test, base class "SoapClient" does not exist!');
+
+            return;
+        }
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class C extends SoapClient
+                {
+                    public function __soapCall(
+                        string $function_name,
+                        $arguments,
+                        $options = [],
+                        $input_headers = [],
+                        &$output_headers = []
+                    ) {
+                        return $_GET["foo"];
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testExtendDocblockParamTypeWithWrongDocblockParam()
+    {
+        $this->expectExceptionMessage('ImplementedParamTypeMismatch');
+        $this->expectException(\Psalm\Exception\CodeException::class);
         if (class_exists('SoapClient') === false) {
             $this->markTestSkipped('Cannot run test, base class "SoapClient" does not exist!');
 
@@ -100,6 +135,37 @@ class MethodSignatureTest extends TestCase
                      * @param array<mixed> $output_headers default null
                      * @return mixed
                      */
+                    public function __soapCall(
+                        $function_name,
+                        $arguments,
+                        $options = [],
+                        $input_headers = [],
+                        &$output_headers = []
+                    ) {
+
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testExtendDocblockParamTypeWithWrongParam() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('MethodSignatureMismatch');
+
+        if (class_exists('SoapClient') === false) {
+            $this->markTestSkipped('Cannot run test, base class "SoapClient" does not exist!');
+
+            return;
+        }
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A extends SoapClient
+                {
                     public function __soapCall(
                         $function_name,
                         string $arguments,
@@ -276,7 +342,10 @@ class MethodSignatureTest extends TestCase
                         /** @var int */
                         private $id = 1;
 
-                        public function unserialize(string $serialized) : void
+                        /**
+                         * @param string $serialized
+                         */
+                        public function unserialize($serialized) : void
                         {
                             [
                                 $this->id,
@@ -869,6 +938,36 @@ class MethodSignatureTest extends TestCase
                     }',
                 'error_message' => 'MethodSignatureMismatch',
                 ['MoreSpecificImplementedParamType']
+            ],
+            'preventOneOfUnionMoreSpecific' => [
+                '<?php
+                    class A {
+                        /** @param string|int $s */
+                        public function foo($s) : void {}
+                    }
+
+                    class B extends A {
+                        /** @param string $s */
+                        public function foo($s) : void {}
+                    }',
+                'error_message' => 'MoreSpecificImplementedParamType',
+            ],
+            'preventImplementingSerializableWithType' => [
+                '<?php
+                    class Foo implements \Serializable {
+                        public function unserialize(string $serialized) {}
+                        public function serialize() {}
+                    }',
+                'error_message' => 'MethodSignatureMismatch',
+            ],
+            'preventImplementingSerializableWithWrongDocblockType' => [
+                '<?php
+                    class Foo implements \Serializable {
+                        /** @param int $serialized */
+                        public function unserialize($serialized) {}
+                        public function serialize() {}
+                    }',
+                'error_message' => 'ImplementedParamTypeMismatch',
             ],
         ];
     }

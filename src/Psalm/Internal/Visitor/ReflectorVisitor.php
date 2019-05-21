@@ -975,6 +975,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->deprecated = $docblock_info->deprecated;
                 $storage->internal = $docblock_info->internal;
+                $storage->psalm_internal = $docblock_info->psalm_internal;
 
                 $storage->sealed_properties = $docblock_info->sealed_properties;
                 $storage->sealed_methods = $docblock_info->sealed_methods;
@@ -1051,6 +1052,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             )) {
             }
         }
+
+        $extended_union_type->setFromDocblock();
 
         foreach ($extended_union_type->getTypes() as $atomic_type) {
             if (!$atomic_type instanceof Type\Atomic\TGenericObject) {
@@ -1136,6 +1139,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
         }
 
+        $implemented_union_type->setFromDocblock();
+
         foreach ($implemented_union_type->getTypes() as $atomic_type) {
             if (!$atomic_type instanceof Type\Atomic\TGenericObject) {
                 if (IssueBuffer::accepts(
@@ -1218,6 +1223,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
         }
 
+        $used_union_type->setFromDocblock();
+
         foreach ($used_union_type->getTypes() as $atomic_type) {
             if (!$atomic_type instanceof Type\Atomic\TGenericObject) {
                 if (IssueBuffer::accepts(
@@ -1282,7 +1289,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage = new FunctionLikeStorage();
 
             if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
-                if (isset($this->file_storage->functions[$function_id])) {
+                if (isset($this->file_storage->functions[$function_id])
+                    && ($this->codebase->register_stub_files
+                        || !$this->codebase->functions->hasStubbedFunction($function_id))
+                ) {
                     $this->codebase->functions->addGlobalFunction(
                         $function_id,
                         $this->file_storage->functions[$function_id]
@@ -1334,7 +1344,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
             }
 
-            if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
+            if ($this->codebase->register_stub_files
+                || ($this->codebase->register_autoload_files
+                    && !$this->codebase->functions->hasStubbedFunction($function_id))
+            ) {
                 $this->codebase->functions->addGlobalFunction($function_id, $storage);
             }
 
@@ -1717,6 +1730,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->internal = true;
         }
 
+        if ($docblock_info->psalm_internal) {
+            $storage->psalm_internal = $docblock_info->psalm_internal;
+        }
+
         if ($docblock_info->variadic) {
             $storage->variadic = true;
         }
@@ -2072,7 +2089,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         if ($docblock_info->template_typeofs) {
             foreach ($docblock_info->template_typeofs as $template_typeof) {
-                foreach ($storage->params as $i => $param) {
+                foreach ($storage->params as $param) {
                     if ($param->name === $template_typeof['param_name']) {
                         $param_type_nullable = $param->type && $param->type->isNullable();
 
@@ -2551,6 +2568,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $property_storage->has_default = $property->default ? true : false;
             $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
             $property_storage->internal = $var_comment ? $var_comment->internal : false;
+            $property_storage->psalm_internal = $var_comment ? $var_comment->psalm_internal : null;
 
             if (!$signature_type && !$doc_var_group_type) {
                 if ($property->default) {

@@ -271,6 +271,22 @@ Emitted when Psalm encounters an echo statement and the `forbidEcho` flag in you
 echo("bah");
 ```
 
+### ImplementedParamTypeMismatch
+
+Emitted when a class that inherits another, or implements an interface, has docblock param type that's entirely different to the parent. Subclasses of the parent return type are permitted, in docblocks.
+
+```php
+class D {
+    /** @param string $a */
+    public function foo($a): void {}
+}
+
+class E extends D {
+    /** @param int $a */
+    public function foo($a): void {}
+}
+```
+
 ### ImplementedReturnTypeMismatch
 
 Emitted when a class that inherits another, or implements an interface, has docblock return type that's entirely different to the parent. Subclasses of the parent return type are permitted, in docblocks.
@@ -351,7 +367,8 @@ echo (new A)->foo;
 
 ### InternalClass
 
-Emitted when attempting to access a class marked as internal an unrelated namespace or class.
+Emitted when attempting to access a class marked as internal an unrelated namespace or class, or attempting
+to access a class marked as psalm-internal to a different namespace.
 
 ```php
 namespace A {
@@ -372,7 +389,8 @@ namespace B {
 
 ### InternalMethod
 
-Emitted when attempting to access a method marked as internal an unrelated namespace or class.
+Emitted when attempting to access a method marked as internal an unrelated namespace or class, or attempting
+to access a method marked as psalm-internal to a different namespace.
 
 ```php
 namespace A {
@@ -395,7 +413,8 @@ namespace B {
 
 ### InternalProperty
 
-Emitted when attempting to access a property marked as internal from an unrelated namespace or class.
+Emitted when attempting to access a property marked as internal from an unrelated namespace or class, or attempting
+to access a property marked as psalm-internal to a different namespace.
 
 ```php
 namespace A {
@@ -2095,6 +2114,17 @@ Emitted when referencing a constant that doesn’t exist
 
 ```php
 echo FOO_BAR;
+```
+
+### UndefinedDocblockClass
+
+Emitted when referencing a class that doesn’t exist from a docblock
+
+```php
+/**
+ * @param DoesNotExist $a
+ */
+function foo($a) : void {}
 ```
 
 ### UndefinedFunction

@@ -41,4 +41,11 @@ class VarDocblockComment
      * @var bool
      */
     public $internal = false;
+
+    /**
+     * If set, the property is internal to the given namespace.
+     *
+     * @var null|string
+     */
+    public $psalm_internal = null;
 }

@@ -85,6 +85,11 @@ class ClassLikeStorage
     public $internal = false;
 
     /**
+     * @var null|string
+     */
+    public $psalm_internal = null;
+
+    /**
      * @var array<string, bool>
      */
     public $deprecated_constants = [];

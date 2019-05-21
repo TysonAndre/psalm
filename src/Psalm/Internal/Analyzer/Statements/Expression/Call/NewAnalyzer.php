@@ -5,6 +5,7 @@ use PhpParser;
 use Psalm\Internal\Analyzer\ClassAnalyzer;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\MethodAnalyzer;
+use Psalm\Internal\Analyzer\NamespaceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\CodeLocation;
@@ -308,11 +309,23 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     }
                 }
 
-                if ($storage->internal && $context->self) {
-                    $self_root = preg_replace('/^([^\\\]+).*/', '$1', $context->self);
-                    $declaring_root = preg_replace('/^([^\\\]+).*/', '$1', $fq_class_name);
 
-                    if (strtolower($self_root) !== strtolower($declaring_root)) {
+                if ($storage->psalm_internal && $context->self) {
+                    if (! NamespaceAnalyzer::isWithin($context->self, $storage->psalm_internal)) {
+                        if (IssueBuffer::accepts(
+                            new InternalClass(
+                                $fq_class_name . ' is marked internal to ' . $storage->psalm_internal,
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
+                }
+
+                if ($storage->internal && $context->self) {
+                    if (! NamespaceAnalyzer::nameSpaceRootsMatch($context->self, $fq_class_name)) {
                         if (IssueBuffer::accepts(
                             new InternalClass(
                                 $fq_class_name . ' is marked internal',

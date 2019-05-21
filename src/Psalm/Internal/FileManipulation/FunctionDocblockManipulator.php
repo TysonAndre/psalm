@@ -59,15 +59,6 @@ class FunctionDocblockManipulator
     /** @var null|string */
     private $new_psalm_return_type;
 
-    /** @var array<string, int> */
-    private $param_typehint_area_starts = [];
-
-    /** @var array<string, int> */
-    private $param_typehint_starts = [];
-
-    /** @var array<string, int> */
-    private $param_typehint_ends = [];
-
     /** @var array<string, string> */
     private $new_php_param_types = [];
 
@@ -252,7 +243,7 @@ class FunctionDocblockManipulator
      */
     public function setReturnType($php_type, $new_type, $phpdoc_type, $is_php_compatible, $description)
     {
-        $new_type = str_replace(['<mixed, mixed>', '<array-key, mixed>', '<empty, empty>'], '', $new_type);
+        $new_type = str_replace(['<mixed, mixed>', '<array-key, mixed>'], '', $new_type);
 
         $this->new_php_return_type = $php_type;
         $this->new_phpdoc_return_type = $phpdoc_type;
@@ -363,7 +354,8 @@ class FunctionDocblockManipulator
                         ': ' . $manipulator->new_php_return_type
                     );
                 }
-            } elseif ($manipulator->return_typehint_colon_start
+            } elseif ($manipulator->new_php_return_type === ''
+                && $manipulator->return_typehint_colon_start
                 && $manipulator->new_phpdoc_return_type
                 && $manipulator->return_typehint_start
                 && $manipulator->return_typehint_end

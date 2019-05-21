@@ -14,7 +14,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
     /**
      * @return void
      */
-    public function setUp()
+    public function setUp() : void
     {
         parent::setUp();
 
@@ -200,5 +200,243 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->analyzeFile('somefile.php', new Context());
 
         $this->assertSame(['B\C', '->'], $codebase->getCompletionDataAtPosition('somefile.php', new Position(16, 39)));
+    }
+
+    /**
+     * @return void
+     */
+    public function testCompletionOnThisPropertyWithCharacter()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+
+                class C {
+                    public function otherFunction() : void
+                }
+
+                class A {
+                    /** @var C */
+                    protected $cee_me;
+
+                    public function __construct() {
+                        $this->cee_me = new C();
+                    }
+
+                    public function foo() : void {
+                        $this->cee_me->o
+                    }
+                }'
+        );
+
+        $codebase = $this->project_analyzer->getCodebase();
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+        $this->analyzeFile('somefile.php', new Context());
+
+        $this->assertSame(['B\C', '->'], $codebase->getCompletionDataAtPosition('somefile.php', new Position(16, 40)));
+    }
+
+    /**
+     * @return void
+     */
+    public function testCompletionOnThisPropertyWithAnotherCharacter()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+
+                class C {
+                    public function otherFunction() : void
+                }
+
+                class A {
+                    /** @var C */
+                    protected $cee_me;
+
+                    public function __construct() {
+                        $this->cee_me = new C();
+                    }
+
+                    public function foo() : void {
+                        $this->cee_me->ot
+                    }
+                }'
+        );
+
+        $codebase = $this->project_analyzer->getCodebase();
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+        $this->analyzeFile('somefile.php', new Context());
+
+        $this->assertSame(null, $codebase->getCompletionDataAtPosition('somefile.php', new Position(16, 41)));
+    }
+
+    /**
+     * @return void
+     */
+    public function testCompletionOnTemplatedThisProperty()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+
+                /** @template T */
+                class C {
+                    /** @var T */
+                    private $t;
+
+                    /** @param T $t */
+                    public function __construct($t) {
+                        $this->t = $t;
+                    }
+
+                    public function otherFunction() : void
+                }
+
+                class A {
+                    /** @var C<string> */
+                    protected $cee_me;
+
+                    public function __construct() {
+                        $this->cee_me = new C("hello");
+                    }
+
+                    public function foo() : void {
+                        $this->cee_me->
+                    }
+                }'
+        );
+
+        $codebase = $this->project_analyzer->getCodebase();
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+        $this->analyzeFile('somefile.php', new Context());
+
+        $completion_data = $codebase->getCompletionDataAtPosition('somefile.php', new Position(25, 39));
+
+        $this->assertSame(['B\C<string>', '->'], $completion_data);
+
+        $completion_items = $codebase->getCompletionItemsForClassishThing($completion_data[0], $completion_data[1]);
+
+        $this->assertCount(3, $completion_items);
+    }
+
+    /**
+     * @return void
+     */
+    public function testCompletionOnMethodReturnValue()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+                class A {
+                    public function foo() : self {
+                        return $this;
+                    }
+                }
+
+                function (A $a) {
+                    $a->foo()->
+                }
+                '
+        );
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+
+        $this->analyzeFile('somefile.php', new Context());
+        $this->assertSame(['B\A', '->'], $codebase->getCompletionDataAtPosition('somefile.php', new Position(9, 31)));
+    }
+
+    /**
+     * @return void
+     */
+    public function testCompletionOnMethodArgument()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+                class A {
+                    public function foo(A $a) : self {
+                        return $this;
+                    }
+                }
+
+                class C {}
+
+                function (A $a, C $c) {
+                    $a->foo($c->)
+                }
+                '
+        );
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+
+        $this->analyzeFile('somefile.php', new Context());
+        $this->assertSame(['B\C', '->'], $codebase->getCompletionDataAtPosition('somefile.php', new Position(11, 32)));
+    }
+
+    /**
+     * @return void
+     */
+    public function testCompletionOnMethodReturnValueWithArgument()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+                class A {
+                    public function foo(A $a) : self {
+                        return $this;
+                    }
+                }
+
+                class C {}
+
+                function (A $a, C $c) {
+                    $a->foo($c)->
+                }
+                '
+        );
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+
+        $this->analyzeFile('somefile.php', new Context());
+        $this->assertSame(['B\A', '->'], $codebase->getCompletionDataAtPosition('somefile.php', new Position(11, 33)));
     }
 }

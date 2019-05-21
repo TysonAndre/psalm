@@ -2078,7 +2078,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-extends A<Z>
                      */
                     class B extends A {}',
-                'error_message' => 'UndefinedClass',
+                'error_message' => 'UndefinedDocblockClass',
             ],
             'badTemplateExtendsInt' => [
                 '<?php
@@ -2161,7 +2161,7 @@ class TemplateExtendsTest extends TestCase
                      * @template-implements I<Z>
                      */
                     class B implements I {}',
-                'error_message' => 'UndefinedClass',
+                'error_message' => 'UndefinedDocblockClass',
             ],
             'badTemplateImplementsInt' => [
                 '<?php
@@ -2238,7 +2238,7 @@ class TemplateExtendsTest extends TestCase
                          */
                         use T;
                     }',
-                'error_message' => 'UndefinedClass',
+                'error_message' => 'UndefinedDocblockClass',
             ],
             'badTemplateUseBadFormat' => [
                 '<?php
@@ -2574,6 +2574,26 @@ class TemplateExtendsTest extends TestCase
                         ord($c->example("boris"));
                     }',
                 'error_message' => 'MixedArgument - src/somefile.php:31:29 - Argument 1 of ord cannot be mixed, expecting string'
+            ],
+            'preventExtendingWithCovariance' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class InvariantFoo
+                    {
+                        /**
+                         * @param T $value
+                         */
+                        public function set($value): void {}
+                    }
+
+                    /**
+                     * @template-covariant T
+                     * @extends InvariantFoo<T>
+                     */
+                    class CovariantFoo extends InvariantFoo {}',
+                'error_message' => 'InvalidTemplateParam'
             ],
         ];
     }

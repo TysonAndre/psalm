@@ -164,6 +164,7 @@
             <xs:element name="ForbiddenCode" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ForbiddenEcho" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NoValue" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="ImplementedParamTypeMismatch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ImplementedReturnTypeMismatch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ImplicitToStringCast" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InaccessibleClassConstant" type="IssueHandlerType" minOccurs="0" />
@@ -316,6 +317,7 @@
             <xs:element name="UncaughtThrowInGlobalScope" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedClass" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedConstant" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="UndefinedDocblockClass" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedFunction" type="FunctionIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedInterface" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedInterfaceMethod" type="MethodIssueHandlerType" minOccurs="0" />

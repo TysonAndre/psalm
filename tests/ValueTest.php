@@ -6,10 +6,7 @@ class ValueTest extends TestCase
     use Traits\InvalidCodeAnalysisTestTrait;
     use Traits\ValidCodeAnalysisTestTrait;
 
-    /**
-     * @return void
-     */
-    public function setUp()
+    public function setUp() : void
     {
         \Psalm\Internal\Analyzer\FileAnalyzer::clearCache();
 
@@ -488,17 +485,6 @@ class ValueTest extends TestCase
                     }',
                 'assertions' => [],
                 'error_levels' => ['MissingParamType', 'MixedAssignment'],
-            ],
-            'sqlTypes' => [
-                '<?php
-                    $a = "select * from foo";
-                    $b = "select * from";
-                    $c = "select * from foo where i = :i";',
-                'assertions' => [
-                    '$a===' => 'sql-select-string(select * from foo)',
-                    '$b===' => 'string(select * from)',
-                    '$c===' => 'sql-select-string(select * from foo where i = :i)',
-                ],
             ],
             'numericToStringComparison' => [
                 '<?php
