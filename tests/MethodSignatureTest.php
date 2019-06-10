@@ -536,6 +536,41 @@ class MethodSignatureTest extends TestCase
                     '$a' => 'string',
                 ]
             ],
+            'parentIsKnown' => [
+                '<?php
+                    class A {
+                        public function returnSelf() : self {
+                            return $this;
+                        }
+                    }
+
+                    class B extends A {
+                        public function returnSelf() : parent {
+                            return parent::returnSelf();
+                        }
+
+                    }',
+            ],
+            'returnStaticParent' => [
+                '<?php
+                    class A {
+                        /**
+                         * @return static
+                         */
+                        public static function foo() {
+                            return new static();
+                        }
+                    }
+
+                    class B extends A {
+                        /**
+                         * @return static
+                         */
+                        public static function foo() {
+                            return parent::foo();
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -638,8 +673,9 @@ class MethodSignatureTest extends TestCase
             ],
             'misplacedRequiredParam' => [
                 '<?php
-                    function foo($bar = null, $bat): void {}',
-                'error_message' => 'MisplacedRequiredParam',
+                    function foo(string $bar = null, int $bat): void {}
+                    foo();',
+                'error_message' => 'TooFewArguments',
             ],
             'clasginByRef' => [
                 '<?php

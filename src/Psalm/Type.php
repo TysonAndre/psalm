@@ -70,6 +70,7 @@ abstract class Type
         'numeric-string' => true,
         'class-string' => true,
         'callable-string' => true,
+        'trait-string' => true,
         'mysql-escaped-string' => true,
         'html-escaped-string' => true,
         'boolean' => true,
@@ -86,6 +87,9 @@ abstract class Type
         'never-return' => true,
         'never-returns' => true,
         'array-key' => true,
+        'key-of' => true,
+        'value-of' => true,
+        'non-empty-countable' => true,
     ];
 
     /**
@@ -284,6 +288,66 @@ abstract class Type
                 return new TClassString($class_name, $param_union_types[0]);
             }
 
+            if ($generic_type_value === 'key-of') {
+                $param_name = (string) $generic_params[0];
+
+                if (isset($template_type_map[$param_name])) {
+                    $defining_class = array_keys($template_type_map[$param_name])[0];
+
+                    return new Atomic\TTemplateKeyOf(
+                        $param_name,
+                        $defining_class
+                    );
+                }
+
+                $param_union_types = array_values($generic_params[0]->getTypes());
+
+                if (count($param_union_types) > 1) {
+                    throw new TypeParseTreeException('Union types are not allowed in key-of type');
+                }
+
+                if (!$param_union_types[0] instanceof Atomic\TScalarClassConstant) {
+                    throw new TypeParseTreeException(
+                        'Untemplated key-of param ' . $param_name . ' should be a class constant'
+                    );
+                }
+
+                return new Atomic\TKeyOfClassConstant(
+                    $param_union_types[0]->fq_classlike_name,
+                    $param_union_types[0]->const_name
+                );
+            }
+
+            if ($generic_type_value === 'value-of') {
+                $param_name = (string) $generic_params[0];
+
+                if (isset($template_type_map[$param_name])) {
+                    $defining_class = array_keys($template_type_map[$param_name])[0];
+
+                    return new Atomic\TTemplateKeyOf(
+                        $param_name,
+                        $defining_class
+                    );
+                }
+
+                $param_union_types = array_values($generic_params[0]->getTypes());
+
+                if (count($param_union_types) > 1) {
+                    throw new TypeParseTreeException('Union types are not allowed in value-of type');
+                }
+
+                if (!$param_union_types[0] instanceof Atomic\TScalarClassConstant) {
+                    throw new TypeParseTreeException(
+                        'Untemplated value-of param ' . $param_name . ' should be a class constant'
+                    );
+                }
+
+                return new Atomic\TValueOfClassConstant(
+                    $param_union_types[0]->fq_classlike_name,
+                    $param_union_types[0]->const_name
+                );
+            }
+
             if (isset(self::PSALM_RESERVED_WORDS[$generic_type_value])
                 && $generic_type_value !== 'self'
                 && $generic_type_value !== 'static'
@@ -344,6 +408,8 @@ abstract class Type
                 $parse_tree->children
             );
 
+            $keyed_intersection_types = [];
+
             foreach ($intersection_types as $intersection_type) {
                 if (!$intersection_type instanceof TNamedObject
                     && !$intersection_type instanceof TTemplateParam
@@ -353,13 +419,17 @@ abstract class Type
                         'Intersection types must all be objects, ' . get_class($intersection_type) . ' provided'
                     );
                 }
+
+                $keyed_intersection_types[
+                    $intersection_type instanceof TIterable
+                        ? $intersection_type->getId()
+                        : $intersection_type->getKey()
+                    ] = $intersection_type;
             }
 
-            /** @var TNamedObject|TTemplateParam */
-            $first_type = array_shift($intersection_types);
+            $first_type = array_shift($keyed_intersection_types);
 
-            /** @var array<int, TNamedObject|TTemplateParam> $intersection_types */
-            $first_type->extra_types = $intersection_types;
+            $first_type->extra_types = $keyed_intersection_types;
 
             return $first_type;
         }
@@ -413,7 +483,7 @@ abstract class Type
         if ($parse_tree instanceof ParseTree\CallableWithReturnTypeTree) {
             $callable_type = self::getTypeFromTree($parse_tree->children[0], null, $template_type_map);
 
-            if (!$callable_type instanceof TCallable && !$callable_type instanceof Type\Atomic\Fn) {
+            if (!$callable_type instanceof TCallable && !$callable_type instanceof Type\Atomic\TFn) {
                 throw new \InvalidArgumentException('Parsing callable tree node should return TCallable');
             }
 
@@ -451,7 +521,7 @@ abstract class Type
 
                     $tree_type = $tree_type instanceof Union ? $tree_type : new Union([$tree_type]);
 
-                    return new FunctionLikeParameter(
+                    $param = new FunctionLikeParameter(
                         '',
                         false,
                         $tree_type,
@@ -461,12 +531,17 @@ abstract class Type
                         false,
                         $is_variadic
                     );
+
+                    // type is not authoratative
+                    $param->signature_type = null;
+
+                    return $param;
                 },
                 $parse_tree->children
             );
 
             if (in_array(strtolower($parse_tree->value), ['closure', '\closure'], true)) {
-                return new Type\Atomic\Fn('Closure', $params);
+                return new Type\Atomic\TFn('Closure', $params);
             }
 
             return new TCallable($parse_tree->value, $params);
@@ -504,6 +579,47 @@ abstract class Type
             || $parse_tree instanceof ParseTree\MethodWithReturnTypeTree
         ) {
             throw new TypeParseTreeException('Misplaced brackets');
+        }
+
+        if ($parse_tree instanceof ParseTree\IndexedAccessTree) {
+            if (!isset($parse_tree->children[0]) || !$parse_tree->children[0] instanceof ParseTree\Value) {
+                throw new TypeParseTreeException('Unrecognised indexed access');
+            }
+
+            $offset_param_name = $parse_tree->value;
+            $array_param_name = $parse_tree->children[0]->value;
+
+            if (!isset($template_type_map[$offset_param_name])) {
+                throw new TypeParseTreeException('Unrecognised template param ' . $offset_param_name);
+            }
+
+            if (!isset($template_type_map[$array_param_name])) {
+                throw new TypeParseTreeException('Unrecognised template param ' . $array_param_name);
+            }
+
+            $offset_template_data = $template_type_map[$offset_param_name];
+
+            $offset_defining_class = array_keys($offset_template_data)[0];
+
+            if (!$offset_defining_class && $offset_template_data[''][0]->isSingle()) {
+                $offset_template_type = array_values($offset_template_data[''][0]->getTypes())[0];
+
+                if ($offset_template_type instanceof Type\Atomic\TTemplateKeyOf) {
+                    $offset_defining_class = (string) $offset_template_type->defining_class;
+                }
+            }
+
+            $array_defining_class = array_keys($template_type_map[$array_param_name])[0];
+
+            if ($offset_defining_class !== $array_defining_class) {
+                throw new TypeParseTreeException('Template params are defined in different locations');
+            }
+
+            return new Atomic\TTemplateIndexedAccess(
+                $array_param_name,
+                $offset_param_name,
+                $array_defining_class
+            );
         }
 
         if (!$parse_tree instanceof ParseTree\Value) {
@@ -908,6 +1024,58 @@ abstract class Type
     }
 
     /**
+     * @param  array<string, string> $aliased_classes
+     */
+    public static function getStringFromFQCLN(
+        string $value,
+        ?string $namespace,
+        array $aliased_classes,
+        ?string $this_class
+    ) : string {
+        if ($value === $this_class) {
+            return 'self';
+        }
+
+        if ($namespace && stripos($value, $namespace . '\\') === 0) {
+            $candidate = preg_replace(
+                '/^' . preg_quote($namespace . '\\') . '/i',
+                '',
+                $value
+            );
+
+            $candidate_parts = explode('\\', $candidate);
+
+            if (!isset($aliased_classes[strtolower($candidate_parts[0])])) {
+                return $candidate;
+            }
+        } elseif (!$namespace && stripos($value, '\\') === false) {
+            return $value;
+        }
+
+        if (isset($aliased_classes[strtolower($value)])) {
+            return $aliased_classes[strtolower($value)];
+        }
+
+        if (strpos($value, '\\')) {
+            $parts = explode('\\', $value);
+
+            $suffix = array_pop($parts);
+
+            while ($parts) {
+                $left = implode('\\', $parts);
+
+                if (isset($aliased_classes[strtolower($left)])) {
+                    return $aliased_classes[strtolower($left)] . '\\' . $suffix;
+                }
+
+                $suffix = array_pop($parts) . '\\' . $suffix;
+            }
+        }
+
+        return '\\' . $value;
+    }
+
+    /**
      * @param bool $from_calculation
      * @param int|null $value
      *
@@ -1224,6 +1392,113 @@ abstract class Type
         }
 
         if ($type_1->possibly_undefined || $type_2->possibly_undefined) {
+            $combined_type->possibly_undefined = true;
+        }
+
+        return $combined_type;
+    }
+
+    /**
+     * Combines two union types into one via an intersection
+     *
+     * @param  Union  $type_1
+     * @param  Union  $type_2
+     *
+     * @return Union
+     */
+    public static function intersectUnionTypes(
+        Union $type_1,
+        Union $type_2
+    ) {
+        if ($type_1->isMixed() && $type_2->isMixed()) {
+            $combined_type = Type::getMixed();
+        } else {
+            $both_failed_reconciliation = false;
+
+            if ($type_1->failed_reconciliation) {
+                if ($type_2->failed_reconciliation) {
+                    $both_failed_reconciliation = true;
+                } else {
+                    return $type_2;
+                }
+            } elseif ($type_2->failed_reconciliation) {
+                return $type_1;
+            }
+
+            if ($type_1->isMixed() && !$type_2->isMixed()) {
+                $combined_type = clone $type_2;
+            } elseif (!$type_1->isMixed() && $type_2->isMixed()) {
+                $combined_type = clone $type_1;
+            } else {
+                $combined_type = clone $type_1;
+
+                foreach ($combined_type->getTypes() as $t1_key => $type_1_atomic) {
+                    foreach ($type_2->getTypes() as $type_2_atomic) {
+                        if (($type_1_atomic instanceof TIterable
+                                || $type_1_atomic instanceof TNamedObject
+                                || $type_1_atomic instanceof TTemplateParam)
+                            && ($type_2_atomic instanceof TIterable
+                                || $type_2_atomic instanceof TNamedObject
+                                || $type_2_atomic instanceof TTemplateParam)
+                        ) {
+                            if (!$type_1_atomic->extra_types) {
+                                $type_1_atomic->extra_types = [];
+                            }
+
+                            $type_2_atomic_clone = clone $type_2_atomic;
+
+                            $type_2_atomic_clone->extra_types = [];
+
+                            $type_1_atomic->extra_types[$type_2_atomic_clone->getKey()] = $type_2_atomic_clone;
+
+                            $type_2_atomic_intersection_types = $type_2_atomic->getIntersectionTypes();
+
+                            if ($type_2_atomic_intersection_types) {
+                                foreach ($type_2_atomic_intersection_types as $type_2_intersection_type) {
+                                    $type_1_atomic->extra_types[$type_2_intersection_type->getKey()]
+                                        = clone $type_2_intersection_type;
+                                }
+                            }
+                        }
+
+                        if ($type_1_atomic instanceof TObject && $type_2_atomic instanceof TNamedObject) {
+                            $combined_type->removeType($t1_key);
+                            $combined_type->addType(clone $type_2_atomic);
+                        }
+                    }
+                }
+            }
+
+            if (!$type_1->initialized && !$type_2->initialized) {
+                $combined_type->initialized = false;
+            }
+
+            if ($type_1->possibly_undefined_from_try && $type_2->possibly_undefined_from_try) {
+                $combined_type->possibly_undefined_from_try = true;
+            }
+
+            if ($type_1->from_docblock && $type_2->from_docblock) {
+                $combined_type->from_docblock = true;
+            }
+
+            if ($type_1->from_calculation && $type_2->from_calculation) {
+                $combined_type->from_calculation = true;
+            }
+
+            if ($type_1->ignore_nullable_issues && $type_2->ignore_nullable_issues) {
+                $combined_type->ignore_nullable_issues = true;
+            }
+
+            if ($type_1->ignore_falsable_issues && $type_2->ignore_falsable_issues) {
+                $combined_type->ignore_falsable_issues = true;
+            }
+
+            if ($both_failed_reconciliation) {
+                $combined_type->failed_reconciliation = true;
+            }
+        }
+
+        if ($type_1->possibly_undefined && $type_2->possibly_undefined) {
             $combined_type->possibly_undefined = true;
         }
 

@@ -172,6 +172,19 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
         }
     }
 
+    public function getFunctionLikeAnalyzer(string $method_name) : ?FunctionLikeAnalyzer
+    {
+        foreach ($this->class->stmts as $stmt) {
+            if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod &&
+                strtolower($stmt->name->name) === strtolower($method_name)
+            ) {
+                return new MethodAnalyzer($stmt, $this);
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @param  string           $fq_class_name
      * @param  array<string>    $suppressed_issues
@@ -181,7 +194,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
      */
     public static function checkFullyQualifiedClassLikeName(
         StatementsSource $statements_source,
-        $fq_class_name,
+        string $fq_class_name,
         CodeLocation $code_location,
         array $suppressed_issues,
         bool $inferred = true,
@@ -400,6 +413,18 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
     {
         if ($this->source instanceof NamespaceAnalyzer || $this->source instanceof FileAnalyzer) {
             return $this->source->getAliasedClassesFlipped();
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getAliasedClassesFlippedReplaceable()
+    {
+        if ($this->source instanceof NamespaceAnalyzer || $this->source instanceof FileAnalyzer) {
+            return $this->source->getAliasedClassesFlippedReplaceable();
         }
 
         return [];

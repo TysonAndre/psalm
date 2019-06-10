@@ -1813,6 +1813,130 @@ class TemplateExtendsTest extends TestCase
                         getSounds($list); // this probably should not be an error
                     }'
             ],
+            'keyOfClassTemplateExtended' => [
+                '<?php
+                    /**
+                     * @template TData as array
+                     */
+                    abstract class DataBag {
+                        /**
+                         * @var TData
+                         */
+                        protected $data;
+
+                        /**
+                         * @param TData $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @template K as key-of<TData>
+                         *
+                         * @param K $property
+                         *
+                         * @return TData[K]
+                         * @psalm-suppress MixedReturnStatement due to bug
+                         * @psalm-suppress MixedInferredReturnType due to bug
+                         */
+                        public function __get(string $property) {
+                            return $this->data[$property];
+                        }
+
+                        /**
+                         * @template K as key-of<TData>
+                         *
+                         * @param K $property
+                         * @param TData[K] $value
+                         */
+                        public function __set(string $property, $value) {
+                            $this->data[$property] = $value;
+                        }
+                    }
+
+                    /** @extends DataBag<array{a: int, b: string}> */
+                    class FooBag extends DataBag {}
+
+                    $foo = new FooBag(["a" => 5, "b" => "hello"]);
+
+                    $foo->a = 9;
+                    $foo->b = "hello";
+
+                    $a = $foo->a;
+                    $b = $foo->b;',
+                [
+                    '$a' => 'int',
+                    '$b' => 'string',
+                ]
+            ],
+            'templateExtendsWithNewlineAfter' => [
+                '<?php
+                    namespace Ns;
+
+                    /**
+                     * @template DATA as array<string, scalar|array|object|null>
+                     */
+                    abstract class Foo {}
+
+                    /**
+                     * @template-extends Foo<array{id:int}>
+                     *
+                     * @internal
+                     */
+                    class Bar extends Foo {}'
+            ],
+            'implementsArrayReturnTypeWithTemplate' => [
+                '<?php
+                    /** @template T as mixed */
+                    interface I {
+                        /**
+                         * @param  T $v
+                         * @return array<string,T>
+                         */
+                        public function indexById($v): array;
+                    }
+
+                    /** @template-implements I<int> */
+                    class C implements I {
+                        public function indexById($v): array {
+                          return [(string)$v => $v];
+                        }
+                    }',
+            ],
+            'keyOfArrayInheritance' => [
+                '<?php
+                    /**
+                     * @template DATA as array<string, int|string>
+                     */
+                    abstract class Foo {
+                        /**
+                         * @var DATA
+                         */
+                        protected $data;
+
+                        /**
+                         * @param DATA $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @return key-of<DATA>
+                         */
+                        abstract public static function getIdProperty() : string;
+                    }
+
+                    /**
+                     * @template-extends Foo<array{id:int, name:string}>
+                     */
+                    class FooChild extends Foo {
+                        public static function getIdProperty() : string {
+                            return "id";
+                        }
+                    }'
+            ],
         ];
     }
 

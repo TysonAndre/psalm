@@ -43,14 +43,14 @@ class ForeachAnalyzer
     ) {
         $var_comments = [];
 
-        $doc_comment_text = (string)$stmt->getDocComment();
+        $doc_comment = $stmt->getDocComment();
 
         $codebase = $statements_analyzer->getCodebase();
 
-        if ($doc_comment_text) {
+        if ($doc_comment) {
             try {
                 $var_comments = CommentAnalyzer::getTypeFromComment(
-                    $doc_comment_text,
+                    $doc_comment,
                     $statements_analyzer->getSource(),
                     $statements_analyzer->getSource()->getAliases()
                 );
@@ -106,8 +106,29 @@ class ForeachAnalyzer
                 $codebase,
                 $var_comment->type,
                 $context->self,
-                $context->self
+                $context->self,
+                $statements_analyzer->getParentFQCLN()
             );
+
+            if ($var_comment->type_start
+                && $var_comment->type_end
+                && $var_comment->line_number
+            ) {
+                $type_location = new CodeLocation\DocblockTypeLocation(
+                    $statements_analyzer,
+                    $var_comment->type_start,
+                    $var_comment->type_end,
+                    $var_comment->line_number
+                );
+
+                $codebase->classlikes->handleDocblockTypeInMigration(
+                    $codebase,
+                    $statements_analyzer,
+                    $comment_type,
+                    $type_location,
+                    $context->calling_method_id
+                );
+            }
 
             if (isset($context->vars_in_scope[$var_comment->var_id])
                 || $statements_analyzer->isSuperGlobal($var_comment->var_id)
@@ -209,7 +230,7 @@ class ForeachAnalyzer
             null,
             $value_type ?: Type::getMixed(),
             $foreach_context,
-            $doc_comment_text
+            $doc_comment
         );
 
         foreach ($var_comments as $var_comment) {
@@ -221,7 +242,8 @@ class ForeachAnalyzer
                 $codebase,
                 $var_comment->type,
                 $context->self,
-                $context->self
+                $context->self,
+                $statements_analyzer->getParentFQCLN()
             );
 
             $foreach_context->vars_in_scope[$var_comment->var_id] = $comment_type;
@@ -406,19 +428,62 @@ class ForeachAnalyzer
                 $has_valid_iterator = true;
                 $value_type = Type::getMixed();
             } elseif ($iterator_atomic_type instanceof Type\Atomic\TIterable) {
-                $value_type_part = $iterator_atomic_type->type_params[1];
-                $key_type_part = $iterator_atomic_type->type_params[0];
+                if ($iterator_atomic_type->extra_types) {
+                    $iterator_atomic_type_copy = clone $iterator_atomic_type;
+                    $iterator_atomic_type_copy->extra_types = [];
+                    $iterator_atomic_types = [$iterator_atomic_type_copy];
+                    $iterator_atomic_types = array_merge(
+                        $iterator_atomic_types,
+                        $iterator_atomic_type->extra_types
+                    );
+                } else {
+                    $iterator_atomic_types = [$iterator_atomic_type];
+                }
+
+                $intersection_value_type = null;
+                $intersection_key_type = null;
+
+                foreach ($iterator_atomic_types as $iat) {
+                    if (!$iat instanceof Type\Atomic\TIterable) {
+                        continue;
+                    }
+
+                    $value_type_part = $iat->type_params[1];
+                    $key_type_part = $iat->type_params[0];
+
+                    if (!$intersection_value_type) {
+                        $intersection_value_type = $value_type_part;
+                    } else {
+                        $intersection_value_type = Type::intersectUnionTypes(
+                            $intersection_value_type,
+                            $value_type_part
+                        );
+                    }
+
+                    if (!$intersection_key_type) {
+                        $intersection_key_type = $key_type_part;
+                    } else {
+                        $intersection_key_type = Type::intersectUnionTypes(
+                            $intersection_key_type,
+                            $key_type_part
+                        );
+                    }
+                }
+
+                if (!$intersection_value_type || !$intersection_key_type) {
+                    throw new \UnexpectedValueException('Should not happen');
+                }
 
                 if (!$value_type) {
-                    $value_type = $value_type_part;
+                    $value_type = $intersection_value_type;
                 } else {
-                    $value_type = Type::combineUnionTypes($value_type, $value_type_part);
+                    $value_type = Type::combineUnionTypes($value_type, $intersection_value_type);
                 }
 
                 if (!$key_type) {
-                    $key_type = $key_type_part;
+                    $key_type = $intersection_key_type;
                 } else {
-                    $key_type = Type::combineUnionTypes($key_type, $key_type_part);
+                    $key_type = Type::combineUnionTypes($key_type, $intersection_key_type);
                 }
 
                 $has_valid_iterator = true;
@@ -518,6 +583,7 @@ class ForeachAnalyzer
             if ($iterator_atomic_type instanceof Type\Atomic\TTemplateParam) {
                 throw new \UnexpectedValueException('Shouldn’t get a generic param here');
             }
+
 
             $has_valid_iterator = true;
 

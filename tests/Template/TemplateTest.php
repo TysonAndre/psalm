@@ -1626,7 +1626,7 @@ class TemplateTest extends TestCase
                     '$arr' => 'array<int, string>',
                 ],
             ],
-            'templatedClassStringParam' => [
+            'templatedClassStringParamAsClass' => [
                 '<?php
                     abstract class C {
                         public function foo() : void{}
@@ -1661,6 +1661,32 @@ class TemplateTest extends TestCase
                     function bat(string $c_class) : void {
                         $c = E::get($c_class);
                         $c->foo();
+                    }',
+            ],
+            'templatedClassStringParamAsObject' => [
+                '<?php
+                    abstract class C {
+                        public function foo() : void{}
+                    }
+
+                    class E {
+                        /**
+                         * @template T as object
+                         * @param class-string<T> $c_class
+                         *
+                         * @psalm-return T
+                         */
+                        public static function get(string $c_class) {
+                            return new $c_class;
+                        }
+                    }
+
+                    /**
+                     * @psalm-suppress TypeCoercion
+                     */
+                    function bat(string $c_class) : void {
+                        $c = E::get($c_class);
+                        $c->bar = "bax";
                     }',
             ],
             'templatedClassStringParamMoreSpecific' => [
@@ -2230,6 +2256,441 @@ class TemplateTest extends TestCase
                     '$y' => 'array<array-key, A&B>',
                 ]
             ],
+            'templateEmptyParamCoercion' => [
+                '<?php
+                    namespace NS;
+                    use Countable;
+
+                    /** @template T */
+                    class Collection
+                    {
+                        /** @psalm-var iterable<T> */
+                        private $data;
+
+                        /** @psalm-param iterable<T> $data */
+                        public function __construct(iterable $data = []) {
+                            $this->data = $data;
+                        }
+                    }
+
+                    class Item {}
+                    /** @psalm-param Collection<Item> $c */
+                    function takesCollectionOfItems(Collection $c): void {}
+
+                    takesCollectionOfItems(new Collection());
+                    takesCollectionOfItems(new Collection([]));',
+            ],
+            'templatedGet' => [
+                '<?php
+                    /**
+                     * @template P as string
+                     * @template V as mixed
+                     */
+                    class PropertyBag {
+                        /** @var array<P,V> */
+                        protected $data = [];
+
+                        /** @param array<P,V> $data */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /** @param P $name */
+                        public function __isset(string $name): bool {
+                            return isset($this->data[$name]);
+                        }
+
+                        /**
+                         * @param P $name
+                         * @return V
+                         */
+                        public function __get(string $name) {
+                            return $this->data[$name];
+                        }
+                    }
+
+                    $p = new PropertyBag(["a" => "data for a", "b" => "data for b"]);
+
+                    $a = $p->a;',
+                [
+                    '$a' => 'string'
+                ]
+            ],
+            'templateAsArray' => [
+                '<?php
+                    /**
+                     * @template DATA as array<string, scalar|array|object|null>
+                     */
+                    abstract class Foo {
+                        /**
+                         * @var DATA
+                         */
+                        protected $data;
+
+                        /**
+                         * @param DATA $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @return scalar|array|object|null
+                         */
+                        public function __get(string $property) {
+                            return $this->data[$property] ?? null;
+                        }
+
+                        /**
+                         * @param scalar|array|object|null $value
+                         */
+                        public function __set(string $property, $value) {
+                            $this->data[$property] = $value;
+                        }
+                    }',
+            ],
+            'keyOfTemplate' => [
+                '<?php
+                    /**
+                     * @template T as array
+                     * @template K as key-of<T>
+                     *
+                     * @param T $o
+                     * @param K $name
+                     *
+                     * @return T[K]
+                     */
+                    function getOffset(array $o, $name) {
+                        return $o[$name];
+                    }
+
+                    $a = ["foo" => "hello", "bar" => 2];
+
+                    $b = getOffset($a, "foo");
+                    $c = getOffset($a, "bar");',
+                [
+                    '$b' => 'string',
+                    '$c' => 'int',
+                ]
+            ],
+            'keyOfClassTemplateAcceptingIndexedAccess' => [
+                '<?php
+                    /**
+                     * @template TData as array
+                     */
+                    abstract class DataBag {
+                        /**
+                         * @var TData
+                         */
+                        protected $data;
+
+                        /**
+                         * @param TData $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @template K as key-of<TData>
+                         *
+                         * @param K $property
+                         * @param TData[K] $value
+                         */
+                        public function __set(string $property, $value) {
+                            $this->data[$property] = $value;
+                        }
+                    }'
+            ],
+            'keyOfClassTemplateReturningIndexedAccess' => [
+                '<?php
+                    /**
+                     * @template TData as array
+                     */
+                    abstract class DataBag {
+                        /**
+                         * @var TData
+                         */
+                        protected $data;
+
+                        /**
+                         * @param TData $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @template K as key-of<TData>
+                         *
+                         * @param K $property
+                         *
+                         * @return TData[K]
+                         */
+                        public function __get(string $property) {
+                            return $this->data[$property];
+                        }
+                    }'
+            ],
+            'unionTOrClassStringTPassedClassString' => [
+                '<?php
+                    /**
+                     * @psalm-template T of object
+                     * @psalm-param T|class-string<T> $someType
+                     * @psalm-return T
+                     */
+                    function getObject($someType) {
+                        if (is_object($someType)) {
+                            return $someType;
+                        }
+
+                        return new $someType();
+                    }
+
+                    class C {
+                        function sayHello() : string {
+                            return "hi";
+                        }
+                    }
+
+                    getObject(C::class)->sayHello();'
+            ],
+            'unionTOrClassStringTPassedObject' => [
+                '<?php
+                    /**
+                     * @psalm-template T of object
+                     * @psalm-param T|class-string<T> $someType
+                     * @psalm-return T
+                     */
+                    function getObject($someType) {
+                        if (is_object($someType)) {
+                            return $someType;
+                        }
+
+                        return new $someType();
+                    }
+
+                    class C {
+                        function sayHello() : string {
+                            return "hi";
+                        }
+                    }
+
+                    getObject(new C())->sayHello();'
+            ],
+            'SKIPPED-templatedInterfaceIntersectionFirst' => [
+                '<?php
+                    /** @psalm-template T */
+                    interface IParent {
+                        /** @psalm-return T */
+                        function foo();
+                    }
+
+                    interface IChild extends IParent {}
+
+                    class C {}
+
+                    /** @psalm-return IParent<C>&IChild */
+                    function makeConcrete() : IChild {
+                        return new class() implements IChild {
+                            public function foo() {
+                                return new C();
+                            }
+                        };
+                    }
+
+                    $a = makeConcrete()->foo();',
+                [
+                    '$a' => 'C',
+                ]
+            ],
+            'templatedInterfaceIntersectionSecond' => [
+                '<?php
+                    /** @psalm-template T */
+                    interface IParent {
+                        /** @psalm-return T */
+                        function foo();
+                    }
+
+                    interface IChild extends IParent {}
+
+                    class C {}
+
+                    /** @psalm-return IChild&IParent<C> */
+                    function makeConcrete() : IChild {
+                        return new class() implements IChild {
+                            public function foo() {
+                                return new C();
+                            }
+                        };
+                    }
+
+                    $a = makeConcrete()->foo();',
+                [
+                    '$a' => 'C',
+                ]
+            ],
+            'returnTemplateIntersectionGenericObjectAndTemplate' => [
+                '<?php
+                    /** @psalm-template Tp */
+                    interface I {
+                        /** @psalm-return Tp */
+                        function getMe();
+                    }
+
+                    class C {}
+
+                    /**
+                     * @psalm-template T as object
+                     *
+                     * @psalm-param class-string<T> $className
+                     *
+                     * @psalm-return T&I<T>
+                     */
+                    function makeConcrete(string $className) : object
+                    {
+                        return new class() extends C implements I {
+                            public function getMe() {
+                                return $this;
+                            }
+                        };
+                    }
+
+                    $a = makeConcrete(C::class);',
+                [
+                    '$a' => 'C&I<C>'
+                ]
+            ],
+            'dontModifyByRefTemplatedArray' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    /**
+                     * @template T of object
+                     * @param class-string<T> $className
+                     * @param array<T> $map
+                     * @param-out array<T> $map
+                     * @param int $id
+                     * @return T
+                     */
+                    function get(string $className, array &$map, int $id) {
+                        if(!array_key_exists($id, $map)) {
+                            $map[$id] = new $className();
+                        }
+                        return $map[$id];
+                    }
+
+                    /**
+                     * @param array<A> $mapA
+                     */
+                    function getA(int $id, array $mapA): A {
+                        return get(A::class, $mapA, $id);
+                    }
+
+                    /**
+                     * @param array<B> $mapB
+                     */
+                    function getB(int $id, array $mapB): B {
+                        return get(B::class, $mapB, $id);
+                    }'
+            ],
+            'dontGeneraliseBoundParamWithWiderCallable' => [
+                '<?php
+                    class C {
+                        public function foo() : void {}
+                    }
+
+                    /**
+                     * @psalm-template T
+                     * @psalm-param T $t
+                     * @psalm-param callable(?T):void $callable
+                     * @return T
+                     */
+                    function makeConcrete($t, callable $callable) {
+                        $callable(rand(0, 1) ? $t : null);
+                        return $t;
+                    }
+
+                    $c = makeConcrete(new C(), function (?C $c) : void {});',
+                [
+                    '$c' => 'C',
+                ]
+            ],
+            'unionClassStringTWithTReturnsObjectWhenCoerced' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     * @param T|class-string<T> $s
+                     * @return T
+                     */
+                    function bar($s) {
+                        if (is_object($s)) {
+                            return $s;
+                        }
+
+                        return new $s();
+                    }
+
+                    function foo(string $s) : object {
+                        /** @psalm-suppress ArgumentTypeCoercion */
+                        return bar($s);
+                    }'
+            ],
+            'keyOfArrayGet' => [
+                '<?php
+                    /**
+                     * @template DATA as array<string, int|bool>
+                     */
+                    abstract class Foo {
+                        /**
+                         * @var DATA
+                         */
+                        protected $data;
+
+                        /**
+                         * @param DATA $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @template K as key-of<DATA>
+                         *
+                         * @param K $property
+                         *
+                         * @return DATA[K]
+                         */
+                        public function __get(string $property) {
+                            return $this->data[$property];
+                        }
+                    }',
+            ],
+            'keyOfArrayRandomKey' => [
+                '<?php
+                    /**
+                     * @template DATA as array<string, int|bool>
+                     */
+                    abstract class Foo {
+                        /**
+                         * @var DATA
+                         */
+                        protected $data;
+
+                        /**
+                         * @param DATA $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @return key-of<DATA>
+                         */
+                        abstract public function getRandomKey() : string;
+                    }'
+            ],
         ];
     }
 
@@ -2757,35 +3218,6 @@ class TemplateTest extends TestCase
                     }',
                 'error_message' => 'InvalidDocblock',
             ],
-            'noComparisonToEmpty' => [
-                '<?php
-                    /**
-                     * @template K
-                     * @template V
-                     */
-                    class Container {
-                        /** @var array<K, V> */
-                        private $c;
-
-                        /** @param array<K, V> $c */
-                        public function __construct(array $c) {
-                            $this->c = $c;
-                        }
-                    }
-
-                    class Test {
-                        /**
-                         * @var Container<int, DateTime>
-                         */
-                        private $c;
-
-                        public function __construct()
-                        {
-                            $this->c = new Container([]);
-                        }
-                    }',
-                'error_message' => 'InvalidPropertyAssignmentValue'
-            ],
             'preventDogCatSnafu' => [
                 '<?php
                     class Animal {}
@@ -2829,6 +3261,100 @@ class TemplateTest extends TestCase
                         public function set($value): void {}
                     }',
                 'error_message' => 'InvalidTemplateParam',
+            ],
+            'templateEmptyParamCoercionChangeVariable' => [
+                '<?php
+                    namespace NS;
+                    use Countable;
+
+                    /** @template T */
+                    class Collection
+                    {
+                        /** @psalm-var iterable<T> */
+                        private $data;
+
+                        /** @psalm-param iterable<T> $data */
+                        public function __construct(iterable $data = []) {
+                            $this->data = $data;
+                        }
+                    }
+
+                    /** @psalm-param Collection<string> $c */
+                    function takesStringCollection(Collection $c): void {}
+
+                    /** @psalm-param Collection<int> $c */
+                    function takesIntCollection(Collection $c): void {}
+
+                    $collection = new Collection();
+
+                    takesStringCollection($collection);
+                    takesIntCollection($collection);',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'argumentExpectsFleshOutTIndexedAccess' => [
+                '<?php
+                    /**
+                     * @template TData as array
+                     */
+                    abstract class Row {
+                        /**
+                         * @var TData
+                         */
+                        protected $data;
+
+                        /**
+                         * @param TData $data
+                         */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @template K as key-of<TData>
+                         *
+                         * @param K $property
+                         *
+                         * @return TData[K]
+                         */
+                        public function __get(string $property) {
+                            // validation logic would go here
+                            return $this->data[$property];
+                        }
+
+                        /**
+                         * @template K as key-of<TData>
+                         *
+                         * @param K $property
+                         * @param TData[K] $value
+                         */
+                        public function __set(string $property, $value) {
+                            // data updating would go here
+                            $this->data[$property] = $value;
+                        }
+                    }
+
+                    /** @extends Row<array{id: int, name: string, height: float}> */
+                    class CharacterRow extends Row {}
+
+                    $mario = new CharacterRow(["id" => 5, "name" => "Mario", "height" => 3.5]);
+
+                    $mario->ame = "Luigi";',
+                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:47:29 - Argument 1 of CharacterRow::__set expects string(id)|string(name)|string(height), string(ame) provided',
+            ],
+            'constrainTemplateTypeWhenClassStringUsed' => [
+                '<?php
+                    class GenericObjectFactory {
+                       /**
+                        * @psalm-template T
+                        * @psalm-param class-string<T> $type
+                        * @psalm-return T
+                        */
+                        public function getObject(string $type)
+                        {
+                            return 3;
+                        }
+                    }',
+                'error_message' => 'InvalidReturnStatement'
             ],
         ];
     }

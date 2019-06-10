@@ -288,7 +288,9 @@ class AssertionFinder
             return;
         }
 
-        if ($conditional instanceof PhpParser\Node\Expr\MethodCall) {
+        if ($conditional instanceof PhpParser\Node\Expr\MethodCall
+            || $conditional instanceof PhpParser\Node\Expr\StaticCall
+        ) {
             $conditional->assertions = self::processCustomAssertion($conditional, $this_class_name, $source, false);
             return;
         }
@@ -1664,9 +1666,25 @@ class AssertionFinder
             if ($first_var_name) {
                 $if_types[$first_var_name] = [[$prefix . 'iterable']];
             }
-        } elseif (self::hasClassExistsCheck($expr)) {
+        } elseif (self::hasCountableCheck($expr)) {
             if ($first_var_name) {
-                $if_types[$first_var_name] = [[$prefix . 'class-string']];
+                $if_types[$first_var_name] = [[$prefix . 'countable']];
+            }
+        } elseif ($class_exists_check_type = self::hasClassExistsCheck($expr)) {
+            if ($first_var_name) {
+                if ($class_exists_check_type === 2) {
+                    $if_types[$first_var_name] = [[$prefix . 'class-string']];
+                } elseif (!$prefix) {
+                    $if_types[$first_var_name] = [['=class-string']];
+                }
+            }
+        } elseif ($class_exists_check_type = self::hasTraitExistsCheck($expr)) {
+            if ($first_var_name) {
+                if ($class_exists_check_type === 2) {
+                    $if_types[$first_var_name] = [[$prefix . 'trait-string']];
+                } elseif (!$prefix) {
+                    $if_types[$first_var_name] = [['=trait-string']];
+                }
             }
         } elseif (self::hasInterfaceExistsCheck($expr)) {
             if ($first_var_name) {
@@ -1748,7 +1766,7 @@ class AssertionFinder
     }
 
     /**
-     * @param  PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall      $expr
+     * @param  PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall|PhpParser\Node\Expr\StaticCall $expr
      * @param  string|null  $this_class_name
      * @param  FileSource   $source
      * @param  bool         $negate
@@ -1899,7 +1917,7 @@ class AssertionFinder
      *
      * @return  int|null
      */
-    protected static function hasFalseVariable(PhpParser\Node\Expr\BinaryOp $conditional)
+    public static function hasFalseVariable(PhpParser\Node\Expr\BinaryOp $conditional)
     {
         if ($conditional->right instanceof PhpParser\Node\Expr\ConstFetch
             && strtolower($conditional->right->name->parts[0]) === 'false'
@@ -2289,15 +2307,71 @@ class AssertionFinder
      *
      * @return  bool
      */
+    protected static function hasCountableCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    {
+        if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_countable') {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param   PhpParser\Node\Expr\FuncCall    $stmt
+     *
+     * @return  0|1|2
+     */
     protected static function hasClassExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
     {
         if ($stmt->name instanceof PhpParser\Node\Name
             && strtolower($stmt->name->parts[0]) === 'class_exists'
         ) {
-            return true;
+            if (!isset($stmt->args[1])) {
+                return 2;
+            }
+
+            $second_arg = $stmt->args[1]->value;
+
+            if ($second_arg instanceof PhpParser\Node\Expr\ConstFetch
+                && $second_arg->name instanceof PhpParser\Node\Name
+                && strtolower($second_arg->name->parts[0]) === 'true'
+            ) {
+                return 2;
+            }
+
+            return 1;
         }
 
-        return false;
+        return 0;
+    }
+
+    /**
+     * @param   PhpParser\Node\Expr\FuncCall    $stmt
+     *
+     * @return  0|1|2
+     */
+    protected static function hasTraitExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    {
+        if ($stmt->name instanceof PhpParser\Node\Name
+            && strtolower($stmt->name->parts[0]) === 'trait_exists'
+        ) {
+            if (!isset($stmt->args[1])) {
+                return 2;
+            }
+
+            $second_arg = $stmt->args[1]->value;
+
+            if ($second_arg instanceof PhpParser\Node\Expr\ConstFetch
+                && $second_arg->name instanceof PhpParser\Node\Name
+                && strtolower($second_arg->name->parts[0]) === 'true'
+            ) {
+                return 2;
+            }
+
+            return 1;
+        }
+
+        return 0;
     }
 
     /**

@@ -626,7 +626,7 @@ class FunctionCallTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['MixedAssignment', 'MixedArgument'],
+                'error_levels' => ['MixedAssignment', 'MixedArgument', 'MixedArgumentTypeCoercion'],
             ],
             'compact' => [
                 '<?php
@@ -1646,6 +1646,85 @@ class FunctionCallTest extends TestCase
                         );
                     }',
             ],
+            'noImplicitAssignmentToStringFromMixedWithDocblockTypes' => [
+                '<?php
+                    /** @param string $s */
+                    function takesString($s) : void {}
+                    function takesInt(int $i) : void {}
+
+                    /**
+                     * @param mixed $s
+                     * @psalm-suppress MixedArgument
+                     */
+                    function bar($s) : void {
+                        takesString($s);
+                        takesInt($s);
+                    }',
+            ],
+            'ignoreNullableIssuesAfterMixedCoercion' => [
+                '<?php
+                    function takesNullableString(?string $s) : void {}
+                    function takesString(string $s) : void {}
+
+                    /**
+                     * @param mixed $s
+                     * @psalm-suppress MixedArgument
+                     */
+                    function bar($s) : void {
+                        takesNullableString($s);
+                        takesString($s);
+                    }',
+            ],
+            'countableSimpleXmlElement' => [
+                '<?php
+                    $xml = new SimpleXMLElement("<?xml version=\"1.0\"?><a><b></b><b></b></a>");
+                    echo count($xml);'
+            ],
+            'refineWithTraitExists' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if (trait_exists($s)) {
+                            new ReflectionClass($s);
+                        }
+                    }'
+            ],
+            'refineWithClassExistsOrTraitExists' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if (trait_exists($s) || class_exists($s)) {
+                            new ReflectionClass($s);
+                        }
+                    }
+
+                    function bar(string $s) : void {
+                        if (class_exists($s) || trait_exists($s)) {
+                            new ReflectionClass($s);
+                        }
+                    }
+
+                    function baz(string $s) : void {
+                        if (class_exists($s) || interface_exists($s) || trait_exists($s)) {
+                            new ReflectionClass($s);
+                        }
+                    }'
+            ],
+            'minSingleArg' => [
+                '<?php
+                    /** @psalm-suppress TooFewArguments */
+                    min(0);',
+            ],
+            'PHP73-allowIsCountableToInformType' => [
+                '<?php
+                    function getObject() : iterable{
+                       return [];
+                    }
+
+                    $iterableObject = getObject();
+
+                    if (is_countable($iterableObject)) {
+                       if (count($iterableObject) === 0) {}
+                    }',
+            ],
         ];
     }
 
@@ -2167,7 +2246,23 @@ class FunctionCallTest extends TestCase
                     $a = rand(0, 1) ? null : 5;
                     /** @psalm-suppress MixedArgument */
                     foo((int) $a);',
-                'InvalidPassByReference',
+                'error_message' => 'InvalidPassByReference',
+            ],
+            'implicitAssignmentToStringFromMixed' => [
+                '<?php
+                    /** @param "a"|"b" $s */
+                    function takesString(string $s) : void {}
+                    function takesInt(int $i) : void {}
+
+                    /**
+                     * @param mixed $s
+                     * @psalm-suppress MixedArgument
+                     */
+                    function bar($s) : void {
+                        takesString($s);
+                        takesInt($s);
+                    }',
+                'error_message' => 'InvalidScalarArgument'
             ],
         ];
     }

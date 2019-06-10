@@ -1,5 +1,6 @@
 /build/
 /vendor/
+/extra/
 .DS_Store
 /.php_cs.cache
 /.php_cs
@@ -13,3 +14,4 @@ all_output.expected
 /phpunit.xml
 /vendor-bin/*/composer.lock
 /vendor-bin/*/vendor/
+/tests/fixtures/symlinktest/*

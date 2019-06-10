@@ -32,12 +32,7 @@ class AnalyzedMethodTest extends \Psalm\Tests\TestCase
 
         $this->project_analyzer = new ProjectAnalyzer(
             $config,
-            $providers,
-            false,
-            true,
-            ProjectAnalyzer::TYPE_CONSOLE,
-            1,
-            false
+            $providers
         );
         $this->project_analyzer->setPhpVersion('7.3');
     }
@@ -102,8 +97,6 @@ class AnalyzedMethodTest extends \Psalm\Tests\TestCase
             $unaffected_analyzed_methods,
             $codebase->analyzer->getAnalyzedMethods()
         );
-
-        echo ' ';
     }
 
     /**

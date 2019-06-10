@@ -283,26 +283,6 @@ class IfAnalyzer
                         ) : null
                 );
 
-            if ($if_context->infer_types) {
-                $source_analyzer = $statements_analyzer->getSource();
-
-                if ($source_analyzer instanceof FunctionLikeAnalyzer) {
-                    $function_storage = $source_analyzer->getFunctionLikeStorage($statements_analyzer);
-
-                    foreach ($reconcilable_if_types as $var_id => $_) {
-                        if (isset($if_context->vars_in_scope[$var_id])) {
-                            $if_context->inferType(
-                                substr($var_id, 1),
-                                $function_storage,
-                                $if_context->vars_in_scope[$var_id],
-                                $if_vars_in_scope_reconciled[$var_id],
-                                $statements_analyzer->getCodebase()
-                            );
-                        }
-                    }
-                }
-            }
-
             $if_context->vars_in_scope = $if_vars_in_scope_reconciled;
 
             foreach ($reconcilable_if_types as $var_id => $_) {
@@ -680,10 +660,6 @@ class IfAnalyzer
                     );
                 }
             }
-
-            if ($if_context->infer_types) {
-                $if_scope->possible_param_types = $if_context->possible_param_types;
-            }
         } else {
             if (!$has_break_statement) {
                 $if_scope->reasonable_clauses = [];
@@ -904,6 +880,7 @@ class IfAnalyzer
             return false;
         }
 
+        /** @var array<string, bool> */
         $new_referenced_var_ids = $elseif_context->referenced_var_ids;
         $elseif_context->referenced_var_ids = array_merge(
             $referenced_var_ids,
@@ -1201,29 +1178,6 @@ class IfAnalyzer
             }
         } else {
             $if_scope->reasonable_clauses = [];
-        }
-
-        if ($elseif_context->infer_types) {
-            $elseif_possible_param_types = $elseif_context->possible_param_types;
-
-            if ($if_scope->possible_param_types) {
-                $vars_to_remove = [];
-
-                foreach ($if_scope->possible_param_types as $var => $type) {
-                    if (isset($elseif_possible_param_types[$var])) {
-                        $if_scope->possible_param_types[$var] = Type::combineUnionTypes(
-                            $elseif_possible_param_types[$var],
-                            $type
-                        );
-                    } else {
-                        $vars_to_remove[] = $var;
-                    }
-                }
-
-                foreach ($vars_to_remove as $var) {
-                    unset($if_scope->possible_param_types[$var]);
-                }
-            }
         }
 
         if ($negated_elseif_types) {
@@ -1621,29 +1575,6 @@ class IfAnalyzer
 
         if ($outer_context->collect_exceptions) {
             $outer_context->mergeExceptions($else_context);
-        }
-
-        if ($else_context->infer_types) {
-            $else_possible_param_types = $else_context->possible_param_types;
-
-            if ($if_scope->possible_param_types) {
-                $vars_to_remove = [];
-
-                foreach ($if_scope->possible_param_types as $var => $type) {
-                    if (isset($else_possible_param_types[$var])) {
-                        $if_scope->possible_param_types[$var] = Type::combineUnionTypes(
-                            $else_possible_param_types[$var],
-                            $type
-                        );
-                    } else {
-                        $vars_to_remove[] = $var;
-                    }
-                }
-
-                foreach ($vars_to_remove as $var) {
-                    unset($if_scope->possible_param_types[$var]);
-                }
-            }
         }
     }
 

@@ -63,7 +63,7 @@ class ArrayAccessTest extends TestCase
                     /** @psalm-suppress UndefinedClass */
                     if (!isset($a->arr["bat"]) || strlen($a->arr["bat"])) { }',
                 'assertions' => [],
-                'error_levels' => ['MixedArgument'],
+                'error_levels' => ['MixedArgument', 'MixedArrayAccess'],
             ],
             'notEmptyIntOffset' => [
                 '<?php
@@ -440,6 +440,85 @@ class ArrayAccessTest extends TestCase
             'singleLetterOffset' => [
                 '<?php
                     ["s" => "str"]["str"[0]];',
+            ],
+            'assertConstantOffsetsInMethod' => [
+                '<?php
+                    class C {
+                        public const ARR = [
+                            "a" => ["foo" => true],
+                            "b" => []
+                        ];
+
+                        public function bar(string $key): bool {
+                            if (!array_key_exists($key, self::ARR) || !array_key_exists("foo", self::ARR[$key])) {
+                                return false;
+                            }
+
+                            return self::ARR[$key]["foo"];
+                        }
+                    }',
+                [],
+                ['MixedReturnStatement', 'MixedInferredReturnType']
+            ],
+            'assertSelfClassConstantOffsetsInFunction' => [
+                '<?php
+                    namespace Ns;
+
+                    class C {
+                        public const ARR = [
+                            "a" => ["foo" => true],
+                            "b" => []
+                        ];
+
+                        public function bar(?string $key): bool {
+                            if ($key === null || !array_key_exists($key, self::ARR) || !array_key_exists("foo", self::ARR[$key])) {
+                                return false;
+                            }
+
+                            return self::ARR[$key]["foo"];
+                        }
+                    }',
+                [],
+                ['MixedReturnStatement', 'MixedInferredReturnType']
+            ],
+            'assertNamedClassConstantOffsetsInFunction' => [
+                '<?php
+                    namespace Ns;
+
+                    class C {
+                        public const ARR = [
+                            "a" => ["foo" => true],
+                            "b" => [],
+                        ];
+                    }
+
+                    function bar(?string $key): bool {
+                        if ($key === null || !array_key_exists($key, C::ARR) || !array_key_exists("foo", C::ARR[$key])) {
+                            return false;
+                        }
+
+                        return C::ARR[$key]["foo"];
+                    }',
+                [],
+                ['MixedReturnStatement', 'MixedInferredReturnType']
+            ],
+            'arrayAccessAfterByRefArrayOffsetAssignment' => [
+                '<?php
+                    /**
+                     * @param array{param1: array} $params
+                     */
+                    function dispatch(array $params) : void {
+                        $params["param1"]["foo"] = "bar";
+                    }
+
+                    $ar = [];
+                    dispatch(["param1" => &$ar]);
+                    $value = "foo";
+                    if (isset($ar[$value])) {
+                        echo (string) $ar[$value];
+                    }',
+                [],
+                ['MixedArrayAccess'],
             ],
         ];
     }

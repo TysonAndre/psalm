@@ -470,7 +470,7 @@ class Methods
             }
 
             if ($atomic_type instanceof Type\Atomic\TCallable
-                || $atomic_type instanceof Type\Atomic\Fn
+                || $atomic_type instanceof Type\Atomic\TFn
             ) {
                 if ($atomic_type->params) {
                     foreach ($atomic_type->params as $param) {
@@ -528,38 +528,20 @@ class Methods
      */
     public function getMethodReturnType($method_id, &$self_class, array $args = null)
     {
-        $checked_for_pseudo_method = false;
+        list($original_fq_class_name, $original_method_name) = explode('::', $method_id);
 
-        if ($this->config->use_phpdoc_method_without_magic_or_parent) {
-            list($original_fq_class_name, $original_method_name) = explode('::', $method_id);
+        $original_fq_class_name = $this->classlikes->getUnAliasedName($original_fq_class_name);
 
-            $original_fq_class_name = $this->classlikes->getUnAliasedName($original_fq_class_name);
+        $original_class_storage = $this->classlike_storage_provider->get($original_fq_class_name);
 
-            $original_class_storage = $this->classlike_storage_provider->get($original_fq_class_name);
-
-            if (isset($original_class_storage->pseudo_methods[strtolower($original_method_name)])) {
-                return $original_class_storage->pseudo_methods[strtolower($original_method_name)]->return_type;
-            }
-
-            $checked_for_pseudo_method = true;
+        if (isset($original_class_storage->pseudo_methods[strtolower($original_method_name)])) {
+            return $original_class_storage->pseudo_methods[strtolower($original_method_name)]->return_type;
         }
 
         $declaring_method_id = $this->getDeclaringMethodId($method_id);
 
         if (!$declaring_method_id) {
             return null;
-        }
-
-        if (!$checked_for_pseudo_method) {
-            list($original_fq_class_name, $original_method_name) = explode('::', $method_id);
-
-            $original_fq_class_name = $this->classlikes->getUnAliasedName($original_fq_class_name);
-
-            $original_class_storage = $this->classlike_storage_provider->get($original_fq_class_name);
-
-            if (isset($original_class_storage->pseudo_methods[strtolower($original_method_name)])) {
-                return $original_class_storage->pseudo_methods[strtolower($original_method_name)]->return_type;
-            }
         }
 
         $appearing_method_id = $this->getAppearingMethodId($method_id);
@@ -589,11 +571,11 @@ class Methods
             ) {
                 foreach ($args[0]->value->inferredType->getTypes() as $atomic_type) {
                     if ($atomic_type instanceof Type\Atomic\TCallable
-                        || $atomic_type instanceof Type\Atomic\Fn
+                        || $atomic_type instanceof Type\Atomic\TFn
                     ) {
                         $callable_type = clone $atomic_type;
 
-                        return new Type\Union([new Type\Atomic\Fn(
+                        return new Type\Union([new Type\Atomic\TFn(
                             'Closure',
                             $callable_type->params,
                             $callable_type->return_type
@@ -605,7 +587,7 @@ class Methods
                     ) {
                         $invokable_storage = $this->getStorage($atomic_type->value . '::__invoke');
 
-                        return new Type\Union([new Type\Atomic\Fn(
+                        return new Type\Union([new Type\Atomic\TFn(
                             'Closure',
                             $invokable_storage->params,
                             $invokable_storage->return_type

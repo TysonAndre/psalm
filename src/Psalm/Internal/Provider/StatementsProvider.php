@@ -2,6 +2,9 @@
 namespace Psalm\Internal\Provider;
 
 use PhpParser;
+use Psalm\Progress\Progress;
+use Psalm\Progress\DefaultProgress;
+use Psalm\Progress\VoidProgress;
 
 /**
  * @internal
@@ -53,6 +56,11 @@ class StatementsProvider
      */
     private static $lexer;
 
+    /**
+     * @var PhpParser\Parser|null
+     */
+    private static $parser;
+
     public function __construct(
         FileProvider $file_provider,
         ParserCacheProvider $parser_cache_provider = null,
@@ -65,13 +73,16 @@ class StatementsProvider
     }
 
     /**
-     * @param  string  $file_path
-     * @param  bool    $debug_output
+     * @param string    $file_path
      *
      * @return array<int, \PhpParser\Node\Stmt>
      */
-    public function getStatementsForFile($file_path, $debug_output = false)
+    public function getStatementsForFile($file_path, Progress $progress = null)
     {
+        if ($progress === null) {
+            $progress = new VoidProgress();
+        }
+
         $from_cache = false;
 
         $version = (string) PHP_PARSER_VERSION . $this->this_modified_time;
@@ -80,9 +91,7 @@ class StatementsProvider
         $modified_time = $this->file_provider->getModifiedTime($file_path);
 
         if (!$this->parser_cache_provider) {
-            if ($debug_output) {
-                echo 'Parsing ' . $file_path . "\n";
-            }
+            $progress->debug('Parsing ' . $file_path . "\n");
 
             $stmts = self::parseStatements($file_contents, $file_path);
 
@@ -98,9 +107,7 @@ class StatementsProvider
         );
 
         if ($stmts === null) {
-            if ($debug_output) {
-                echo 'Parsing ' . $file_path . "\n";
-            }
+            $progress->debug('Parsing ' . $file_path . "\n");
 
             $existing_statements = $this->parser_cache_provider->loadExistingStatementsFromCache($file_path);
 
@@ -352,7 +359,13 @@ class StatementsProvider
             self::$lexer = new PhpParser\Lexer([ 'usedAttributes' => $attributes ]);
         }
 
-        $parser = (new PhpParser\ParserFactory())->create(PhpParser\ParserFactory::PREFER_PHP7, self::$lexer);
+        if (!self::$parser) {
+            $attributes = [
+                'comments', 'startLine', 'startFilePos', 'endFilePos',
+            ];
+
+            self::$parser = (new PhpParser\ParserFactory())->create(PhpParser\ParserFactory::PREFER_PHP7, self::$lexer);
+        }
 
         $used_cached_statements = false;
 
@@ -361,7 +374,7 @@ class StatementsProvider
         if ($existing_statements && $file_changes && $existing_file_contents) {
             $clashing_traverser = new \Psalm\Internal\Traverser\CustomTraverser;
             $offset_analyzer = new \Psalm\Internal\Visitor\PartialParserVisitor(
-                $parser,
+                self::$parser,
                 $error_handler,
                 $file_changes,
                 $existing_file_contents,
@@ -376,7 +389,7 @@ class StatementsProvider
             } else {
                 try {
                     /** @var array<int, \PhpParser\Node\Stmt> */
-                    $stmts = $parser->parse($file_contents, $error_handler) ?: [];
+                    $stmts = self::$parser->parse($file_contents, $error_handler) ?: [];
                 } catch (\Throwable $t) {
                     $stmts = [];
 
@@ -386,7 +399,7 @@ class StatementsProvider
         } else {
             try {
                 /** @var array<int, \PhpParser\Node\Stmt> */
-                $stmts = $parser->parse($file_contents, $error_handler) ?: [];
+                $stmts = self::$parser->parse($file_contents, $error_handler) ?: [];
             } catch (\Throwable $t) {
                 $stmts = [];
 

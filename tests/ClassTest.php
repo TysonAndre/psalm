@@ -391,6 +391,29 @@ class ClassTest extends TestCase
                         if (class_exists($s) || interface_exists($s)) {}
                     }'
             ],
+            'classExistsWithFalseArg' => [
+                '<?php
+                    /**
+                     * @param class-string $class
+                     * @return string
+                     */
+                    function autoload(string $class) : string {
+                        if (class_exists($class, false)) {
+                            return $class;
+                        }
+
+                        return $class;
+                    }'
+            ],
+            'classExistsWithFalseArgInside' => [
+                '<?php
+                    function foo(string $s) : void {
+                        if (class_exists($s, false)) {
+                            /** @psalm-suppress MixedMethodCall */
+                            new $s();
+                        }
+                    }'
+            ],
         ];
     }
 

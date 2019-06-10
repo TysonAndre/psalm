@@ -51,6 +51,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
         $config = $codebase->config;
 
+        $moved_call = false;
+
         if ($stmt->class instanceof PhpParser\Node\Name) {
             $fq_class_name = null;
 
@@ -64,7 +66,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         ? $codebase->classlike_storage_provider->get($child_fq_class_name)
                         : null;
 
-                    if (!$class_storage || !$class_storage->parent_classes) {
+                    if (!$class_storage || !$class_storage->parent_class) {
                         if (IssueBuffer::accepts(
                             new ParentNotFound(
                                 'Cannot call method on parent as this class does not extend another',
@@ -78,7 +80,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         return;
                     }
 
-                    $fq_class_name = reset($class_storage->parent_classes);
+                    $fq_class_name = $class_storage->parent_class;
 
                     $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
@@ -148,6 +150,16 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 if (!$does_class_exist) {
                     return $does_class_exist;
                 }
+            }
+
+            if ($codebase->alter_code && $fq_class_name) {
+                $moved_call = $codebase->classlikes->handleClassLikeReferenceInMigration(
+                    $codebase,
+                    $statements_analyzer,
+                    $stmt->class,
+                    $fq_class_name,
+                    $context->calling_method_id
+                );
             }
 
             if ($codebase->store_node_types && $fq_class_name) {
@@ -409,7 +421,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                     $codebase,
                                     $return_type_candidate,
                                     $fq_class_name,
-                                    $fq_class_name
+                                    $fq_class_name,
+                                    $class_storage->parent_class
                                 );
 
                                 if (!isset($stmt->inferredType)) {
@@ -572,7 +585,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if (IssueBuffer::accepts(
                         new DeprecatedClass(
                             $fq_class_name . ' is marked deprecated',
-                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            new CodeLocation($statements_analyzer->getSource(), $stmt),
+                            $fq_class_name
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -587,7 +601,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if (IssueBuffer::accepts(
                         new InternalClass(
                             $fq_class_name . ' is marked internal to ' . $class_storage->psalm_internal,
-                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            new CodeLocation($statements_analyzer->getSource(), $stmt),
+                            $fq_class_name
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -604,7 +619,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         if (IssueBuffer::accepts(
                             new InternalClass(
                                 $fq_class_name . ' is marked internal',
-                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $fq_class_name
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -752,7 +768,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if ($return_type_candidate) {
                         $return_type_candidate = clone $return_type_candidate;
 
-                        if ($found_generic_params) {
+                        if ($found_generic_params !== null) {
                             $return_type_candidate->replaceTemplateTypesWithArgTypes(
                                 $found_generic_params
                             );
@@ -762,7 +778,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             $codebase,
                             $return_type_candidate,
                             $self_fq_class_name,
-                            $fq_class_name
+                            $fq_class_name,
+                            $class_storage->parent_class
                         );
 
                         $return_type_location = $codebase->methods->getMethodReturnTypeLocation(
@@ -816,6 +833,52 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             },
                             $method_storage->if_false_assertions
                         );
+                    }
+                }
+
+                if ($codebase->alter_code) {
+                    if (!$moved_call) {
+                        foreach ($codebase->call_transforms as $original_pattern => $transformation) {
+                            if ($declaring_method_id
+                                && strtolower($declaring_method_id) . '\((.*\))' === $original_pattern
+                            ) {
+                                if (strpos($transformation, '($1)') === strlen($transformation) - 4
+                                    && $stmt->class instanceof PhpParser\Node\Name
+                                ) {
+                                    $new_method_id = substr($transformation, 0, -4);
+                                    list($old_declaring_fq_class_name) = explode('::', $declaring_method_id);
+                                    list($new_fq_class_name, $new_method_name) = explode('::', $new_method_id);
+
+                                    $file_manipulations = [];
+
+                                    if (strtolower($new_fq_class_name) !== strtolower($old_declaring_fq_class_name)) {
+                                        $file_manipulations[] = new \Psalm\FileManipulation(
+                                            (int) $stmt->class->getAttribute('startFilePos'),
+                                            (int) $stmt->class->getAttribute('endFilePos') + 1,
+                                            Type::getStringFromFQCLN(
+                                                $new_fq_class_name,
+                                                $statements_analyzer->getNamespace(),
+                                                $statements_analyzer->getAliasedClassesFlipped(),
+                                                null
+                                            )
+                                        );
+                                    }
+
+                                    $file_manipulations[] = new \Psalm\FileManipulation(
+                                        (int) $stmt->name->getAttribute('startFilePos'),
+                                        (int) $stmt->name->getAttribute('endFilePos') + 1,
+                                        $new_method_name
+                                    );
+
+                                    FileManipulationBuffer::add(
+                                        $statements_analyzer->getFilePath(),
+                                        $file_manipulations
+                                    );
+
+                                    $moved_call = true;
+                                }
+                            }
+                        }
                     }
                 }
 

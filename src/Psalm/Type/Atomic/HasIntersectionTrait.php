@@ -3,24 +3,26 @@ namespace Psalm\Type\Atomic;
 
 use Psalm\Type;
 use Psalm\Type\Atomic;
+use Psalm\Codebase;
 
 trait HasIntersectionTrait
 {
     /**
-     * @var array<int, TNamedObject|TTemplateParam|TIterable>|null
+     * @var array<string, TNamedObject|TTemplateParam|TIterable>|null
      */
     public $extra_types;
 
     /**
-     * @param  string|null   $namespace
-     * @param  array<string> $aliased_classes
-     * @param  string|null   $this_class
-     * @param  bool          $use_phpdoc_format
+     * @param  array<string, string> $aliased_classes
      *
      * @return string
      */
-    private function getNamespacedIntersectionTypes($namespace, array $aliased_classes, $this_class, $use_phpdoc_format)
-    {
+    private function getNamespacedIntersectionTypes(
+        ?string $namespace,
+        array $aliased_classes,
+        ?string $this_class,
+        bool $use_phpdoc_format
+    ) {
         if (!$this->extra_types) {
             return '';
         }
@@ -57,11 +59,11 @@ trait HasIntersectionTrait
      */
     public function addIntersectionType(TNamedObject $type)
     {
-        $this->extra_types[] = $type;
+        $this->extra_types[$type->getKey()] = $type;
     }
 
     /**
-     * @return array<int, TNamedObject|TTemplateParam|TIterable>|null
+     * @return array<string, TNamedObject|TTemplateParam|TIterable>|null
      */
     public function getIntersectionTypes()
     {
@@ -73,7 +75,7 @@ trait HasIntersectionTrait
      *
      * @return void
      */
-    public function replaceIntersectionTemplateTypesWithArgTypes(array $template_types)
+    public function replaceIntersectionTemplateTypesWithArgTypes(array $template_types, ?Codebase $codebase)
     {
         if (!$this->extra_types) {
             return;
@@ -87,11 +89,12 @@ trait HasIntersectionTrait
 
                 foreach ($template_type->getTypes() as $template_type_part) {
                     if ($template_type_part instanceof TNamedObject) {
-                        $new_types[] = $template_type_part;
+                        $new_types[$template_type_part->getKey()] = $template_type_part;
                     }
                 }
             } else {
-                $new_types[] = $extra_type;
+                $extra_type->replaceTemplateTypesWithArgTypes($template_types, $codebase);
+                $new_types[$extra_type->getKey()] = $extra_type;
             }
         }
 

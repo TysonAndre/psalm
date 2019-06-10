@@ -280,6 +280,131 @@ class AssertTest extends TestCase
 
                     $bar->sayHello();',
             ],
+            'assertInstanceofTemplatedClassMethodUnknownClass' => [
+                '<?php
+                    namespace Bar;
+
+                    class C {
+                        /**
+                         * @template T
+                         * @param class-string<T> $expected
+                         * @param mixed  $actual
+                         * @psalm-assert T $actual
+                         */
+                        public function assertInstanceOf($expected, $actual) : void {}
+
+                        /**
+                         * @param class-string $c
+                         */
+                        function bar(string $c, object $e) : void {
+                            $this->assertInstanceOf($c, $e);
+                            echo $e->getCode();
+                        }
+                    }',
+                [],
+                ['MixedArgument', 'MixedMethodCall'],
+            ],
+            'assertInstanceofTemplatedClassMethodUnknownStringClass' => [
+                '<?php
+                    namespace Bar;
+
+                    class C {
+                        /**
+                         * @template T
+                         * @param class-string<T> $expected
+                         * @param mixed  $actual
+                         * @psalm-assert T $actual
+                         */
+                        public function assertInstanceOf($expected, $actual) : void {}
+
+                        function bar(string $c, object $e) : void {
+                            $this->assertInstanceOf($c, $e);
+                            echo $e->getCode();
+                        }
+                    }',
+                [],
+                ['MixedArgument', 'MixedMethodCall', 'ArgumentTypeCoercion'],
+            ],
+            'assertInstanceofTemplatedFunctionUnknownClass' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @template T
+                     * @param class-string<T> $expected
+                     * @param mixed  $actual
+                     * @psalm-assert T $actual
+                     */
+                    function assertInstanceOf($expected, $actual) : void {}
+
+                    /**
+                     * @param class-string $c
+                     */
+                    function bar(string $c, object $e) : void {
+                        assertInstanceOf($c, $e);
+                        echo $e->getCode();
+                    }',
+                [],
+                ['MixedArgument', 'MixedMethodCall'],
+            ],
+            'assertInstanceofTemplatedFunctionUnknownStringClass' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @template T
+                     * @param class-string<T> $expected
+                     * @param mixed  $actual
+                     * @psalm-assert T $actual
+                     */
+                    function assertInstanceOf($expected, $actual) : void {}
+
+                    function bar(string $c, object $e) : void {
+                        assertInstanceOf($c, $e);
+                        echo $e->getCode();
+                    }',
+                [],
+                ['MixedArgument', 'MixedMethodCall', 'ArgumentTypeCoercion'],
+            ],
+            'assertTemplatedTypeString' => [
+                '<?php
+                    interface Foo {
+                        function bat() : void;
+                    }
+
+                    /**
+                     * @param mixed $value
+                     * @param class-string $type
+                     * @template T
+                     * @template-typeof T $type
+                     * @psalm-assert T $value
+                     */
+                    function assertInstanceOf($value, string $type): void {
+                        // some code
+                    }
+
+                    function getFoo() : Foo {
+                        return new class implements Foo {
+                            public function bat(): void {
+                                echo "Hello";
+                            }
+                        };
+                    }
+
+                    $f = getFoo();
+                    /**
+                     * @var mixed
+                     * @psalm-suppress MixedAssignment
+                     */
+                    $class = "hello";
+
+                    /** @psalm-suppress MixedArgument */
+                    assertInstanceOf($f, $class);
+                    $f->bat();',
+                [
+                    '$f' => 'Foo',
+                ]
+            ],
             'dontBleedBadAssertVarIntoContext' => [
                 '<?php
                     namespace Bar;
@@ -718,6 +843,48 @@ class AssertTest extends TestCase
                         unset($options["a"], $options["b"]);
                     }',
             ],
+            'assertStaticMethodIfFalse' => [
+                '<?php
+                    class StringUtility {
+                        /**
+                         * @psalm-assert-if-false !null $yStr
+                         */
+                        public static function isNull(?string $yStr): bool {
+                            if ($yStr === null) {
+                                return true;
+                            }
+                            return false;
+                        }
+                    }
+
+                    function test(?string $in) : void {
+                        $str = "test";
+                        if(!StringUtility::isNull($in)) {
+                            $str .= $in;
+                        }
+                    }',
+            ],
+            'assertStaticMethodIfTrue' => [
+                '<?php
+                    class StringUtility {
+                        /**
+                         * @psalm-assert-if-true !null $yStr
+                         */
+                        public static function isNotNull(?string $yStr): bool {
+                            if ($yStr === null) {
+                                return true;
+                            }
+                            return false;
+                        }
+                    }
+
+                    function test(?string $in) : void {
+                        $str = "test";
+                        if(StringUtility::isNotNull($in)) {
+                            $str .= $in;
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -1002,6 +1169,52 @@ class AssertTest extends TestCase
                     $d = rand(0, 1) ? 5 : 6;
                     assertEqual($c, $d);',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'assertNotSameDifferentTypes' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @param string $message
+                     * @psalm-assert !=T $actual
+                     * @return void
+                     */
+                    function assertNotSame($expected, $actual, $message = "") {}
+
+                    function bar(string $i, array $j) : void {
+                        assertNotSame($i, $j);
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'assertNotSameDifferentTypesExplicitString' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @param T      $expected
+                     * @param mixed  $actual
+                     * @param string $message
+                     * @psalm-assert !=T $actual
+                     * @return void
+                     */
+                    function assertNotSame($expected, $actual, $message = "") {}
+
+                    function bar(array $j) : void {
+                        assertNotSame("hello", $j);
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'assertValueImpossible' => [
+                '<?php
+                    /**
+                     * @psalm-assert "foo"|"bar"|"foo-bar" $s
+                     */
+                    function assertFooBar(string $s) : void {
+                    }
+
+                    $a = "";
+                    assertFooBar($a);',
+                'error_message' => 'InvalidDocblock',
             ],
         ];
     }

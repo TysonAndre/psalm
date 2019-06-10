@@ -1,6 +1,7 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+use Psalm\Codebase;
 use Psalm\Type;
 use Psalm\Type\Union;
 
@@ -89,14 +90,18 @@ class TTemplateParam extends \Psalm\Type\Atomic
 
     /**
      * @param  string|null   $namespace
-     * @param  array<string> $aliased_classes
+     * @param  array<string, string> $aliased_classes
      * @param  string|null   $this_class
      * @param  bool          $use_phpdoc_format
      *
      * @return string
      */
-    public function toNamespacedString($namespace, array $aliased_classes, $this_class, $use_phpdoc_format)
-    {
+    public function toNamespacedString(
+        ?string $namespace,
+        array $aliased_classes,
+        ?string $this_class,
+        bool $use_phpdoc_format
+    ) {
         $intersection_types = $this->getNamespacedIntersectionTypes(
             $namespace,
             $aliased_classes,
@@ -120,8 +125,8 @@ class TTemplateParam extends \Psalm\Type\Atomic
      *
      * @return void
      */
-    public function replaceTemplateTypesWithArgTypes(array $template_types)
+    public function replaceTemplateTypesWithArgTypes(array $template_types, ?Codebase $codebase)
     {
-        $this->replaceIntersectionTemplateTypesWithArgTypes($template_types);
+        $this->replaceIntersectionTemplateTypesWithArgTypes($template_types, $codebase);
     }
 }

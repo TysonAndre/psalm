@@ -593,6 +593,59 @@ class ValueTest extends TestCase
                     }
                 ',
             ],
+            'keyOf' => [
+                '<?php
+                    class A {
+                        const C = [
+                            1 => "a",
+                            2 => "b",
+                            3 => "c"
+                        ];
+
+                        /**
+                         * @param key-of<A::C> $i
+                         */
+                        public static function foo(int $i) : void {}
+                    }
+
+                    A::foo(1);
+                    A::foo(2);
+                    A::foo(3);'
+            ],
+            'valueOf' => [
+                '<?php
+                    class A {
+                        const C = [
+                            1 => "a",
+                            2 => "b",
+                            3 => "c"
+                        ];
+
+                        /**
+                         * @param value-of<A::C> $j
+                         */
+                        public static function bar(string $j) : void {}
+                    }
+
+                    A::bar("a");
+                    A::bar("b");
+                    A::bar("c");'
+            ],
+            'valueOfDefault' => [
+                '<?php
+                    class A {
+                        const C = [
+                            1 => "a",
+                            2 => "b",
+                            3 => "c"
+                        ];
+
+                        /**
+                         * @var value-of<self::C>
+                         */
+                        public $foo = "a";
+                    }',
+            ],
         ];
     }
 
@@ -768,6 +821,47 @@ class ValueTest extends TestCase
                     }',
                 'error_message' => 'RedundantCondition',
             ],
+            'keyOfBadValue' => [
+                '<?php
+                    class A {
+                        const C = [
+                            1 => "a",
+                            2 => "b",
+                            3 => "c"
+                        ];
+
+                        /**
+                         * @param key-of<A::C> $i
+                         */
+                        public static function foo(int $i) : void {}
+                    }
+
+                    A::foo(4);',
+                'error_message' => 'InvalidArgument'
+            ],
+            'valueOfBadValue' => [
+                '<?php
+                    class A {
+                        const C = [
+                            1 => "a",
+                            2 => "b",
+                            3 => "c"
+                        ];
+
+                        /**
+                         * @param value-of<A::C> $j
+                         */
+                        public static function bar(string $j) : void {}
+                    }
+
+                    A::bar("d");',
+                'error_message' => 'InvalidArgument'
+            ],
+            'casedComparison' => [
+                '<?php
+                    if ("C" === "c") {}',
+                'error_message' => 'TypeDoesNotContainType',
+            ]
         ];
     }
 }

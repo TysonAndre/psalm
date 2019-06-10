@@ -12,6 +12,7 @@ use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\ScopeAnalyzer;
 use Psalm\Internal\Analyzer\SourceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
@@ -215,7 +216,8 @@ class ReturnTypeAnalyzer
                 $codebase,
                 $inferred_return_type,
                 $source->getFQCLN(),
-                $source->getFQCLN()
+                $source->getFQCLN(),
+                $source->getParentFQCLN()
             )
         );
 
@@ -326,12 +328,20 @@ class ReturnTypeAnalyzer
 
         $self_fq_class_name = $fq_class_name ?: $source->getFQCLN();
 
+        $parent_class = null;
+
+        if ($self_fq_class_name) {
+            $classlike_storage = $codebase->classlike_storage_provider->get($self_fq_class_name);
+            $parent_class = $classlike_storage->parent_class;
+        }
+
         // passing it through fleshOutTypes eradicates errant $ vars
         $declared_return_type = ExpressionAnalyzer::fleshOutType(
             $codebase,
             $return_type,
             $self_fq_class_name,
-            $self_fq_class_name
+            $self_fq_class_name,
+            $parent_class
         );
 
         if (!$inferred_return_type_parts && !$inferred_yield_types) {
@@ -637,12 +647,22 @@ class ReturnTypeAnalyzer
             return;
         }
 
+        $parent_class = null;
+
+        $classlike_storage = null;
+
+        if ($context->self) {
+            $classlike_storage = $codebase->classlike_storage_provider->get($context->self);
+            $parent_class = $classlike_storage->parent_class;
+        }
+
         if (!$storage->signature_return_type || $storage->signature_return_type === $storage->return_type) {
             $fleshed_out_return_type = ExpressionAnalyzer::fleshOutType(
                 $codebase,
                 $storage->return_type,
                 $context->self,
-                $context->self
+                $context->self,
+                $parent_class
             );
 
             $fleshed_out_return_type->check(
@@ -660,7 +680,8 @@ class ReturnTypeAnalyzer
             $codebase,
             $storage->signature_return_type,
             $context->self,
-            $context->self
+            $context->self,
+            $parent_class
         );
 
         if ($fleshed_out_signature_type->check(
@@ -681,8 +702,31 @@ class ReturnTypeAnalyzer
             $codebase,
             $storage->return_type,
             $context->self,
-            $context->self
+            $context->self,
+            $parent_class
         );
+
+        if ($classlike_storage && $context->self && $function->name) {
+            $class_template_params = MethodCallAnalyzer::getClassTemplateParams(
+                $codebase,
+                $classlike_storage,
+                $context->self,
+                strtolower($function->name->name),
+                new Type\Atomic\TNamedObject($context->self),
+                '$this'
+            );
+
+            $class_template_params = $class_template_params ?: $classlike_storage->template_types;
+
+            if ($class_template_params) {
+                $generic_params = [];
+                $fleshed_out_return_type->replaceTemplateTypesWithStandins(
+                    $class_template_params,
+                    $generic_params,
+                    $codebase
+                );
+            }
+        }
 
         if (!TypeAnalyzer::isContainedBy(
             $codebase,
@@ -742,9 +786,9 @@ class ReturnTypeAnalyzer
         $codebase = $project_analyzer->getCodebase();
         $is_final = true;
         $fqcln = $source->getFQCLN();
-        if ($fqcln !== null) {
+
+        if ($fqcln !== null && $function instanceof ClassMethod) {
             $class_storage = $codebase->classlike_storage_provider->get($fqcln);
-            assert($function instanceof ClassMethod);
             $is_final = $function->isFinal() || $class_storage->final;
         }
 

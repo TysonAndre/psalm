@@ -100,8 +100,7 @@ class ExpressionAnalyzer
                 $stmt->expr,
                 null,
                 $context,
-                (string)$stmt->getDocComment(),
-                $stmt->getLine()
+                $stmt->getDocComment()
             );
 
             if ($assignment_type === false) {
@@ -582,6 +581,16 @@ class ExpressionAnalyzer
                             $fq_class_name
                         );
                     }
+
+                    if ($codebase->alter_code) {
+                        $codebase->classlikes->handleClassLikeReferenceInMigration(
+                            $codebase,
+                            $statements_analyzer,
+                            $stmt->class,
+                            $fq_class_name,
+                            $context->calling_method_id
+                        );
+                    }
                 }
             }
 
@@ -950,6 +959,10 @@ class ExpressionAnalyzer
             $resolved_name = $stmt->class->getAttribute('resolvedName');
 
             if ($resolved_name) {
+                if (($resolved_name === 'self' || $resolved_name === 'static') && $this_class_name) {
+                    $resolved_name = $this_class_name;
+                }
+
                 return $resolved_name . '::' . $stmt->name;
             }
         }
@@ -988,20 +1001,30 @@ class ExpressionAnalyzer
     public static function fleshOutType(
         Codebase $codebase,
         Type\Union $return_type,
-        $self_class = null,
-        $static_class_type = null
+        ?string $self_class,
+        $static_class_type,
+        ?string $parent_class,
+        bool $evaluate = true
     ) {
         $return_type = clone $return_type;
 
         $new_return_type_parts = [];
 
         foreach ($return_type->getTypes() as $return_type_part) {
-            $new_return_type_parts[] = self::fleshOutAtomicType(
+            $parts = self::fleshOutAtomicType(
                 $codebase,
                 $return_type_part,
                 $self_class,
-                $static_class_type
+                $static_class_type,
+                $parent_class,
+                $evaluate
             );
+
+            if (is_array($parts)) {
+                $new_return_type_parts = array_merge($new_return_type_parts, $parts);
+            } else {
+                $new_return_type_parts[] = $parts;
+            }
         }
 
         $fleshed_out_type = new Type\Union($new_return_type_parts);
@@ -1022,13 +1045,15 @@ class ExpressionAnalyzer
      * @param  string|null  $self_class
      * @param  string|Type\Atomic\TNamedObject|null $static_class_type
      *
-     * @return Type\Atomic
+     * @return Type\Atomic|array<int, Type\Atomic>
      */
     private static function fleshOutAtomicType(
         Codebase $codebase,
         Type\Atomic &$return_type,
-        $self_class,
-        $static_class_type = null
+        ?string $self_class,
+        $static_class_type,
+        ?string $parent_class,
+        bool $evaluate = true
     ) {
         if ($return_type instanceof TNamedObject
             || $return_type instanceof TTemplateParam
@@ -1041,7 +1066,9 @@ class ExpressionAnalyzer
                         $codebase,
                         $extra_type,
                         $self_class,
-                        $static_class_type
+                        $static_class_type,
+                        $parent_class,
+                        $evaluate
                     );
 
                     if ($extra_type instanceof TNamedObject && $extra_type->extra_types) {
@@ -1082,13 +1109,13 @@ class ExpressionAnalyzer
 
                     $return_type->value = $self_class;
                 } elseif ($return_type_lc === 'parent') {
-                    if (!$self_class) {
+                    if (!$parent_class) {
                         throw new \UnexpectedValueException(
-                            'Cannot handle ' . $return_type->value . ' when $self_class is empty'
+                            'Cannot handle ' . $return_type->value . ' when $parent_class is empty'
                         );
                     }
 
-                    $return_type->value = $self_class;
+                    $return_type->value = $parent_class;
                 } else {
                     $return_type->value = $codebase->classlikes->getUnAliasedName($return_type->value);
                 }
@@ -1100,7 +1127,7 @@ class ExpressionAnalyzer
                 $return_type->fq_classlike_name = $self_class;
             }
 
-            if ($codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
+            if ($evaluate && $codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
                 if (strtolower($return_type->const_name) === 'class') {
                     return new Type\Atomic\TLiteralClassString($return_type->fq_classlike_name);
                 }
@@ -1124,13 +1151,51 @@ class ExpressionAnalyzer
             return $return_type;
         }
 
+        if ($return_type instanceof Type\Atomic\TKeyOfClassConstant
+            || $return_type instanceof Type\Atomic\TValueOfClassConstant
+        ) {
+            if ($return_type->fq_classlike_name === 'self' && $self_class) {
+                $return_type->fq_classlike_name = $self_class;
+            }
+
+            if ($evaluate && $codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
+                $class_constants = $codebase->classlikes->getConstantsForClass(
+                    $return_type->fq_classlike_name,
+                    \ReflectionProperty::IS_PRIVATE
+                );
+
+                if (isset($class_constants[$return_type->const_name])) {
+                    $const_type = $class_constants[$return_type->const_name];
+
+                    foreach ($const_type->getTypes() as $const_type_atomic) {
+                        if ($const_type_atomic instanceof Type\Atomic\ObjectLike
+                            || $const_type_atomic instanceof Type\Atomic\TArray
+                        ) {
+                            if ($const_type_atomic instanceof Type\Atomic\ObjectLike) {
+                                $const_type_atomic = $const_type_atomic->getGenericArrayType();
+                            }
+
+                            if ($return_type instanceof Type\Atomic\TKeyOfClassConstant) {
+                                return array_values($const_type_atomic->type_params[0]->getTypes());
+                            }
+
+                            return array_values($const_type_atomic->type_params[1]->getTypes());
+                        }
+                    }
+                }
+            }
+
+            return $return_type;
+        }
+
         if ($return_type instanceof Type\Atomic\TArray || $return_type instanceof Type\Atomic\TGenericObject) {
             foreach ($return_type->type_params as &$type_param) {
                 $type_param = self::fleshOutType(
                     $codebase,
                     $type_param,
                     $self_class,
-                    $static_class_type
+                    $static_class_type,
+                    $parent_class
                 );
             }
         } elseif ($return_type instanceof Type\Atomic\ObjectLike) {
@@ -1139,7 +1204,8 @@ class ExpressionAnalyzer
                     $codebase,
                     $property_type,
                     $self_class,
-                    $static_class_type
+                    $static_class_type,
+                    $parent_class
                 );
             }
         }
@@ -1152,7 +1218,8 @@ class ExpressionAnalyzer
                             $codebase,
                             $param->type,
                             $self_class,
-                            $static_class_type
+                            $static_class_type,
+                            $parent_class
                         );
                     }
                 }
@@ -1162,7 +1229,8 @@ class ExpressionAnalyzer
                     $codebase,
                     $return_type->return_type,
                     $self_class,
-                    $static_class_type
+                    $static_class_type,
+                    $parent_class
                 );
             }
         }
@@ -1307,17 +1375,17 @@ class ExpressionAnalyzer
         PhpParser\Node\Expr\Yield_ $stmt,
         Context $context
     ) {
-        $doc_comment_text = (string)$stmt->getDocComment();
+        $doc_comment = $stmt->getDocComment();
 
         $var_comments = [];
         $var_comment_type = null;
 
         $codebase = $statements_analyzer->getCodebase();
 
-        if ($doc_comment_text) {
+        if ($doc_comment) {
             try {
                 $var_comments = CommentAnalyzer::getTypeFromComment(
-                    $doc_comment_text,
+                    $doc_comment,
                     $statements_analyzer,
                     $statements_analyzer->getAliases()
                 );
@@ -1337,7 +1405,8 @@ class ExpressionAnalyzer
                     $codebase,
                     $var_comment->type,
                     $context->self,
-                    $context->self ? new Type\Atomic\TNamedObject($context->self) : null
+                    $context->self ? new Type\Atomic\TNamedObject($context->self) : null,
+                    $statements_analyzer->getParentFQCLN()
                 );
 
                 if (!$var_comment->var_id) {
@@ -1494,16 +1563,6 @@ class ExpressionAnalyzer
         PhpParser\Node\Scalar\Encapsed $stmt,
         Context $context
     ) {
-        $function_storage = null;
-
-        if ($context->infer_types) {
-            $source_analyzer = $statements_analyzer->getSource();
-
-            if ($source_analyzer instanceof FunctionLikeAnalyzer) {
-                $function_storage = $source_analyzer->getFunctionLikeStorage($statements_analyzer);
-            }
-        }
-
         /** @var PhpParser\Node\Expr $part */
         foreach ($stmt->parts as $part) {
             if (self::analyze($statements_analyzer, $part, $context) === false) {
@@ -1512,20 +1571,6 @@ class ExpressionAnalyzer
 
             if (isset($part->inferredType)) {
                 self::castStringAttempt($statements_analyzer, $part);
-            }
-
-            if ($function_storage
-                && $part instanceof PhpParser\Node\Expr\Variable
-                && is_string($part->name)
-                && isset($part->inferredType)
-            ) {
-                $context->inferType(
-                    $part->name,
-                    $function_storage,
-                    $part->inferredType,
-                    new Type\Union([new Type\Atomic\TString, new Type\Atomic\TInt, new Type\Atomic\TFloat]),
-                    $statements_analyzer->getCodebase()
-                );
             }
         }
 

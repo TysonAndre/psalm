@@ -30,11 +30,18 @@ class ClassLikeStorage
     public $private_class_constants = [];
 
     /**
-     * A lookup table for private class constants
+     * A lookup table for class constant name locations
      *
      * @var array<string, CodeLocation>
      */
     public $class_constant_locations = [];
+
+    /**
+     * A lookup table for class constant statement locations
+     *
+     * @var array<string, CodeLocation>
+     */
+    public $class_constant_stmt_locations = [];
 
     /**
      * A lookup table for nodes of unresolvable public class constants
@@ -146,7 +153,14 @@ class ClassLikeStorage
     public $parent_interfaces = [];
 
     /**
-     * Parent class names (normalized to be lowercase)
+     * There can only be one direct parent class
+     *
+     * @var ?string
+     */
+    public $parent_class;
+
+    /**
+     * Parent classes (normalized to lowercase)
      *
      * @var array<string, string>
      */
@@ -156,6 +170,16 @@ class ClassLikeStorage
      * @var CodeLocation|null
      */
     public $location;
+
+    /**
+     * @var CodeLocation|null
+     */
+    public $stmt_location;
+
+    /**
+     * @var CodeLocation|null
+     */
+    public $namespace_name_location;
 
     /**
      * @var bool

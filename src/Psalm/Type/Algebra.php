@@ -150,6 +150,41 @@ class Algebra
                 );
             }
 
+            if ($conditional->expr instanceof PhpParser\Node\Expr\Isset_
+                && count($conditional->expr->vars) > 1
+            ) {
+                AssertionFinder::scrapeAssertions(
+                    $conditional->expr,
+                    $this_class_name,
+                    $source,
+                    $codebase,
+                    $inside_negation
+                );
+
+                if (isset($conditional->expr->assertions)) {
+                    $assertions = $conditional->expr->assertions;
+
+                    $clauses = [];
+
+                    foreach ($assertions as $var => $anded_types) {
+                        foreach ($anded_types as $orred_types) {
+                            $clauses[] = new Clause(
+                                [$var => $orred_types],
+                                false,
+                                true,
+                                $orred_types[0][0] === '='
+                                    || $orred_types[0][0] === '~'
+                                    || (strlen($orred_types[0]) > 1
+                                        && ($orred_types[0][1] === '='
+                                            || $orred_types[0][1] === '~'))
+                            );
+                        }
+                    }
+
+                    return self::negateFormula($clauses);
+                }
+            }
+
             if ($conditional->expr instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd) {
                 $and_expr = new PhpParser\Node\Expr\BinaryOp\BooleanOr(
                     new PhpParser\Node\Expr\BooleanNot(
@@ -165,6 +200,38 @@ class Algebra
 
                 return self::getFormula(
                     $and_expr,
+                    $this_class_name,
+                    $source,
+                    $codebase,
+                    $inside_negation
+                );
+            }
+        }
+
+        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical) {
+            $false_pos = AssertionFinder::hasFalseVariable($conditional);
+
+            if ($false_pos === AssertionFinder::ASSIGNMENT_TO_RIGHT
+                && ($conditional->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
+                    || $conditional->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr)
+            ) {
+                $inside_negation = !$inside_negation;
+
+                return self::getFormula(
+                    $conditional->left,
+                    $this_class_name,
+                    $source,
+                    $codebase,
+                    $inside_negation
+                );
+            } elseif ($false_pos === AssertionFinder::ASSIGNMENT_TO_LEFT
+                && ($conditional->right instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
+                    || $conditional->right instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr)
+            ) {
+                $inside_negation = !$inside_negation;
+
+                return self::getFormula(
+                    $conditional->right,
                     $this_class_name,
                     $source,
                     $codebase,

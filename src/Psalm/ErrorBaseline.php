@@ -160,6 +160,7 @@ class ErrorBaseline
                 }
 
                 $fileName = $issue['file_name'];
+                $fileName = str_replace('\\', '/', $fileName);
                 $issueType = $issue['type'];
 
                 if (!isset($carry[$fileName])) {
@@ -204,6 +205,7 @@ class ErrorBaseline
     ) {
         $baselineDoc = new \DOMDocument('1.0', 'UTF-8');
         $filesNode = $baselineDoc->createElement('files');
+        $filesNode->setAttribute('psalm-version', PSALM_VERSION);
 
         foreach ($groupedIssues as $file => $issueTypes) {
             $fileNode = $baselineDoc->createElement('file');

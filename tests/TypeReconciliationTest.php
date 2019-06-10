@@ -1321,6 +1321,40 @@ class TypeReconciliationTest extends TestCase
                         $a = false;
                     }',
             ],
+            'dontRewriteNullableArrayAfterEmptyCheck' => [
+                '<?php
+                    /**
+                     * @param array{x:int,y:int}|null $start_pos
+                     * @return array{x:int,y:int}|null
+                     */
+                    function foo(?array $start_pos) : ?array {
+                        if ($start_pos) {}
+
+                        return $start_pos;
+                    }',
+            ],
+            'falseEqualsBoolean' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                        public function foo() : void {}
+                    }
+                    class C extends A {
+                        public function foo() : void {}
+                    }
+                    function bar(A $a) : void {
+                        if (false === (!$a instanceof B || !$a instanceof C)) {
+                            return;
+                        }
+                        $a->foo();
+                    }
+                    function baz(A $a) : void {
+                        if ((!$a instanceof B || !$a instanceof C) === false) {
+                            return;
+                        }
+                        $a->foo();
+                    }',
+            ],
         ];
     }
 
