@@ -4,6 +4,9 @@ namespace Psalm\Storage;
 use Psalm\CodeLocation;
 use Psalm\Type;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use const PHP_EOL;
+use function implode;
+use function array_map;
 
 class FunctionLikeStorage
 {
@@ -120,11 +123,6 @@ class FunctionLikeStorage
     public $template_covariants;
 
     /**
-     * @var bool
-     */
-    public $has_template_return_type;
-
-    /**
      * @var array<int, Assertion>
      */
     public $assertions = [];
@@ -171,15 +169,22 @@ class FunctionLikeStorage
 
     public function __toString()
     {
-        $symbol_text = 'function ' . $this->cased_name . '(' . implode(
-            ', ',
+        return $this->getSignature(false);
+    }
+
+    public function getSignature(bool $allow_newlines = false): string
+    {
+        $newlines = $allow_newlines && !empty($this->params);
+
+        $symbol_text = 'function ' . $this->cased_name . '(' . ($newlines ? PHP_EOL : '') . implode(
+            ',' . ($newlines ? PHP_EOL : ' '),
             array_map(
-                function (FunctionLikeParameter $param) : string {
-                    return ($param->type ?: 'mixed') . ' $' . $param->name;
+                function (FunctionLikeParameter $param) use ($newlines) : string {
+                    return ($newlines ? '    ' : '') . ($param->type ?: 'mixed') . ' $' . $param->name;
                 },
                 $this->params
             )
-        ) . ') : ' . ($this->return_type ?: 'mixed');
+        ) . ($newlines ? PHP_EOL : '') . ') : ' . ($this->return_type ?: 'mixed');
 
         if (!$this instanceof MethodStorage) {
             return $symbol_text;

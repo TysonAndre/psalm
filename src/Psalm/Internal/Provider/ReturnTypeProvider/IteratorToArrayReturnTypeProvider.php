@@ -10,6 +10,7 @@ use Psalm\StatementsSource;
 use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
+use function assert;
 
 class IteratorToArrayReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTypeProviderInterface
 {
@@ -77,6 +78,10 @@ class IteratorToArrayReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionRe
             }
         }
 
-        return CallMap::getReturnTypeFromCallMap($function_id);
+        $callmap_callables = CallMap::getCallablesFromCallMap($function_id);
+
+        assert($callmap_callables && $callmap_callables[0]->return_type);
+
+        return $callmap_callables[0]->return_type;
     }
 }

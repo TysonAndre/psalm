@@ -17,7 +17,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
     $psalm_dir = dirname(__DIR__);
 
     /** @psalm-suppress UndefinedConstant */
-    $in_phar = \Phar::running() || strpos(__NAMESPACE__, 'HumbugBox');
+    $in_phar = Phar::running() || strpos(__NAMESPACE__, 'HumbugBox');
 
     if ($in_phar) {
         require_once(__DIR__ . '/../vendor/autoload.php');
@@ -27,7 +27,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
         require_once __DIR__ . '/../vendor/netresearch/jsonmapper/src/JsonMapper/Exception.php';
     }
 
-    if (\realpath($psalm_dir) !== \realpath($current_dir) && !$in_phar) {
+    if (realpath($psalm_dir) !== realpath($current_dir) && !$in_phar) {
         $autoload_roots[] = $psalm_dir;
     }
 
@@ -125,7 +125,7 @@ function getVendorDir($current_dir)
     }
 
     if (!$composer_json = json_decode(file_get_contents($composer_json_path), true)) {
-        throw new \UnexpectedValueException('Invalid composer.json at ' . $composer_json_path);
+        throw new UnexpectedValueException('Invalid composer.json at ' . $composer_json_path);
     }
 
     if (isset($composer_json['config']['vendor-dir'])) {
@@ -199,7 +199,7 @@ function getPathsToCheck($f_paths)
 
             if (realpath($input_path) === realpath(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'psalm')
                 || realpath($input_path) === realpath(dirname(__DIR__) . DIRECTORY_SEPARATOR . 'psalter')
-                || realpath($input_path) === realpath(\Phar::running(false))
+                || realpath($input_path) === realpath(Phar::running(false))
             ) {
                 continue;
             }

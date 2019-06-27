@@ -1,6 +1,12 @@
 <?php
 namespace Psalm;
 
+use function sha1;
+use function strrpos;
+use function strlen;
+use function substr;
+use function trim;
+
 class FileManipulation
 {
     /** @var int */
@@ -30,7 +36,9 @@ class FileManipulation
 
     public function getKey() : string
     {
-        return sha1($this->start . ':' . $this->insertion_text);
+        return $this->start === $this->end
+            ? ($this->start . ':' . sha1($this->insertion_text))
+            : ($this->start . ':' . $this->end);
     }
 
     public function transform(string $existing_contents) : string

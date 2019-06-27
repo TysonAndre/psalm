@@ -13,6 +13,14 @@ use Psalm\Progress\Progress;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Type;
+use function strtolower;
+use function strpos;
+use function explode;
+use function count;
+use function array_keys;
+use function is_int;
+use function array_merge;
+use function reset;
 
 /**
  * @internal
@@ -293,13 +301,13 @@ class Populator
                         && $method_storage->inheritdoc
                         && $declaring_method_storage->throws
                     ) {
-                        $method_storage->throws = $declaring_method_storage->throws;
                     }
 
                     if (count($storage->overridden_method_ids[$method_name]) === 1
                         && $method_storage->signature_return_type
                         && !$method_storage->signature_return_type->isVoid()
-                        && $method_storage->return_type === $method_storage->signature_return_type
+                        && ($method_storage->return_type === $method_storage->signature_return_type
+                            || $method_storage->inherited_return_type)
                     ) {
                         if (isset($declaring_class_storage->methods[$method_name])) {
                             $declaring_method_storage = $declaring_class_storage->methods[$method_name];
@@ -350,14 +358,14 @@ class Populator
             $this->inheritPropertiesFromParent($storage, $trait_storage);
 
             if ($trait_storage->template_types) {
-                if (isset($storage->template_type_extends[$used_trait_lc])) {
-                    foreach ($storage->template_type_extends[$used_trait_lc] as $i => $type) {
+                if (isset($storage->template_type_extends[$trait_storage->name])) {
+                    foreach ($storage->template_type_extends[$trait_storage->name] as $i => $type) {
                         $trait_template_type_names = array_keys($trait_storage->template_types);
 
                         $mapped_name = $trait_template_type_names[$i] ?? null;
 
                         if ($mapped_name) {
-                            $storage->template_type_extends[$used_trait_lc][$mapped_name] = $type;
+                            $storage->template_type_extends[$trait_storage->name][$mapped_name] = $type;
                         }
                     }
 
@@ -378,11 +386,11 @@ class Populator
                         }
                     }
                 } else {
-                    $storage->template_type_extends[$used_trait_lc] = [];
+                    $storage->template_type_extends[$trait_storage->name] = [];
 
                     foreach ($trait_storage->template_types as $template_name => $template_type_map) {
                         foreach ($template_type_map as $template_type) {
-                            $storage->template_type_extends[$used_trait_lc][$template_name]
+                            $storage->template_type_extends[$trait_storage->name][$template_name]
                                 = $template_type[0];
                         }
                     }
@@ -407,9 +415,7 @@ class Populator
                 && $atomic_type->defining_class
             ) {
                 $referenced_type
-                    = $storage->template_type_extends
-                        [strtolower($atomic_type->defining_class)]
-                        [$atomic_type->param_name]
+                    = $storage->template_type_extends[$atomic_type->defining_class][$atomic_type->param_name]
                         ?? null;
 
                 if ($referenced_type) {
@@ -459,14 +465,14 @@ class Populator
             $storage->parent_classes = array_merge($storage->parent_classes, $parent_storage->parent_classes);
 
             if ($parent_storage->template_types) {
-                if (isset($storage->template_type_extends[$parent_storage_class])) {
-                    foreach ($storage->template_type_extends[$parent_storage_class] as $i => $type) {
+                if (isset($storage->template_type_extends[$parent_storage->name])) {
+                    foreach ($storage->template_type_extends[$parent_storage->name] as $i => $type) {
                         $parent_template_type_names = array_keys($parent_storage->template_types);
 
                         $mapped_name = $parent_template_type_names[$i] ?? null;
 
                         if ($mapped_name) {
-                            $storage->template_type_extends[$parent_storage_class][$mapped_name] = $type;
+                            $storage->template_type_extends[$parent_storage->name][$mapped_name] = $type;
                         }
                     }
 
@@ -487,13 +493,20 @@ class Populator
                         }
                     }
                 } else {
-                    $storage->template_type_extends[$parent_storage_class] = [];
+                    $storage->template_type_extends[$parent_storage->name] = [];
 
                     foreach ($parent_storage->template_types as $template_name => $template_type_map) {
                         foreach ($template_type_map as $template_type) {
-                            $storage->template_type_extends[$parent_storage_class][$template_name]
+                            $storage->template_type_extends[$parent_storage->name][$template_name]
                                 = $template_type[0];
                         }
+                    }
+
+                    if ($parent_storage->template_type_extends) {
+                        $storage->template_type_extends = array_merge(
+                            $storage->template_type_extends,
+                            $parent_storage->template_type_extends
+                        );
                     }
                 }
             } elseif ($parent_storage->template_type_extends) {
@@ -583,14 +596,14 @@ class Populator
             }
 
             if ($parent_interface_storage->template_types) {
-                if (isset($storage->template_type_extends[$parent_interface_lc])) {
-                    foreach ($storage->template_type_extends[$parent_interface_lc] as $i => $type) {
+                if (isset($storage->template_type_extends[$parent_interface_storage->name])) {
+                    foreach ($storage->template_type_extends[$parent_interface_storage->name] as $i => $type) {
                         $parent_template_type_names = array_keys($parent_interface_storage->template_types);
 
                         $mapped_name = $parent_template_type_names[$i] ?? null;
 
                         if ($mapped_name) {
-                            $storage->template_type_extends[$parent_interface_lc][$mapped_name] = $type;
+                            $storage->template_type_extends[$parent_interface_storage->name][$mapped_name] = $type;
                         }
                     }
 
@@ -611,16 +624,18 @@ class Populator
                         }
                     }
                 } else {
-                    $storage->template_type_extends[$parent_interface_lc] = [];
+                    $storage->template_type_extends[$parent_interface_storage->name] = [];
 
                     foreach ($parent_interface_storage->template_types as $template_name => $template_type_map) {
                         foreach ($template_type_map as $template_type) {
-                            $storage->template_type_extends[$parent_interface_lc][$template_name]
+                            $storage->template_type_extends[$parent_interface_storage->name][$template_name]
                                 = $template_type[0];
                         }
                     }
                 }
             }
+
+            $parent_interface_storage->dependent_classlikes[strtolower($storage->name)] = true;
 
             $parent_interfaces = array_merge($parent_interfaces, $parent_interface_storage->parent_interfaces);
 
@@ -671,36 +686,41 @@ class Populator
             );
 
             if ($implemented_interface_storage->template_types) {
-                if (isset($storage->template_type_extends[$implemented_interface_lc])) {
-                    foreach ($storage->template_type_extends[$implemented_interface_lc] as $i => $type) {
+                if (isset($storage->template_type_extends[$implemented_interface_storage->name])) {
+                    foreach ($storage->template_type_extends[$implemented_interface_storage->name] as $i => $type) {
                         $parent_template_type_names = array_keys($implemented_interface_storage->template_types);
 
                         $mapped_name = $parent_template_type_names[$i] ?? null;
 
                         if ($mapped_name) {
-                            $storage->template_type_extends[$implemented_interface_lc][$mapped_name] = $type;
+                            $storage->template_type_extends[$implemented_interface_storage->name][$mapped_name] = $type;
                         }
                     }
 
                     if ($implemented_interface_storage->template_type_extends) {
-                        foreach ($implemented_interface_storage->template_type_extends as $e_i_lc => $type) {
-                            if (isset($storage->template_type_extends[$e_i_lc])) {
+                        foreach ($implemented_interface_storage->template_type_extends as $e_i => $type) {
+                            if (isset($storage->template_type_extends[$e_i])) {
                                 continue;
                             }
 
-                            $storage->template_type_extends[$e_i_lc] = $type;
+                            $storage->template_type_extends[$e_i] = $type;
                         }
                     }
                 } else {
-                    $storage->template_type_extends[$implemented_interface_lc] = [];
+                    $storage->template_type_extends[$implemented_interface_storage->name] = [];
 
                     foreach ($implemented_interface_storage->template_types as $template_name => $template_type_map) {
                         foreach ($template_type_map as $template_type) {
-                            $storage->template_type_extends[$implemented_interface_lc][$template_name]
+                            $storage->template_type_extends[$implemented_interface_storage->name][$template_name]
                                 = $template_type[0];
                         }
                     }
                 }
+            } elseif ($implemented_interface_storage->template_type_extends) {
+                $storage->template_type_extends = array_merge(
+                    $storage->template_type_extends ?: [],
+                    $implemented_interface_storage->template_type_extends
+                );
             }
 
             $extra_interfaces = array_merge($extra_interfaces, $implemented_interface_storage->parent_interfaces);
@@ -763,7 +783,7 @@ class Populator
                         }
                     }
                 }
-                $storage->overridden_method_ids[$method_name][] = $interface_method_ids[0];
+                $storage->overridden_method_ids[$method_name][$interface_method_ids[0]] = $interface_method_ids[0];
             } else {
                 $storage->interface_method_ids[$method_name] = $interface_method_ids;
             }
@@ -1001,10 +1021,10 @@ class Populator
                     if (isset($declaring_class_storage->methods[$method_name])
                         && $declaring_class_storage->methods[$method_name]->abstract
                     ) {
-                        $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
+                        $storage->overridden_method_ids[$method_name][$declaring_method_id] = $declaring_method_id;
                     }
                 } else {
-                    $storage->overridden_method_ids[$method_name][] = $declaring_method_id;
+                    $storage->overridden_method_ids[$method_name][$declaring_method_id] = $declaring_method_id;
                 }
             }
 

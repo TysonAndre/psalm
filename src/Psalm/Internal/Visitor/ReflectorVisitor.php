@@ -37,6 +37,28 @@ use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Storage\PropertyStorage;
 use Psalm\Type;
+use function implode;
+use function strtolower;
+use function in_array;
+use function end;
+use function is_string;
+use function count;
+use function array_merge;
+use function trim;
+use function preg_replace;
+use function array_pop;
+use function function_exists;
+use function class_exists;
+use function interface_exists;
+use function assert;
+use function strpos;
+use function explode;
+use function array_key_exists;
+use function substr;
+use function array_filter;
+use function preg_match;
+use function dirname;
+use const DIRECTORY_SEPARATOR;
 
 use function strtolower;
 
@@ -110,7 +132,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     private $skip_if_descendants = false;
 
     /**
-     * @var array<string, array<int, string>>
+     * @var array<string, array<int, array{0: string, 1: int}>>
      */
     private $type_aliases = [];
 
@@ -701,11 +723,13 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         string $function_id,
         PhpParser\Node\Expr\FuncCall $node
     ) {
-        $function_params = CallMap::getParamsFromCallMap($function_id);
+        $callables = CallMap::getCallablesFromCallMap($function_id);
 
-        if ($function_params) {
-            foreach ($function_params as $function_param_group) {
-                foreach ($function_param_group as $function_param) {
+        if ($callables) {
+            foreach ($callables as $callable) {
+                assert($callable->params !== null);
+
+                foreach ($callable->params as $function_param) {
                     if ($function_param->type) {
                         $function_param->type->queueClassLikesForScanning(
                             $this->codebase,
@@ -713,12 +737,12 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         );
                     }
                 }
+
+                if ($callable->return_type && !$callable->return_type->hasMixed()) {
+                    $callable->return_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
+                }
             }
         }
-
-        $return_type = CallMap::getReturnTypeFromCallMap($function_id);
-
-        $return_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
 
         if ($function_id === 'define') {
             $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
@@ -1234,7 +1258,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($extended_type_parameters) {
-                $storage->template_type_extends[$generic_class_lc] = $extended_type_parameters;
+                $storage->template_type_extends[$atomic_type->value] = $extended_type_parameters;
             }
         }
     }
@@ -1318,7 +1342,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($implemented_type_parameters) {
-                $storage->template_type_extends[$generic_class_lc] = $implemented_type_parameters;
+                $storage->template_type_extends[$atomic_type->value] = $implemented_type_parameters;
             }
         }
     }
@@ -1402,7 +1426,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($used_type_parameters) {
-                $storage->template_type_extends[$generic_class_lc] = $used_type_parameters;
+                $storage->template_type_extends[$atomic_type->value] = $used_type_parameters;
             }
         }
     }
@@ -1816,6 +1840,47 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->returns_by_ref = true;
         }
 
+        if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
+            && $stmt->name->name === '__construct'
+            && $stmt->stmts
+            && $storage->params
+            && $class_storage
+            && $this->config->infer_property_types_from_constructor
+        ) {
+            $assigned_properties = [];
+
+            foreach ($stmt->stmts as $function_stmt) {
+                if ($function_stmt instanceof PhpParser\Node\Stmt\Expression
+                    && $function_stmt->expr instanceof PhpParser\Node\Expr\Assign
+                    && $function_stmt->expr->var instanceof PhpParser\Node\Expr\PropertyFetch
+                    && $function_stmt->expr->var->var instanceof PhpParser\Node\Expr\Variable
+                    && $function_stmt->expr->var->var->name === 'this'
+                    && $function_stmt->expr->var->name instanceof PhpParser\Node\Identifier
+                    && ($property_name = $function_stmt->expr->var->name->name)
+                    && isset($class_storage->properties[$property_name])
+                    && $function_stmt->expr->expr instanceof PhpParser\Node\Expr\Variable
+                    && is_string($function_stmt->expr->expr->name)
+                    && ($param_name = $function_stmt->expr->expr->name)
+                    && array_key_exists($param_name, $storage->param_types)
+                ) {
+                    if ($class_storage->properties[$property_name]->type
+                        || !isset($storage->param_types[$param_name])
+                    ) {
+                        continue;
+                    }
+
+                    $assigned_properties[$property_name] = $storage->param_types[$param_name];
+                } else {
+                    $assigned_properties = [];
+                    break;
+                }
+            }
+
+            foreach ($assigned_properties as $property_name => $property_type) {
+                $class_storage->properties[$property_name]->type = clone $property_type;
+            }
+        }
+
         $doc_comment = $stmt->getDocComment();
 
         if (!$doc_comment) {
@@ -2116,7 +2181,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage,
                 $docblock_info->params,
                 $stmt,
-                $fake_method
+                $fake_method,
+                $class_storage && !$class_storage->is_trait ? $class_storage->name : null
             );
         }
 
@@ -2205,15 +2271,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         }
 
         if ($docblock_info->return_type) {
-            $storage->has_template_return_type =
-                $template_types !== null &&
-                count(
-                    array_intersect(
-                        Type::tokenize($docblock_info->return_type),
-                        array_keys($template_types)
-                    )
-                ) > 0;
-
             $docblock_return_type = $docblock_info->return_type;
 
             if (!$fake_method
@@ -2246,7 +2303,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $docblock_return_type,
                         $this->aliases,
                         $this->function_template_types + $this->class_template_types,
-                        $this->type_aliases
+                        $this->type_aliases,
+                        $class_storage && !$class_storage->is_trait ? $class_storage->name : null
                     );
 
                     $storage->return_type = Type::parseTokens(
@@ -2423,7 +2481,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         FunctionLikeStorage $storage,
         array $docblock_params,
         PhpParser\Node\FunctionLike $function,
-        bool $fake_method
+        bool $fake_method,
+        ?string $fq_classlike_name
     ) {
         $base = $this->fq_classlike_names
             ? $this->fq_classlike_names[count($this->fq_classlike_names) - 1] . '::'
@@ -2508,7 +2567,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $docblock_param['type'],
                         $this->aliases,
                         $this->function_template_types + $this->class_template_types,
-                        $this->type_aliases
+                        $this->type_aliases,
+                        $fq_classlike_name
                     ),
                     null,
                     $this->function_template_types + $this->class_template_types
@@ -2693,11 +2753,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         $signature_type = null;
         $signature_type_location = null;
 
-        /** @var null|PhpParser\Node\Identifier|PhpParser\Node\Name|PhpParser\Node\NullableType */
-        $parser_property_type = isset($stmt->type) ? $stmt->type : null;
-
-        if ($parser_property_type) {
+        if ($stmt->type) {
             $suffix = '';
+
+            $parser_property_type = $stmt->type;
 
             if ($parser_property_type instanceof PhpParser\Node\NullableType) {
                 $suffix = '|null';

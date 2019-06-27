@@ -3,6 +3,10 @@ namespace Psalm\Internal\FileManipulation;
 
 use Psalm\FileManipulation;
 use Psalm\Internal\Provider\FileProvider;
+use function array_merge;
+use function strlen;
+use const PHP_EOL;
+use function substr;
 
 /**
  * @internal
@@ -54,12 +58,15 @@ class FileManipulationBuffer
         $middle_offset = 0;
 
         foreach (self::$file_manipulations[$source_file_path] as $fm) {
+            $offset = strlen($fm->insertion_text) - $fm->end + $fm->start;
+
             if ($fm->end < $source_start) {
-                $start_offset += strlen($fm->insertion_text) - $fm->end + $fm->start;
+                $start_offset += $offset;
+                $middle_offset += $offset;
             } elseif ($fm->start > $source_start
                 && $fm->end < $source_end
             ) {
-                $middle_offset += strlen($fm->insertion_text) - $fm->end + $fm->start;
+                $middle_offset += $offset;
             }
         }
 
@@ -140,12 +147,13 @@ class FileManipulationBuffer
                 $code_migration_manipulations[$code_migration->destination_file_path] = [];
             }
 
-            $code_migration_manipulations[$code_migration->source_file_path][]
-                = new FileManipulation(
-                    $code_migration->source_start + $start_offset,
-                    $code_migration->source_end + $middle_offset,
-                    ''
-                );
+            $delete_file_manipulation = new FileManipulation(
+                $code_migration->source_start + $start_offset,
+                $code_migration->source_end + $middle_offset,
+                ''
+            );
+
+            $code_migration_manipulations[$code_migration->source_file_path][] = $delete_file_manipulation;
 
             list($destination_start_offset) = self::getCodeOffsets(
                 $code_migration->destination_file_path,
@@ -158,8 +166,8 @@ class FileManipulationBuffer
                 $code_migration->destination_start + $destination_start_offset,
                 PHP_EOL . substr(
                     $file_provider->getContents($code_migration->source_file_path),
-                    $code_migration->source_start + $start_offset,
-                    $code_migration->source_end - $code_migration->source_start + $middle_offset
+                    $delete_file_manipulation->start,
+                    $delete_file_manipulation->end - $delete_file_manipulation->start
                 ) . PHP_EOL
             );
 

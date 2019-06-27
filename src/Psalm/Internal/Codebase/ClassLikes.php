@@ -22,6 +22,20 @@ use Psalm\Progress\VoidProgress;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
 use ReflectionProperty;
+use function get_declared_classes;
+use function preg_replace;
+use function strtolower;
+use function get_declared_interfaces;
+use function substr;
+use function preg_match;
+use const PHP_EOL;
+use function explode;
+use function strrpos;
+use function strlen;
+use function array_pop;
+use function implode;
+use function end;
+use function array_merge;
 
 /**
  * @internal
@@ -233,6 +247,32 @@ class ClassLikes
         if ($file_path) {
             $this->scanner->setClassLikeFilePath($fq_class_name_lc, $file_path);
         }
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getMatchingClassLikeNames(string $stub) : array
+    {
+        $matching_classes = [];
+
+        if ($stub[0] === '*') {
+            $stub = substr($stub, 1);
+        }
+
+        $stub = strtolower($stub);
+
+        foreach ($this->existing_classlikes_lc as $fq_classlike_name_lc => $found) {
+            if (!$found) {
+                continue;
+            }
+
+            if (preg_match('@(^|\\\)' . $stub . '.*@', $fq_classlike_name_lc)) {
+                $matching_classes[] = $fq_classlike_name_lc;
+            }
+        }
+
+        return $matching_classes;
     }
 
     /**
@@ -838,7 +878,7 @@ class ClassLikes
                         $source_classlike_storage->parent_class
                     );
 
-                    $this->airliftDocblockType(
+                    $this->airliftClassDefinedDocblockType(
                         $replace_type,
                         $destination_fq_class_name,
                         $source_property_storage->stmt_location->file_path,
@@ -964,9 +1004,9 @@ class ClassLikes
         \Psalm\StatementsSource $source,
         PhpParser\Node $class_name_node,
         string $fq_class_name,
-        ?string $calling_method_id
+        ?string $calling_method_id,
+        bool $force_change = false
     ) : bool {
-
         $calling_fq_class_name = $source->getFQCLN();
 
         // if we're inside a moved class static method
@@ -987,8 +1027,83 @@ class ClassLikes
                 $destination_class,
                 $source->getFilePath(),
                 (int) $class_name_node->getAttribute('startFilePos'),
-                (int) $class_name_node->getAttribute('endFilePos') + 1
+                (int) $class_name_node->getAttribute('endFilePos') + 1,
+                $class_name_node instanceof PhpParser\Node\Scalar\MagicConst\Class_
             );
+
+            return true;
+        }
+
+        // if we're outside a moved class, but we're changing all references to a class
+        if (isset($codebase->class_transforms[strtolower($fq_class_name)])) {
+            $new_fq_class_name = $codebase->class_transforms[strtolower($fq_class_name)];
+            $file_manipulations = [];
+
+            if ($class_name_node instanceof PhpParser\Node\Identifier) {
+                $destination_parts = explode('\\', $new_fq_class_name);
+
+                $destination_class_name = array_pop($destination_parts);
+                $file_manipulations = [];
+
+                $file_manipulations[] = new \Psalm\FileManipulation(
+                    (int) $class_name_node->getAttribute('startFilePos'),
+                    (int) $class_name_node->getAttribute('endFilePos') + 1,
+                    $destination_class_name
+                );
+
+                FileManipulationBuffer::add($source->getFilePath(), $file_manipulations);
+
+                return true;
+            }
+
+            $uses_flipped = $source->getAliasedClassesFlipped();
+            $uses_flipped_replaceable = $source->getAliasedClassesFlippedReplaceable();
+
+            $old_fq_class_name = strtolower($fq_class_name);
+
+            $migrated_source_fqcln = $calling_fq_class_name;
+
+            if ($calling_fq_class_name
+                && isset($codebase->class_transforms[strtolower($calling_fq_class_name)])
+            ) {
+                $migrated_source_fqcln = $codebase->class_transforms[strtolower($calling_fq_class_name)];
+            }
+
+            $source_namespace = $source->getNamespace();
+
+            if ($migrated_source_fqcln && $calling_fq_class_name !== $migrated_source_fqcln) {
+                $new_source_parts = explode('\\', $migrated_source_fqcln);
+                array_pop($new_source_parts);
+                $source_namespace = implode('\\', $new_source_parts);
+            }
+
+            if (isset($uses_flipped_replaceable[$old_fq_class_name])) {
+                $alias = $uses_flipped_replaceable[$old_fq_class_name];
+                unset($uses_flipped[$old_fq_class_name]);
+                $old_class_name_parts = explode('\\', $old_fq_class_name);
+                $old_class_name = end($old_class_name_parts);
+                if (strtolower($old_class_name) === strtolower($alias)) {
+                    $new_class_name_parts = explode('\\', $new_fq_class_name);
+                    $new_class_name = end($new_class_name_parts);
+                    $uses_flipped[strtolower($new_fq_class_name)] = $new_class_name;
+                } else {
+                    $uses_flipped[strtolower($new_fq_class_name)] = $alias;
+                }
+            }
+
+            $file_manipulations[] = new \Psalm\FileManipulation(
+                (int) $class_name_node->getAttribute('startFilePos'),
+                (int) $class_name_node->getAttribute('endFilePos') + 1,
+                Type::getStringFromFQCLN(
+                    $new_fq_class_name,
+                    $source_namespace,
+                    $uses_flipped,
+                    $migrated_source_fqcln
+                )
+                    . ($class_name_node instanceof PhpParser\Node\Scalar\MagicConst\Class_ ? '::class' : '')
+            );
+
+            FileManipulationBuffer::add($source->getFilePath(), $file_manipulations);
 
             return true;
         }
@@ -1021,49 +1136,39 @@ class ClassLikes
                     $destination_class,
                     $source->getFilePath(),
                     (int) $class_name_node->getAttribute('startFilePos'),
-                    (int) $class_name_node->getAttribute('endFilePos') + 1
+                    (int) $class_name_node->getAttribute('endFilePos') + 1,
+                    $class_name_node instanceof PhpParser\Node\Scalar\MagicConst\Class_
                 );
             }
 
             return true;
         }
 
-        // if we're outside a moved class, but we're changing all references to a class
-        if (isset($codebase->class_transforms[strtolower($fq_class_name)])) {
-            $new_fq_class_name = $codebase->class_transforms[strtolower($fq_class_name)];
-            $file_manipulations = [];
+        if ($force_change) {
+            if ($calling_fq_class_name) {
+                $this->airliftClassLikeReference(
+                    $fq_class_name,
+                    $calling_fq_class_name,
+                    $source->getFilePath(),
+                    (int) $class_name_node->getAttribute('startFilePos'),
+                    (int) $class_name_node->getAttribute('endFilePos') + 1
+                );
+            } else {
+                $file_manipulations = [];
 
-            $uses_flipped = $source->getAliasedClassesFlipped();
-            $uses_flipped_replaceable = $source->getAliasedClassesFlippedReplaceable();
+                $file_manipulations[] = new \Psalm\FileManipulation(
+                    (int) $class_name_node->getAttribute('startFilePos'),
+                    (int) $class_name_node->getAttribute('endFilePos') + 1,
+                    Type::getStringFromFQCLN(
+                        $fq_class_name,
+                        $source->getNamespace(),
+                        $source->getAliasedClassesFlipped(),
+                        null
+                    )
+                );
 
-            $old_fq_class_name = strtolower($fq_class_name);
-
-            if (isset($uses_flipped_replaceable[$old_fq_class_name])) {
-                $alias = $uses_flipped_replaceable[$old_fq_class_name];
-                unset($uses_flipped_replaceable[$old_fq_class_name]);
-                $old_class_name_parts = explode('\\', $old_fq_class_name);
-                $old_class_name = end($old_class_name_parts);
-                if (strtolower($old_class_name) === strtolower($alias)) {
-                    $new_class_name_parts = explode('\\', $new_fq_class_name);
-                    $new_class_name = end($new_class_name_parts);
-                    $uses_flipped[strtolower($new_fq_class_name)] = $new_class_name;
-                } else {
-                    $uses_flipped[strtolower($new_fq_class_name)] = $alias;
-                }
+                FileManipulationBuffer::add($source->getFilePath(), $file_manipulations);
             }
-
-            $file_manipulations[] = new \Psalm\FileManipulation(
-                (int) $class_name_node->getAttribute('startFilePos'),
-                (int) $class_name_node->getAttribute('endFilePos') + 1,
-                Type::getStringFromFQCLN(
-                    $new_fq_class_name,
-                    $source->getNamespace(),
-                    $uses_flipped,
-                    $calling_fq_class_name
-                )
-            );
-
-            FileManipulationBuffer::add($source->getFilePath(), $file_manipulations);
 
             return true;
         }
@@ -1078,7 +1183,6 @@ class ClassLikes
         CodeLocation $type_location,
         ?string $calling_method_id
     ) : void {
-
         $calling_fq_class_name = $source->getFQCLN();
 
         $moved_type = false;
@@ -1093,7 +1197,7 @@ class ClassLikes
 
             $destination_class = explode('::', $codebase->methods_to_move[strtolower($calling_method_id)])[0];
 
-            $this->airliftDocblockType(
+            $this->airliftClassDefinedDocblockType(
                 $type,
                 $destination_class,
                 $source->getFilePath(),
@@ -1102,6 +1206,74 @@ class ClassLikes
             );
 
             $moved_type = true;
+        }
+
+        // if we're outside a moved class, but we're changing all references to a class
+        if (!$moved_type && $codebase->class_transforms) {
+            $uses_flipped = $source->getAliasedClassesFlipped();
+            $uses_flipped_replaceable = $source->getAliasedClassesFlippedReplaceable();
+
+            $migrated_source_fqcln = $calling_fq_class_name;
+
+            if ($calling_fq_class_name
+                && isset($codebase->class_transforms[strtolower($calling_fq_class_name)])
+            ) {
+                $migrated_source_fqcln = $codebase->class_transforms[strtolower($calling_fq_class_name)];
+            }
+
+            $source_namespace = $source->getNamespace();
+
+            if ($migrated_source_fqcln && $calling_fq_class_name !== $migrated_source_fqcln) {
+                $new_source_parts = explode('\\', $migrated_source_fqcln);
+                array_pop($new_source_parts);
+                $source_namespace = implode('\\', $new_source_parts);
+            }
+
+            foreach ($codebase->class_transforms as $old_fq_class_name => $new_fq_class_name) {
+                if (isset($uses_flipped_replaceable[$old_fq_class_name])) {
+                    $alias = $uses_flipped_replaceable[$old_fq_class_name];
+                    unset($uses_flipped[$old_fq_class_name]);
+                    $old_class_name_parts = explode('\\', $old_fq_class_name);
+                    $old_class_name = end($old_class_name_parts);
+                    if (strtolower($old_class_name) === strtolower($alias)) {
+                        $new_class_name_parts = explode('\\', $new_fq_class_name);
+                        $new_class_name = end($new_class_name_parts);
+                        $uses_flipped[strtolower($new_fq_class_name)] = $new_class_name;
+                    } else {
+                        $uses_flipped[strtolower($new_fq_class_name)] = $alias;
+                    }
+                }
+            }
+
+            foreach ($codebase->class_transforms as $old_fq_class_name => $new_fq_class_name) {
+                if ($type->containsClassLike($old_fq_class_name)) {
+                    $type = clone $type;
+
+                    $type->replaceClassLike($old_fq_class_name, $new_fq_class_name);
+
+                    $bounds = $type_location->getSelectionBounds();
+
+                    $file_manipulations = [];
+
+                    $file_manipulations[] = new \Psalm\FileManipulation(
+                        $bounds[0],
+                        $bounds[1],
+                        $type->toNamespacedString(
+                            $source_namespace,
+                            $uses_flipped,
+                            $migrated_source_fqcln,
+                            false
+                        )
+                    );
+
+                    FileManipulationBuffer::add(
+                        $source->getFilePath(),
+                        $file_manipulations
+                    );
+
+                    $moved_type = true;
+                }
+            }
         }
 
         // if we're inside a moved class (could be a method, could be a property/class const default)
@@ -1120,63 +1292,13 @@ class ClassLikes
                 $type->replaceClassLike(strtolower($calling_fq_class_name), $destination_class);
             }
 
-            $this->airliftDocblockType(
+            $this->airliftClassDefinedDocblockType(
                 $type,
                 $destination_class,
                 $source->getFilePath(),
                 $bounds[0],
                 $bounds[1]
             );
-
-            $moved_type = true;
-        }
-
-        // if we're outside a moved class, but we're changing all references to a class
-        if (!$moved_type) {
-            foreach ($codebase->class_transforms as $old_fq_class_name => $new_fq_class_name) {
-                if ($type->containsClassLike($old_fq_class_name)) {
-                    $type = clone $type;
-
-                    $type->replaceClassLike($old_fq_class_name, $new_fq_class_name);
-
-                    $bounds = $type_location->getSelectionBounds();
-
-                    $file_manipulations = [];
-
-                    $uses_flipped = $source->getAliasedClassesFlipped();
-                    $uses_flipped_replaceable = $source->getAliasedClassesFlippedReplaceable();
-
-                    if (isset($uses_flipped_replaceable[$old_fq_class_name])) {
-                        $alias = $uses_flipped_replaceable[$old_fq_class_name];
-                        unset($uses_flipped_replaceable[$old_fq_class_name]);
-                        $old_class_name_parts = explode('\\', $old_fq_class_name);
-                        $old_class_name = end($old_class_name_parts);
-                        if (strtolower($old_class_name) === strtolower($alias)) {
-                            $new_class_name_parts = explode('\\', $new_fq_class_name);
-                            $new_class_name = end($new_class_name_parts);
-                            $uses_flipped[strtolower($new_fq_class_name)] = $new_class_name;
-                        } else {
-                            $uses_flipped[strtolower($new_fq_class_name)] = $alias;
-                        }
-                    }
-
-                    $file_manipulations[] = new \Psalm\FileManipulation(
-                        $bounds[0],
-                        $bounds[1],
-                        $type->toNamespacedString(
-                            $source->getNamespace(),
-                            $uses_flipped,
-                            null,
-                            false
-                        )
-                    );
-
-                    FileManipulationBuffer::add(
-                        $source->getFilePath(),
-                        $file_manipulations
-                    );
-                }
-            }
         }
     }
 
@@ -1185,7 +1307,8 @@ class ClassLikes
         string $destination_fq_class_name,
         string $source_file_path,
         int $source_start,
-        int $source_end
+        int $source_end,
+        bool $add_class_constant = false
     ) : void {
         $project_analyzer = \Psalm\Internal\Analyzer\ProjectAnalyzer::getInstance();
         $codebase = $project_analyzer->getCodebase();
@@ -1206,7 +1329,7 @@ class ClassLikes
                 $destination_class_storage->aliases->namespace,
                 $destination_class_storage->aliases->uses_flipped,
                 $destination_class_storage->name
-            )
+            ) . ($add_class_constant ? '::class' : '')
         );
 
         FileManipulationBuffer::add(
@@ -1215,7 +1338,7 @@ class ClassLikes
         );
     }
 
-    public function airliftDocblockType(
+    public function airliftClassDefinedDocblockType(
         Type\Union $type,
         string $destination_fq_class_name,
         string $source_file_path,

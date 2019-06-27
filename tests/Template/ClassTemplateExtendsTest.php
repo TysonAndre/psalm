@@ -3,8 +3,9 @@ namespace Psalm\Tests\Template;
 
 use Psalm\Tests\TestCase;
 use Psalm\Tests\Traits;
+use const DIRECTORY_SEPARATOR;
 
-class TemplateExtendsTest extends TestCase
+class ClassTemplateExtendsTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
     use Traits\ValidCodeAnalysisTestTrait;
@@ -650,7 +651,7 @@ class TemplateExtendsTest extends TestCase
 
                         /** @param class-string<T> $class */
                         public function __construct(string $class) {
-                                $this->class = $class;
+                            $this->class = $class;
                         }
                     }
 
@@ -662,6 +663,23 @@ class TemplateExtendsTest extends TestCase
                     foreach (getFooCollection() as $i => $foo) {
                         $foo->bar();
                     }',
+            ],
+            'constructExtendedArrayIteratorWithTemplateExtends' => [
+                '<?php
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     * @template-extends ArrayIterator<TKey, TValue>
+                     */
+                    class Collection1 extends ArrayIterator{}
+
+                    class Collection2 extends Collection1{}
+
+                    class Collection3 extends Collection2{}
+
+                    $a = new Collection1(["a" => "b"]);
+                    $a = new Collection2(["a" => "b"]);
+                    $a = new Collection3(["a" => "b"]);',
             ],
             'iterateOverExtendedArrayObjectWithoutParam' => [
                 '<?php
@@ -776,6 +794,50 @@ class TemplateExtendsTest extends TestCase
                         }
                     }',
             ],
+            'extendWithExplicitOverriddenTemplatedSignature' => [
+                '<?php
+                    class Obj {}
+
+                    /**
+                     * @template T1
+                     */
+                    class BaseContainer {
+                        /** @var T1 */
+                        private $t1;
+
+                        /** @param T1 $t1 */
+                        public function __construct($t1) {
+                            $this->t1 = $t1;
+                        }
+
+                        /**
+                         * @return T1
+                         */
+                        public function getValue()
+                        {
+                            return $this->t1;
+                        }
+                    }
+
+                    /**
+                     * @template T2 as Obj
+                     * @template-extends BaseContainer<T2>
+                     */
+                    class Container extends BaseContainer {
+                        /** @param T2 $t2 */
+                        public function __construct($t2) {
+                            parent::__construct($t2);
+                        }
+
+                        /**
+                         * @return T2
+                         */
+                        public function getValue()
+                        {
+                            return parent::getValue();
+                        }
+                    }',
+            ],
             'iterateOverExtendedArrayObjectThisClassIterationWithExplicitGetIterator' => [
                 '<?php
                     class O {}
@@ -805,9 +867,7 @@ class TemplateExtendsTest extends TestCase
                         /**
                          * @return \ArrayIterator<int, T>
                          */
-                        public function getIterator()
-                        {
-                            /** @var ArrayIterator<int, O> */
+                        public function getIterator() {
                             return parent::getIterator();
                         }
                     }
@@ -844,7 +904,7 @@ class TemplateExtendsTest extends TestCase
                         public function valid(): bool { return false; }
                     }',
             ],
-            'traitUse' => [
+            'traitUseNotExtended' => [
                 '<?php
                     /**
                      * @template T
@@ -1116,6 +1176,50 @@ class TemplateExtendsTest extends TestCase
                             }
                         }
                     }',
+            ],
+            'templateExtendsOnceWithSpecificStaticCall' => [
+                '<?php
+                    /** @template T */
+                    class Container {
+                        /** @var T */
+                        private $t;
+
+                        /** @param T $t */
+                        private function __construct($t) {
+                            $this->t = $t;
+                        }
+
+                        /**
+                         * @param T $t
+                         * @return static<T>
+                         */
+                        public static function getContainer($t) {
+                            return new static($t);
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function getValue()
+                        {
+                            return $this->t;
+                        }
+                    }
+
+                    /**
+                     * @template T1 as A
+                     * @template-extends Container<T1>
+                     */
+                    class AContainer extends Container {}
+
+                    class A {
+                        function foo() : void {}
+                    }
+
+                    $b = AContainer::getContainer(new A());',
+                [
+                    '$b' => 'AContainer<A>',
+                ],
             ],
             'templateExtendsDifferentNameWithStaticCall' => [
                 '<?php
@@ -1646,35 +1750,6 @@ class TemplateExtendsTest extends TestCase
 
                     ord((new Child())->example("str"));'
             ],
-            'allowWiderParentType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    abstract class Stringer {
-                        /**
-                         * @param T $t
-                         */
-                        public static function getString($t, object $o = null) : string {
-                            return "hello";
-                        }
-                    }
-
-                    class A {}
-
-                    /**
-                     * @template-extends Stringer<A>
-                     */
-                    class AStringer extends Stringer {
-                        public static function getString($t, object $o = null) : string {
-                            if ($o) {
-                                return parent::getString($o);
-                            }
-
-                            return "a";
-                        }
-                    }'
-            ],
             'allowTraitExtendAndImplementWithExplicitParamType' => [
                 '<?php
                     /**
@@ -1897,10 +1972,10 @@ class TemplateExtendsTest extends TestCase
                         public function indexById($v): array;
                     }
 
-                    /** @template-implements I<int> */
+                    /** @template-implements I<string> */
                     class C implements I {
                         public function indexById($v): array {
-                          return [(string)$v => $v];
+                          return [$v => $v];
                         }
                     }',
             ],
@@ -1936,6 +2011,238 @@ class TemplateExtendsTest extends TestCase
                             return "id";
                         }
                     }'
+            ],
+            'interfaceParentExtends' => [
+                '<?php
+                    /** @template T */
+                    interface Foo {
+                        /** @return T */
+                        public function getValue();
+                    }
+
+                    /** @extends Foo<int> */
+                    interface FooChild extends Foo {}
+
+                    class F implements FooChild {
+                        public function getValue() {
+                            return 10;
+                        }
+                    }
+
+                    echo (new F())->getValue();'
+            ],
+            'classParentExtends' => [
+                '<?php
+                    /** @template T */
+                    abstract class Foo {
+                        /** @return T */
+                        abstract public function getValue();
+                    }
+
+                    /** @extends Foo<int> */
+                    abstract class FooChild extends Foo {}
+
+                    class F extends FooChild {
+                        public function getValue() {
+                            return 10;
+                        }
+                    }
+
+                    echo (new F())->getValue();'
+            ],
+            'lessSpecificNonGenericReturnType' => [
+                '<?php
+                    /**
+                     * @template-implements IteratorAggregate<int, int>
+                     */
+                    class Bar implements IteratorAggregate {
+                        public function getIterator() : Traversable {
+                            yield from range(0, 100);
+                        }
+                    }
+
+                    $bat = new Bar();
+
+                    foreach ($bat as $num) {}',
+            ],
+            'implictIteratorTemplating' => [
+                '<?php
+                    /**
+                     * @template-implements IteratorAggregate<int, int>
+                     */
+                    class SomeIterator implements IteratorAggregate
+                    {
+                        function getIterator()
+                        {
+                            yield 1;
+                        }
+                    }
+
+                    /** @param \IteratorAggregate<mixed, int> $i */
+                    function takesIteratorOfInts(\IteratorAggregate $i) : void {
+                        foreach ($i as $j) {
+                            echo $j;
+                        }
+                    }
+
+                    takesIteratorOfInts(new SomeIterator());',
+            ],
+            'genericInterface' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     * @param class-string<T> $t
+                     * @return T
+                     */
+                    function generic(string $t) {
+                        return f($t)->get();
+                    }
+
+                    /** @template T as object */
+                    interface I {
+                        /** @return T */
+                        public function get() {}
+                    }
+
+                    /**
+                     * @template T as object
+                     * @template-implements I<T>
+                     */
+                    class C implements I {
+                        /**
+                         * @var T
+                         */
+                        public $t;
+
+                        /**
+                         * @param T $t
+                         */
+                        public function __construct(object $t) {
+                            $this->t = $t;
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function get() {
+                            return $this->t;
+                        }
+                    }
+
+                    /**
+                     * @template T as object
+                     * @param class-string<T> $t
+                     * @return I<T>
+                     */
+                    function f(string $t) {
+                        return new C(new $t);
+                    }',
+            ],
+            'extendWithExplicitOverriddenTemplatedSignatureHopped' => [
+                '<?php
+                    class Obj {}
+
+                    /**
+                     * @template T1
+                     */
+                    class Container1 {
+                        /** @var T1 */
+                        private $t1;
+
+                        /** @param T1 $t1 */
+                        public function __construct($t1) {
+                            $this->t1 = $t1;
+                        }
+
+                        /**
+                         * @return T1
+                         */
+                        public function getValue()
+                        {
+                            return $this->t1;
+                        }
+                    }
+
+                    /**
+                     * @template T2
+                     * @template-extends Container1<T2>
+                     */
+                    class Container2 extends Container1 {}
+
+                    /**
+                     * @template T3 as Obj
+                     * @template-extends Container2<T3>
+                     */
+                    class Container3 extends Container2 {
+                        /** @param T3 $t3 */
+                        public function __construct($t3) {
+                            Container1::__construct($t3);
+                        }
+
+                        /**
+                         * @return T3
+                         */
+                        public function getValue()
+                        {
+                            return parent::getValue();
+                        }
+                    }',
+            ],
+            'extendsArryObjectGetIterator' => [
+                '<?php
+                    class Obj {}
+
+                    /**
+                     * @template T1
+                     * @template-extends ArrayObject<int, T1>
+                     */
+                    class Collection extends ArrayObject {}
+
+                    /**
+                     * @template T2 as Obj
+                     * @template-extends Collection<T2>
+                     */
+                    class Collection2 extends Collection {
+                        /**
+                         * called to get the collection ready when we go to loop through it
+                         *
+                         * @return \ArrayIterator<int, T2>
+                         */
+                        public function getIterator() {
+                            return parent::getIterator();
+                        }
+                    }'
+            ],
+            'templatedInterfaceGetIteratorIteration' => [
+                '<?php
+                    namespace NS;
+
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     * @template-extends \IteratorAggregate<TKey, TValue>
+                     */
+                    interface ICollection extends \IteratorAggregate {
+                        /** @return \Traversable<TKey,TValue> */
+                        public function getIterator();
+                    }
+
+                    class Collection implements ICollection {
+                        /** @var array */
+                        private $data;
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+                        /** @psalm-suppress LessSpecificImplementedReturnType */
+                        public function getIterator(): \Traversable {
+                            return new \ArrayIterator($this->data);
+                        }
+                    }
+
+                    /** @var ICollection<string, int> */
+                    $c = new Collection(["a" => 1]);
+
+                    foreach ($c->getIterator() as $k => $v) { atan($v); strlen($k); }',
             ],
         ];
     }
@@ -2106,23 +2413,25 @@ class TemplateExtendsTest extends TestCase
             'extendsTwiceSameNameLastDoesNotExtend' => [
                 '<?php
                     /**
-                     * @template T
+                     * @template T1
                      */
                     class Container
                     {
                         /**
-                         * @var T
+                         * @var T1
                          */
                         private $v;
+
                         /**
-                         * @param T $v
+                         * @param T1 $v
                          */
                         public function __construct($v)
                         {
                             $this->v = $v;
                         }
+
                         /**
-                         * @return T
+                         * @return T1
                          */
                         public function getValue()
                         {
@@ -2131,14 +2440,11 @@ class TemplateExtendsTest extends TestCase
                     }
 
                     /**
-                     * @template T
-                     * @template-extends Container<T>
+                     * @template T2
+                     * @template-extends Container<T2>
                      */
                     class ChildContainer extends Container {}
 
-                    /**
-                     * @template T
-                     */
                     class GrandChildContainer extends ChildContainer {}
 
                     $fc = new GrandChildContainer(5);
@@ -2718,6 +3024,36 @@ class TemplateExtendsTest extends TestCase
                      */
                     class CovariantFoo extends InvariantFoo {}',
                 'error_message' => 'InvalidTemplateParam'
+            ],
+            'preventWiderParentType' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    abstract class Stringer {
+                        /**
+                         * @param T $t
+                         */
+                        public static function getString($t, object $o = null) : string {
+                            return "hello";
+                        }
+                    }
+
+                    class A {}
+
+                    /**
+                     * @template-extends Stringer<A>
+                     */
+                    class AStringer extends Stringer {
+                        public static function getString($t, object $o = null) : string {
+                            if ($o) {
+                                return parent::getString($o);
+                            }
+
+                            return "a";
+                        }
+                    }',
+                'error_message' => 'ArgumentTypeCoercion'
             ],
         ];
     }

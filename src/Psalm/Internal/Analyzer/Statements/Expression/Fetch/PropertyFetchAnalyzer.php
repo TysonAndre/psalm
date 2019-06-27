@@ -32,6 +32,13 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TObjectWithProperties;
+use function strtolower;
+use function array_values;
+use function in_array;
+use function array_reverse;
+use function array_keys;
+use function count;
+use function explode;
 
 /**
  * @internal
@@ -753,12 +760,12 @@ class PropertyFetchAnalyzer
                         $type_tokens = Type::tokenize((string)$class_property_type);
 
                         foreach ($type_tokens as &$type_token) {
-                            if (isset($class_template_params[$type_token])) {
-                                $type_token = $class_template_params[$type_token];
+                            if (isset($class_template_params[$type_token[0]])) {
+                                $type_token[0] = $class_template_params[$type_token[0]];
                             }
                         }
 
-                        $class_property_type = Type::parseString(implode('', $type_tokens));
+                        $class_property_type = Type::parseTokens($type_tokens);
                     }
                 }
             }

@@ -5,6 +5,7 @@ use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 use Psalm\Tests\TestConfig;
+use function strpos;
 
 class ClassMoveTest extends \Psalm\Tests\TestCase
 {
@@ -322,6 +323,7 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                             }
 
                             echo \A::class;
+                            echo __CLASS__;
 
                             ArrayObject::foo();
 
@@ -353,6 +355,7 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
 
                             }
 
+                            echo self::class;
                             echo self::class;
 
                             \ArrayObject::foo();
@@ -417,6 +420,84 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                     }',
                 [
                     'Bar\Bat' => 'Bar\Baz\Bahh',
+                ]
+            ],
+            'moveClassesIntoNamespace' => [
+                '<?php
+                    namespace Foo {
+                        class A {
+                            /** @var ?B */
+                            public $x = null;
+                            /** @var ?A */
+                            public $y = null;
+                            /** @var A|B|C|null */
+                            public $z = null;
+                        }
+                    }
+
+                    namespace Foo {
+                        class B {
+                            /** @var ?A */
+                            public $x = null;
+                            /** @var ?B */
+                            public $y = null;
+                            /** @var A|B|C|null */
+                            public $z = null;
+                        }
+                    }
+
+                    namespace Bar {
+                        use Foo\A;
+                        use Foo\B;
+
+                        class C {
+                            /** @var ?A */
+                            public $x = null;
+                            /** @var ?B */
+                            public $y = null;
+                            /** @var null|A|B */
+                            public $z = null;
+                        }
+                    }',
+                '<?php
+                    namespace Bar\Baz {
+                        class A {
+                            /** @var null|B */
+                            public $x = null;
+                            /** @var null|self */
+                            public $y = null;
+                            /** @var null|self|B|\Foo\C */
+                            public $z = null;
+                        }
+                    }
+
+                    namespace Bar\Baz {
+                        class B {
+                            /** @var null|A */
+                            public $x = null;
+                            /** @var null|self */
+                            public $y = null;
+                            /** @var null|A|self|\Foo\C */
+                            public $z = null;
+                        }
+                    }
+
+                    namespace Bar {
+                        use Bar\Baz\A;
+                        use Bar\Baz\B;
+
+                        class C {
+                            /** @var null|A */
+                            public $x = null;
+                            /** @var null|B */
+                            public $y = null;
+                            /** @var null|A|B */
+                            public $z = null;
+                        }
+                    }',
+                [
+                    'Foo\A' => 'Bar\Baz\A',
+                    'Foo\B' => 'Bar\Baz\B',
                 ]
             ],
             'moveClassDeeperIntoNamespaceAdjustUseWithAlias' => [

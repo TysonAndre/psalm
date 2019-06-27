@@ -41,6 +41,20 @@ use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNonEmptyArray;
+use function strtolower;
+use function strpos;
+use function explode;
+use function count;
+use function in_array;
+use function array_reverse;
+use function array_filter;
+use function is_string;
+use function assert;
+use function preg_match;
+use function preg_replace;
+use function is_int;
+use function substr;
+use function array_merge;
 
 /**
  * @internal
@@ -1239,6 +1253,20 @@ class CallAnalyzer
         }
 
         if (!$has_packed_var && count($args) < count($function_params)) {
+            if ($function_storage) {
+                $expected_param_count = $function_storage->required_param_count;
+            } else {
+                for ($i = 0, $j = count($function_params); $i < $j; ++$i) {
+                    $param = $function_params[$i];
+
+                    if ($param->is_optional || $param->is_variadic) {
+                        break;
+                    }
+                }
+
+                $expected_param_count = $i;
+            }
+
             for ($i = count($args), $j = count($function_params); $i < $j; ++$i) {
                 $param = $function_params[$i];
 
@@ -1246,7 +1274,7 @@ class CallAnalyzer
                     if (IssueBuffer::accepts(
                         new TooFewArguments(
                             'Too few arguments for method ' . $cased_method_id
-                                . ' - expecting ' . count($function_params) . ' but saw ' . count($args),
+                                . ' - expecting ' . $expected_param_count . ' but saw ' . count($args),
                             $code_location,
                             $method_id ?: ''
                         ),
@@ -1712,11 +1740,9 @@ class CallAnalyzer
                 && $class_storage !== $calling_class_storage
                 && $calling_class_storage->template_type_extends
             ) {
-                foreach ($calling_class_storage->template_type_extends as $class_name_lc => $type_map) {
+                foreach ($calling_class_storage->template_type_extends as $class_name => $type_map) {
                     foreach ($type_map as $template_name => $type) {
-                        if (is_string($template_name)
-                            && $class_name_lc === strtolower($class_storage->name)
-                        ) {
+                        if (is_string($template_name) && $class_name === $class_storage->name) {
                             $output_type = null;
 
                             foreach ($type->getTypes() as $atomic_type) {
@@ -1725,14 +1751,12 @@ class CallAnalyzer
                                     && isset(
                                         $calling_class_storage
                                             ->template_type_extends
-                                            [strtolower($atomic_type->defining_class)]
-                                            [$atomic_type->param_name]
+                                                [$atomic_type->defining_class]
+                                                [$atomic_type->param_name]
                                     )
                                 ) {
                                     $output_type_candidate = $calling_class_storage
-                                        ->template_type_extends
-                                        [strtolower($atomic_type->defining_class)]
-                                        [$atomic_type->param_name];
+                                        ->template_type_extends[$atomic_type->defining_class][$atomic_type->param_name];
                                 } else {
                                     $output_type_candidate = new Type\Union([$atomic_type]);
                                 }
@@ -1746,7 +1770,6 @@ class CallAnalyzer
                                     );
                                 }
                             }
-
 
                             $template_types[$template_name][$class_storage->name] = [$output_type ?: Type::getMixed()];
                         }
@@ -1937,42 +1960,36 @@ class CallAnalyzer
                     );
 
                     if (CallMap::inCallMap($function_id)) {
-                        $callmap_params_options = CallMap::getParamsFromCallMap($function_id);
+                        $callmap_callables = CallMap::getCallablesFromCallMap($function_id);
 
-                        if ($callmap_params_options === null) {
+                        if ($callmap_callables === null) {
                             throw new \UnexpectedValueException('This should not happen');
                         }
 
-                        $passing_callmap_params_options = [];
+                        $passing_callmap_callables = [];
 
-                        foreach ($callmap_params_options as $callmap_params_option) {
+                        foreach ($callmap_callables as $callmap_callable) {
                             $required_param_count = 0;
 
-                            foreach ($callmap_params_option as $i => $param) {
+                            assert($callmap_callable->params !== null);
+
+                            foreach ($callmap_callable->params as $i => $param) {
                                 if (!$param->is_optional && !$param->is_variadic) {
                                     $required_param_count = $i + 1;
                                 }
                             }
 
                             if ($required_param_count <= $max_closure_param_count) {
-                                $passing_callmap_params_options[] = $callmap_params_option;
+                                $passing_callmap_callables[] = $callmap_callable;
                             }
                         }
 
-                        if ($passing_callmap_params_options) {
-                            foreach ($passing_callmap_params_options as $passing_callmap_params_option) {
-                                $closure_types[] = new Type\Atomic\TFn(
-                                    'Closure',
-                                    $passing_callmap_params_option,
-                                    $function_storage->return_type ?: Type::getMixed()
-                                );
+                        if ($passing_callmap_callables) {
+                            foreach ($passing_callmap_callables as $passing_callmap_callable) {
+                                $closure_types[] = $passing_callmap_callable;
                             }
                         } else {
-                            $closure_types[] = new Type\Atomic\TFn(
-                                'Closure',
-                                $callmap_params_options[0],
-                                $function_storage->return_type ?: Type::getMixed()
-                            );
+                            $closure_types[] = $callmap_callables[0];
                         }
                     } else {
                         $closure_types[] = new Type\Atomic\TFn(
@@ -2007,9 +2024,10 @@ class CallAnalyzer
     }
 
     /**
+     * @param  Type\Atomic\TFn|Type\Atomic\TCallable $closure_type
      * @param  string   $method_id
      * @param  int      $min_closure_param_count
-     * @param  int      $max_closure_param_count [description]
+     * @param  int      $max_closure_param_count
      * @param  (TArray|null)[] $array_arg_types
      *
      * @return false|null
@@ -2017,7 +2035,7 @@ class CallAnalyzer
     private static function checkArrayFunctionClosureTypeArgs(
         StatementsAnalyzer $statements_analyzer,
         $method_id,
-        Type\Atomic\TFn $closure_type,
+        Type\Atomic $closure_type,
         PhpParser\Node\Arg $closure_arg,
         $min_closure_param_count,
         $max_closure_param_count,
@@ -2691,8 +2709,10 @@ class CallAnalyzer
             return;
         }
 
-        if ($param_type->from_docblock && !$input_type->isMixed()) {
+        if ($param_type->from_docblock && !$input_type->hasMixed()) {
             $input_type_changed = false;
+
+            $input_type = clone $input_type;
 
             foreach ($param_type->getTypes() as $param_atomic_type) {
                 if ($param_atomic_type instanceof Type\Atomic\TGenericObject) {
@@ -2703,6 +2723,7 @@ class CallAnalyzer
                             foreach ($input_atomic_type->type_params as $i => $type_param) {
                                 if ($type_param->isEmpty() && isset($param_atomic_type->type_params[$i])) {
                                     $input_type_changed = true;
+
                                     $input_atomic_type->type_params[$i] = clone $param_atomic_type->type_params[$i];
                                 }
                             }
@@ -2723,6 +2744,8 @@ class CallAnalyzer
         );
 
         if ($var_id) {
+            $input_type = clone $input_type;
+
             if ($input_type->isNullable() && !$param_type->isNullable()) {
                 $input_type->removeType('null');
             }
@@ -2733,7 +2756,7 @@ class CallAnalyzer
                 foreach ($input_type->getTypes() as $atomic_type) {
                     $atomic_type->from_docblock = false;
                 }
-            } elseif ($input_type->isMixed() && $signature_param_type) {
+            } elseif ($input_type->hasMixed() && $signature_param_type) {
                 $input_type = clone $signature_param_type;
 
                 if ($input_type->isNullable()) {
@@ -2831,9 +2854,12 @@ class CallAnalyzer
 
                 if ($type_part->extra_types) {
                     foreach ($type_part->extra_types as $extra_type) {
-                        if ($extra_type instanceof Type\Atomic\TTemplateParam) {
+                        if ($extra_type instanceof Type\Atomic\TTemplateParam
+                            || $extra_type instanceof Type\Atomic\TObjectWithProperties
+                        ) {
                             throw new \UnexpectedValueException('Shouldn’t get a generic param here');
                         }
+
                         $method_id .= '&' . $extra_type->value . '::' . $method_name_arg->value;
                     }
                 }

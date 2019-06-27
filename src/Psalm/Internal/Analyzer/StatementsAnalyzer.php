@@ -36,6 +36,26 @@ use Psalm\Issue\UnusedVariable;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Type;
+use function strtolower;
+use function fwrite;
+use const STDERR;
+use function array_filter;
+use function array_map;
+use function preg_split;
+use function array_diff;
+use function is_string;
+use function get_class;
+use function in_array;
+use function strrpos;
+use function strlen;
+use function substr;
+use function array_key_exists;
+use function count;
+use function array_shift;
+use function explode;
+use function array_pop;
+use function implode;
+use function array_change_key_case;
 
 /**
  * @internal
@@ -93,6 +113,11 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
      * @var ?array<string, bool>
      */
     private $byref_uses;
+
+    /**
+     * @var array{description:string, specials:array<string, array<int, string>>}|null
+     */
+    private $parsed_docblock = null;
 
     /**
      * @param SourceAnalyzer $source
@@ -206,7 +231,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
             if ($docblock = $stmt->getDocComment()) {
                 try {
-                    $comments = DocComment::parsePreservingLength($docblock);
+                    $this->parsed_docblock = DocComment::parsePreservingLength($docblock);
                 } catch (DocblockParseException $e) {
                     if (IssueBuffer::accepts(
                         new InvalidDocblock(
@@ -217,8 +242,10 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         // fall through
                     }
 
-                    $comments = [];
+                    $this->parsed_docblock = null;
                 }
+
+                $comments = $this->parsed_docblock;
 
                 if (isset($comments['specials']['psalm-suppress'])) {
                     $suppressed = array_filter(
@@ -249,6 +276,8 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 if (isset($comments['specials']['psalm-ignore-variable-property'])) {
                     $context->ignore_variable_property = $ignore_variable_property = true;
                 }
+            } else {
+                $this->parsed_docblock = null;
             }
 
             if ($stmt instanceof PhpParser\Node\Stmt\If_) {
@@ -632,12 +661,13 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     // of an issue
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Nop) {
-                if ($doc_comment = $stmt->getDocComment()) {
+                if (($doc_comment = $stmt->getDocComment()) && $this->parsed_docblock) {
                     $var_comments = [];
 
                     try {
-                        $var_comments = CommentAnalyzer::getTypeFromComment(
+                        $var_comments = CommentAnalyzer::arrayToDocblocks(
                             $doc_comment,
+                            $this->parsed_docblock,
                             $this->getSource(),
                             $this->getSource()->getAliases(),
                             $this->getSource()->getTemplateTypeMap()
@@ -902,15 +932,16 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
             $comment_type = null;
 
-            if ($doc_comment) {
+            if ($doc_comment && $this->parsed_docblock) {
                 $var_comments = [];
 
                 try {
-                    $var_comments = CommentAnalyzer::getTypeFromComment(
+                    $var_comments = CommentAnalyzer::arrayToDocblocks(
                         $doc_comment,
+                        $this->parsed_docblock,
                         $this->getSource(),
-                        $this->getAliases(),
-                        $this->getTemplateTypeMap()
+                        $this->getSource()->getAliases(),
+                        $this->getSource()->getTemplateTypeMap()
                     );
                 } catch (\Psalm\Exception\IncorrectDocblockException $e) {
                     if (IssueBuffer::accepts(
@@ -1780,5 +1811,13 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
         }
 
         return $uncaught_throws;
+    }
+
+    /**
+     * @return array{description:string, specials:array<string, array<int, string>>}|null
+     */
+    public function getParsedDocblock() : ?array
+    {
+        return $this->parsed_docblock;
     }
 }

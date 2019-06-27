@@ -6,6 +6,12 @@ use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
+use function implode;
+use function array_map;
+use function array_keys;
+use function is_int;
+use function count;
+use function get_class;
 
 /**
  * Represents an array where we know its key values
@@ -62,7 +68,7 @@ class ObjectLike extends \Psalm\Type\Atomic
                          * @return string
                          */
                         function ($name, Union $type) {
-                            return $name . ($type->possibly_undefined ? '?' : '') . ':' . $type;
+                            return $name . ($type->possibly_undefined ? '?' : '') . ': ' . $type;
                         },
                         array_keys($this->properties),
                         $this->properties
@@ -85,7 +91,7 @@ class ObjectLike extends \Psalm\Type\Atomic
                          * @return string
                          */
                         function ($name, Union $type) {
-                            return $name . ($type->possibly_undefined ? '?' : '') . ':' . $type->getId();
+                            return $name . ($type->possibly_undefined ? '?' : '') . ': ' . $type->getId();
                         },
                         array_keys($this->properties),
                         $this->properties
@@ -134,7 +140,7 @@ class ObjectLike extends \Psalm\Type\Atomic
                             $this_class,
                             $use_phpdoc_format
                         ) {
-                            return $name . ($type->possibly_undefined ? '?' : '') . ':' . $type->toNamespacedString(
+                            return $name . ($type->possibly_undefined ? '?' : '') . ': ' . $type->toNamespacedString(
                                 $namespace,
                                 $aliased_classes,
                                 $this_class,

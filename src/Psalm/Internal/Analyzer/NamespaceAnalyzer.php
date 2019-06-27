@@ -6,6 +6,12 @@ use PhpParser\Node\Stmt\Namespace_;
 use Psalm\Context;
 use Psalm\StatementsSource;
 use Psalm\Type;
+use function implode;
+use function array_merge;
+use function strtolower;
+use function trim;
+use function strpos;
+use function preg_replace;
 
 /**
  * @internal
@@ -80,6 +86,15 @@ class NamespaceAnalyzer extends SourceAnalyzer implements StatementsSource
                 $leftover_stmts[] = $stmt;
             }
         }
+
+        $codebase->analyzer->addNodeAliases(
+            $this->getFilePath(),
+            $this->namespace,
+            array_merge(
+                [$this->namespace_name => $this->namespace_name],
+                $this->getAliasedClassesFlipped()
+            )
+        );
 
         if ($leftover_stmts) {
             $statements_analyzer = new StatementsAnalyzer($this);

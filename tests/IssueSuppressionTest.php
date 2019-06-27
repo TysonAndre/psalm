@@ -1,6 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
+use const DIRECTORY_SEPARATOR;
+
 class IssueSuppressionTest extends TestCase
 {
     use Traits\ValidCodeAnalysisTestTrait;
@@ -88,6 +90,15 @@ class IssueSuppressionTest extends TestCase
                          */
                         strlen("a", "b");
                     }'
+            ],
+            'suppressUndefinedFunction' => [
+                '<?php
+                    function verify_return_type(): DateTime {
+                        /** @psalm-suppress UndefinedFunction */
+                        unknown_function_call();
+
+                        return new DateTime();
+                    }',
             ],
         ];
     }

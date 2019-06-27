@@ -48,6 +48,17 @@ use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTraitString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
+use function strpos;
+use function substr;
+use function is_numeric;
+use function array_keys;
+use function strtolower;
+use function array_filter;
+use function array_search;
+use function count;
+use function array_values;
+use function reset;
+use function get_class;
 
 abstract class Atomic
 {
@@ -66,6 +77,16 @@ abstract class Atomic
      * @var bool
      */
     public $from_docblock = false;
+
+    /**
+     * @var ?int
+     */
+    public $offset_start;
+
+    /**
+     * @var ?int
+     */
+    public $offset_end;
 
     /**
      * @param  string $value
@@ -184,7 +205,7 @@ abstract class Atomic
         }
 
         if (strpos($value, '-') && substr($value, 0, 4) !== 'OCI-') {
-            throw new \Psalm\Exception\TypeParseTreeException('no hyphens allowed');
+            throw new \Psalm\Exception\TypeParseTreeException('Unrecognized type ' . $value);
         }
 
         if (is_numeric($value[0])) {
@@ -338,6 +359,21 @@ abstract class Atomic
         }
 
         if ($this instanceof TNamedObject) {
+            $codebase = $source->getCodebase();
+
+            if ($code_location instanceof CodeLocation\DocblockTypeLocation
+                && $codebase->store_node_types
+                && $this->offset_start !== null
+                && $this->offset_end !== null
+            ) {
+                $codebase->analyzer->addOffsetReference(
+                    $source->getFilePath(),
+                    $code_location->raw_file_start + $this->offset_start,
+                    $code_location->raw_file_start + $this->offset_end,
+                    $this->value
+                );
+            }
+
             if (!isset($phantom_classes[strtolower($this->value)]) &&
                 ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
                     $source,
@@ -355,8 +391,23 @@ abstract class Atomic
 
             if ($this->extra_types) {
                 foreach ($this->extra_types as $extra_type) {
-                    if ($extra_type instanceof TTemplateParam) {
+                    if ($extra_type instanceof TTemplateParam
+                        || $extra_type instanceof Type\Atomic\TObjectWithProperties
+                    ) {
                         continue;
+                    }
+
+                    if ($code_location instanceof CodeLocation\DocblockTypeLocation
+                        && $codebase->store_node_types
+                        && $extra_type->offset_start !== null
+                        && $extra_type->offset_end !== null
+                    ) {
+                        $codebase->analyzer->addOffsetReference(
+                            $source->getFilePath(),
+                            $code_location->raw_file_start + $extra_type->offset_start,
+                            $code_location->raw_file_start + $extra_type->offset_end,
+                            $extra_type->value
+                        );
                     }
 
                     if (!isset($phantom_classes[strtolower($extra_type->value)]) &&
@@ -930,6 +981,7 @@ abstract class Atomic
         if ($this instanceof TNamedObject
             || $this instanceof TTemplateParam
             || $this instanceof TIterable
+            || $this instanceof Type\Atomic\TObjectWithProperties
         ) {
             if ($this->extra_types) {
                 foreach ($this->extra_types as &$type) {

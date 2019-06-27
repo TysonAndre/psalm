@@ -34,6 +34,9 @@ use LanguageServerProtocol\{
 use Psalm\Codebase;
 use Amp\Promise;
 use Amp\Success;
+use function error_log;
+use function count;
+use function substr_count;
 
 /**
  * Provides method handlers for all textDocument/* methods
@@ -98,6 +101,7 @@ class TextDocument
 
         // reopen file
         $this->codebase->removeTemporaryFileChanges($file_path);
+        $this->codebase->file_provider->setOpenContents($file_path, $textDocument->text);
 
         $this->server->queueFileAnalysis($file_path, $textDocument->uri);
     }
@@ -248,6 +252,8 @@ class TextDocument
      */
     public function completion(TextDocumentIdentifier $textDocument, Position $position): Promise
     {
+        $this->server->doAnalysis();
+
         $file_path = LanguageServer::uriToPath($textDocument->uri);
 
         $completion_data = $this->codebase->getCompletionDataAtPosition($file_path, $position);
@@ -257,16 +263,12 @@ class TextDocument
             return new Success([]);
         }
 
-        list($recent_type, $gap) = $completion_data;
-
-        error_log('gap: "' . $gap . '" and type: "' . $recent_type . '"');
-
-        $completion_items = [];
+        list($recent_type, $gap, $aliases) = $completion_data;
 
         if ($gap === '->' || $gap === '::') {
             $completion_items = $this->codebase->getCompletionItemsForClassishThing($recent_type, $gap);
-
-            error_log('Found ' . count($completion_items) . ' items');
+        } else {
+            $completion_items = $this->codebase->getCompletionItemsForPartialSymbol($recent_type, $aliases);
         }
 
         return new Success(new CompletionList($completion_items, false));

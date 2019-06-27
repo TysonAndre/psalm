@@ -33,6 +33,54 @@ use Psalm\Report;
 use Psalm\Report\ReportOptions;
 use Psalm\Type;
 use Psalm\Issue\CodeIssue;
+use function in_array;
+use function substr;
+use function strlen;
+use function cli_set_process_title;
+use function stream_socket_client;
+use function fwrite;
+use const STDERR;
+use function stream_set_blocking;
+use function stream_socket_server;
+use const STDOUT;
+use function extension_loaded;
+use function stream_socket_accept;
+use function pcntl_fork;
+use const STDIN;
+use function microtime;
+use function array_merge;
+use function count;
+use function implode;
+use function array_diff;
+use function strpos;
+use function explode;
+use function array_pop;
+use function strtolower;
+use function usort;
+use function file_exists;
+use function dirname;
+use function mkdir;
+use function rename;
+use function is_dir;
+use function is_file;
+use const PHP_EOL;
+use function array_shift;
+use function array_combine;
+use function preg_match;
+use function array_keys;
+use function array_fill_keys;
+use function defined;
+use function trim;
+use function shell_exec;
+use function is_string;
+use function filter_var;
+use const FILTER_VALIDATE_INT;
+use function is_int;
+use function is_readable;
+use function file_get_contents;
+use function substr_count;
+use function array_map;
+use function end;
 
 /**
  * @internal
@@ -234,6 +282,7 @@ class ProjectAnalyzer
 
         $mapping = [
             'checkstyle.xml' => Report::TYPE_CHECKSTYLE,
+            'sonarqube.json' => Report::TYPE_SONARQUBE,
             'summary.json' => Report::TYPE_JSON_SUMMARY,
             '.xml' => Report::TYPE_XML,
             '.json' => Report::TYPE_JSON,
@@ -504,6 +553,24 @@ class ProjectAnalyzer
             throw new \UnexpectedValueException('Should not be checking references');
         }
 
+        // interpret wildcards
+        foreach ($this->to_refactor as $source => $destination) {
+            if (($source_pos = strpos($source, '*'))
+                && ($destination_pos = strpos($destination, '*'))
+                && $source_pos === (strlen($source) - 1)
+                && $destination_pos === (strlen($destination) - 1)
+            ) {
+                foreach ($this->codebase->classlike_storage_provider->getAll() as $class_storage) {
+                    if (substr($class_storage->name, 0, $source_pos) === substr($source, 0, -1)) {
+                        $this->to_refactor[$class_storage->name]
+                            = substr($destination, 0, -1) . substr($class_storage->name, $source_pos);
+                    }
+                }
+
+                unset($this->to_refactor[$source]);
+            }
+        }
+
         foreach ($this->to_refactor as $source => $destination) {
             $source_parts = explode('::', $source);
             $destination_parts = explode('::', $destination);
@@ -742,6 +809,12 @@ class ProjectAnalyzer
                 $potential_file_path = $this->config->getPotentialComposerFilePathForClassLike($destination);
 
                 if ($potential_file_path && !file_exists($potential_file_path)) {
+                    $containing_dir = dirname($potential_file_path);
+
+                    if (!file_exists($containing_dir)) {
+                        mkdir($containing_dir, 0777, true);
+                    }
+
                     rename($source_class_storage->location->file_path, $potential_file_path);
                 }
             }

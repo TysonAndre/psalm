@@ -17,6 +17,24 @@ use Psalm\Progress\VoidProgress;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Storage\FunctionLikeStorage;
+use const PHP_MAJOR_VERSION;
+use const PHP_MINOR_VERSION;
+use function in_array;
+use function array_combine;
+use function strpos;
+use function strtolower;
+use function explode;
+use function array_merge;
+use function substr;
+use function error_log;
+use function ksort;
+use function krsort;
+use function preg_match;
+use function strlen;
+use function count;
+use function array_shift;
+use function substr_count;
+use function strrpos;
 
 class Codebase
 {
@@ -941,7 +959,7 @@ class Codebase
 
                     $storage = $this->methods->getStorage($declaring_method_id);
 
-                    return '<?php ' . $storage;
+                    return '<?php ' . $storage->getSignature(true);
                 }
 
                 list(, $symbol_name) = explode('::', $symbol);
@@ -974,7 +992,7 @@ class Codebase
                 if (isset($file_storage->functions[$function_id])) {
                     $function_storage = $file_storage->functions[$function_id];
 
-                    return '<?php ' . $function_storage;
+                    return '<?php ' . $function_storage->getSignature(true);
                 }
 
                 return null;
@@ -1124,7 +1142,7 @@ class Codebase
     }
 
     /**
-     * @return array{0: string, 1: string}|null
+     * @return array{0: string, 1: '->'|'::'|'symbol', 2: array<string, string>}|null
      */
     public function getCompletionDataAtPosition(string $file_path, Position $position)
     {
@@ -1138,9 +1156,9 @@ class Codebase
 
         $offset = $position->toOffset($file_contents);
 
-        list(, $type_map) = $this->analyzer->getMapsForFile($file_path);
+        list($reference_map, $type_map, $alias_map) = $this->analyzer->getMapsForFile($file_path);
 
-        if (!$type_map) {
+        if (!$reference_map && !$type_map) {
             return null;
         }
 
@@ -1150,10 +1168,15 @@ class Codebase
 
         $gap = null;
 
-        foreach ($type_map as $start_pos => list($end_pos, $possible_type)) {
+        foreach ($type_map as $start_pos => list($end_pos_excluding_whitespace, $possible_type)) {
             if ($offset < $start_pos) {
                 continue;
             }
+
+            $num_whitespace_bytes = preg_match('/\G\s+/', $file_contents, $matches, 0, $end_pos_excluding_whitespace)
+                ? strlen($matches[0])
+                : 0;
+            $end_pos = $end_pos_excluding_whitespace + $num_whitespace_bytes;
 
             if ($offset - $end_pos === 2 || $offset - $end_pos === 3) {
                 $candidate_gap = substr($file_contents, $end_pos, 2);
@@ -1162,23 +1185,41 @@ class Codebase
                     $gap = $candidate_gap;
                     $recent_type = $possible_type;
 
-                    break;
+                    if ($recent_type === 'mixed') {
+                        return null;
+                    }
+
+                    return [$recent_type, $gap, []];
                 }
             }
+        }
 
-            if ($offset - $end_pos > 3) {
-                break;
+        foreach ($reference_map as $start_pos => list($end_pos, $possible_reference)) {
+            if ($offset < $start_pos || $possible_reference[0] !== '*') {
+                continue;
+            }
+
+            if ($offset - $end_pos === 0) {
+                $recent_type = $possible_reference;
+
+                $found_aliases = [];
+
+                foreach ($alias_map as $aliases_start_pos => list($aliases_end_pos, $aliases)) {
+                    if ($offset < $aliases_start_pos) {
+                        continue;
+                    }
+
+                    if ($offset < $aliases_end_pos) {
+                        $found_aliases = $aliases;
+                        break;
+                    }
+                }
+
+                return [$recent_type, 'symbol', $found_aliases];
             }
         }
 
-        if (!$recent_type
-            || $recent_type === 'mixed'
-            || !$gap
-        ) {
-            return null;
-        }
-
-        return [$recent_type, $gap];
+        return null;
     }
 
     /**
@@ -1191,8 +1232,6 @@ class Codebase
 
         $type = Type::parseString($type_string);
 
-        $completion_items = [];
-
         foreach ($type->getTypes() as $atomic_type) {
             if ($atomic_type instanceof Type\Atomic\TNamedObject) {
                 try {
@@ -1201,15 +1240,22 @@ class Codebase
                     foreach ($class_storage->appearing_method_ids as $declaring_method_id) {
                         $method_storage = $this->methods->getStorage($declaring_method_id);
 
-                        $instance_completion_items[] = new \LanguageServerProtocol\CompletionItem(
-                            (string)$method_storage,
+                        $completion_item = new \LanguageServerProtocol\CompletionItem(
+                            $method_storage->cased_name,
                             \LanguageServerProtocol\CompletionItemKind::METHOD,
+                            (string)$method_storage,
                             null,
-                            null,
-                            null,
-                            null,
-                            $method_storage->cased_name . '()'
+                            (string)$method_storage->visibility,
+                            $method_storage->cased_name,
+                            $method_storage->cased_name . (count($method_storage->params) !== 0 ? '($0)' : '()')
                         );
+                        $completion_item->insertTextFormat = \LanguageServerProtocol\InsertTextFormat::SNIPPET;
+
+                        if ($method_storage->is_static) {
+                            $static_completion_items[] = $completion_item;
+                        } else {
+                            $instance_completion_items[] = $completion_item;
+                        }
                     }
 
                     foreach ($class_storage->declaring_property_ids as $property_name => $declaring_class) {
@@ -1217,25 +1263,31 @@ class Codebase
                             $declaring_class . '::$' . $property_name
                         );
 
-                        $instance_completion_items[] = new \LanguageServerProtocol\CompletionItem(
-                            $property_storage->getInfo() . ' $' . $property_name,
+                        $completion_item = new \LanguageServerProtocol\CompletionItem(
+                            '$' . $property_name,
                             \LanguageServerProtocol\CompletionItemKind::PROPERTY,
+                            $property_storage->getInfo(),
                             null,
-                            null,
-                            null,
-                            null,
+                            (string)$property_storage->visibility,
+                            $property_name,
                             ($gap === '::' ? '$' : '') . $property_name
                         );
+
+                        if ($property_storage->is_static) {
+                            $static_completion_items[] = $completion_item;
+                        } else {
+                            $instance_completion_items[] = $completion_item;
+                        }
                     }
 
                     foreach ($class_storage->class_constant_locations as $const_name => $_) {
                         $static_completion_items[] = new \LanguageServerProtocol\CompletionItem(
-                            'const ' . $const_name,
+                            $const_name,
                             \LanguageServerProtocol\CompletionItemKind::VARIABLE,
+                            'const ' . $const_name,
                             null,
                             null,
-                            null,
-                            null,
+                            $const_name,
                             $const_name
                         );
                     }
@@ -1244,19 +1296,53 @@ class Codebase
                     continue;
                 }
             }
+        }
 
-            if ($gap === '->') {
-                $completion_items = array_merge(
-                    $completion_items,
-                    $instance_completion_items
-                );
-            } else {
-                $completion_items = array_merge(
-                    $completion_items,
-                    $instance_completion_items,
-                    $static_completion_items
-                );
+        if ($gap === '->') {
+            $completion_items = $instance_completion_items;
+        } else {
+            $completion_items = array_merge(
+                $instance_completion_items,
+                $static_completion_items
+            );
+        }
+
+        return $completion_items;
+    }
+
+    /**
+     * @param array<string, string> $aliases
+     * @return array<int, \LanguageServerProtocol\CompletionItem>
+     */
+    public function getCompletionItemsForPartialSymbol(string $type_string, array $aliases) : array
+    {
+        $matching_classlike_names = $this->classlikes->getMatchingClassLikeNames($type_string);
+
+        $completion_items = [];
+
+        $alias_namespace = array_shift($aliases);
+
+        foreach ($matching_classlike_names as $fq_class_name_lc) {
+            try {
+                $storage = $this->classlike_storage_provider->get($fq_class_name_lc);
+            } catch (\Exception $e) {
+                continue;
             }
+
+            $completion_items[] = new \LanguageServerProtocol\CompletionItem(
+                $storage->name,
+                \LanguageServerProtocol\CompletionItemKind::CLASS_,
+                null,
+                null,
+                null,
+                $storage->name,
+                Type::getStringFromFQCLN(
+                    $storage->name,
+                    $alias_namespace ? $alias_namespace : null,
+                    $aliases,
+                    null
+                )
+            );
         }
 
         return $completion_items;

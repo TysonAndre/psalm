@@ -2,6 +2,12 @@
 namespace Psalm\Internal\Type;
 
 use Psalm\Exception\TypeParseTreeException;
+use function count;
+use function array_pop;
+use function in_array;
+use function strtolower;
+use function preg_match;
+use function strlen;
 
 /**
  * @internal
@@ -42,7 +48,7 @@ class ParseTree
     /**
      * Create a parse tree from a tokenised type (cached)
      *
-     * @param  array<int,string>  $type_tokens
+     * @param  array<int, array{0: string, 1: int}>  $type_tokens
      *
      * @return self
      */
@@ -75,38 +81,38 @@ class ParseTree
             $type_token = $type_tokens[$i];
             $next_token = $i + 1 < $c ? $type_tokens[$i + 1] : null;
 
-            switch ($type_token) {
+            switch ($type_token[0]) {
                 case '<':
                 case '{':
                 case ']':
-                    throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                    throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
 
                 case '[':
                     if ($current_leaf instanceof ParseTree\Root) {
-                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                     }
 
                     $indexed_access = false;
 
-                    if ($next_token !== ']') {
+                    if (!$next_token || $next_token[0] !== ']') {
                         $next_next_token = $i + 2 < $c ? $type_tokens[$i + 2] : null;
 
-                        if ($next_next_token === ']') {
+                        if ($next_next_token !== null && $next_next_token[0] === ']') {
                             $indexed_access = true;
                             ++$i;
                         } else {
-                            throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                            throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                         }
                     }
 
                     $current_parent = $current_leaf->parent;
 
                     if ($indexed_access) {
-                        if (!$next_token) {
-                            throw new TypeParseTreeException('Unexpected token ' . $next_token);
+                        if ($next_token === null) {
+                            throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                         }
 
-                        $new_parent_leaf = new ParseTree\IndexedAccessTree($next_token, $current_parent);
+                        $new_parent_leaf = new ParseTree\IndexedAccessTree($next_token[0], $current_parent);
                     } else {
                         $new_parent_leaf = new ParseTree\GenericTree('array', $current_parent);
                     }
@@ -149,7 +155,10 @@ class ParseTree
                     break;
 
                 case ')':
-                    if ($last_token === '(' && $current_leaf instanceof ParseTree\CallableTree) {
+                    if ($last_token !== null
+                        && $last_token[0] === '('
+                        && $current_leaf instanceof ParseTree\CallableTree
+                    ) {
                         break;
                     }
 
@@ -193,7 +202,7 @@ class ParseTree
 
                 case ',':
                     if ($current_leaf instanceof ParseTree\Root) {
-                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                     }
 
                     if (!$current_leaf->parent) {
@@ -229,13 +238,13 @@ class ParseTree
 
                 case '...':
                 case '=':
-                    if ($last_token === '...' || $last_token === '=') {
+                    if ($last_token && ($last_token[0] === '...' || $last_token[0] === '=')) {
                         throw new TypeParseTreeException('Cannot have duplicate tokens');
                     }
 
                     $current_parent = $current_leaf->parent;
 
-                    if ($current_leaf instanceof ParseTree\MethodTree && $type_token === '...') {
+                    if ($current_leaf instanceof ParseTree\MethodTree && $type_token[0] === '...') {
                         self::createMethodParam($current_leaf, $current_leaf, $type_tokens, $type_token, $i);
                         break;
                     }
@@ -249,7 +258,7 @@ class ParseTree
                     }
 
                     if (!$current_parent || !$current_leaf) {
-                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                     }
 
                     if ($current_parent instanceof ParseTree\CallableParamTree) {
@@ -257,8 +266,8 @@ class ParseTree
                     }
 
                     $new_leaf = new ParseTree\CallableParamTree($current_parent);
-                    $new_leaf->has_default = $type_token === '=';
-                    $new_leaf->variadic = $type_token === '...';
+                    $new_leaf->has_default = $type_token[0] === '=';
+                    $new_leaf->variadic = $type_token[0] === '...';
                     $new_leaf->children = [$current_leaf];
 
                     $current_leaf->parent = $new_leaf;
@@ -272,7 +281,7 @@ class ParseTree
 
                 case ':':
                     if ($current_leaf instanceof ParseTree\Root) {
-                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                     }
 
                     $current_parent = $current_leaf->parent;
@@ -326,7 +335,7 @@ class ParseTree
                     }
 
                     $new_parent_leaf = new ParseTree\ObjectLikePropertyTree($current_leaf->value, $current_parent);
-                    $new_parent_leaf->possibly_undefined = $last_token === '?';
+                    $new_parent_leaf->possibly_undefined = $last_token !== null && $last_token[0] === '?';
                     $current_leaf->parent = $new_parent_leaf;
 
                     array_pop($current_parent->children);
@@ -359,7 +368,7 @@ class ParseTree
                     break;
 
                 case '?':
-                    if ($next_token !== ':') {
+                    if ($next_token === null || $next_token[0] !== ':') {
                         $new_parent = !$current_leaf instanceof ParseTree\Root ? $current_leaf : null;
 
                         $new_leaf = new ParseTree\NullableTree(
@@ -382,7 +391,7 @@ class ParseTree
 
                 case '|':
                     if ($current_leaf instanceof ParseTree\Root) {
-                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                     }
 
                     $current_parent = $current_leaf->parent;
@@ -398,7 +407,7 @@ class ParseTree
                     }
 
                     if ($current_leaf instanceof ParseTree\UnionTree) {
-                        throw new TypeParseTreeException('Unexpected token ' . $type_token);
+                        throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\UnionTree) {
@@ -463,15 +472,15 @@ class ParseTree
                 default:
                     $new_parent = !$current_leaf instanceof ParseTree\Root ? $current_leaf : null;
 
-                    if ($current_leaf instanceof ParseTree\MethodTree && $type_token[0] === '$') {
+                    if ($current_leaf instanceof ParseTree\MethodTree && $type_token[0][0] === '$') {
                         self::createMethodParam($current_leaf, $current_leaf, $type_tokens, $type_token, $i);
                         break;
                     }
 
-                    switch ($next_token) {
+                    switch ($next_token[0] ?? null) {
                         case '<':
                             $new_leaf = new ParseTree\GenericTree(
-                                $type_token,
+                                $type_token[0],
                                 $new_parent
                             );
                             ++$i;
@@ -479,24 +488,24 @@ class ParseTree
 
                         case '{':
                             $new_leaf = new ParseTree\ObjectLikeTree(
-                                $type_token,
+                                $type_token[0],
                                 $new_parent
                             );
                             ++$i;
                             break;
 
                         case '(':
-                            if (in_array(strtolower($type_token), ['closure', 'callable', '\closure'])) {
+                            if (in_array(strtolower($type_token[0]), ['closure', 'callable', '\closure'])) {
                                 $new_leaf = new ParseTree\CallableTree(
-                                    $type_token,
+                                    $type_token[0],
                                     $new_parent
                                 );
-                            } elseif ($type_token !== 'array'
-                                && $type_token[0] !== '\\'
+                            } elseif ($type_token[0] !== 'array'
+                                && $type_token[0][0] !== '\\'
                                 && $current_leaf instanceof ParseTree\Root
                             ) {
                                 $new_leaf = new ParseTree\MethodTree(
-                                    $type_token,
+                                    $type_token[0],
                                     $new_parent
                                 );
                             } else {
@@ -512,16 +521,18 @@ class ParseTree
                             $nexter_token = $i + 2 < $c ? $type_tokens[$i + 2] : null;
 
                             if (!$nexter_token
-                                || (!preg_match('/^[A-Z_][A-Z_0-9]*$/', $nexter_token)
-                                    && strtolower($nexter_token) !== 'class')
+                                || (!preg_match('/^[A-Z_][A-Z_0-9]*$/', $nexter_token[0])
+                                    && strtolower($nexter_token[0]) !== 'class')
                             ) {
                                 throw new TypeParseTreeException(
-                                    'Invalid class constant ' . $nexter_token
+                                    'Invalid class constant'
                                 );
                             }
 
                             $new_leaf = new ParseTree\Value(
-                                $type_token . '::' . $nexter_token,
+                                $type_token[0] . '::' . $nexter_token[0],
+                                $type_token[1],
+                                $type_token[1] + 2 + strlen($nexter_token[0]),
                                 $new_parent
                             );
 
@@ -530,12 +541,14 @@ class ParseTree
                             break;
 
                         default:
-                            if ($type_token === '$this') {
-                                $type_token = 'static';
+                            if ($type_token[0] === '$this') {
+                                $type_token[0] = 'static';
                             }
 
                             $new_leaf = new ParseTree\Value(
-                                $type_token,
+                                $type_token[0],
+                                $type_token[1],
+                                $type_token[1] + strlen($type_token[0]),
                                 $new_parent
                             );
                             break;
@@ -555,14 +568,24 @@ class ParseTree
             }
         }
 
+        if ($current_leaf !== $parse_tree
+            && ($parse_tree instanceof ParseTree\GenericTree
+                || $parse_tree instanceof ParseTree\CallableTree
+                || $parse_tree instanceof ParseTree\ObjectLikeTree)
+        ) {
+            throw new TypeParseTreeException(
+                'Unterminated bracket'
+            );
+        }
+
         return $parse_tree;
     }
 
     /**
      * @param  ParseTree          &$current_leaf
      * @param  ParseTree          $current_parent
-     * @param  array<int, string> $type_tokens
-     * @param  string             $current_token
+     * @param  array<int, array{0: string, 1: int}> $type_tokens
+     * @param  array{0: string, 1: int} $current_token
      * @param  int                &$i
      *
      * @return void
@@ -571,7 +594,7 @@ class ParseTree
         ParseTree &$current_leaf,
         ParseTree $current_parent,
         array $type_tokens,
-        $current_token,
+        array $current_token,
         &$i
     ) {
         $byref = false;
@@ -581,23 +604,23 @@ class ParseTree
 
         $c = count($type_tokens);
 
-        if ($current_token === '&') {
+        if ($current_token[0] === '&') {
             throw new TypeParseTreeException('Magic args cannot be passed by reference');
         }
 
-        if ($current_token === '...') {
+        if ($current_token[0] === '...') {
             $variadic = true;
 
             ++$i;
             $current_token = $i < $c ? $type_tokens[$i] : null;
         }
 
-        if (!$current_token || $current_token[0] !== '$') {
-            throw new TypeParseTreeException('Unexpected token after space ' . $current_token);
+        if (!$current_token || $current_token[0][0] !== '$') {
+            throw new TypeParseTreeException('Unexpected token after space');
         }
 
         $new_parent_leaf = new ParseTree\MethodParamTree(
-            $current_token,
+            $current_token[0],
             $byref,
             $variadic,
             $current_parent
@@ -606,18 +629,18 @@ class ParseTree
         for ($j = $i + 1; $j < $c; ++$j) {
             $ahead_type_token = $type_tokens[$j];
 
-            if ($ahead_type_token === ','
-                || ($ahead_type_token === ')' && $type_tokens[$j - 1] !== '(')
+            if ($ahead_type_token[0] === ','
+                || ($ahead_type_token[0] === ')' && $type_tokens[$j - 1][0] !== '(')
             ) {
                 $i = $j - 1;
                 break;
             }
 
             if ($has_default) {
-                $default .= $ahead_type_token;
+                $default .= $ahead_type_token[0];
             }
 
-            if ($ahead_type_token === '=') {
+            if ($ahead_type_token[0] === '=') {
                 $has_default = true;
                 continue;
             }

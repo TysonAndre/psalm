@@ -8,6 +8,7 @@ use Psalm\Context;
 use Psalm\Type;
 use Psalm\StatementsSource;
 use Psalm\Internal\Codebase\CallMap;
+use function assert;
 
 class ArrayColumnReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTypeProviderInterface
 {
@@ -93,6 +94,10 @@ class ArrayColumnReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
             ]);
         }
 
-        return CallMap::getReturnTypeFromCallMap($function_id);
+        $callmap_callables = CallMap::getCallablesFromCallMap($function_id);
+
+        assert($callmap_callables && $callmap_callables[0]->return_type);
+
+        return $callmap_callables[0]->return_type;
     }
 }

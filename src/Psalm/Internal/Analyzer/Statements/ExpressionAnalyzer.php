@@ -56,6 +56,17 @@ use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TString;
 use Psalm\Internal\Type\TypeCombination;
+use function strpos;
+use function is_string;
+use function in_array;
+use function strtolower;
+use function get_class;
+use function count;
+use function implode;
+use function is_array;
+use function array_merge;
+use function array_values;
+use function array_map;
 
 use function is_string;
 
@@ -127,36 +138,13 @@ class ExpressionAnalyzer
         } elseif ($stmt instanceof PhpParser\Node\Scalar\EncapsedStringPart) {
             // do nothing
         } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst) {
-            switch (strtolower($stmt->getName())) {
-                case '__line__':
-                    $stmt->inferredType = Type::getInt();
-                    break;
-
-                case '__class__':
-                    if (!$context->self) {
-                        if (IssueBuffer::accepts(
-                            new UndefinedConstant(
-                                'Cannot get __class__ outside a class',
-                                new CodeLocation($statements_analyzer->getSource(), $stmt)
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
-                        }
-
-                        $stmt->inferredType = Type::getClassString();
-                        break;
-                    }
-
-                    $stmt->inferredType = Type::getLiteralClassString($context->self);
-                    break;
-
-                case '__namespace__':
-                    $namespace = $statements_analyzer->getNamespace();
-                    if ($namespace === null &&
-                    IssueBuffer::accepts(
+            if ($stmt instanceof PhpParser\Node\Scalar\MagicConst\Line) {
+                $stmt->inferredType = Type::getInt();
+            } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst\Class_) {
+                if (!$context->self) {
+                    if (IssueBuffer::accepts(
                         new UndefinedConstant(
-                            'Cannot get __namespace__ outside a namespace',
+                            'Cannot get __class__ outside a class',
                             new CodeLocation($statements_analyzer->getSource(), $stmt)
                         ),
                         $statements_analyzer->getSuppressedIssues()
@@ -164,16 +152,42 @@ class ExpressionAnalyzer
                         // fall through
                     }
 
-                    $stmt->inferredType = Type::getString($namespace);
-                    break;
+                    $stmt->inferredType = Type::getClassString();
+                } else {
+                    if ($codebase->alter_code) {
+                        $codebase->classlikes->handleClassLikeReferenceInMigration(
+                            $codebase,
+                            $statements_analyzer,
+                            $stmt,
+                            $context->self,
+                            $context->calling_method_id
+                        );
+                    }
 
-                case '__file__':
-                case '__dir__':
-                case '__function__':
-                case '__trait__':
-                case '__method__':
-                    $stmt->inferredType = Type::getString();
-                    break;
+                    $stmt->inferredType = Type::getLiteralClassString($context->self);
+                }
+            } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst\Namespace_) {
+                $namespace = $statements_analyzer->getNamespace();
+                if ($namespace === null
+                    && IssueBuffer::accepts(
+                        new UndefinedConstant(
+                            'Cannot get __namespace__ outside a namespace',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )
+                ) {
+                    // fall through
+                }
+
+                $stmt->inferredType = Type::getString($namespace);
+            } elseif ($stmt instanceof PhpParser\Node\Scalar\MagicConst\File
+                || $stmt instanceof PhpParser\Node\Scalar\MagicConst\Dir
+                || $stmt instanceof PhpParser\Node\Scalar\MagicConst\Function_
+                || $stmt instanceof PhpParser\Node\Scalar\MagicConst\Trait_
+                || $stmt instanceof PhpParser\Node\Scalar\MagicConst\Method
+            ) {
+                $stmt->inferredType = Type::getString();
             }
         } elseif ($stmt instanceof PhpParser\Node\Scalar\LNumber) {
             $stmt->inferredType = Type::getInt(false, $stmt->value);
@@ -994,7 +1008,7 @@ class ExpressionAnalyzer
     /**
      * @param  Type\Union   $return_type
      * @param  string|null  $self_class
-     * @param  string|Type\Atomic\TNamedObject|null $static_class_type
+     * @param  string|Type\Atomic\TNamedObject|Type\Atomic\TTemplateParam|null $static_class_type
      *
      * @return Type\Union
      */
@@ -1043,7 +1057,7 @@ class ExpressionAnalyzer
     /**
      * @param  Type\Atomic  &$return_type
      * @param  string|null  $self_class
-     * @param  string|Type\Atomic\TNamedObject|null $static_class_type
+     * @param  string|Type\Atomic\TNamedObject|Type\Atomic\TTemplateParam|null $static_class_type
      *
      * @return Type\Atomic|array<int, Type\Atomic>
      */

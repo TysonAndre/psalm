@@ -4,6 +4,12 @@ namespace Psalm\Internal\Provider;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use function array_filter;
+use function array_keys;
+use function file_exists;
+use function array_merge_recursive;
+use function array_merge;
+use function array_unique;
 
 /**
  * @psalm-type  IssueData = array{
@@ -124,7 +130,14 @@ class FileReferenceProvider
     private static $issues = [];
 
     /**
-     * @var array<string, array{0: array<int, array{0: int, 1: string}>, 1: array<int, array{0: int, 1: string}>}>
+     * @var array<
+     *      string,
+     *      array{
+     *          0: TaggedCodeType,
+     *          1: TaggedCodeType,
+     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *      }
+     *  >
      */
     private static $file_maps = [];
 
@@ -923,10 +936,16 @@ class FileReferenceProvider
     }
 
     /**
-     * @param array<string, array{0: TaggedCodeType, 1: TaggedCodeType}> $file_maps
-     * @return  void
+     * @param array<
+     *      string,
+     *      array{
+     *          0: TaggedCodeType,
+     *          1: TaggedCodeType,
+     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *      }
+     *  > $file_maps
      */
-    public function setFileMaps(array $file_maps)
+    public function setFileMaps(array $file_maps) : void
     {
         self::$file_maps = $file_maps;
     }
@@ -957,7 +976,14 @@ class FileReferenceProvider
     }
 
     /**
-     * @return array<string, array{0: TaggedCodeType, 1: TaggedCodeType}>
+     * @return array<
+     *      string,
+     *      array{
+     *          0: TaggedCodeType,
+     *          1: TaggedCodeType,
+     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *      }
+     *  >
      */
     public function getFileMaps()
     {

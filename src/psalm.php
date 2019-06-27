@@ -199,7 +199,7 @@ Options:
         Only checks methods that have changed (and their dependents)
 
     --output-format=console
-        Changes the output format. Possible values: compact, console, emacs, json, pylint, xml, checkstyle
+        Changes the output format. Possible values: compact, console, emacs, json, pylint, xml, checkstyle, sonarqube
 
     --find-dead-code[=auto]
     --find-unused-code[=auto]
@@ -315,6 +315,18 @@ if (array_key_exists('v', $options)) {
 }
 
 $threads = isset($options['threads']) ? (int)$options['threads'] : 1;
+
+if ($threads === 1
+    && ini_get('pcre.jit') === '1'
+    && PHP_OS === 'Darwin'
+    && version_compare(PHP_VERSION, '7.3.0') >= 0
+) {
+    echo(
+        'If you want to run Psalm as a language server, or run Psalm with' . PHP_EOL
+            . 'multiple processes (--threads=4), beware:' . PHP_EOL
+            . \Psalm\Internal\Fork\Pool::MAC_PCRE_MESSAGE . PHP_EOL . PHP_EOL
+    );
+}
 
 $ini_handler = new \Psalm\Internal\Fork\PsalmRestarter('PSALM');
 

@@ -20,6 +20,51 @@ use Psalm\PluginRegistrationSocket;
 use Psalm\Progress\Progress;
 use Psalm\Progress\VoidProgress;
 use SimpleXMLElement;
+use const PHP_EOL;
+use function realpath;
+use function is_dir;
+use function dirname;
+use const DIRECTORY_SEPARATOR;
+use function file_exists;
+use function file_get_contents;
+use function sha1;
+use function libxml_use_internal_errors;
+use function libxml_get_errors;
+use const LIBXML_ERR_FATAL;
+use const LIBXML_ERR_ERROR;
+use function libxml_clear_errors;
+use function sys_get_temp_dir;
+use function mkdir;
+use function trigger_error;
+use const E_USER_ERROR;
+use function phpversion;
+use function version_compare;
+use function intval;
+use function strtolower;
+use function preg_replace;
+use function class_exists;
+use function count;
+use function reset;
+use function preg_quote;
+use function in_array;
+use function explode;
+use function get_class;
+use function array_pop;
+use function strpos;
+use function preg_match;
+use function array_merge;
+use function get_defined_constants;
+use function get_defined_functions;
+use function json_decode;
+use function array_unique;
+use function strtr;
+use function strrpos;
+use function substr;
+use function substr_count;
+use function scandir;
+use function filetype;
+use function unlink;
+use function rmdir;
 
 class Config
 {
@@ -265,6 +310,11 @@ class Config
     public $ignored_exceptions_and_descendants_in_global_scope = [];
 
     /**
+     * @var bool
+     */
+    public $infer_property_types_from_constructor = true;
+
+    /**
      * @var array<string, bool>
      */
     public $forbidden_functions = [];
@@ -442,10 +492,9 @@ class Config
 
         if (!$config_path) {
             if ($output_format === \Psalm\Report::TYPE_CONSOLE) {
-                exit(
-                    'Could not locate a config XML file in path ' . $path . '. Have you run \'psalm --init\' ?' .
-                    PHP_EOL
-                );
+                echo 'Could not locate a config XML file in path '. $path
+                    . '. Have you run \'psalm --init\' ?' . PHP_EOL;
+                exit(1);
             }
             throw new ConfigException('Config not found for path ' . $path);
         }
@@ -736,6 +785,11 @@ class Config
         if (isset($config_xml['parseSql'])) {
             $attribute_text = (string) $config_xml['parseSql'];
             $config->parse_sql = $attribute_text === 'true' || $attribute_text === '1';
+        }
+
+        if (isset($config_xml['inferPropertyTypesFromConstructor'])) {
+            $attribute_text = (string) $config_xml['inferPropertyTypesFromConstructor'];
+            $config->infer_property_types_from_constructor = $attribute_text === 'true' || $attribute_text === '1';
         }
 
         if (isset($config_xml->projectFiles)) {
@@ -1194,7 +1248,7 @@ class Config
     }
 
     /**
-     * @var string[] $suppressed_issues
+     * @param string[] $suppressed_issues
      */
     public function getReportingLevelForIssue(CodeIssue $e, array $suppressed_issues = []) : string
     {

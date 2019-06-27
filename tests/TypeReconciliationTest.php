@@ -9,6 +9,7 @@ use Psalm\Internal\Clause;
 use Psalm\Type;
 use Psalm\Type\Algebra;
 use Psalm\Type\Reconciler;
+use function is_array;
 
 class TypeReconciliationTest extends TestCase
 {
@@ -244,12 +245,12 @@ class TypeReconciliationTest extends TestCase
             'unionContainsWithstring' => ['string', 'string|false'],
             'unionContainsWithFalse' => ['false', 'string|false'],
             'objectLikeTypeWithPossiblyUndefinedToGeneric' => [
-                'array{0:array{a:string}, 1:array{c:string, e:string}}',
+                'array{0: array{a: string}, 1: array{c: string, e: string}}',
                 'array<int, array<string, string>>',
             ],
             'objectLikeTypeWithPossiblyUndefinedToEmpty' => [
                 'array<empty, empty>',
-                'array{a?:string, b?:string}',
+                'array{a?: string, b?: string}',
             ],
         ];
     }
@@ -1354,6 +1355,104 @@ class TypeReconciliationTest extends TestCase
                         }
                         $a->foo();
                     }',
+            ],
+            'selfInstanceofStatic' => [
+                '<?php
+                    class A {
+                        public function foo(self $value): void {
+                            if ($value instanceof static) {}
+                        }
+                    }',
+            ],
+            'reconcileCallable' => [
+                '<?php
+                    function reflectCallable(callable $callable): ReflectionFunctionAbstract {
+                        if (\is_array($callable)) {
+                            return new \ReflectionMethod($callable[0], $callable[1]);
+                        } elseif ($callable instanceof \Closure || \is_string($callable)) {
+                            return new \ReflectionFunction($callable);
+                        } elseif (\is_object($callable)) {
+                            return new \ReflectionMethod($callable, "__invoke");
+                        } else {
+                            throw new \InvalidArgumentException("Bad");
+                        }
+                    }'
+            ],
+            'noLeakyClassType' => [
+                '<?php
+                    class A {
+                        public array $foo = [];
+                        public array $bar = [];
+
+                        public function setter() : void {
+                            if ($this->foo) {
+                                $this->foo = [];
+                            }
+                        }
+
+                        public function iffer() : bool {
+                            return $this->foo || $this->bar;
+                        }
+                    }'
+            ],
+            'noLeakyForeachType' => [
+                '<?php
+
+                    class A {
+                        /** @var mixed */
+                        public $_array_value;
+
+                        private function getArrayValue() : ?array {
+                            return rand(0, 1) ? [] : null;
+                        }
+
+                        public function setValue(string $var) : void {
+                            $this->_array_value = $this->getArrayValue();
+
+                            if ($this->_array_value !== null && !count($this->_array_value)) {
+                                return;
+                            }
+
+                            switch ($var) {
+                                case "a":
+                                    foreach ($this->_array_value ?: [] as $v) {}
+                                    break;
+
+                                case "b":
+                                    foreach ($this->_array_value ?: [] as $v) {}
+                                    break;
+                            }
+                        }
+                    }',
+                [],
+                ['MixedAssignment']
+            ],
+            'nonEmptyThing' => [
+                '<?php
+                    /** @param mixed $clips */
+                    function foo($clips, bool $found, int $id) : void {
+                        if ($found === false) {
+                            $clips = [];
+                        }
+
+                        $i = array_search($id, $clips);
+
+                        if ($i !== false) {
+                            unset($clips[$i]);
+                        }
+                    }',
+                [],
+                ['MixedArgument', 'MixedArrayAccess', 'MixedAssignment', 'MixedArrayOffset']
+            ],
+            'allowNonEmptyArrayComparison' => [
+                '<?php
+                    /**
+                     * @param non-empty-array $a
+                     * @param array<string> $b
+                     */
+                    function foo(array $a, array $b) : void {
+                        if ($a === $b) {}
+                    }'
             ],
         ];
     }

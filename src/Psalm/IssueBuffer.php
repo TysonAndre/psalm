@@ -11,8 +11,23 @@ use Psalm\Report\EmacsReport;
 use Psalm\Report\JsonReport;
 use Psalm\Report\JsonSummaryReport;
 use Psalm\Report\PylintReport;
+use Psalm\Report\SonarqubeReport;
 use Psalm\Report\TextReport;
 use Psalm\Report\XmlReport;
+use function explode;
+use function get_class;
+use function array_pop;
+use function usort;
+use function str_replace;
+use function count;
+use function array_search;
+use function array_splice;
+use function file_put_contents;
+use function str_repeat;
+use function number_format;
+use function microtime;
+use function memory_get_peak_usage;
+use function sha1;
 
 class IssueBuffer
 {
@@ -46,7 +61,7 @@ class IssueBuffer
 
     /**
      * @param   CodeIssue $e
-     * @param   array     $suppressed_issues
+     * @param   string[]  $suppressed_issues
      *
      * @return  bool
      */
@@ -61,7 +76,7 @@ class IssueBuffer
 
     /**
      * @param   CodeIssue $e
-     * @param   array     $suppressed_issues
+     * @param   string[]  $suppressed_issues
      *
      * @return  bool
      */
@@ -404,6 +419,10 @@ class IssueBuffer
                     $mixed_expression_count,
                     $total_expression_count
                 );
+                break;
+
+            case Report::TYPE_SONARQUBE:
+                $output = new SonarqubeReport(self::$issues_data, $report_options);
                 break;
 
             case Report::TYPE_PYLINT:

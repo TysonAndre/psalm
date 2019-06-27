@@ -34,6 +34,19 @@ use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
+use function md5;
+use function explode;
+use function strtolower;
+use function array_merge;
+use function array_filter;
+use function is_string;
+use function array_key_exists;
+use function substr;
+use function strpos;
+use function array_search;
+use function array_keys;
+use function end;
+use function array_diff;
 
 /**
  * @internal
@@ -86,7 +99,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     protected static $no_effects_hashes = [];
 
     /**
-     * @var FunctionLikeStorage $storage
+     * @var FunctionLikeStorage
      */
     protected $storage;
 
@@ -664,7 +677,15 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     && !TypeAnalyzer::isContainedBy(
                         $codebase,
                         $default_type,
-                        $param_type
+                        $param_type,
+                        false,
+                        false,
+                        $has_scalar_match,
+                        $type_coerced,
+                        $type_coerced_from_mixed,
+                        $to_string_cast,
+                        $type_coerced_from_scalar,
+                        true
                     )
                 ) {
                     if (IssueBuffer::accepts(
@@ -1374,124 +1395,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
     public function getCodebase() : Codebase
     {
         return $this->codebase;
-    }
-
-    /**
-     * @param  string                           $method_id
-     * @param  array<int, PhpParser\Node\Arg>   $args
-     *
-     * @return array<int, FunctionLikeParameter>
-     */
-    public static function getFunctionParamsFromCallMapById(Codebase $codebase, $method_id, array $args)
-    {
-        $function_param_options = CallMap::getParamsFromCallMap($method_id);
-
-        if ($function_param_options === null) {
-            throw new \UnexpectedValueException(
-                'Not expecting $function_param_options to be null for ' . $method_id
-            );
-        }
-
-        return self::getMatchingParamsFromCallMapOptions($codebase, $function_param_options, $args);
-    }
-
-    /**
-     * @param  array<int, array<int, FunctionLikeParameter>>  $function_param_options
-     * @param  array<int, PhpParser\Node\Arg>                 $args
-     *
-     * @return array<int, FunctionLikeParameter>
-     */
-    public static function getMatchingParamsFromCallMapOptions(
-        Codebase $codebase,
-        array $function_param_options,
-        array $args
-    ) {
-        if (count($function_param_options) === 1) {
-            return $function_param_options[0];
-        }
-
-        foreach ($function_param_options as $possible_function_params) {
-            $all_args_match = true;
-
-            $last_param = count($possible_function_params)
-                ? $possible_function_params[count($possible_function_params) - 1]
-                : null;
-
-            $mandatory_param_count = count($possible_function_params);
-
-            foreach ($possible_function_params as $i => $possible_function_param) {
-                if ($possible_function_param->is_optional) {
-                    $mandatory_param_count = $i;
-                    break;
-                }
-            }
-
-            if ($mandatory_param_count > count($args) && !($last_param && $last_param->is_variadic)) {
-                continue;
-            }
-
-            foreach ($args as $argument_offset => $arg) {
-                if ($argument_offset >= count($possible_function_params)) {
-                    if (!$last_param || !$last_param->is_variadic) {
-                        $all_args_match = false;
-                        break;
-                    }
-
-                    $function_param = $last_param;
-                } else {
-                    $function_param = $possible_function_params[$argument_offset];
-                }
-
-                $param_type = $function_param->type;
-
-                if (!$param_type) {
-                    continue;
-                }
-
-                if (!isset($arg->value->inferredType)) {
-                    continue;
-                }
-
-                $arg_type = $arg->value->inferredType;
-
-                if ($arg_type->hasMixed()) {
-                    continue;
-                }
-
-                if ($arg->unpack && !$function_param->is_variadic) {
-                    if ($arg_type->hasArray()) {
-                        /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
-                        $array_atomic_type = $arg_type->getTypes()['array'];
-
-                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                            $array_atomic_type = $array_atomic_type->getGenericArrayType();
-                        }
-
-                        $arg_type = $array_atomic_type->type_params[1];
-                    }
-                }
-
-                if (TypeAnalyzer::isContainedBy(
-                    $codebase,
-                    $arg_type,
-                    $param_type,
-                    true,
-                    true
-                )) {
-                    continue;
-                }
-
-                $all_args_match = false;
-                break;
-            }
-
-            if ($all_args_match) {
-                return $possible_function_params;
-            }
-        }
-
-        // if we don't succeed in finding a match, set to the first possible and wait for issues below
-        return $function_param_options[0];
     }
 
     /**

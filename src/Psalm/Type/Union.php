@@ -18,6 +18,16 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Internal\Type\TypeCombination;
+use function substr;
+use function array_values;
+use function strpos;
+use function count;
+use function array_filter;
+use function get_class;
+use function reset;
+use function is_string;
+use function array_shift;
+use function array_merge;
 
 class Union
 {
@@ -660,6 +670,14 @@ class Union
     /**
      * @return bool
      */
+    public function hasLiteralClassString()
+    {
+        return count($this->typed_class_strings) > 0;
+    }
+
+    /**
+     * @return bool
+     */
     public function hasInt()
     {
         return isset($this->types['int']) || isset($this->types['array-key']) || $this->literal_int_types;
@@ -1009,6 +1027,12 @@ class Union
                                             = clone $key_type;
                                     }
                                 }
+
+                                if ($replacement_atomic_type instanceof Type\Atomic\TTemplateParam) {
+                                    foreach ($replacement_atomic_type->as->getTypes() as $nested_type_atomic) {
+                                        $this->types[$nested_type_atomic->getKey()] = clone $nested_type_atomic;
+                                    }
+                                }
                                 // @codingStandardsIgnoreEnd
 
                                 if (!$replacements_found) {
@@ -1201,7 +1225,7 @@ class Union
             } else {
                 $matching_atomic_type = null;
 
-                if ($input_type && $codebase) {
+                if ($input_type && $codebase && !$input_type->hasMixed()) {
                     foreach ($input_type->types as $input_key => $atomic_input_type) {
                         if ($bracket_pos = strpos($input_key, '<')) {
                             $input_key = substr($input_key, 0, $bracket_pos);
@@ -1247,19 +1271,19 @@ class Union
                                     $codebase->classlike_storage_provider->get($atomic_input_type->value);
 
                                 if ($atomic_input_type instanceof TGenericObject
-                                    && isset($classlike_storage->template_type_extends[strtolower($key)])
+                                    && isset($classlike_storage->template_type_extends[$atomic_type->value])
                                 ) {
                                     $matching_atomic_type = $atomic_input_type;
                                     break;
                                 }
 
-                                if (isset($classlike_storage->template_type_extends[strtolower($key)])) {
-                                    $extends_list = $classlike_storage->template_type_extends[strtolower($key)];
+                                if (isset($classlike_storage->template_type_extends[$atomic_type->value])) {
+                                    $extends_list = $classlike_storage->template_type_extends[$atomic_type->value];
 
                                     $new_generic_params = [];
 
-                                    foreach ($extends_list as $key => $value) {
-                                        if (is_string($key)) {
+                                    foreach ($extends_list as $extends_key => $value) {
+                                        if (is_string($extends_key)) {
                                             $new_generic_params[] = $value;
                                         }
                                     }
@@ -1319,8 +1343,6 @@ class Union
             $atomic_type->replaceTemplateTypesWithArgTypes($template_types, $codebase);
 
             if ($atomic_type instanceof Type\Atomic\TTemplateParam) {
-                $keys_to_unset[] = $key;
-
                 $template_type = null;
 
                 if (isset($template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''])) {
@@ -1333,12 +1355,22 @@ class Union
                     }
 
                     if ($atomic_type->extra_types) {
-                        foreach ($template_type->getTypes() as $atomic_template_type) {
+                        foreach ($template_type->getTypes() as $template_type_key => $atomic_template_type) {
                             if ($atomic_template_type instanceof TNamedObject
                                 || $atomic_template_type instanceof TTemplateParam
                                 || $atomic_template_type instanceof TIterable
+                                || $atomic_template_type instanceof Type\Atomic\TObjectWithProperties
                             ) {
                                 $atomic_template_type->extra_types = $atomic_type->extra_types;
+                            } elseif ($atomic_template_type instanceof Type\Atomic\TObject) {
+                                $first_atomic_type = array_shift($atomic_type->extra_types);
+
+                                if ($atomic_type->extra_types) {
+                                    $first_atomic_type->extra_types = $atomic_type->extra_types;
+                                }
+
+                                $template_type->removeType($template_type_key);
+                                $template_type->addType($first_atomic_type);
                             }
                         }
                     }
@@ -1353,10 +1385,10 @@ class Union
                                 $classlike_storage = $codebase->classlike_storage_provider->get($template_class);
 
                                 if ($classlike_storage->template_type_extends) {
-                                    $defining_class_lc = strtolower($atomic_type->defining_class);
+                                    $defining_class = $atomic_type->defining_class;
 
-                                    if (isset($classlike_storage->template_type_extends[$defining_class_lc])) {
-                                        $param_map = $classlike_storage->template_type_extends[$defining_class_lc];
+                                    if (isset($classlike_storage->template_type_extends[$defining_class])) {
+                                        $param_map = $classlike_storage->template_type_extends[$defining_class];
 
                                         if (isset($param_map[$key])
                                             && isset($template_types[(string) $param_map[$key]][$template_class])
@@ -1375,18 +1407,14 @@ class Union
                 }
 
                 if ($template_type) {
+                    $keys_to_unset[] = $key;
+
                     foreach ($template_type->types as $template_type_part) {
                         if ($template_type_part instanceof Type\Atomic\TMixed) {
                             $is_mixed = true;
                         }
 
                         $new_types[$template_type_part->getKey()] = $template_type_part;
-                    }
-                } else {
-                    if ($atomic_type->as->isSingle()) {
-                        $new_types[$key] = array_values($atomic_type->as->getTypes())[0];
-                    } else {
-                        $new_types[$key] = new Type\Atomic\TMixed;
                     }
                 }
             } elseif ($atomic_type instanceof Type\Atomic\TTemplateParamClass) {
@@ -1603,7 +1631,11 @@ class Union
 
     public function hasLiteralValue() : bool
     {
-        return $this->literal_int_types || $this->literal_string_types || $this->literal_float_types;
+        return $this->literal_int_types
+            || $this->literal_string_types
+            || $this->literal_float_types
+            || isset($this->types['false'])
+            || isset($this->types['true']);
     }
 
     /**

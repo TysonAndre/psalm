@@ -36,6 +36,18 @@ use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Reconciler;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
+use function array_merge;
+use function array_diff_key;
+use function array_filter;
+use const ARRAY_FILTER_USE_KEY;
+use function array_intersect_key;
+use function array_values;
+use function array_map;
+use function array_keys;
+use function preg_match;
+use function preg_quote;
+use function strtolower;
+use function strlen;
 
 /**
  * @internal
@@ -272,7 +284,7 @@ class BinaryOpAnalyzer
                 if ($var_id && isset($pre_op_context->vars_in_scope[$var_id])) {
                     $left_inferred_reconciled = Reconciler::reconcileTypes(
                         '!falsy',
-                        $pre_op_context->vars_in_scope[$var_id],
+                        clone $pre_op_context->vars_in_scope[$var_id],
                         '',
                         $statements_analyzer,
                         $context->inside_loop,

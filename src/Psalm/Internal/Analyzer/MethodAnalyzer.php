@@ -25,6 +25,10 @@ use Psalm\StatementsSource;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
+use function strtolower;
+use function explode;
+use function is_string;
+use function in_array;
 
 use function explode;
 
@@ -144,7 +148,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
     /**
      * @param  string       $method_id
      * @param  CodeLocation $code_location
-     * @param  array        $suppressed_issues
+     * @param  string[]     $suppressed_issues
      * @param  string|null  $calling_method_id
      *
      * @return bool|null
@@ -179,7 +183,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
     /**
      * @param  string       $method_id
      * @param  CodeLocation $code_location
-     * @param  array        $suppressed_issues
+     * @param  string[]     $suppressed_issues
      *
      * @return false|null
      */
@@ -259,7 +263,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
      * @param  Context          $context
      * @param  StatementsSource $source
      * @param  CodeLocation     $code_location
-     * @param  array            $suppressed_issues
+     * @param  string[]         $suppressed_issues
      *
      * @return false|null
      */
@@ -500,7 +504,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
      * @param  MethodStorage    $implementer_method_storage
      * @param  MethodStorage    $guide_method_storage
      * @param  CodeLocation     $code_location
-     * @param  array            $suppressed_issues
+     * @param  string[]         $suppressed_issues
      * @param  bool             $prevent_abstract_override
      * @param  bool             $prevent_method_signature_mismatch
      *
@@ -634,10 +638,10 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 $guide_classlike_storage->parent_class
             );
 
-            $guide_class_name_lc = strtolower($guide_classlike_storage->name);
+            $guide_class_name = $guide_classlike_storage->name;
 
-            if (isset($implementer_classlike_storage->template_type_extends[$guide_class_name_lc])) {
-                $map = $implementer_classlike_storage->template_type_extends[$guide_class_name_lc];
+            if (isset($implementer_classlike_storage->template_type_extends[$guide_class_name])) {
+                $map = $implementer_classlike_storage->template_type_extends[$guide_class_name];
 
                 $template_types = [];
 
@@ -658,16 +662,16 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 );
             }
 
-            $guide_trait_name_lc = null;
+            $guide_trait_name = null;
 
             if ($guide_classlike_storage === $implementer_classlike_storage) {
-                $guide_trait_name_lc = strtolower($implementer_method_storage->defining_fqcln);
+                $guide_trait_name = $implementer_method_storage->defining_fqcln;
             }
 
-            if ($guide_trait_name_lc
-                && isset($implementer_classlike_storage->template_type_extends[$guide_trait_name_lc])
+            if ($guide_trait_name
+                && isset($implementer_classlike_storage->template_type_extends[$guide_trait_name])
             ) {
-                $map = $implementer_classlike_storage->template_type_extends[$guide_trait_name_lc];
+                $map = $implementer_classlike_storage->template_type_extends[$guide_trait_name];
 
                 $template_types = [];
 
@@ -893,10 +897,10 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                     $guide_classlike_storage->parent_class
                 );
 
-                $guide_class_name_lc = strtolower($guide_classlike_storage->name);
+                $guide_class_name = $guide_classlike_storage->name;
 
-                if (isset($implementer_classlike_storage->template_type_extends[$guide_class_name_lc])) {
-                    $map = $implementer_classlike_storage->template_type_extends[$guide_class_name_lc];
+                if (isset($implementer_classlike_storage->template_type_extends[$guide_class_name])) {
+                    $map = $implementer_classlike_storage->template_type_extends[$guide_class_name];
 
                     $template_types = [];
 

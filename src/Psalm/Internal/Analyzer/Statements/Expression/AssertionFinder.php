@@ -18,6 +18,13 @@ use Psalm\Issue\UnevaluatedCode;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Type;
+use function substr;
+use function count;
+use function strtolower;
+use function in_array;
+use function array_merge;
+use function strpos;
+use function is_int;
 
 /**
  * @internal
@@ -63,6 +70,10 @@ class AssertionFinder
                     $var_type = $conditional->expr->inferredType ?? null;
 
                     foreach ($instanceof_types as $instanceof_type) {
+                        if ($instanceof_type[0] === '=') {
+                            $instanceof_type = substr($instanceof_type, 1);
+                        }
+
                         if ($codebase
                             && $var_type
                             && $inside_negation
@@ -1873,6 +1884,10 @@ class AssertionFinder
             } elseif ($this_class_name
                 && (in_array(strtolower($stmt->class->parts[0]), ['self', 'static'], true))
             ) {
+                if ($stmt->class->parts[0] === 'static') {
+                    return ['=' . $this_class_name];
+                }
+
                 return [$this_class_name];
             }
         } elseif (isset($stmt->class->inferredType)) {

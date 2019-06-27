@@ -3,6 +3,16 @@ namespace Psalm\Internal;
 
 use function count;
 use function array_diff;
+use function ksort;
+use function sort;
+use function json_encode;
+use function rand;
+use function md5;
+use function spl_object_hash;
+use function implode;
+use function array_map;
+use function array_keys;
+use function array_values;
 
 /**
  * @internal

@@ -1,6 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
+use const DIRECTORY_SEPARATOR;
+
 class ArrayAccessTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -520,6 +522,12 @@ class ArrayAccessTest extends TestCase
                 [],
                 ['MixedArrayAccess'],
             ],
+            'byRefArrayAccessWithoutKnownVarNoNotice' => [
+                '<?php
+                    $a = new stdClass();
+                    /** @psalm-suppress MixedPropertyFetch */
+                    print_r([&$a->foo->bar]);',
+            ],
         ];
     }
 
@@ -665,17 +673,6 @@ class ArrayAccessTest extends TestCase
                         echo $a[$key];
                     }',
                 'error_message' => 'PossiblyInvalidArrayOffset',
-            ],
-            'possiblyInvalidMixedUnionArrayOffset' => [
-                '<?php
-                    function foo(?array $index): void {
-                        if (!$index) {
-                            $index = ["foo", []];
-                        }
-                        $index[1][] = "bar";
-                    }',
-                'error_message' => 'PossiblyInvalidArrayOffset',
-                'error_level' => ['MixedArrayAssignment'],
             ],
             'arrayAccessOnIterable' => [
                 '<?php

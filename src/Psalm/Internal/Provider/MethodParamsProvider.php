@@ -7,6 +7,9 @@ use Psalm\Context;
 use Psalm\CodeLocation;
 use Psalm\StatementsSource;
 use Psalm\Plugin\Hook\MethodParamsProviderInterface;
+use function version_compare;
+use const PHP_VERSION;
+use function strtolower;
 
 class MethodParamsProvider
 {
@@ -103,7 +106,7 @@ class MethodParamsProvider
                 $code_location
             );
 
-            if ($result) {
+            if ($result !== null) {
                 return $result;
             }
         }

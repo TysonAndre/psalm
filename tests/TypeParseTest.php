@@ -2,6 +2,9 @@
 namespace Psalm\Tests;
 
 use Psalm\Type;
+use function function_exists;
+use function stripos;
+use function print_r;
 
 class TypeParseTest extends TestCase
 {
@@ -100,11 +103,18 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
-    public function testArray()
+    public function testArrayWithClosingBracket()
     {
         $this->assertSame('array<int, int>', (string) Type::parseString('array<int, int>'));
-        $this->assertSame('array<int, string>', (string) Type::parseString('array<int, string>'));
-        $this->assertSame('array<int, static>', (string) Type::parseString('array<int, static>'));
+    }
+
+    /**
+     * @return void
+     */
+    public function testArrayWithoutClosingBracket()
+    {
+        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
+        Type::parseString('array<int, int');
     }
 
     /**
@@ -244,8 +254,8 @@ class TypeParseTest extends TestCase
     public function testPhpDocObjectLikeArray()
     {
         $this->assertSame(
-            'array<array-key, array{b:bool, d:string}>',
-            (string) Type::parseString('array{b:bool,d:string}[]')
+            'array<array-key, array{b: bool, d: string}>',
+            (string) Type::parseString('array{b: bool, d: string}[]')
         );
     }
 
@@ -282,6 +292,14 @@ class TypeParseTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testParamaterizedClassStringUnion()
+    {
+        $this->assertSame('class-string<A>|class-string<B>', (string) Type::parseString('class-string<A>|class-string<B>'));
+    }
+
+    /**
      *
      * @return void
      */
@@ -314,7 +332,16 @@ class TypeParseTest extends TestCase
      */
     public function testObjectLikeWithSimpleArgs()
     {
-        $this->assertSame('array{a:int, b:string}', (string) Type::parseString('array{a:int, b:string}'));
+        $this->assertSame('array{a: int, b: string}', (string) Type:: parseString('array{a: int, b: string}'));
+    }
+
+    /**
+     * @return void
+     */
+    public function testObjectLikeWithoutClosingBracket()
+    {
+        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
+        Type::parseString('array{a: int, b: string');
     }
 
     /**
@@ -331,8 +358,8 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithUnionArgs()
     {
         $this->assertSame(
-            'array{a:int|string, b:string}',
-            (string) Type::parseString('array{a:int|string, b:string}')
+            'array{a: int|string, b: string}',
+            (string) Type::parseString('array{a: int|string, b: string}')
         );
     }
 
@@ -342,8 +369,8 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithGenericArgs()
     {
         $this->assertSame(
-            'array{a:array<int, string|int>, b:string}',
-            (string) Type::parseString('array{a:array<int, string|int>, b:string}')
+            'array{a: array<int, string|int>, b: string}',
+            (string) Type::parseString('array{a: array<int, string|int>, b: string}')
         );
     }
 
@@ -353,7 +380,7 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithIntKeysAndUnionArgs()
     {
         $this->assertSame(
-            'array{0:null|stdClass}',
+            'array{0: null|stdClass}',
             (string)Type::parseString('array{stdClass|null}')
         );
     }
@@ -364,12 +391,12 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithIntKeysAndGenericArgs()
     {
         $this->assertSame(
-            'array{0:array<array-key, mixed>}',
+            'array{0: array<array-key, mixed>}',
             (string)Type::parseString('array{array}')
         );
 
         $this->assertSame(
-            'array{0:array<int, string>}',
+            'array{0: array<int, string>}',
             (string)Type::parseString('array{array<int, string>}')
         );
     }
@@ -380,8 +407,8 @@ class TypeParseTest extends TestCase
     public function testObjectLikeOptional()
     {
         $this->assertSame(
-            'array{a:int, b?:int}',
-            (string)Type::parseString('array{a:int, b?:int}')
+            'array{a: int, b?: int}',
+            (string)Type::parseString('array{a: int, b?: int}')
         );
     }
 
@@ -394,6 +421,15 @@ class TypeParseTest extends TestCase
             'callable(int, string):void',
             (string)Type::parseString('callable(int, string) : void')
         );
+    }
+
+    /**
+     * @return void
+     */
+    public function testCallableWithoutClosingBracket()
+    {
+        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
+        Type::parseString('callable(int, string');
     }
 
     /**
@@ -817,7 +853,7 @@ class TypeParseTest extends TestCase
      */
     public function testVeryLargeType()
     {
-        $very_large_type = 'array{a:Closure():(array<mixed, mixed>|null), b?:Closure():array<mixed, mixed>, c?:Closure():array<mixed, mixed>, d?:Closure():array<mixed, mixed>, e?:Closure():(array{f:null|string, g:null|string, h:null|string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), p?:Closure():(array{f:null|string, g:null|string, h:null|string, q:string, i:string, j:mixed, k:mixed, l:mixed, m:mixed, n:bool, o?:array{0:string}}|null), r?:Closure():(array<mixed, mixed>|null), s:array<mixed, mixed>}|null';
+        $very_large_type = 'array{a: Closure():(array<mixed, mixed>|null), b?: Closure():array<mixed, mixed>, c?: Closure():array<mixed, mixed>, d?: Closure():array<mixed, mixed>, e?: Closure():(array{f: null|string, g: null|string, h: null|string, i: string, j: mixed, k: mixed, l: mixed, m: mixed, n: bool, o?: array{0: string}}|null), p?: Closure():(array{f: null|string, g: null|string, h: null|string, q: string, i: string, j: mixed, k: mixed, l: mixed, m: mixed, n: bool, o?: array{0: string}}|null), r?: Closure():(array<mixed, mixed>|null), s: array<mixed, mixed>}|null';
 
         $this->assertSame(
             $very_large_type,

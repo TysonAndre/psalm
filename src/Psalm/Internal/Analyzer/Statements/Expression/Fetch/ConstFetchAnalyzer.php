@@ -10,12 +10,16 @@ use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Issue\DeprecatedClass;
 use Psalm\Issue\DeprecatedConstant;
 use Psalm\Issue\InaccessibleClassConstant;
 use Psalm\Issue\ParentNotFound;
 use Psalm\Issue\UndefinedConstant;
 use Psalm\IssueBuffer;
 use Psalm\Type;
+use function implode;
+use function strtolower;
+use function explode;
 
 /**
  * @internal
@@ -135,7 +139,7 @@ class ConstFetchAnalyzer
                                 false,
                                 true
                             ) === false) {
-                                return false;
+                                return;
                             }
                         }
                     }
@@ -154,7 +158,30 @@ class ConstFetchAnalyzer
                 }
 
                 if ($stmt->name instanceof PhpParser\Node\Identifier && $stmt->name->name === 'class') {
-                    $stmt->inferredType = Type::getLiteralClassString($fq_class_name);
+                    if ($codebase->classExists($fq_class_name)) {
+                        $class_const_storage = $codebase->classlike_storage_provider->get($fq_class_name);
+
+                        if ($class_const_storage->deprecated && $fq_class_name !== $context->self) {
+                            if (IssueBuffer::accepts(
+                                new DeprecatedClass(
+                                    'Class ' . $fq_class_name . ' is deprecated',
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                    $fq_class_name
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+                    }
+
+                    if ($first_part_lc === 'static') {
+                        $stmt->inferredType = new Type\Union([
+                            new Type\Atomic\TClassString($fq_class_name, new Type\Atomic\TNamedObject($fq_class_name))
+                        ]);
+                    } else {
+                        $stmt->inferredType = Type::getLiteralClassString($fq_class_name);
+                    }
 
                     if ($codebase->store_node_types) {
                         $codebase->analyzer->addNodeReference(
@@ -183,7 +210,7 @@ class ConstFetchAnalyzer
                 }
 
                 if (!$stmt->name instanceof PhpParser\Node\Identifier) {
-                    return null;
+                    return;
                 }
 
                 $const_id = $fq_class_name . '::' . $stmt->name;
@@ -216,7 +243,7 @@ class ConstFetchAnalyzer
                     $class_visibility
                 );
 
-                if (!isset($class_constants[$stmt->name->name]) && $first_part_lc !== 'static') {
+                if (!isset($class_constants[$stmt->name->name])) {
                     $all_class_constants = [];
 
                     if ($fq_class_name !== $context->self) {
@@ -248,7 +275,7 @@ class ConstFetchAnalyzer
                         }
                     }
 
-                    return false;
+                    return;
                 }
 
                 if ($context->calling_method_id) {
@@ -293,7 +320,18 @@ class ConstFetchAnalyzer
 
                 $class_const_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
-                if (isset($class_const_storage->deprecated_constants[$stmt->name->name])) {
+                if ($class_const_storage->deprecated && $fq_class_name !== $context->self) {
+                    if (IssueBuffer::accepts(
+                        new DeprecatedClass(
+                            'Class ' . $fq_class_name . ' is deprecated',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt),
+                            $fq_class_name
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                } elseif (isset($class_const_storage->deprecated_constants[$stmt->name->name])) {
                     if (IssueBuffer::accepts(
                         new DeprecatedConstant(
                             'Constant ' . $const_id . ' is deprecated',
@@ -352,7 +390,7 @@ class ConstFetchAnalyzer
 
         if ($stmt->class instanceof PhpParser\Node\Expr) {
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->class, $context) === false) {
-                return false;
+                return;
             }
         }
 

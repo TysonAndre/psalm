@@ -5,6 +5,7 @@ use PhpParser;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
@@ -22,6 +23,8 @@ use Psalm\Issue\NullableReturnStatement;
 use Psalm\Issue\PossiblyInvalidReturnStatement;
 use Psalm\IssueBuffer;
 use Psalm\Type;
+use function explode;
+use function strtolower;
 
 /**
  * @internal
@@ -48,12 +51,14 @@ class ReturnAnalyzer
 
         $codebase = $statements_analyzer->getCodebase();
 
-        if ($doc_comment) {
+        if ($doc_comment && ($parsed_docblock = $statements_analyzer->getParsedDocblock())) {
             try {
-                $var_comments = CommentAnalyzer::getTypeFromComment(
+                $var_comments = CommentAnalyzer::arrayToDocblocks(
                     $doc_comment,
-                    $source,
-                    $source->getAliases()
+                    $parsed_docblock,
+                    $statements_analyzer->getSource(),
+                    $statements_analyzer->getAliases(),
+                    $statements_analyzer->getTemplateTypeMap()
                 );
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
@@ -167,6 +172,33 @@ class ReturnAnalyzer
                     );
 
                     $local_return_type = $source->getLocalReturnType($storage->return_type);
+
+                    if ($storage instanceof \Psalm\Storage\MethodStorage) {
+                        list($fq_class_name, $method_name) = explode('::', $cased_method_id);
+
+                        $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
+
+                        $found_generic_params = MethodCallAnalyzer::getClassTemplateParams(
+                            $codebase,
+                            $class_storage,
+                            $fq_class_name,
+                            strtolower($method_name),
+                            null,
+                            null
+                        );
+
+                        if ($found_generic_params) {
+                            foreach ($found_generic_params as $template_name => $_) {
+                                unset($found_generic_params[$template_name][$fq_class_name]);
+                            }
+
+                            $local_return_type = clone $local_return_type;
+
+                            $local_return_type->replaceTemplateTypesWithArgTypes(
+                                $found_generic_params
+                            );
+                        }
+                    }
 
                     if ($local_return_type->isGenerator() && $storage->has_yield) {
                         return null;

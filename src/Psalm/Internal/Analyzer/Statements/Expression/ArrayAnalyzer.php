@@ -12,6 +12,10 @@ use Psalm\Type;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TString;
+use function preg_match;
+use function array_merge;
+use function array_values;
+use function count;
 
 /**
  * @internal
@@ -129,7 +133,7 @@ class ArrayAnalyzer
                 if ($var_id) {
                     $context->removeDescendents(
                         $var_id,
-                        $context->vars_in_scope[$var_id],
+                        $context->vars_in_scope[$var_id] ?? null,
                         null,
                         $statements_analyzer
                     );

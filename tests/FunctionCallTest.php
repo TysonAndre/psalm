@@ -1,6 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
+use const DIRECTORY_SEPARATOR;
+
 class FunctionCallTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -93,6 +95,16 @@ class FunctionCallTest extends TestCase
                                 [1, 2, 3]
                             )
                         );
+                    }',
+            ],
+            'arrayFilterNamedFunction' => [
+                '<?php
+                    /**
+                     * @param array<int, DateTimeImmutable|null> $a
+                     * @return array<int, DateTimeImmutable>
+                     */
+                    function foo(array $a) : array {
+                        return array_filter($a, "is_object");
                     }',
             ],
             'typedArrayWithDefault' => [
@@ -223,7 +235,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $d = array_merge(["a", "b", "c"], [1, 2, 3]);',
                 'assertions' => [
-                    '$d' => 'array{0:string, 1:string, 2:string, 3:int, 4:int, 5:int}',
+                    '$d' => 'array{0: string, 1: string, 2: string, 3: int, 4: int, 5: int}',
                 ],
             ],
             'arrayReverseDontPreserveKey' => [
@@ -579,7 +591,7 @@ class FunctionCallTest extends TestCase
 
                   foo($a3);',
                 'assertions' => [
-                    '$a3' => 'array{hi:int, bye:int}',
+                    '$a3' => 'array{hi: int, bye: int}',
                 ],
             ],
             'arrayRand' => [
@@ -591,10 +603,10 @@ class FunctionCallTest extends TestCase
                     $e = array_rand($more_vars);',
 
                 'assertions' => [
-                    '$vars' => 'array{x:string, y:string}',
+                    '$vars' => 'array{x: string, y: string}',
                     '$c' => 'string',
                     '$d' => 'string',
-                    '$more_vars' => 'array{0:string, 1:string}',
+                    '$more_vars' => 'array{0: string, 1: string}',
                     '$e' => 'int',
                 ],
             ],
@@ -608,7 +620,7 @@ class FunctionCallTest extends TestCase
                     $f = array_rand($vars, $b);',
 
                 'assertions' => [
-                    '$vars' => 'array{x:string, y:string}',
+                    '$vars' => 'array{x: string, y: string}',
                     '$c' => 'string',
                     '$e' => 'array<int, string>',
                     '$f' => 'array<int, string>|string',
@@ -1216,8 +1228,8 @@ class FunctionCallTest extends TestCase
                     array_splice($d, -1, 1);',
                 'assertions' => [
                     '$a' => 'non-empty-array<int, string|int>',
-                    '$b' => 'array{0:string, 1:string, 2:string}',
-                    '$c' => 'array{0:int, 1:int, 2:int}',
+                    '$b' => 'array{0: string, 1: string, 2: string}',
+                    '$c' => 'array{0: int, 1: int, 2: int}',
                 ],
             ],
             'arraySpliceOtherType' => [
@@ -1225,7 +1237,7 @@ class FunctionCallTest extends TestCase
                     $d = [["red"], ["green"], ["blue"]];
                     array_splice($d, -1, 1, "foo");',
                 'assertions' => [
-                    '$d' => 'array<int, array{0:string}|string>',
+                    '$d' => 'array<int, array{0: string}|string>',
                 ],
             ],
             'ksortPreserveShape' => [
@@ -1589,9 +1601,9 @@ class FunctionCallTest extends TestCase
                     $d = hrtime(false);',
                 'assertions' => [
                     '$a' => 'int',
-                    '$b' => 'array{0:int, 1:int}',
-                    '$c' => 'array{0:int, 1:int}|int',
-                    '$d' => 'array{0:int, 1:int}',
+                    '$b' => 'array{0: int, 1: int}',
+                    '$c' => 'array{0: int, 1: int}|int',
+                    '$d' => 'array{0: int, 1: int}',
                 ],
             ],
             'PHP73-hrtimeCanBeFloat' => [
@@ -1724,6 +1736,29 @@ class FunctionCallTest extends TestCase
                     if (is_countable($iterableObject)) {
                        if (count($iterableObject) === 0) {}
                     }',
+            ],
+            'versionCompareAsCallable' => [
+                '<?php
+                    $a = ["1.0", "2.0"];
+                    uksort($a, "version_compare");'
+            ],
+            'coerceToObjectAfterBeingCalled' => [
+                '<?php
+                    class Foo {
+                        public function bar() : void {}
+                    }
+
+                    function takesFoo(Foo $foo) : void {}
+
+                    /** @param mixed $f */
+                    function takesMixed($f) : void {
+                        if (rand(0, 1)) {
+                            $f = new Foo();
+                        }
+                        /** @psalm-suppress MixedArgument */
+                        takesFoo($f);
+                        $f->bar();
+                    }'
             ],
         ];
     }
@@ -2264,6 +2299,11 @@ class FunctionCallTest extends TestCase
                     }',
                 'error_message' => 'InvalidScalarArgument'
             ],
+            'tooFewArgsAccurateCount' => [
+                '<?php
+                    preg_match(\'/adsf/\');',
+                'error_message' => 'TooFewArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:2:21 - Too few arguments for method preg_match - expecting 2 but saw 1'
+            ]
         ];
     }
 }

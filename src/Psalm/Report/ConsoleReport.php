@@ -3,6 +3,7 @@ namespace Psalm\Report;
 
 use Psalm\Config;
 use Psalm\Report;
+use function substr;
 
 class ConsoleReport extends Report
 {
@@ -13,10 +14,6 @@ class ConsoleReport extends Report
     {
         $output = '';
         foreach ($this->issues_data as $issue_data) {
-            if (!$this->show_info && $issue_data['severity'] === Config::REPORT_INFO) {
-                continue;
-            }
-
             $output .= $this->format($issue_data) . "\n" . "\n";
         }
 

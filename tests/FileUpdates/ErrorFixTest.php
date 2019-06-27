@@ -6,6 +6,10 @@ use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Provider\Providers;
 use Psalm\Tests\Internal\Provider;
 use Psalm\Tests\TestConfig;
+use function count;
+use function array_keys;
+use function getcwd;
+use const DIRECTORY_SEPARATOR;
 
 class ErrorFixTest extends \Psalm\Tests\TestCase
 {
@@ -348,6 +352,25 @@ class ErrorFixTest extends \Psalm\Tests\TestCase
                     ],
                 ],
                 'error_counts' => [2, 1, 0],
+            ],
+            'fixDefault' => [
+                'files' => [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            class C {
+                                /** @var string */
+                                public $foo = 5;
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            class C {
+                                /** @var string */
+                                public $foo = "hello";
+                            }',
+                    ],
+                ],
+                'error_counts' => [1, 0],
             ],
         ];
     }

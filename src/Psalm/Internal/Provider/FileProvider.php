@@ -1,6 +1,13 @@
 <?php
 namespace Psalm\Internal\Provider;
 
+use function strtolower;
+use function file_get_contents;
+use function file_put_contents;
+use function filemtime;
+use function file_exists;
+use function in_array;
+
 class FileProvider
 {
     /**
@@ -48,6 +55,19 @@ class FileProvider
         }
 
         file_put_contents($file_path, $file_contents);
+    }
+
+    /**
+     * @param  string  $file_path
+     * @param  string  $file_contents
+     *
+     * @return void
+     */
+    public function setOpenContents($file_path, $file_contents)
+    {
+        if (isset($this->open_files[strtolower($file_path)])) {
+            $this->open_files[strtolower($file_path)] = $file_contents;
+        }
     }
 
     /**

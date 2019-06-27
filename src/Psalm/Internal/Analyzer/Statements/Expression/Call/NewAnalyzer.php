@@ -21,6 +21,12 @@ use Psalm\Issue\UndefinedClass;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
+use function in_array;
+use function strtolower;
+use function implode;
+use function explode;
+use function array_values;
+use function is_string;
 
 /**
  * @internal
@@ -87,7 +93,9 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
                     $stmt->class,
-                    $fq_class_name
+                    $codebase->classlikes->classExists($fq_class_name)
+                        ? $fq_class_name
+                        : '*' . implode('\\', $stmt->class->parts)
                 );
             }
         } elseif ($stmt->class instanceof PhpParser\Node\Stmt\Class_) {
@@ -125,7 +133,8 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                                 $lhs_type_part->param_name,
                                 $lhs_type_part->as_type
                                     ? new Type\Union([$lhs_type_part->as_type])
-                                    : Type::parseString($lhs_type_part->as)
+                                    : Type::parseString($lhs_type_part->as),
+                                $lhs_type_part->defining_class
                             );
 
                             if ($new_type) {
@@ -268,7 +277,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $statements_analyzer->getSuppressedIssues(),
                     false
                 ) === false) {
-                    return false;
+                    return;
                 }
 
                 if ($codebase->interfaceExists($fq_class_name)) {
@@ -279,7 +288,6 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
                     }
 
                     return null;
@@ -289,7 +297,6 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
             $stmt->inferredType = new Type\Union([new TNamedObject($fq_class_name)]);
 
             if (strtolower($fq_class_name) !== 'stdclass' &&
-                $context->check_classes &&
                 $codebase->classlikes->classExists($fq_class_name)
             ) {
                 $storage = $codebase->classlike_storage_provider->get($fq_class_name);
@@ -303,11 +310,11 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        return;
                     }
                 }
 
-                if ($storage->deprecated) {
+                if ($storage->deprecated && $fq_class_name !== $context->self) {
                     if (IssueBuffer::accepts(
                         new DeprecatedClass(
                             $fq_class_name . ' is marked deprecated',

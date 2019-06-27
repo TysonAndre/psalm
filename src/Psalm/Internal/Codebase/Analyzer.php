@@ -12,6 +12,18 @@ use Psalm\IssueBuffer;
 use Psalm\Internal\Provider\FileProvider;
 use Psalm\Internal\Provider\FileStorageProvider;
 use Psalm\Progress\Progress;
+use function pathinfo;
+use function count;
+use function array_merge;
+use function array_filter;
+use function preg_replace;
+use function substr;
+use function strpos;
+use function explode;
+use function array_merge_recursive;
+use function array_intersect_key;
+use function number_format;
+use function usort;
 
 /**
  * @psalm-type  IssueData = array{
@@ -34,25 +46,29 @@ use Psalm\Progress\Progress;
  * @psalm-type  TaggedCodeType = array<int, array{0: int, 1: string}>
  *
  * @psalm-type  WorkerData = array{
- *     issues: array<int, IssueData>,
- *     file_references_to_classes: array<string, array<string,bool>>,
- *     file_references_to_class_members: array<string, array<string,bool>>,
- *     file_references_to_missing_class_members: array<string, array<string,bool>>,
- *     mixed_counts: array<string, array{0: int, 1: int}>,
- *     mixed_member_names: array<string, array<string, bool>>,
- *     file_manipulations: array<string, FileManipulation[]>,
- *     method_references_to_class_members: array<string, array<string,bool>>,
- *     method_references_to_missing_class_members: array<string, array<string,bool>>,
- *     method_param_uses: array<string, array<int, array<string, bool>>>,
- *     analyzed_methods: array<string, array<string, int>>,
- *     file_maps: array<
- *         string,
- *         array{0: TaggedCodeType, 1: TaggedCodeType}
- *     >,
- *     class_locations: array<string, array<int, \Psalm\CodeLocation>>,
- *     class_method_locations: array<string, array<int, \Psalm\CodeLocation>>,
- *     class_property_locations: array<string, array<int, \Psalm\CodeLocation>>,
- *     possible_method_param_types: array<string, array<int, \Psalm\Type\Union>>
+ *      issues: array<int, IssueData>,
+ *      file_references_to_classes: array<string, array<string,bool>>,
+ *      file_references_to_class_members: array<string, array<string,bool>>,
+ *      file_references_to_missing_class_members: array<string, array<string,bool>>,
+ *      mixed_counts: array<string, array{0: int, 1: int}>,
+ *      mixed_member_names: array<string, array<string, bool>>,
+ *      file_manipulations: array<string, FileManipulation[]>,
+ *      method_references_to_class_members: array<string, array<string,bool>>,
+ *      method_references_to_missing_class_members: array<string, array<string,bool>>,
+ *      method_param_uses: array<string, array<int, array<string, bool>>>,
+ *      analyzed_methods: array<string, array<string, int>>,
+ *      file_maps: array<
+ *          string,
+ *          array{
+ *              0: TaggedCodeType,
+ *              1: TaggedCodeType,
+ *              2: array<int, array{0: int, 1: array<string, string>}>
+ *         }
+ *      >,
+ *      class_locations: array<string, array<int, \Psalm\CodeLocation>>,
+ *      class_method_locations: array<string, array<int, \Psalm\CodeLocation>>,
+ *      class_property_locations: array<string, array<int, \Psalm\CodeLocation>>,
+ *      possible_method_param_types: array<string, array<int, \Psalm\Type\Union>>
  * }
  */
 
@@ -86,7 +102,7 @@ class Analyzer
     /**
      * Used to store counts of mixed vs non-mixed variables
      *
-     * @var array<string, array{0: int, 1: int}
+     * @var array<string, array{0: int, 1: int}>
      */
     private $mixed_counts = [];
 
@@ -135,6 +151,11 @@ class Analyzer
      * @var array<string, array<int, array{0: int, 1: string}>>
      */
     private $type_map = [];
+
+    /**
+     * @var array<string, array<int, array{0: int, 1: array<string, string>}>>
+     */
+    private $alias_map = [];
 
     /**
      * @var array<string, array<int, \Psalm\Type\Union>>
@@ -425,9 +446,10 @@ class Analyzer
                     FileManipulationBuffer::add($file_path, $manipulations);
                 }
 
-                foreach ($pool_data['file_maps'] as $file_path => list($reference_map, $type_map)) {
+                foreach ($pool_data['file_maps'] as $file_path => list($reference_map, $type_map, $alias_map)) {
                     $this->reference_map[$file_path] = $reference_map;
                     $this->type_map[$file_path] = $type_map;
+                    $this->alias_map[$file_path] = $alias_map;
                 }
             }
 
@@ -511,9 +533,10 @@ class Analyzer
             $this->existing_issues = $codebase->file_reference_provider->getExistingIssues();
             $file_maps = $codebase->file_reference_provider->getFileMaps();
 
-            foreach ($file_maps as $file_path => list($reference_map, $type_map)) {
+            foreach ($file_maps as $file_path => list($reference_map, $type_map, $alias_map)) {
                 $this->reference_map[$file_path] = $reference_map;
                 $this->type_map[$file_path] = $type_map;
+                $this->alias_map[$file_path] = $alias_map;
             }
         }
 
@@ -870,6 +893,39 @@ class Analyzer
                 }
             }
         }
+
+        foreach ($this->alias_map as $file_path => &$alias_map) {
+            if (!isset($this->analyzed_methods[$file_path])) {
+                unset($this->alias_map[$file_path]);
+                continue;
+            }
+
+            $file_diff_map = $diff_map[$file_path] ?? [];
+
+            if (!$file_diff_map) {
+                continue;
+            }
+
+            $first_diff_offset = $file_diff_map[0][0];
+            $last_diff_offset = $file_diff_map[count($file_diff_map) - 1][1];
+
+            foreach ($alias_map as $alias_from => list($alias_to, $tag)) {
+                if ($alias_to < $first_diff_offset || $alias_from > $last_diff_offset) {
+                    continue;
+                }
+
+
+                foreach ($file_diff_map as list($from, $to, $file_offset)) {
+                    if ($alias_from >= $from && $alias_from <= $to) {
+                        unset($alias_map[$alias_from]);
+                        $alias_map[$alias_from += $file_offset] = [
+                            $alias_to += $file_offset,
+                            $tag
+                        ];
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -894,7 +950,7 @@ class Analyzer
     }
 
     /**
-     * @var array<string, string<bool>> $names
+     * @param array<string, array<string, bool>> $names
      * @return void
      * @psalm-suppress MixedPropertyTypeCoercion
      */
@@ -990,6 +1046,22 @@ class Analyzer
         $this->type_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
             ($parent_node ? (int)$parent_node->getAttribute('endFilePos') : (int)$node->getAttribute('endFilePos')) + 1,
             $node_type
+        ];
+    }
+
+    /**
+     * @param array<string, string> $aliases
+     * @return void
+     */
+    public function addNodeAliases(
+        string $file_path,
+        PhpParser\Node $node,
+        array $aliases,
+        PhpParser\Node $parent_node = null
+    ) {
+        $this->alias_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
+            ($parent_node ? (int)$parent_node->getAttribute('endFilePos') : (int)$node->getAttribute('endFilePos')) + 1,
+            $aliases
         ];
     }
 
@@ -1195,7 +1267,7 @@ class Analyzer
      *
      * @return array<int, IssueData>
      */
-    public function getExistingIssuesForFile($file_path, $start, $end)
+    public function getExistingIssuesForFile($file_path, $start, $end, ?string $issue_type = null)
     {
         if (!isset($this->existing_issues[$file_path])) {
             return [];
@@ -1205,7 +1277,9 @@ class Analyzer
 
         foreach ($this->existing_issues[$file_path] as $issue_data) {
             if ($issue_data['from'] >= $start && $issue_data['from'] <= $end) {
-                $applicable_issues[] = $issue_data;
+                if ($issue_type === null || $issue_type === $issue_data['type']) {
+                    $applicable_issues[] = $issue_data;
+                }
             }
         }
 
@@ -1255,21 +1329,36 @@ class Analyzer
     }
 
     /**
-     * @return array<string, array{0: TaggedCodeType, 1: TaggedCodeType}>
+     * @return array<
+     *      string,
+     *      array{
+     *          0: TaggedCodeType,
+     *          1: TaggedCodeType,
+     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *      }
+     * >
      */
     public function getFileMaps()
     {
         $file_maps = [];
 
         foreach ($this->reference_map as $file_path => $reference_map) {
-            $file_maps[$file_path] = [$reference_map, []];
+            $file_maps[$file_path] = [$reference_map, [], []];
         }
 
         foreach ($this->type_map as $file_path => $type_map) {
             if (isset($file_maps[$file_path])) {
                 $file_maps[$file_path][1] = $type_map;
             } else {
-                $file_maps[$file_path] = [[], $type_map];
+                $file_maps[$file_path] = [[], $type_map, []];
+            }
+        }
+
+        foreach ($this->alias_map as $file_path => $alias_map) {
+            if (isset($file_maps[$file_path])) {
+                $file_maps[$file_path][2] = $alias_map;
+            } else {
+                $file_maps[$file_path] = [[], [], $alias_map];
             }
         }
 
@@ -1277,13 +1366,14 @@ class Analyzer
     }
 
     /**
-     * @return array{0: array<int, array{0: int, 1: string}>, 1: array<int, array{0: int, 1: string}>}
+     * @return array{0: TaggedCodeType, 1: TaggedCodeType, 2: array<int, array{0: int, 1: array<string, string>}>}
      */
     public function getMapsForFile(string $file_path)
     {
         return [
             $this->reference_map[$file_path] ?? [],
-            $this->type_map[$file_path] ?? []
+            $this->type_map[$file_path] ?? [],
+            $this->alias_map[$file_path] ?? [],
         ];
     }
 

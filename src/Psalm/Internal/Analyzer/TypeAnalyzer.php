@@ -40,6 +40,19 @@ use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTraitString;
 use Psalm\Type\Atomic\TTrue;
+use function get_class;
+use function array_merge;
+use function strtolower;
+use function in_array;
+use function array_values;
+use function count;
+use function is_string;
+use function array_fill;
+use function array_search;
+use function array_keys;
+use function array_reduce;
+use function end;
+use function array_unique;
 
 /**
  * @internal
@@ -273,13 +286,11 @@ class TypeAnalyzer
      *
      * @param  Type\Union   $input_type
      * @param  Type\Union   $container_type
-     *
-     * @return bool
      */
     public static function isSimplyContainedBy(
         Type\Union $input_type,
         Type\Union $container_type
-    ) {
+    ) : bool {
         if ($input_type->getId() === $container_type->getId()) {
             return true;
         }
@@ -294,10 +305,26 @@ class TypeAnalyzer
         $container_type_not_null = clone $container_type;
         $container_type_not_null->removeType('null');
 
-        return !array_diff_key(
-            $input_type_not_null->getTypes(),
-            $container_type_not_null->getTypes()
-        );
+        foreach ($input_type->getTypes() as $input_key => $input_type_part) {
+            foreach ($container_type->getTypes() as $container_key => $container_type_part) {
+                if (get_class($container_type_part) === TNamedObject::class
+                    && $input_type_part instanceof TNamedObject
+                    && $input_type_part->value === $container_type_part->value
+                ) {
+                    continue 2;
+                }
+
+                if ($input_key === $container_key) {
+                    continue 2;
+                }
+            }
+
+            return false;
+        }
+
+
+
+        return true;
     }
 
     /**
@@ -379,19 +406,25 @@ class TypeAnalyzer
 
         foreach ($type1->getTypes() as $type1_part) {
             foreach ($type2->getTypes() as $type2_part) {
+                $second_type_coerced = false;
+
                 $either_contains = self::isAtomicContainedBy(
                     $codebase,
                     $type1_part,
                     $type2_part,
                     true,
-                    false
+                    false,
+                    $first_has_scalar_match,
+                    $first_type_coerced
                 ) || self::isAtomicContainedBy(
                     $codebase,
                     $type2_part,
                     $type1_part,
                     true,
-                    false
-                );
+                    false,
+                    $second_has_scalar_match,
+                    $second_type_coerced
+                ) || ($first_type_coerced && $second_type_coerced);
 
                 if ($either_contains) {
                     return true;
@@ -447,6 +480,8 @@ class TypeAnalyzer
         foreach ($intersection_container_types as $intersection_container_type) {
             if ($intersection_container_type instanceof TIterable) {
                 $intersection_container_type_lower = 'iterable';
+            } elseif ($intersection_container_type instanceof TObjectWithProperties) {
+                $intersection_container_type_lower = 'object';
             } elseif ($intersection_container_type instanceof TTemplateParam) {
                 if ($intersection_container_type->as->isMixed()) {
                     continue;
@@ -480,6 +515,8 @@ class TypeAnalyzer
             foreach ($intersection_input_types as $intersection_input_type) {
                 if ($intersection_input_type instanceof TIterable) {
                     $intersection_input_type_lower = 'iterable';
+                } elseif ($intersection_input_type instanceof TObjectWithProperties) {
+                    $intersection_input_type_lower = 'object';
                 } elseif ($intersection_input_type instanceof TTemplateParam) {
                     if ($intersection_input_type->as->isMixed()) {
                         continue;
@@ -510,46 +547,58 @@ class TypeAnalyzer
                     );
                 }
 
-                if ($intersection_container_type_lower === $intersection_input_type_lower) {
-                    continue 2;
-                }
-
-                if ($intersection_input_type_lower === 'generator'
-                    && in_array($intersection_container_type_lower, ['iterator', 'traversable', 'iterable'], true)
+                if (!$intersection_container_type instanceof TTemplateParam
+                    || $intersection_input_type instanceof TTemplateParam
                 ) {
-                    continue 2;
-                }
+                    if ($intersection_container_type instanceof TTemplateParam
+                        && $intersection_input_type instanceof TTemplateParam
+                    ) {
+                        if ($intersection_container_type->param_name !== $intersection_input_type->param_name) {
+                            return false;
+                        }
+                    }
 
-                if ($intersection_input_type_lower === 'traversable'
-                    && $intersection_container_type_lower === 'iterable'
-                ) {
-                    continue 2;
-                }
+                    if ($intersection_container_type_lower === $intersection_input_type_lower) {
+                        continue 2;
+                    }
 
-                $input_type_is_interface = $codebase->interfaceExists($intersection_input_type_lower);
-                $container_type_is_interface = $codebase->interfaceExists($intersection_container_type_lower);
+                    if ($intersection_input_type_lower === 'generator'
+                        && in_array($intersection_container_type_lower, ['iterator', 'traversable', 'iterable'], true)
+                    ) {
+                        continue 2;
+                    }
 
-                if ($allow_interface_equality && $input_type_is_interface && $container_type_is_interface) {
-                    continue 2;
-                }
+                    if ($intersection_input_type_lower === 'traversable'
+                        && $intersection_container_type_lower === 'iterable'
+                    ) {
+                        continue 2;
+                    }
 
-                if ($codebase->classExists($intersection_input_type_lower)
-                    && $codebase->classOrInterfaceExists($intersection_container_type_lower)
-                    && $codebase->classExtendsOrImplements(
-                        $intersection_input_type_lower,
-                        $intersection_container_type_lower
-                    )
-                ) {
-                    continue 2;
-                }
+                    $input_type_is_interface = $codebase->interfaceExists($intersection_input_type_lower);
+                    $container_type_is_interface = $codebase->interfaceExists($intersection_container_type_lower);
 
-                if ($input_type_is_interface
-                    && $codebase->interfaceExtends(
-                        $intersection_input_type_lower,
-                        $intersection_container_type_lower
-                    )
-                ) {
-                    continue 2;
+                    if ($allow_interface_equality && $input_type_is_interface && $container_type_is_interface) {
+                        continue 2;
+                    }
+
+                    if ($codebase->classExists($intersection_input_type_lower)
+                        && $codebase->classOrInterfaceExists($intersection_container_type_lower)
+                        && $codebase->classExtendsOrImplements(
+                            $intersection_input_type_lower,
+                            $intersection_container_type_lower
+                        )
+                    ) {
+                        continue 2;
+                    }
+
+                    if ($input_type_is_interface
+                        && $codebase->interfaceExtends(
+                            $intersection_input_type_lower,
+                            $intersection_container_type_lower
+                        )
+                    ) {
+                        continue 2;
+                    }
                 }
 
                 if (ExpressionAnalyzer::isMock($intersection_input_type_lower)) {
@@ -591,10 +640,36 @@ class TypeAnalyzer
         &$to_string_cast = null,
         &$type_coerced_from_scalar = null
     ) {
+        if ($container_type_part instanceof TTemplateParam && $input_type_part instanceof TTemplateParam) {
+            if ($container_type_part->param_name !== $input_type_part->param_name
+                || (string)$container_type_part->defining_class !== (string)$input_type_part->defining_class
+            ) {
+                if ($container_type_part->defining_class
+                    && $input_type_part->defining_class
+                ) {
+                    $input_class_storage = $codebase->classlike_storage_provider->get(
+                        $input_type_part->defining_class
+                    );
+
+                    if (isset($input_class_storage->template_type_extends
+                            [$container_type_part->defining_class]
+                            [$container_type_part->param_name])
+                    ) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
         if ($container_type_part instanceof TMixed
             || ($container_type_part instanceof TTemplateParam
                 && $container_type_part->as->isMixed()
-                && !$container_type_part->extra_types)
+                && !$container_type_part->extra_types
+                && $input_type_part instanceof TMixed)
         ) {
             if (get_class($container_type_part) === TEmptyMixed::class
                 && get_class($input_type_part) === TMixed::class
@@ -654,7 +729,8 @@ class TypeAnalyzer
 
         if ($input_type_part->shallowEquals($container_type_part)
             || (($input_type_part instanceof TNamedObject
-                    || $input_type_part instanceof TTemplateParam
+                    || ($input_type_part instanceof TTemplateParam
+                        && $input_type_part->as->hasObjectType())
                     || $input_type_part instanceof TIterable)
                 && ($container_type_part instanceof TNamedObject
                     || ($container_type_part instanceof TTemplateParam
@@ -710,7 +786,9 @@ class TypeAnalyzer
                     $to_string_cast,
                     $type_coerced_from_scalar
                 )) {
-                    return true;
+                    if ($allow_interface_equality || $input_type_part instanceof TArray) {
+                        return true;
+                    }
                 }
             }
 
@@ -718,6 +796,25 @@ class TypeAnalyzer
         }
 
         if ($input_type_part instanceof TTemplateParam) {
+            if ($input_type_part->extra_types) {
+                foreach ($input_type_part->extra_types as $extra_type) {
+                    if (self::isAtomicContainedBy(
+                        $codebase,
+                        $extra_type,
+                        $container_type_part,
+                        $allow_interface_equality,
+                        $allow_float_int_equality,
+                        $has_scalar_match,
+                        $type_coerced,
+                        $type_coerced_from_mixed,
+                        $to_string_cast,
+                        $type_coerced_from_scalar
+                    )) {
+                        return true;
+                    }
+                }
+            }
+
             foreach ($input_type_part->as->getTypes() as $input_as_type_part) {
                 if ($input_as_type_part instanceof TNull && $container_type_part instanceof TNull) {
                     continue;
@@ -852,6 +949,12 @@ class TypeAnalyzer
 
         if ($input_type_part instanceof TObject &&
             $container_type_part instanceof TCallable
+        ) {
+            return true;
+        }
+
+        if ($input_type_part instanceof Type\Atomic\TCallableObject &&
+            $container_type_part instanceof TObject
         ) {
             return true;
         }
@@ -1189,7 +1292,7 @@ class TypeAnalyzer
             return false;
         }
 
-        if ($container_type_part instanceof TString
+        if (($container_type_part instanceof TString || $container_type_part instanceof TScalar)
             && $input_type_part instanceof TNamedObject
         ) {
             // check whether the object has a __toString method
@@ -1271,7 +1374,7 @@ class TypeAnalyzer
                 }
             }
 
-            $input_callable = self::getCallableFromAtomic($codebase, $input_type_part);
+            $input_callable = self::getCallableFromAtomic($codebase, $input_type_part, $container_type_part);
 
             if ($input_callable) {
                 $all_types_contain = true;
@@ -1422,8 +1525,11 @@ class TypeAnalyzer
     /**
      * @return ?TCallable
      */
-    public static function getCallableFromAtomic(Codebase $codebase, Type\Atomic $input_type_part)
-    {
+    public static function getCallableFromAtomic(
+        Codebase $codebase,
+        Type\Atomic $input_type_part,
+        ?TCallable $container_type_part = null
+    ) : ?TCallable {
         if ($input_type_part instanceof TLiteralString) {
             try {
                 $function_storage = $codebase->functions->getStorage(null, $input_type_part->value);
@@ -1435,16 +1541,24 @@ class TypeAnalyzer
                 );
             } catch (\Exception $e) {
                 if (CallMap::inCallMap($input_type_part->value)) {
-                    $function_params = FunctionLikeAnalyzer::getFunctionParamsFromCallMapById(
+                    $args = [];
+
+                    if ($container_type_part && $container_type_part->params) {
+                        foreach ($container_type_part->params as $i => $param) {
+                            $arg = new \PhpParser\Node\Arg(
+                                new \PhpParser\Node\Expr\Variable('_' . $i)
+                            );
+
+                            $arg->value->inferredType = $param->type;
+
+                            $args[] = $arg;
+                        }
+                    }
+
+                    return \Psalm\Internal\Codebase\CallMap::getCallableFromCallMapById(
                         $codebase,
                         $input_type_part->value,
-                        []
-                    );
-
-                    return new TCallable(
-                        'callable',
-                        $function_params,
-                        CallMap::getReturnTypeFromCallMap($input_type_part->value)
+                        $args
                     );
                 }
             }
@@ -1564,11 +1678,11 @@ class TypeAnalyzer
                 ) {
                     $class_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
 
-                    $container_class_lc = strtolower($container_type_part->value);
+                    $container_class = $container_type_part->value;
 
                     // attempt to transform it
-                    if (isset($class_storage->template_type_extends[$container_class_lc])) {
-                        $extends_list = $class_storage->template_type_extends[$container_class_lc];
+                    if (isset($class_storage->template_type_extends[$container_class])) {
+                        $extends_list = $class_storage->template_type_extends[$container_class];
 
                         $generic_params = [];
 
@@ -1606,8 +1720,8 @@ class TypeAnalyzer
                     $input_class_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
                     $template_extends = $input_class_storage->template_type_extends;
 
-                    if (isset($template_extends[strtolower($container_type_part->value)])) {
-                        $params = $template_extends[strtolower($container_type_part->value)];
+                    if (isset($template_extends[$container_type_part->value])) {
+                        $params = $template_extends[$container_type_part->value];
 
                         $new_input_params = [];
 

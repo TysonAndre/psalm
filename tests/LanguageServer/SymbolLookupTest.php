@@ -65,6 +65,14 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
 
                 function bar() : int {
                     return 5;
+                }
+
+                function baz(int $a) : int {
+                    return $a;
+                }
+
+                function qux(int $a, int $b) : int {
+                    return $a + $b;
                 }'
         );
 
@@ -78,6 +86,8 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame('<?php protected int|null $a', $codebase->getSymbolInformation('somefile.php', 'B\A::$a'));
         $this->assertSame('<?php function B\bar() : int', $codebase->getSymbolInformation('somefile.php', 'B\bar()'));
         $this->assertSame('<?php BANANA', $codebase->getSymbolInformation('somefile.php', 'B\A::BANANA'));
+        $this->assertSame("<?php function B\baz(\n    int \$a\n) : int", $codebase->getSymbolInformation('somefile.php', 'B\baz()'));
+        $this->assertSame("<?php function B\qux(\n    int \$a,\n    int \$b\n) : int", $codebase->getSymbolInformation('somefile.php', 'B\qux()'));
     }
 
     /**
@@ -217,5 +227,72 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertNotNull($symbol_at_position);
 
         $this->assertSame('type: int', $symbol_at_position[0]);
+    }
+
+    /**
+     * @return void
+     */
+    public function testGetSymbolPositionMissingArg()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+
+                class A {
+                    public function foo(int $i) : string {
+                        return "hello";
+                    }
+
+                    public function bar() : void {
+                        $this->foo();
+                    }
+                }'
+        );
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+        $this->analyzeFile('somefile.php', new Context());
+
+        $symbol_at_position = $codebase->getReferenceAtPosition('somefile.php', new Position(9, 33));
+
+        $this->assertNotNull($symbol_at_position);
+
+        $this->assertSame('B\A::foo()', $symbol_at_position[0]);
+    }
+
+    /**
+     * @return void
+     */
+    public function testGetTypeInDocblock()
+    {
+        $codebase = $this->project_analyzer->getCodebase();
+        $config = $codebase->config;
+        $config->throw_exception = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace B;
+
+                class A {
+                    /** @var \Exception|null */
+                    public $prop;
+                }'
+        );
+
+        $codebase->file_provider->openFile('somefile.php');
+        $codebase->scanFiles();
+        $this->analyzeFile('somefile.php', new Context());
+
+        $symbol_at_position = $codebase->getReferenceAtPosition('somefile.php', new Position(4, 35));
+
+        $this->assertNotNull($symbol_at_position);
+
+        $this->assertSame('Exception', $symbol_at_position[0]);
     }
 }

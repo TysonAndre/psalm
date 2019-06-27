@@ -37,6 +37,18 @@ use Psalm\Type\Atomic\TTraitString;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
+use function in_array;
+use function count;
+use function array_filter;
+use function is_int;
+use function array_values;
+use function array_keys;
+use function substr;
+use function strpos;
+use function array_merge;
+use function get_class;
+use function max;
+use function array_intersect_key;
 
 /**
  * @internal
@@ -101,7 +113,7 @@ class TypeCombination
     private $floats = [];
 
     /**
-     * @var array<string, TNamedObject|TTemplateParam|TIterable>|null
+     * @var array<string, TNamedObject|TTemplateParam|TIterable|TObject>|null
      */
     private $extra_types;
 
@@ -373,13 +385,16 @@ class TypeCombination
                     $overwrite_empty_array,
                     $allow_mixed_union
                 );
-                $generic_type_params[1] = Type::combineUnionTypes(
-                    $generic_type_params[1],
-                    $objectlike_generic_type,
-                    $codebase,
-                    $overwrite_empty_array,
-                    $allow_mixed_union
-                );
+
+                if (!$generic_type_params[1]->isMixed()) {
+                    $generic_type_params[1] = Type::combineUnionTypes(
+                        $generic_type_params[1],
+                        $objectlike_generic_type,
+                        $codebase,
+                        $overwrite_empty_array,
+                        $allow_mixed_union
+                    );
+                }
             }
 
             if ($combination->array_always_filled
@@ -614,7 +629,9 @@ class TypeCombination
         ) {
             if ($type->params) {
                 if ($combination->closure_params === null) {
-                    $combination->closure_params = $type->params;
+                    foreach ($type->params as $param) {
+                        $combination->closure_params[] = clone $param;
+                    }
                 } else {
                     $param_count = max(count($combination->closure_params), count($type->params));
 
@@ -656,7 +673,11 @@ class TypeCombination
             }
         }
 
-        if ($type instanceof TNamedObject || $type instanceof TTemplateParam || $type instanceof TIterable) {
+        if ($type instanceof TNamedObject
+            || $type instanceof TTemplateParam
+            || $type instanceof TIterable
+            || $type instanceof Type\Atomic\TObjectWithProperties
+        ) {
             if ($type->extra_types) {
                 $combination->extra_types = array_merge(
                     $combination->extra_types ?: [],
@@ -858,7 +879,11 @@ class TypeCombination
                         return null;
                     }
 
-                    if ($type instanceof TLiteralString) {
+                    if ($type instanceof Type\Atomic\TTemplateParamClass) {
+                        $combination->value_types[$type_key] = $type;
+                    } elseif ($type instanceof Type\Atomic\TClassString && $type->as !== 'object') {
+                        $combination->value_types[$type_key] = $type;
+                    } elseif ($type instanceof TLiteralString) {
                         if ($combination->strings !== null && count($combination->strings) < $literal_limit) {
                             $combination->strings[$type_key] = $type;
                         } else {
