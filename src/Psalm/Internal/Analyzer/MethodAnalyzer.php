@@ -30,8 +30,6 @@ use function explode;
 use function is_string;
 use function in_array;
 
-use function explode;
-
 /**
  * @internal
  */

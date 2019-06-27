@@ -5,8 +5,6 @@ use Psalm\Storage\ClassLikeStorage;
 use function strtolower;
 use function array_merge;
 
-use function strtolower;
-
 /**
  * @internal
  */

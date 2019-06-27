@@ -60,8 +60,6 @@ use function preg_match;
 use function dirname;
 use const DIRECTORY_SEPARATOR;
 
-use function strtolower;
-
 /**
  * @internal
  */

@@ -59,17 +59,7 @@ use function stripos;
 use function preg_quote;
 use function array_pop;
 use function array_merge;
-
-use function array_merge;
-use function array_values;
-use function count;
-use function in_array;
 use function is_string;
-use function strlen;
-use function strpos;
-use function str_split;
-use function strtolower;
-use function substr;
 
 abstract class Type
 {

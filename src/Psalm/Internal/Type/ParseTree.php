@@ -37,8 +37,7 @@ class ParseTree
         $this->parent = $parent;
     }
 
-    /** @var array<string,self> */
-    private static $cache = [];
+    // TODO: Look into performance impact of caching parse tree
 
     public function __destruct()
     {
@@ -53,23 +52,6 @@ class ParseTree
      * @return self
      */
     public static function createFromTokens(array $type_tokens)
-    {
-        $key = \implode("\x00", $type_tokens);
-        if (isset(self::$cache[$key])) {
-            return self::$cache[$key];
-        }
-        $result = self::createFromTokensInner($type_tokens);
-        return self::$cache[$key] = $result;
-    }
-
-    /**
-     * Create a parse tree from a tokenised type
-     *
-     * @param  array<int,string>  $type_tokens
-     *
-     * @return self
-     */
-    private static function createFromTokensInner(array $type_tokens)
     {
         // We construct a parse tree corresponding to the type
         $parse_tree = new ParseTree\Root();
