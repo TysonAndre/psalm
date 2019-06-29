@@ -166,4 +166,5 @@ return [
         'DuplicateExpressionPlugin',
     ],
 
+    'redundant_condition_detection' => true,
 ];
