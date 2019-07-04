@@ -2,6 +2,7 @@
 namespace Psalm\Internal\Analyzer\Statements\Expression\Call;
 
 use PhpParser;
+use Psalm\Codebase;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\MethodAnalyzer;
 use Psalm\Internal\Analyzer\NamespaceAnalyzer;
@@ -30,6 +31,10 @@ use function strpos;
 use function is_string;
 use function strlen;
 use function substr;
+use function token_get_all;
+use function array_reverse;
+use function array_shift;
+use function reset;
 
 /**
  * @internal
@@ -159,7 +164,11 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 }
             }
 
-            if ($codebase->store_node_types && $fq_class_name) {
+            if ($codebase->store_node_types
+                && $fq_class_name
+                && !$context->collect_initializations
+                && !$context->collect_mutations
+            ) {
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
                     $stmt->class,
@@ -340,6 +349,17 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             if ($stmt->name instanceof PhpParser\Node\Identifier && !$is_mock) {
                 $method_name_lc = strtolower($stmt->name->name);
                 $method_id = $fq_class_name . '::' . $method_name_lc;
+
+                if (!$context->collect_initializations
+                    && !$context->collect_mutations
+                ) {
+                    ArgumentMapPopulator::recordArgumentPositions(
+                        $statements_analyzer,
+                        $stmt,
+                        $codebase,
+                        $method_id
+                    );
+                }
 
                 $args = $stmt->args;
 
@@ -996,7 +1016,11 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 );
             }
 
-            if ($codebase->store_node_types && $method_id) {
+            if ($codebase->store_node_types
+                && $method_id
+                && !$context->collect_initializations
+                && !$context->collect_mutations
+            ) {
                 /** @psalm-suppress PossiblyInvalidArgument never a string, PHP Parser bug */
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
@@ -1006,8 +1030,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             }
 
             if ($codebase->store_node_types
-                && (!$context->collect_initializations
-                    && !$context->collect_mutations)
+                && !$context->collect_initializations
+                && !$context->collect_mutations
                 && isset($stmt->inferredType)
             ) {
                 /** @psalm-suppress PossiblyInvalidArgument never a string, PHP Parser bug */

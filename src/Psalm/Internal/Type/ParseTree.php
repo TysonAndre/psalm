@@ -44,6 +44,15 @@ class ParseTree
         $this->parent = null;
     }
 
+    public function cleanParents() : void
+    {
+        foreach ($this->children as $child) {
+            $child->cleanParents();
+        }
+
+        $this->parent = null;
+    }
+
     /**
      * Create a parse tree from a tokenised type (cached)
      *
@@ -549,6 +558,8 @@ class ParseTree
                     break;
             }
         }
+
+        $parse_tree->cleanParents();
 
         if ($current_leaf !== $parse_tree
             && ($parse_tree instanceof ParseTree\GenericTree

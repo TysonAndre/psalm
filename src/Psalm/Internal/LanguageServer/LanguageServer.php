@@ -17,6 +17,7 @@ use Psalm\Internal\LanguageServer\Server\TextDocument;
 use LanguageServerProtocol\{Range, Position, Diagnostic, DiagnosticSeverity};
 use AdvancedJsonRpc;
 use Amp\Promise;
+use Symfony\Component\VarExporter\VarExporter;
 use Throwable;
 use function Amp\call;
 use function Amp\asyncCoroutine;
@@ -120,6 +121,11 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
                     // Ignore responses, this is the handler for requests and notifications
                     if (AdvancedJsonRpc\Response::isResponse($msg->body)) {
                         return;
+                    }
+
+                    /** @psalm-suppress UndefinedPropertyFetch */
+                    if ($msg->body->method === 'textDocument/signatureHelp') {
+                        $this->doAnalysis();
                     }
 
                     $result = null;
@@ -236,15 +242,12 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
                 // Support "Completion"
 
                 if ($this->project_analyzer->provide_completion) {
-                    $serverCapabilities->completionProvider = new CompletionOptions;
+                    $serverCapabilities->completionProvider = new CompletionOptions();
                     $serverCapabilities->completionProvider->resolveProvider = false;
                     $serverCapabilities->completionProvider->triggerCharacters = ['$', '>', ':'];
                 }
 
-                /*
-                $serverCapabilities->signatureHelpProvider = new SignatureHelpOptions();
-                $serverCapabilities->signatureHelpProvider->triggerCharacters = ['(', ','];
-                */
+                $serverCapabilities->signatureHelpProvider = new SignatureHelpOptions(['(', ',']);
 
                 // Support global references
                 $serverCapabilities->xworkspaceReferencesProvider = false;
@@ -304,6 +307,7 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
         $all_file_paths_to_analyze = array_keys($all_files_to_analyze);
         $codebase->analyzer->addFiles(array_combine($all_file_paths_to_analyze, $all_file_paths_to_analyze));
         $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
+
         $this->emitIssues($all_files_to_analyze);
 
         $this->onchange_paths_to_analyze = [];

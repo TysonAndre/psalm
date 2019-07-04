@@ -135,7 +135,7 @@ class FileReferenceProvider
      *      array{
      *          0: TaggedCodeType,
      *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *          2: array<int, array{0: int, 1: string, 2: int}>
      *      }
      *  >
      */
@@ -941,7 +941,7 @@ class FileReferenceProvider
      *      array{
      *          0: TaggedCodeType,
      *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *          2: array<int, array{0: int, 1: string, 2: int}>
      *      }
      *  > $file_maps
      */
@@ -981,7 +981,7 @@ class FileReferenceProvider
      *      array{
      *          0: TaggedCodeType,
      *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *          2: array<int, array{0: int, 1: string, 2: int}>
      *      }
      *  >
      */

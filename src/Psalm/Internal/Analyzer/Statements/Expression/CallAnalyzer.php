@@ -1176,7 +1176,7 @@ class CallAnalyzer
                     $generic_params,
                     $template_types
                 ) === false) {
-                    return false;
+                    return;
                 }
             }
 
@@ -1207,7 +1207,7 @@ class CallAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
             } elseif ($method_id === 'array_filter' && count($args) < 1) {
                 if (IssueBuffer::accepts(
@@ -1218,7 +1218,7 @@ class CallAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
             }
 
@@ -1231,6 +1231,8 @@ class CallAnalyzer
             ) {
                 return false;
             }
+
+            return null;
         }
 
         if (!$is_variadic
@@ -1280,7 +1282,7 @@ class CallAnalyzer
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        // fall through
                     }
 
                     break;
@@ -1443,10 +1445,10 @@ class CallAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
 
-            return;
+            return false;
         }
 
         if (!in_array(
@@ -1694,8 +1696,10 @@ class CallAnalyzer
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // fall through
                         }
+
+                        continue;
                     }
                 }
 
@@ -1849,7 +1853,7 @@ class CallAnalyzer
             }
 
             foreach ($closure_arg_type->getTypes() as $closure_type) {
-                if (self::checkArrayFunctionClosureType(
+                self::checkArrayFunctionClosureType(
                     $statements_analyzer,
                     $method_id,
                     $closure_type,
@@ -1858,9 +1862,7 @@ class CallAnalyzer
                     $max_closure_param_count,
                     $array_arg_types,
                     $check_functions
-                ) === false) {
-                    return false;
-                }
+                );
             }
         }
     }
@@ -1871,7 +1873,7 @@ class CallAnalyzer
      * @param  int      $max_closure_param_count [description]
      * @param  (TArray|null)[] $array_arg_types
      *
-     * @return false|null
+     * @return void
      */
     private static function checkArrayFunctionClosureType(
         StatementsAnalyzer $statements_analyzer,
@@ -2009,7 +2011,7 @@ class CallAnalyzer
                 continue;
             }
 
-            if (self::checkArrayFunctionClosureTypeArgs(
+            self::checkArrayFunctionClosureTypeArgs(
                 $statements_analyzer,
                 $method_id,
                 $closure_type,
@@ -2017,9 +2019,7 @@ class CallAnalyzer
                 $min_closure_param_count,
                 $max_closure_param_count,
                 $array_arg_types
-            ) === false) {
-                return false;
-            }
+            );
         }
     }
 
@@ -2030,7 +2030,7 @@ class CallAnalyzer
      * @param  int      $max_closure_param_count
      * @param  (TArray|null)[] $array_arg_types
      *
-     * @return false|null
+     * @return void
      */
     private static function checkArrayFunctionClosureTypeArgs(
         StatementsAnalyzer $statements_analyzer,
@@ -2069,8 +2069,10 @@ class CallAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
+
+            return;
         } elseif ($required_param_count > $max_closure_param_count) {
             $argument_text = $max_closure_param_count === 1 ? 'one argument' : $max_closure_param_count . ' arguments';
 
@@ -2083,8 +2085,10 @@ class CallAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
+
+            return;
         }
 
         // abandon attempt to validate closure params if we have an extra arg for ARRAY_FILTER
@@ -2197,7 +2201,7 @@ class CallAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
             }
 
@@ -2314,7 +2318,7 @@ class CallAnalyzer
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
-                return false;
+                // fall through
             }
 
             return null;
@@ -2520,7 +2524,7 @@ class CallAnalyzer
                         $statements_analyzer->getSuppressedIssues()
                     ) === false
                     ) {
-                        return false;
+                        return;
                     }
                 } elseif ($param_type_part instanceof TArray
                     && $input_expr instanceof PhpParser\Node\Expr\Array_
@@ -2536,7 +2540,7 @@ class CallAnalyzer
                                         $statements_analyzer->getSuppressedIssues()
                                     ) === false
                                     ) {
-                                        return false;
+                                        return;
                                     }
                                 }
                             }
@@ -2584,7 +2588,7 @@ class CallAnalyzer
                                     $statements_analyzer->getSuppressedIssues()
                                 ) === false
                                 ) {
-                                    return false;
+                                    return;
                                 }
 
                                 if (!$codebase->classOrInterfaceExists($callable_fq_class_name)) {
@@ -2608,7 +2612,7 @@ class CallAnalyzer
                                     $statements_analyzer->getSuppressedIssues()
                                 ) === false
                                 ) {
-                                    return false;
+                                    return;
                                 }
                             }
                         } else {
@@ -2619,7 +2623,7 @@ class CallAnalyzer
                                 false
                             ) === false
                             ) {
-                                return false;
+                                return;
                             }
                         }
                     }
@@ -2638,7 +2642,7 @@ class CallAnalyzer
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
-                    return false;
+                    // fall through
                 }
 
                 return null;

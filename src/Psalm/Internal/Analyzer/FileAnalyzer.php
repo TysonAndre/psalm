@@ -120,12 +120,6 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
         $this->codebase = $project_analyzer->getCodebase();
     }
 
-    public function __destruct()
-    {
-        /** @psalm-suppress PossiblyNullPropertyAssignmentValue */
-        $this->source = null;
-    }
-
     /**
      * @param  bool $preserve_analyzers
      *
@@ -631,5 +625,11 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
     public function getFirstStatementOffset() : int
     {
         return $this->first_statement_offset;
+    }
+
+    public function clearSourceBeforeDestruction() : void
+    {
+        /** @psalm-suppress PossiblyNullPropertyAssignmentValue */
+        $this->source = null;
     }
 }

@@ -1,7 +1,7 @@
 <?php
 namespace Psalm;
 
-use LanguageServerProtocol\{Position, Range};
+use LanguageServerProtocol\{Position, Range, Command};
 use PhpParser;
 use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
@@ -353,7 +353,7 @@ class Codebase
     {
         $this->loadAnalyzer();
 
-        $this->file_reference_provider->loadReferenceCache();
+        $this->file_reference_provider->loadReferenceCache(false);
 
         if (!$this->statements_provider->parser_cache_provider) {
             $diff_files = $candidate_files;
@@ -397,6 +397,7 @@ class Codebase
 
         $this->scanner->addFilesToDeepScan($referenced_files);
         $this->addFilesToAnalyze(array_combine($candidate_files, $candidate_files));
+
         $this->scanner->scanFiles($this->classlikes);
 
         $this->file_reference_provider->updateReferenceCache($this, $referenced_files);
@@ -942,8 +943,8 @@ class Codebase
      */
     public function getSymbolInformation(string $file_path, string $symbol)
     {
-        if (substr($symbol, 0, 6) === 'type: ') {
-            return substr($symbol, 6);
+        if (\is_numeric($symbol[0])) {
+            return \preg_replace('/[^:]*:/', '', $symbol);
         }
 
         try {
@@ -1012,6 +1013,15 @@ class Codebase
      */
     public function getSymbolLocation(string $file_path, string $symbol)
     {
+        if (\is_numeric($symbol[0])) {
+            $symbol = \preg_replace('/:.*/', '', $symbol);
+            $symbol_parts = explode('-', $symbol);
+
+            $file_contents = $this->getFileContents($file_path);
+
+            return new CodeLocation\Raw($file_contents, $file_path, (int) $symbol_parts[0], (int) $symbol_parts[1]);
+        }
+
         try {
             if (strpos($symbol, '::')) {
                 if (strpos($symbol, '()')) {
@@ -1114,23 +1124,7 @@ class Codebase
         }
 
         if ($reference === null || $start_pos === null || $end_pos === null) {
-            ksort($type_map);
-
-            foreach ($type_map as $start_pos => list($end_pos, $possible_type)) {
-                if ($offset < $start_pos) {
-                    break;
-                }
-
-                if ($offset > $end_pos) {
-                    continue;
-                }
-
-                $reference = 'type: ' . $possible_type;
-            }
-
-            if ($reference === null || $start_pos === null || $end_pos === null) {
-                return null;
-            }
+            return null;
         }
 
         $range = new Range(
@@ -1142,7 +1136,61 @@ class Codebase
     }
 
     /**
-     * @return array{0: string, 1: '->'|'::'|'symbol', 2: array<string, string>}|null
+     * @return array{0: string, 1: int, 2: Range}|null
+     */
+    public function getFunctionArgumentAtPosition(string $file_path, Position $position)
+    {
+        $is_open = $this->file_provider->isOpen($file_path);
+
+        if (!$is_open) {
+            throw new \Psalm\Exception\UnanalyzedFileException($file_path . ' is not open');
+        }
+
+        $file_contents = $this->getFileContents($file_path);
+
+        $offset = $position->toOffset($file_contents);
+
+        list(,, $argument_map) = $this->analyzer->getMapsForFile($file_path);
+
+        $reference = null;
+        $argument_number = null;
+
+        if (!$argument_map) {
+            return null;
+        }
+
+        $start_pos = null;
+        $end_pos = null;
+
+        ksort($argument_map);
+
+        foreach ($argument_map as $start_pos => list($end_pos, $possible_reference, $possible_argument_number)) {
+            if ($offset < $start_pos) {
+                break;
+            }
+
+            if ($offset > $end_pos) {
+                continue;
+            }
+
+            $reference = $possible_reference;
+            $argument_number = $possible_argument_number;
+        }
+
+        if ($reference === null || $start_pos === null || $end_pos === null || $argument_number === null) {
+            return null;
+        }
+
+        $range = new Range(
+            self::getPositionFromOffset($start_pos, $file_contents),
+            self::getPositionFromOffset($end_pos, $file_contents)
+        );
+
+        return [$reference, $argument_number, $range];
+    }
+
+    /**
+     * @return array{0: string, 1: '->'|'::'|'symbol', 2: int}|null
      */
     public function getCompletionDataAtPosition(string $file_path, Position $position)
     {
@@ -1156,7 +1204,7 @@ class Codebase
 
         $offset = $position->toOffset($file_contents);
 
-        list($reference_map, $type_map, $alias_map) = $this->analyzer->getMapsForFile($file_path);
+        list($reference_map, $type_map) = $this->analyzer->getMapsForFile($file_path);
 
         if (!$reference_map && !$type_map) {
             return null;
@@ -1189,7 +1237,7 @@ class Codebase
                         return null;
                     }
 
-                    return [$recent_type, $gap, []];
+                    return [$recent_type, $gap, $offset];
                 }
             }
         }
@@ -1202,20 +1250,7 @@ class Codebase
             if ($offset - $end_pos === 0) {
                 $recent_type = $possible_reference;
 
-                $found_aliases = [];
-
-                foreach ($alias_map as $aliases_start_pos => list($aliases_end_pos, $aliases)) {
-                    if ($offset < $aliases_start_pos) {
-                        continue;
-                    }
-
-                    if ($offset < $aliases_end_pos) {
-                        $found_aliases = $aliases;
-                        break;
-                    }
-                }
-
-                return [$recent_type, 'symbol', $found_aliases];
+                return [$recent_type, 'symbol', $offset];
             }
         }
 
@@ -1247,7 +1282,10 @@ class Codebase
                             null,
                             (string)$method_storage->visibility,
                             $method_storage->cased_name,
-                            $method_storage->cased_name . (count($method_storage->params) !== 0 ? '($0)' : '()')
+                            $method_storage->cased_name . (count($method_storage->params) !== 0 ? '($0)' : '()'),
+                            null,
+                            null,
+                            new Command('Trigger parameter hints', 'editor.action.triggerParameterHints')
                         );
                         $completion_item->insertTextFormat = \LanguageServerProtocol\InsertTextFormat::SNIPPET;
 
@@ -1311,22 +1349,99 @@ class Codebase
     }
 
     /**
-     * @param array<string, string> $aliases
      * @return array<int, \LanguageServerProtocol\CompletionItem>
      */
-    public function getCompletionItemsForPartialSymbol(string $type_string, array $aliases) : array
-    {
+    public function getCompletionItemsForPartialSymbol(
+        string $type_string,
+        int $offset,
+        string $file_path
+    ) : array {
         $matching_classlike_names = $this->classlikes->getMatchingClassLikeNames($type_string);
 
         $completion_items = [];
 
-        $alias_namespace = array_shift($aliases);
+        $file_storage = $this->file_storage_provider->get($file_path);
+
+        $aliases = null;
+
+        foreach ($file_storage->classlikes_in_file as $fq_class_name) {
+            try {
+                $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            if (!$class_storage->stmt_location) {
+                continue;
+            }
+
+            if ($offset > $class_storage->stmt_location->raw_file_start
+                && $offset < $class_storage->stmt_location->raw_file_end
+            ) {
+                $aliases = $class_storage->aliases;
+                break;
+            }
+        }
+
+        if (!$aliases) {
+            foreach ($file_storage->namespace_aliases as $namespace_start => $namespace_aliases) {
+                if ($namespace_start < $offset) {
+                    $aliases = $namespace_aliases;
+                    break;
+                }
+            }
+
+            if (!$aliases) {
+                $aliases = $file_storage->aliases;
+            }
+        }
 
         foreach ($matching_classlike_names as $fq_class_name_lc) {
             try {
                 $storage = $this->classlike_storage_provider->get($fq_class_name_lc);
             } catch (\Exception $e) {
                 continue;
+            }
+
+            $extra_edits = [];
+
+            $insertion_text = Type::getStringFromFQCLN(
+                $storage->name,
+                $aliases && $aliases->namespace ? $aliases->namespace : null,
+                $aliases ? $aliases->uses_flipped : [],
+                null
+            );
+
+            if ($aliases
+                && $aliases->namespace
+                && $insertion_text === '\\' . $storage->name
+                && $aliases->namespace_first_stmt_start
+            ) {
+                $file_contents = $this->getFileContents($file_path);
+
+                $class_name = \preg_replace('/^.*\\\/', '', $storage->name);
+
+                if ($aliases->uses_end) {
+                    $position = self::getPositionFromOffset($aliases->uses_end, $file_contents);
+                    $extra_edits[] = new \LanguageServerProtocol\TextEdit(
+                        new Range(
+                            $position,
+                            $position
+                        ),
+                        "\n" . 'use ' . $storage->name . ';'
+                    );
+                } else {
+                    $position = self::getPositionFromOffset($aliases->namespace_first_stmt_start, $file_contents);
+                    $extra_edits[] = new \LanguageServerProtocol\TextEdit(
+                        new Range(
+                            $position,
+                            $position
+                        ),
+                        'use ' . $storage->name . ';' . "\n" . "\n"
+                    );
+                }
+
+                $insertion_text = $class_name;
             }
 
             $completion_items[] = new \LanguageServerProtocol\CompletionItem(
@@ -1336,12 +1451,9 @@ class Codebase
                 null,
                 null,
                 $storage->name,
-                Type::getStringFromFQCLN(
-                    $storage->name,
-                    $alias_namespace ? $alias_namespace : null,
-                    $aliases,
-                    null
-                )
+                $insertion_text,
+                null,
+                $extra_edits
             );
         }
 
@@ -1351,9 +1463,12 @@ class Codebase
     private static function getPositionFromOffset(int $offset, string $file_contents) : Position
     {
         $file_contents = substr($file_contents, 0, $offset);
+
+        $before_newline_count = strrpos($file_contents, "\n", $offset - strlen($file_contents));
+
         return new Position(
             substr_count($file_contents, "\n"),
-            $offset - (int)strrpos($file_contents, "\n", strlen($file_contents))
+            $offset - (int)$before_newline_count - 1
         );
     }
 

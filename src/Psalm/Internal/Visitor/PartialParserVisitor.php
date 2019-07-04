@@ -169,6 +169,8 @@ class PartialParserVisitor extends PhpParser\NodeVisitorAbstract implements PhpP
                             || !$replacement_stmts[0] instanceof PhpParser\Node\Stmt\ClassLike
                             || count($replacement_stmts[0]->stmts) !== 1
                         ) {
+                            $hacky_class_fix = self::balanceBrackets($fake_class);
+
                             if ($replacement_stmts
                                 && $replacement_stmts[0] instanceof PhpParser\Node\Stmt\ClassLike
                                 && count($replacement_stmts[0]->stmts) !== 1
@@ -178,7 +180,7 @@ class PartialParserVisitor extends PhpParser\NodeVisitorAbstract implements PhpP
                             }
 
                             // changes "): {" to ") {"
-                            $hacky_class_fix = preg_replace('/(\)[\s]*):([\s]*\{)/', '$1 $2', $fake_class);
+                            $hacky_class_fix = preg_replace('/(\)[\s]*):([\s]*\{)/', '$1 $2', $hacky_class_fix);
 
                             // allows autocompletion
                             $hacky_class_fix = preg_replace('/(->|::)(\n\s*if\s*\()/', '~;$2', $hacky_class_fix);
@@ -231,6 +233,8 @@ class PartialParserVisitor extends PhpParser\NodeVisitorAbstract implements PhpP
                                 $this->error_handler->handleError($error);
                             }
                         }
+
+                        $error_handler->clearErrors();
 
                         $traverseChildren = false;
 
@@ -323,5 +327,26 @@ class PartialParserVisitor extends PhpParser\NodeVisitorAbstract implements PhpP
     public function mustRescan() : bool
     {
         return $this->must_rescan || $this->non_method_changes;
+    }
+
+    private function balanceBrackets(string $fake_class) : string
+    {
+        $tokens = \token_get_all($fake_class);
+
+        $brace_count = 0;
+
+        foreach ($tokens as $token) {
+            if ($token === '{') {
+                $brace_count++;
+            } elseif ($token === '}') {
+                $brace_count--;
+            }
+        }
+
+        if ($brace_count > 0) {
+            $fake_class .= \str_repeat('}', $brace_count);
+        }
+
+        return $fake_class;
     }
 }

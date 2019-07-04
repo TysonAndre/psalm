@@ -46,6 +46,11 @@ use function explode;
 use function array_search;
 use function array_keys;
 use function in_array;
+use function substr;
+use function token_get_all;
+use function array_reverse;
+use function strlen;
+use function reset;
 
 /**
  * @internal
@@ -328,8 +333,8 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         }
 
         if ($codebase->store_node_types
-            && (!$context->collect_initializations
-                && !$context->collect_mutations)
+            && !$context->collect_initializations
+            && !$context->collect_mutations
             && isset($stmt->inferredType)
         ) {
             $codebase->analyzer->addNodeType(
@@ -913,7 +918,11 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             return true;
         }
 
-        if ($codebase->store_node_types && $method_id) {
+        if ($codebase->store_node_types
+            && $method_id
+            && !$context->collect_initializations
+            && !$context->collect_mutations
+        ) {
             $codebase->analyzer->addNodeReference(
                 $statements_analyzer->getFilePath(),
                 $stmt->name,
@@ -973,6 +982,17 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     );
                 }
             }
+        }
+
+        if (!$context->collect_initializations
+            && !$context->collect_mutations
+        ) {
+            ArgumentMapPopulator::recordArgumentPositions(
+                $statements_analyzer,
+                $stmt,
+                $codebase,
+                $method_id
+            );
         }
 
         if (self::checkMethodArgs(

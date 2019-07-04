@@ -62,7 +62,7 @@ use function usort;
  *          array{
  *              0: TaggedCodeType,
  *              1: TaggedCodeType,
- *              2: array<int, array{0: int, 1: array<string, string>}>
+ *              2: array<int, array{0: int, 1: string, 2: int}>
  *         }
  *      >,
  *      class_locations: array<string, array<int, \Psalm\CodeLocation>>,
@@ -153,9 +153,9 @@ class Analyzer
     private $type_map = [];
 
     /**
-     * @var array<string, array<int, array{0: int, 1: array<string, string>}>>
+     * @var array<string, array<int, array{0: int, 1: string, 2: int}>>
      */
-    private $alias_map = [];
+    private $argument_map = [];
 
     /**
      * @var array<string, array<int, \Psalm\Type\Union>>
@@ -269,6 +269,9 @@ class Analyzer
                 $this->progress->debug('Analyzing ' . $file_analyzer->getFilePath() . "\n");
 
                 $file_analyzer->analyze(null);
+                $file_analyzer->context = null;
+                $file_analyzer->clearSourceBeforeDestruction();
+                unset($file_analyzer);
 
                 return $this->getFileIssues($file_path);
             };
@@ -446,10 +449,11 @@ class Analyzer
                     FileManipulationBuffer::add($file_path, $manipulations);
                 }
 
-                foreach ($pool_data['file_maps'] as $file_path => list($reference_map, $type_map, $alias_map)) {
+                foreach ($pool_data['file_maps'] as $file_path => $file_maps) {
+                    list($reference_map, $type_map, $argument_map) = $file_maps;
                     $this->reference_map[$file_path] = $reference_map;
                     $this->type_map[$file_path] = $type_map;
-                    $this->alias_map[$file_path] = $alias_map;
+                    $this->argument_map[$file_path] = $argument_map;
                 }
             }
 
@@ -533,10 +537,10 @@ class Analyzer
             $this->existing_issues = $codebase->file_reference_provider->getExistingIssues();
             $file_maps = $codebase->file_reference_provider->getFileMaps();
 
-            foreach ($file_maps as $file_path => list($reference_map, $type_map, $alias_map)) {
+            foreach ($file_maps as $file_path => list($reference_map, $type_map, $argument_map)) {
                 $this->reference_map[$file_path] = $reference_map;
                 $this->type_map[$file_path] = $type_map;
-                $this->alias_map[$file_path] = $alias_map;
+                $this->argument_map[$file_path] = $argument_map;
             }
         }
 
@@ -894,9 +898,9 @@ class Analyzer
             }
         }
 
-        foreach ($this->alias_map as $file_path => &$alias_map) {
+        foreach ($this->argument_map as $file_path => &$argument_map) {
             if (!isset($this->analyzed_methods[$file_path])) {
-                unset($this->alias_map[$file_path]);
+                unset($this->argument_map[$file_path]);
                 continue;
             }
 
@@ -909,18 +913,19 @@ class Analyzer
             $first_diff_offset = $file_diff_map[0][0];
             $last_diff_offset = $file_diff_map[count($file_diff_map) - 1][1];
 
-            foreach ($alias_map as $alias_from => list($alias_to, $tag)) {
-                if ($alias_to < $first_diff_offset || $alias_from > $last_diff_offset) {
+            foreach ($argument_map as $argument_from => list($argument_to, $method_id, $argument_number)) {
+                if ($argument_to < $first_diff_offset || $argument_from > $last_diff_offset) {
                     continue;
                 }
 
 
                 foreach ($file_diff_map as list($from, $to, $file_offset)) {
-                    if ($alias_from >= $from && $alias_from <= $to) {
-                        unset($alias_map[$alias_from]);
-                        $alias_map[$alias_from += $file_offset] = [
-                            $alias_to += $file_offset,
-                            $tag
+                    if ($argument_from >= $from && $argument_from <= $to) {
+                        unset($argument_map[$argument_from]);
+                        $argument_map[$argument_from += $file_offset] = [
+                            $argument_to += $file_offset,
+                            $method_id,
+                            $argument_number,
                         ];
                     }
                 }
@@ -1049,19 +1054,17 @@ class Analyzer
         ];
     }
 
-    /**
-     * @param array<string, string> $aliases
-     * @return void
-     */
-    public function addNodeAliases(
+    public function addNodeArgument(
         string $file_path,
-        PhpParser\Node $node,
-        array $aliases,
-        PhpParser\Node $parent_node = null
-    ) {
-        $this->alias_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
-            ($parent_node ? (int)$parent_node->getAttribute('endFilePos') : (int)$node->getAttribute('endFilePos')) + 1,
-            $aliases
+        int $start_position,
+        int $end_position,
+        string $reference,
+        int $argument_number
+    ): void {
+        $this->argument_map[$file_path][$start_position] = [
+            $end_position,
+            $reference,
+            $argument_number
         ];
     }
 
@@ -1318,6 +1321,14 @@ class Analyzer
                 }
             }
         }
+
+        if (isset($this->argument_map[$file_path])) {
+            foreach ($this->argument_map[$file_path] as $map_start => $_) {
+                if ($map_start >= $start && $map_start <= $end) {
+                    unset($this->argument_map[$file_path][$map_start]);
+                }
+            }
+        }
     }
 
     /**
@@ -1334,7 +1345,7 @@ class Analyzer
      *      array{
      *          0: TaggedCodeType,
      *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: array<string, string>}>
+     *          2: array<int, array{0: int, 1: string, 2: int}>
      *      }
      * >
      */
@@ -1354,11 +1365,11 @@ class Analyzer
             }
         }
 
-        foreach ($this->alias_map as $file_path => $alias_map) {
+        foreach ($this->argument_map as $file_path => $argument_map) {
             if (isset($file_maps[$file_path])) {
-                $file_maps[$file_path][2] = $alias_map;
+                $file_maps[$file_path][2] = $argument_map;
             } else {
-                $file_maps[$file_path] = [[], [], $alias_map];
+                $file_maps[$file_path] = [[], [], $argument_map];
             }
         }
 
@@ -1366,14 +1377,18 @@ class Analyzer
     }
 
     /**
-     * @return array{0: TaggedCodeType, 1: TaggedCodeType, 2: array<int, array{0: int, 1: array<string, string>}>}
+     * @return array{
+     *     0: TaggedCodeType,
+     *     1: TaggedCodeType,
+     *     2: array<int, array{0: int, 1: string, 2: int}>
+     * }
      */
     public function getMapsForFile(string $file_path)
     {
         return [
             $this->reference_map[$file_path] ?? [],
             $this->type_map[$file_path] ?? [],
-            $this->alias_map[$file_path] ?? [],
+            $this->argument_map[$file_path] ?? [],
         ];
     }
 

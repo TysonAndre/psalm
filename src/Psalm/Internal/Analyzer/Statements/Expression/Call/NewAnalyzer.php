@@ -89,7 +89,11 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                 }
             }
 
-            if ($codebase->store_node_types && $fq_class_name) {
+            if ($codebase->store_node_types
+                && $fq_class_name
+                && !$context->collect_initializations
+                && !$context->collect_mutations
+            ) {
                 $codebase->analyzer->addNodeReference(
                     $statements_analyzer->getFilePath(),
                     $stmt->class,
@@ -366,6 +370,17 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $statements_analyzer->getFilePath()
                 )) {
                     $method_id = $fq_class_name . '::__construct';
+
+                    if (!$context->collect_initializations
+                        && !$context->collect_mutations
+                    ) {
+                        ArgumentMapPopulator::recordArgumentPositions(
+                            $statements_analyzer,
+                            $stmt,
+                            $codebase,
+                            $method_id
+                        );
+                    }
 
                     if (self::checkMethodArgs(
                         $method_id,
