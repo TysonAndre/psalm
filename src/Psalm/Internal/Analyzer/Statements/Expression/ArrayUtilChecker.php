@@ -63,9 +63,6 @@ class ArrayUtilChecker
         $dim_node = $args[1]->value;
         // TODO: $args[2] is default_node. Or use null.
 
-        $var_type = null;
-        $used_key_type = null;
-
         $array_var_id = ExpressionAnalyzer::getArrayVarId(
             $var_node,
             $statements_checker->getFQCLN(),
