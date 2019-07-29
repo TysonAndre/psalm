@@ -329,7 +329,7 @@ class MethodCallTest extends TestCase
                     $stmt->setFetchMode(PDO::FETCH_CLASS, A::class);
                     $stmt->execute();
                     /** @psalm-suppress MixedAssignment */
-                    $a = $stmt->fetch();'
+                    $a = $stmt->fetch();',
             ],
             'datePeriodConstructor' => [
                 '<?php
@@ -339,7 +339,7 @@ class MethodCallTest extends TestCase
                             DateInterval::createFromDateString("1 month"),
                             $d2
                         );
-                    }'
+                    }',
             ],
         ];
     }
@@ -589,6 +589,17 @@ class MethodCallTest extends TestCase
                         $a->bar(B::bat());
                     }',
                 'error_message' => 'UndefinedMethod',
+            ],
+            'complainAboutUndefinedPropertyOnMixedCall' => [
+                '<?php
+                    class C {
+                        /** @param mixed $a */
+                        public function foo($a) : void {
+                            /** @psalm-suppress MixedMethodCall */
+                            $a->bar($this->d);
+                        }
+                    }',
+                'error_message' => 'UndefinedThisPropertyFetch',
             ],
         ];
     }

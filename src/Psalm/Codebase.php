@@ -1,11 +1,25 @@
 <?php
 namespace Psalm;
 
-use LanguageServerProtocol\{Position, Range, Command};
+use function array_combine;
+use function array_merge;
+use function count;
+use function error_log;
+use function explode;
+use function in_array;
+use function krsort;
+use function ksort;
+use LanguageServerProtocol\Command;
+use LanguageServerProtocol\Position;
+use LanguageServerProtocol\Range;
+use const PHP_MAJOR_VERSION;
+use const PHP_MINOR_VERSION;
 use PhpParser;
-use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
+use function preg_match;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Codebase\CallMap;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
@@ -17,24 +31,12 @@ use Psalm\Progress\VoidProgress;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Storage\FunctionLikeStorage;
-use const PHP_MAJOR_VERSION;
-use const PHP_MINOR_VERSION;
-use function in_array;
-use function array_combine;
-use function strpos;
-use function strtolower;
-use function explode;
-use function array_merge;
-use function substr;
-use function error_log;
-use function ksort;
-use function krsort;
-use function preg_match;
 use function strlen;
-use function count;
-use function array_shift;
-use function substr_count;
+use function strpos;
 use function strrpos;
+use function strtolower;
+use function substr;
+use function substr_count;
 
 class Codebase
 {
@@ -378,7 +380,7 @@ class Codebase
         }
 
         foreach ($referenced_files as $referenced_file_path) {
-            if (in_array($referenced_file_path, $diff_files)) {
+            if (in_array($referenced_file_path, $diff_files, true)) {
                 continue;
             }
 
@@ -593,6 +595,7 @@ class Codebase
     public function findReferencesToProperty(string $property_id)
     {
         list($fq_class_name, $property_name) = explode('::', $property_id);
+
         return $this->file_reference_provider->getClassPropertyLocations(
             strtolower($fq_class_name) . '::' . $property_name
         );
@@ -709,9 +712,10 @@ class Codebase
      * @param  string       $fq_class_name
      * @param  string       $possible_parent
      *
-     * @return bool
      * @throws \Psalm\Exception\UnpopulatedClasslikeException when called on unpopulated class
      * @throws \InvalidArgumentException when class does not exist
+     *
+     * @return bool
      */
     public function classExtends($fq_class_name, $possible_parent)
     {
@@ -1004,6 +1008,7 @@ class Codebase
             return '<?php ' . ($storage->abstract ? 'abstract ' : '') . 'class ' . $storage->name;
         } catch (\Exception $e) {
             error_log($e->getMessage());
+
             return null;
         }
     }
@@ -1077,6 +1082,7 @@ class Codebase
             return $storage->location;
         } catch (\UnexpectedValueException $e) {
             error_log($e->getMessage());
+
             return null;
         } catch (\InvalidArgumentException $e) {
             return null;
@@ -1150,7 +1156,7 @@ class Codebase
 
         $offset = $position->toOffset($file_contents);
 
-        list(,, $argument_map) = $this->analyzer->getMapsForFile($file_path);
+        list(, , $argument_map) = $this->analyzer->getMapsForFile($file_path);
 
         $reference = null;
         $argument_number = null;
@@ -1187,6 +1193,67 @@ class Codebase
         );
 
         return [$reference, $argument_number, $range];
+    }
+
+    /**
+     * @param  string $function_symbol
+     */
+    public function getSignatureInformation(string $function_symbol) : ?\LanguageServerProtocol\SignatureInformation
+    {
+        $params = null;
+
+        if (strpos($function_symbol, '::') !== false) {
+            $declaring_method_id = $this->methods->getDeclaringMethodId($function_symbol);
+
+            if ($declaring_method_id === null) {
+                return null;
+            }
+
+            $method_storage = $this->methods->getStorage($declaring_method_id);
+            $params = $method_storage->params;
+        } else {
+            try {
+                $function_storage = $this->functions->getStorage(null, $function_symbol);
+
+                $params = $function_storage->params;
+            } catch (\Exception $exception) {
+                if (CallMap::inCallMap($function_symbol)) {
+                    $callables = CallMap::getCallablesFromCallMap($function_symbol);
+
+                    if (!$callables || !$callables[0]->params) {
+                        return null;
+                    }
+
+                    $params = $callables[0]->params;
+                } else {
+                    return null;
+                }
+            }
+        }
+
+        $signature_label = '(';
+        $parameters = [];
+
+        foreach ($params as $i => $param) {
+            $parameter_label = ($param->type ?: 'mixed') . ' $' . $param->name;
+            $parameters[] = new \LanguageServerProtocol\ParameterInformation([
+                strlen($signature_label),
+                strlen($signature_label) + strlen($parameter_label),
+            ]);
+
+            $signature_label .= $parameter_label;
+
+            if ($i < (count($params) - 1)) {
+                $signature_label .= ', ';
+            }
+        }
+
+        $signature_label .= ')';
+
+        return new \LanguageServerProtocol\SignatureInformation(
+            $signature_label,
+            $parameters
+        );
     }
 
     /**
@@ -1394,17 +1461,11 @@ class Codebase
             }
         }
 
-        foreach ($matching_classlike_names as $fq_class_name_lc) {
-            try {
-                $storage = $this->classlike_storage_provider->get($fq_class_name_lc);
-            } catch (\Exception $e) {
-                continue;
-            }
-
+        foreach ($matching_classlike_names as $fq_class_name) {
             $extra_edits = [];
 
             $insertion_text = Type::getStringFromFQCLN(
-                $storage->name,
+                $fq_class_name,
                 $aliases && $aliases->namespace ? $aliases->namespace : null,
                 $aliases ? $aliases->uses_flipped : [],
                 null
@@ -1412,12 +1473,12 @@ class Codebase
 
             if ($aliases
                 && $aliases->namespace
-                && $insertion_text === '\\' . $storage->name
+                && $insertion_text === '\\' . $fq_class_name
                 && $aliases->namespace_first_stmt_start
             ) {
                 $file_contents = $this->getFileContents($file_path);
 
-                $class_name = \preg_replace('/^.*\\\/', '', $storage->name);
+                $class_name = \preg_replace('/^.*\\\/', '', $fq_class_name);
 
                 if ($aliases->uses_end) {
                     $position = self::getPositionFromOffset($aliases->uses_end, $file_contents);
@@ -1426,7 +1487,7 @@ class Codebase
                             $position,
                             $position
                         ),
-                        "\n" . 'use ' . $storage->name . ';'
+                        "\n" . 'use ' . $fq_class_name . ';'
                     );
                 } else {
                     $position = self::getPositionFromOffset($aliases->namespace_first_stmt_start, $file_contents);
@@ -1435,7 +1496,7 @@ class Codebase
                             $position,
                             $position
                         ),
-                        'use ' . $storage->name . ';' . "\n" . "\n"
+                        'use ' . $fq_class_name . ';' . "\n" . "\n"
                     );
                 }
 
@@ -1443,12 +1504,12 @@ class Codebase
             }
 
             $completion_items[] = new \LanguageServerProtocol\CompletionItem(
-                $storage->name,
+                $fq_class_name,
                 \LanguageServerProtocol\CompletionItemKind::CLASS_,
                 null,
                 null,
                 null,
-                $storage->name,
+                $fq_class_name,
                 $insertion_text,
                 null,
                 $extra_edits

@@ -403,7 +403,7 @@ class AssertTest extends TestCase
                     $f->bat();',
                 [
                     '$f' => 'Foo',
-                ]
+                ],
             ],
             'dontBleedBadAssertVarIntoContext' => [
                 '<?php
@@ -884,6 +884,132 @@ class AssertTest extends TestCase
                             $str .= $in;
                         }
                     }',
+            ],
+            'assertUnion' => [
+                '<?php
+                    class Foo{
+                        public function bar() : void {}
+                    }
+
+                    /**
+                     * @param mixed $b
+                     * @psalm-assert int|Foo $b
+                     */
+                    function assertIntOrFoo($b) : void {
+                        if (!is_int($b) && !(is_object($b) && $b instanceof Foo)) {
+                            throw new \Exception("bad");
+                        }
+                    }
+
+                    /** @psalm-suppress MixedAssignment */
+                    $a = $_GET["a"];
+
+                    assertIntOrFoo($a);
+
+                    if (!is_int($a)) $a->bar();',
+            ],
+            'assertUnionInNamespace' => [
+                '<?php
+                    namespace Foo\Bar\Baz;
+
+                    /**
+                      * @psalm-template ExpectedType of object
+                      * @param mixed $value
+                      * @psalm-param class-string<ExpectedType> $interface
+                      * @psalm-assert ExpectedType|class-string<ExpectedType> $value
+                      */
+                    function implementsInterface($value, $interface, string $message = ""): void {}
+
+                    /**
+                      * @psalm-template ExpectedType of object
+                      * @param mixed $value
+                      * @psalm-param class-string<ExpectedType> $interface
+                      * @psalm-assert null|ExpectedType|class-string<ExpectedType> $value
+                      */
+                    function nullOrImplementsInterface(?object $value, $interface, string $message = ""): void {}
+
+                    interface A
+                    {
+                    }
+
+                    /**
+                     * @param mixed $value
+                     *
+                     * @psalm-return A|class-string<A>
+                     */
+                    function consume($value) {
+                        implementsInterface($value, A::class);
+
+                        return $value;
+                    }
+
+
+                    /**
+                     * @param mixed $value
+                     *
+                     * @psalm-return A|class-string<A>|null
+                     */
+                    function consume2($value)
+                    {
+                        nullOrImplementsInterface($value, A::class);
+
+                        return $value;
+                    }'
+            ],
+            'assertThisTypeIfTrue' => [
+                '<?php
+                    class Type {
+                        /**
+                         * @psalm-assert-if-true FooType $this
+                         */
+                        public function isFoo() : bool {
+                            return $this instanceof FooType;
+                        }
+                    }
+
+                    class FooType extends Type {
+                        public function bar(): void {}
+                    }
+
+                    function takesType(Type $t) : void {
+                        if ($t->isFoo()) {
+                            $t->bar();
+                        }
+                        switch (true) {
+                            case $t->isFoo():
+                            $t->bar();
+                        }
+                    }'
+            ],
+            'assertNotArray' => [
+                '<?php
+                    /**
+                     * @param  mixed $value
+                     * @psalm-assert !array $value
+                     */
+                    function myAssertNotArray($value) : void {}
+
+                     /**
+                     * @param  mixed $value
+                     * @psalm-assert !iterable $value
+                     */
+                    function myAssertNotIterable($value) : void {}
+
+                    /**
+                     * @param  int|array $v
+                     */
+                    function takesIntOrArray($v) : int {
+                        myAssertNotArray($v);
+                        return $v;
+                    }
+
+                    /**
+                     * @param  int|iterable $v
+                     */
+                    function takesIntOrIterable($v) : int {
+                        myAssertNotIterable($v);
+                        return $v;
+                    }'
             ],
         ];
     }

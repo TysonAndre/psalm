@@ -1,12 +1,12 @@
 <?php
 namespace Psalm\Tests;
 
+use function preg_quote;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 use function strpos;
-use function preg_quote;
 
 class UnusedVariableTest extends TestCase
 {
@@ -965,7 +965,7 @@ class UnusedVariableTest extends TestCase
                         if ($var !== "") {
                             echo $var;
                         }
-                    }'
+                    }',
             ],
             'useTryAssignedVariableInFinallyWhenCatchExits' => [
                 '<?php
@@ -985,6 +985,21 @@ class UnusedVariableTest extends TestCase
                         throw new \Exception("Something went wrong");
                     } finally {
                         \fclose($stream);
+                    }',
+            ],
+            'varUsedInloop' => [
+                '<?php
+                    class A {
+                        public static function getA() : ?A {
+                            return rand(0, 1) ? new A : null;
+                        }
+                    }
+
+                    function foo(?A $a) : void {
+                        while ($a) {
+                            echo get_class($a);
+                            $a = A::getA();
+                        }
                     }',
             ],
         ];
@@ -1627,6 +1642,41 @@ class UnusedVariableTest extends TestCase
                             try {} catch (\Exception $e) {}
                         }
                         echo $i;
+                    }',
+                'error_message' => 'UnusedVariable',
+            ],
+            'detectUselessArrayAssignment' => [
+                '<?php
+                    function foo() : void {
+                        $a = [];
+                        $a[0] = 1;
+                    }',
+                'error_message' => 'UnusedVariable',
+            ],
+            'detectUnusedSecondAssignmentBeforeTry' => [
+                '<?php
+                    $a = [1, 2, 3];
+                    echo($a[0]);
+                    $a = [4, 5, 6];
+
+                    try {
+                      // something
+                    } catch (\Throwable $t) {
+                      // something else
+                    }',
+                'error_message' => 'UnusedVariable',
+            ],
+            'detectRedundancyAfterLoopWithContinue' => [
+                '<?php
+                    $gap = null;
+
+                    foreach ([1, 2, 3] as $_) {
+                        if (rand(0, 1)) {
+                            continue;
+                        }
+
+                        $gap = "asa";
+                        throw new \Exception($gap);
                     }',
                 'error_message' => 'UnusedVariable',
             ],

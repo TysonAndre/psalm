@@ -75,6 +75,7 @@ class ClassLikeStorageCacheProvider
     public function writeToCache(ClassLikeStorage $storage, $file_path, $file_contents)
     {
         $fq_classlike_name_lc = strtolower($storage->name);
+
         $cache_location = $this->getCacheLocationForClass($fq_classlike_name_lc, $file_path, true);
         $storage->hash = $this->getCacheHash($file_path, $file_contents);
 

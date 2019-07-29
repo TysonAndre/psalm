@@ -1,18 +1,27 @@
 <?php
 namespace Psalm\Internal\Visitor;
 
+use function array_filter;
+use function array_key_exists;
+use function array_merge;
+use function array_pop;
+use function assert;
+use function class_exists;
+use function count;
+use const DIRECTORY_SEPARATOR;
+use function dirname;
+use function end;
+use function explode;
+use function function_exists;
+use function implode;
+use function in_array;
+use function interface_exists;
+use function is_string;
 use PhpParser;
+use function preg_match;
+use function preg_replace;
 use Psalm\Aliases;
-use Psalm\Internal\Analyzer\ClassAnalyzer;
-use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
-use Psalm\Internal\Analyzer\CommentAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\IncludeAnalyzer;
-use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Codebase;
-use Psalm\Internal\Codebase\CallMap;
-use Psalm\Internal\Codebase\PropertyMap;
-use Psalm\Internal\Scanner\PhpStormMetaScanner;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\DocComment;
@@ -21,15 +30,23 @@ use Psalm\Exception\FileIncludeException;
 use Psalm\Exception\IncorrectDocblockException;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\FileSource;
+use Psalm\Internal\Analyzer\ClassAnalyzer;
+use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\CommentAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\IncludeAnalyzer;
+use Psalm\Internal\Analyzer\StatementsAnalyzer;
+use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\Codebase\PropertyMap;
+use Psalm\Internal\Scanner\FileScanner;
+use Psalm\Internal\Scanner\PhpStormMetaScanner;
 use Psalm\Issue\DuplicateClass;
 use Psalm\Issue\DuplicateFunction;
 use Psalm\Issue\DuplicateMethod;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
-use Psalm\Issue\MisplacedRequiredParam;
 use Psalm\Issue\MissingDocblockType;
 use Psalm\IssueBuffer;
-use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Storage\FunctionLikeParameter;
@@ -37,28 +54,10 @@ use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Storage\PropertyStorage;
 use Psalm\Type;
-use function implode;
-use function strtolower;
-use function in_array;
-use function end;
-use function is_string;
-use function count;
-use function array_merge;
-use function trim;
-use function preg_replace;
-use function array_pop;
-use function function_exists;
-use function class_exists;
-use function interface_exists;
-use function assert;
 use function strpos;
-use function explode;
-use function array_key_exists;
+use function strtolower;
 use function substr;
-use function array_filter;
-use function preg_match;
-use function dirname;
-use const DIRECTORY_SEPARATOR;
+use function trim;
 
 /**
  * @internal
@@ -122,9 +121,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     private $not_exists_cond_expr;
 
     /**
-     * @var bool
+     * @var ?int
      */
-    private $skip_if_descendants = false;
+    private $skip_if_descendants = null;
 
     /**
      * @var array<string, array<int, array{0: string, 1: int}>>
@@ -476,14 +475,13 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $this->file_storage->constants[$fq_const_name] = $const_type;
                 $this->file_storage->declaring_constants[$fq_const_name] = $this->file_path;
             }
-        } elseif ($node instanceof PhpParser\Node\Stmt\If_) {
-            $this->skip_if_descendants = false;
-
+        } elseif ($node instanceof PhpParser\Node\Stmt\If_ && !$this->skip_if_descendants) {
             if (!$this->fq_classlike_names && !$this->functionlike_storages) {
                 if ($node->cond instanceof PhpParser\Node\Expr\BooleanNot) {
                     if ($node->cond->expr instanceof PhpParser\Node\Expr\FuncCall
                         && $node->cond->expr->name instanceof PhpParser\Node\Name
-                        && ($node->cond->expr->name->parts === ['function_exists']
+                        && (
+                            $node->cond->expr->name->parts === ['function_exists']
                             || $node->cond->expr->name->parts === ['class_exists']
                             || $node->cond->expr->name->parts === ['interface_exists']
                         )
@@ -492,7 +490,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     }
                 } elseif ($node->cond instanceof PhpParser\Node\Expr\FuncCall
                     && $node->cond->name instanceof PhpParser\Node\Name
-                    && ($node->cond->name->parts === ['function_exists']
+                    && (
+                        $node->cond->name->parts === ['function_exists']
                         || $node->cond->name->parts === ['class_exists']
                         || $node->cond->name->parts === ['interface_exists']
                     )
@@ -501,22 +500,23 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
             }
 
-            if ($this->exists_cond_expr && !$this->enterConditional($this->exists_cond_expr)) {
-                $this->skip_if_descendants = true;
-            } elseif ($this->not_exists_cond_expr && $this->enterConditional($this->not_exists_cond_expr)) {
-                $this->skip_if_descendants = true;
+            if (($this->exists_cond_expr && !$this->enterConditional($this->exists_cond_expr))
+                || ($this->not_exists_cond_expr && $this->enterConditional($this->not_exists_cond_expr))
+            ) {
+                // the else node should terminate the agreement
+                $this->skip_if_descendants = $node->else ? $node->else->getLine() : $node->getLine();
             }
-        } elseif ($node instanceof PhpParser\Node\Stmt\ElseIf_) {
-            $this->exists_cond_expr = null;
-            $this->not_exists_cond_expr = null;
-            $this->skip_if_descendants = false;
         } elseif ($node instanceof PhpParser\Node\Stmt\Else_) {
-            $this->skip_if_descendants = false;
-
-            if ($this->exists_cond_expr && $this->enterConditional($this->exists_cond_expr)) {
-                $this->skip_if_descendants = true;
-            } elseif ($this->not_exists_cond_expr && !$this->enterConditional($this->not_exists_cond_expr)) {
-                $this->skip_if_descendants = true;
+            if ($this->skip_if_descendants === $node->getLine()) {
+                $this->skip_if_descendants = null;
+                $this->exists_cond_expr = null;
+                $this->not_exists_cond_expr = null;
+            } elseif (!$this->skip_if_descendants) {
+                if (($this->exists_cond_expr && $this->enterConditional($this->exists_cond_expr))
+                    || ($this->not_exists_cond_expr && !$this->enterConditional($this->not_exists_cond_expr))
+                ) {
+                    $this->skip_if_descendants = $node->getLine();
+                }
             }
         } elseif ($node instanceof PhpParser\Node\Expr\Yield_ || $node instanceof PhpParser\Node\Expr\YieldFrom) {
             $function_like_storage = end($this->functionlike_storages);
@@ -651,10 +651,14 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             if ($functionlike_storage->has_docblock_issues) {
                 $this->file_storage->has_docblock_issues = true;
             }
-        } elseif ($node instanceof PhpParser\Node\Stmt\If_) {
+        } elseif ($node instanceof PhpParser\Node\Stmt\If_ && $node->getLine() === $this->skip_if_descendants) {
             $this->exists_cond_expr = null;
             $this->not_exists_cond_expr = null;
-            $this->skip_if_descendants = false;
+            $this->skip_if_descendants = null;
+        } elseif ($node instanceof PhpParser\Node\Stmt\Else_ && $node->getLine() === $this->skip_if_descendants) {
+            $this->exists_cond_expr = null;
+            $this->not_exists_cond_expr = null;
+            $this->skip_if_descendants = null;
         }
 
         return null;
@@ -849,7 +853,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
         }
 
-        if ($function_id === 'class_alias') {
+        if ($function_id === 'class_alias' && !$this->skip_if_descendants) {
             $first_arg = $node->args[0]->value ?? null;
             $second_arg = $node->args[1]->value ?? null;
 
@@ -1000,8 +1004,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         $this->classlike_storages[] = $storage;
 
         if ($node instanceof PhpParser\Node\Stmt\Class_) {
-            $storage->abstract = (bool)$node->isAbstract();
-            $storage->final = (bool)$node->isFinal();
+            $storage->abstract = $node->isAbstract();
+            $storage->final = $node->isFinal();
 
             $this->codebase->classlikes->addFullyQualifiedClassName($fq_classlike_name, $this->file_path);
 
@@ -1097,7 +1101,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                                 }
 
                                 $storage->template_types[$template_name] = [
-                                    $fq_classlike_name => [$template_type]
+                                    $fq_classlike_name => [$template_type],
                                 ];
                             } else {
                                 if (IssueBuffer::accepts(
@@ -1227,6 +1231,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             $storage->has_docblock_issues = true;
+
             return;
         }
 
@@ -1313,6 +1318,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             $storage->has_docblock_issues = true;
+
             return;
         }
 
@@ -1397,6 +1403,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             $storage->has_docblock_issues = true;
+
             return;
         }
 
@@ -1467,7 +1474,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             $storage = new MethodStorage();
             $storage->defining_fqcln = '';
-            $storage->is_static = (bool) $stmt->isStatic();
+            $storage->is_static = $stmt->isStatic();
         } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
             $cased_function_id =
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $stmt->name->name;
@@ -1618,8 +1625,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $class_storage->overridden_method_ids[strtolower($stmt->name->name)] = [];
             }
 
-            $storage->is_static = (bool) $stmt->isStatic();
-            $storage->abstract = (bool) $stmt->isAbstract();
+            $storage->is_static = $stmt->isStatic();
+            $storage->abstract = $stmt->isAbstract();
 
             $storage->final = $class_storage->final || $stmt->isFinal();
 
@@ -1890,7 +1897,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         continue;
                     }
 
-                    $param_index = \array_search($param_name, \array_keys($storage->param_types));
+                    $param_index = \array_search($param_name, \array_keys($storage->param_types), true);
 
                     if (!isset($storage->params[$param_index]->type)) {
                         continue;
@@ -1903,8 +1910,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                             ? new Type\Union([
                                 new Type\Atomic\TArray([
                                     Type::getInt(),
-                                    $param_type
-                                ])
+                                    $param_type,
+                                ]),
                             ])
                             : $param_type;
                 } else {
@@ -1969,6 +1976,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         if ($docblock_info->variadic) {
             $storage->variadic = true;
+        }
+
+        if ($docblock_info->pure) {
+            $storage->pure = true;
         }
 
         if ($docblock_info->ignore_nullable_return && $storage->return_type) {
@@ -2065,7 +2076,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $storage->has_docblock_issues = true;
                 } else {
                     $storage->template_types[$template_name] = [
-                        '' => [$template_type]
+                        '' => [$template_type],
                     ];
 
                     $storage->template_covariants[$i] = $template_map[3];
@@ -2081,58 +2092,17 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->assertions = [];
 
             foreach ($docblock_info->assertions as $assertion) {
-                $assertion_type = $assertion['type'];
+                $assertion_type_parts = $this->getAssertionParts($assertion['type'], $stmt);
 
-                if (strpos($assertion_type, '|') !== false) {
-                    if (IssueBuffer::accepts(
-                        new InvalidDocblock(
-                            'Docblock assertions cannot contain | characters',
-                            new CodeLocation($this->file_scanner, $stmt, null, true)
-                        )
-                    )) {
-                    }
-
+                if (!$assertion_type_parts) {
                     continue;
-                }
-
-                if (strpos($assertion_type, '\'') !== false || strpos($assertion_type, '"') !== false) {
-                    if (IssueBuffer::accepts(
-                        new InvalidDocblock(
-                            'Docblock assertions cannot contain quotes',
-                            new CodeLocation($this->file_scanner, $stmt, null, true)
-                        )
-                    )) {
-                    }
-
-                    continue;
-                }
-
-                $prefix = '';
-                if ($assertion_type[0] === '!') {
-                    $prefix = '!';
-                    $assertion_type = substr($assertion_type, 1);
-                }
-                if ($assertion_type[0] === '~') {
-                    $prefix .= '~';
-                    $assertion_type = substr($assertion_type, 1);
-                }
-                if ($assertion_type[0] === '=') {
-                    $prefix .= '=';
-                    $assertion_type = substr($assertion_type, 1);
-                }
-
-                if ($assertion_type !== 'falsy'
-                    && !isset($template_types[$assertion_type])
-                    && !isset(Type::PSALM_RESERVED_WORDS[$assertion_type])
-                ) {
-                    $assertion_type = Type::getFQCLNFromString($assertion_type, $this->aliases);
                 }
 
                 foreach ($storage->params as $i => $param) {
                     if ($param->name === $assertion['param_name']) {
                         $storage->assertions[] = new \Psalm\Storage\Assertion(
                             $i,
-                            [[$prefix . $assertion_type]]
+                            [$assertion_type_parts]
                         );
                         continue 2;
                     }
@@ -2140,20 +2110,26 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->assertions[] = new \Psalm\Storage\Assertion(
                     '$' . $assertion['param_name'],
-                    [[$prefix . $assertion_type]]
+                    [$assertion_type_parts]
                 );
             }
         }
 
         if ($docblock_info->if_true_assertions) {
-            $storage->assertions = [];
+            $storage->if_true_assertions = [];
 
             foreach ($docblock_info->if_true_assertions as $assertion) {
+                $assertion_type_parts = $this->getAssertionParts($assertion['type'], $stmt);
+
+                if (!$assertion_type_parts) {
+                    continue;
+                }
+
                 foreach ($storage->params as $i => $param) {
                     if ($param->name === $assertion['param_name']) {
                         $storage->if_true_assertions[] = new \Psalm\Storage\Assertion(
                             $i,
-                            [[$assertion['type']]]
+                            [$assertion_type_parts]
                         );
                         continue 2;
                     }
@@ -2161,20 +2137,26 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->if_true_assertions[] = new \Psalm\Storage\Assertion(
                     '$' . $assertion['param_name'],
-                    [[$assertion['type']]]
+                    [$assertion_type_parts]
                 );
             }
         }
 
         if ($docblock_info->if_false_assertions) {
-            $storage->assertions = [];
+            $storage->if_false_assertions = [];
 
             foreach ($docblock_info->if_false_assertions as $assertion) {
+                $assertion_type_parts = $this->getAssertionParts($assertion['type'], $stmt);
+
+                if (!$assertion_type_parts) {
+                    continue;
+                }
+
                 foreach ($storage->params as $i => $param) {
                     if ($param->name === $assertion['param_name']) {
                         $storage->if_false_assertions[] = new \Psalm\Storage\Assertion(
                             $i,
-                            [[$assertion['type']]]
+                            [$assertion_type_parts]
                         );
                         continue 2;
                     }
@@ -2182,7 +2164,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->if_false_assertions[] = new \Psalm\Storage\Assertion(
                     '$' . $assertion['param_name'],
-                    [[$assertion['type']]]
+                    [$assertion_type_parts]
                 );
             }
         }
@@ -2294,7 +2276,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                                     : 'object',
                                 $template_atomic_type,
                                 $template_class
-                            )
+                            ),
                         ]);
 
                         if ($param_type_nullable) {
@@ -2409,6 +2391,83 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         }
 
         return $storage;
+    }
+
+    /**
+     * @return ?array<int, string>
+     */
+    private function getAssertionParts(
+        string $assertion_type,
+        PhpParser\Node\FunctionLike $stmt
+    ) : ?array {
+        $is_union = false;
+
+        if (strpos($assertion_type, '|') !== false) {
+            $is_union = true;
+        }
+
+        if (strpos($assertion_type, '\'') !== false || strpos($assertion_type, '"') !== false) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    'Docblock assertions cannot contain quotes',
+                    new CodeLocation($this->file_scanner, $stmt, null, true)
+                )
+            )) {
+            }
+
+            return null;
+        }
+
+        $prefix = '';
+        if ($assertion_type[0] === '!') {
+            $prefix = '!';
+            $assertion_type = substr($assertion_type, 1);
+        }
+        if ($assertion_type[0] === '~') {
+            $prefix .= '~';
+            $assertion_type = substr($assertion_type, 1);
+        }
+        if ($assertion_type[0] === '=') {
+            $prefix .= '=';
+            $assertion_type = substr($assertion_type, 1);
+        }
+
+        if ($prefix && $is_union) {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    'Docblock assertions cannot contain | characters together with ' . $prefix,
+                    new CodeLocation($this->file_scanner, $stmt, null, true)
+                )
+            )) {
+            }
+
+            return null;
+        }
+
+        $assertion_type_parts = explode('|', $assertion_type);
+
+        foreach ($assertion_type_parts as $i => $assertion_type_part) {
+            if ($assertion_type_part !== 'falsy'
+                && $assertion_type_part !== 'array'
+                && $assertion_type_part !== 'iterable'
+            ) {
+                $namespaced_type = Type::parseTokens(
+                    Type::fixUpLocalType(
+                        $assertion_type_part,
+                        $this->aliases,
+                        $this->function_template_types + $this->class_template_types,
+                        $this->type_aliases,
+                        null
+                    )
+                );
+
+                $assertion_type_parts[$i] = $prefix . $namespaced_type->getId();
+            } else {
+                $assertion_type_parts[$i] = $prefix . $assertion_type_part;
+            }
+        }
+
+        return $assertion_type_parts;
     }
 
     /**
@@ -2837,7 +2896,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $doc_var_location = null;
 
             $property_storage = $storage->properties[$property->name->name] = new PropertyStorage();
-            $property_storage->is_static = (bool)$stmt->isStatic();
+            $property_storage->is_static = $stmt->isStatic();
             $property_storage->type = $signature_type;
             $property_storage->signature_type = $signature_type;
             $property_storage->signature_type_location = $signature_type_location;
@@ -3070,8 +3129,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 return;
             }
         }
-
-        return;
     }
 
     /**

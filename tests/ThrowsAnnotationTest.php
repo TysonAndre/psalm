@@ -7,7 +7,6 @@ use Psalm\Context;
 class ThrowsAnnotationTest extends TestCase
 {
     /**
-     *
      * @return void
      */
     public function testUndocumentedThrow()
@@ -149,7 +148,6 @@ class ThrowsAnnotationTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testUndocumentedThrowInFunctionCall()
@@ -308,7 +306,6 @@ class ThrowsAnnotationTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testUncaughtThrowInFunctionCall()
@@ -351,7 +348,6 @@ class ThrowsAnnotationTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testEmptyThrows()
@@ -405,6 +401,187 @@ class ThrowsAnnotationTest extends TestCase
                         foo($x, $y);
                     } catch (Exception $e) {}
                 }'
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testDocumentedThrowInInterfaceWithInheritDocblock()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                interface Foo
+                {
+                    /**
+                     * @throws \InvalidArgumentException
+                     */
+                    public function test(): void;
+                }
+
+                class Bar implements Foo
+                {
+                    /**
+                     * {@inheritdoc}
+                     */
+                    public function test(): void
+                    {
+                        throw new \InvalidArgumentException();
+                    }
+                }
+                '
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testDocumentedThrowInInterfaceWithoutInheritDocblock()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                interface Foo
+                {
+                    /**
+                     * @throws \InvalidArgumentException
+                     */
+                    public function test(): void;
+                }
+
+                class Bar implements Foo
+                {
+                    public function test(): void
+                    {
+                        throw new \InvalidArgumentException();
+                    }
+                }
+                '
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testDocumentedThrowInSubclassWithExtendedInheritDocblock()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                interface Foo
+                {
+                    /**
+                     * @throws \InvalidArgumentException
+                     */
+                    public function test(): void;
+                }
+
+                class Bar implements Foo
+                {
+                    /**
+                     * {@inheritdoc}
+                     * @throws \OutOfBoundsException
+                     */
+                    public function test(): void
+                    {
+                        throw new \OutOfBoundsException();
+                    }
+                }
+                '
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testDocumentedThrowInInterfaceWithExtendedInheritDocblock()
+    {
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                interface Foo
+                {
+                    /**
+                     * @throws \InvalidArgumentException
+                     */
+                    public function test(): void;
+                }
+
+                class Bar implements Foo
+                {
+                    /**
+                     * {@inheritdoc}
+                     * @throws \OutOfBoundsException
+                     */
+                    public function test(): void
+                    {
+                        throw new \InvalidArgumentException();
+                    }
+                }
+                '
+        );
+
+        $context = new Context();
+
+        $this->analyzeFile('somefile.php', $context);
+    }
+
+    /**
+     * @return void
+     */
+    public function testDocumentedThrowInInterfaceWithOverriddenDocblock()
+    {
+        $this->expectExceptionMessage('MissingThrowsDocblock');
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        Config::getInstance()->check_for_throws_docblock = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                interface Foo
+                {
+                    /**
+                     * @throws \InvalidArgumentException
+                     */
+                    public function test(): void;
+                }
+
+                class Bar implements Foo
+                {
+                    /**
+                     * @throws \OutOfBoundsException
+                     */
+                    public function test(): void
+                    {
+                        throw new \InvalidArgumentException();
+                    }
+                }
+                '
         );
 
         $context = new Context();

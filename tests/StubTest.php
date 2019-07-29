@@ -1,14 +1,14 @@
 <?php
 namespace Psalm\Tests;
 
+use function define;
+use function defined;
+use function dirname;
+use function getcwd;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
-use function defined;
-use function define;
-use function dirname;
-use function getcwd;
 
 class StubTest extends TestCase
 {
@@ -350,7 +350,6 @@ class StubTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testStubVariadicFunctionWrongArgType()
@@ -385,7 +384,6 @@ class StubTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testUserVariadicWithFalseVariadic()
@@ -578,7 +576,6 @@ class StubTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testNoStubFunction()
@@ -884,7 +881,6 @@ class StubTest extends TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testStubFileWithPartialClassDefinitionGeneralReturnType()
@@ -923,6 +919,56 @@ class StubTest extends TestCase
                         return new \stdClass;
                     }
                 }'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testStubFileWithTemplatedClassDefinitionAndMagicMethodOverride()
+    {
+        //$this->markTestSkipped('Currently broken');
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+
+                    <stubs>
+                        <file name="tests/fixtures/stubs/templated_class.php" />
+                    </stubs>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                class A {
+                    /**
+                     * @param int $id
+                     * @param ?int $lockMode
+                     * @param ?int $lockVersion
+                     * @return mixed
+                     */
+                    public function find($id, $lockMode = null, $lockVersion = null) {}
+                }
+
+                class B extends A {}
+
+                class Obj {}
+
+                /**
+                 * @method ?Obj find(int $id, $lockMode = null, $lockVersion = null)
+                 */
+                class C extends B {}'
         );
 
         $this->analyzeFile($file_path, new Context());

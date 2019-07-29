@@ -1,24 +1,24 @@
 <?php
 namespace Psalm\Tests\Config;
 
+use function array_map;
+use function define;
+use function defined;
+use const DIRECTORY_SEPARATOR;
+use function dirname;
+use function error_get_last;
+use function getcwd;
+use function implode;
+use function is_array;
+use function preg_match;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 use Psalm\Tests\TestConfig;
-use function defined;
-use function define;
-use function getcwd;
 use function realpath;
-use function dirname;
-use function unlink;
-use function error_get_last;
-use function is_array;
 use function symlink;
-use function preg_match;
-use function implode;
-use function array_map;
-use const DIRECTORY_SEPARATOR;
+use function unlink;
 
 class ConfigTest extends \Psalm\Tests\TestCase
 {
@@ -496,8 +496,7 @@ class ConfigTest extends \Psalm\Tests\TestCase
             )
         );
 
-        $this->assertSame(
-            null,
+        $this->assertNull(
             $config->getReportingLevelForClass(
                 'UndefinedClass',
                 'Psalm\Bodger'
@@ -528,16 +527,14 @@ class ConfigTest extends \Psalm\Tests\TestCase
             )
         );
 
-        $this->assertSame(
-            null,
+        $this->assertNull(
             $config->getReportingLevelForProperty(
                 'UndefinedMethod',
                 'Psalm\Bodger::$find3'
             )
         );
 
-        $this->assertSame(
-            null,
+        $this->assertNull(
             $config->getReportingLevelForProperty(
                 'UndefinedMethod',
                 'Psalm\Bodger::$find4'
@@ -599,7 +596,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testImpossibleIssue()
@@ -624,7 +620,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testRequireVoidReturnTypeExists()
@@ -862,7 +857,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testForbiddenEchoFunctionViaFunctions()
@@ -893,7 +887,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testForbiddenEchoFunctionViaFlag()
@@ -945,7 +938,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testForbiddenVarExportFunction()
@@ -977,7 +969,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testValidThrowInvalidCatch()
@@ -1029,7 +1020,6 @@ class ConfigTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     *
      * @return void
      */
     public function testInvalidThrowValidCatch()
@@ -1140,10 +1130,26 @@ class ConfigTest extends \Psalm\Tests\TestCase
     public function testTemplatedFiles()
     {
         foreach (['1.xml', '2.xml', '3.xml', '4.xml', '5.xml', '6.xml', '7.xml', '8.xml'] as $file_name) {
+            $project_root = dirname(__DIR__, 2);
+            $file_path = realpath($project_root . '/assets/config_levels/' . $file_name);
+            symlink($file_path, $project_root . DIRECTORY_SEPARATOR . $file_name);
+
             Config::loadFromXMLFile(
-                realpath(dirname(__DIR__, 2) . '/assets/config_levels/' . $file_name),
-                dirname(__DIR__, 2)
+                $project_root . DIRECTORY_SEPARATOR . $file_name,
+                $project_root
             );
+        }
+    }
+
+    public function tearDown(): void
+    {
+        parent::tearDown();
+
+        if ($this->getName() == 'testTemplatedFiles') {
+            $project_root = dirname(__DIR__, 2);
+            foreach (['1.xml', '2.xml', '3.xml', '4.xml', '5.xml', '6.xml', '7.xml', '8.xml'] as $file_name) {
+                @unlink($project_root . DIRECTORY_SEPARATOR . $file_name);
+            }
         }
     }
 
@@ -1351,7 +1357,7 @@ class ConfigTest extends \Psalm\Tests\TestCase
                 dirname(__DIR__, 2)
                     . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR
                     . '..' . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR
-                    . 'src' . DIRECTORY_SEPARATOR . 'Psalm'
+                    . 'src' . DIRECTORY_SEPARATOR . 'Psalm',
             ]
         );
 
@@ -1361,7 +1367,7 @@ class ConfigTest extends \Psalm\Tests\TestCase
                 dirname(__DIR__, 2)
                     . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR
                     . '..' . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR
-                    . 'tests'
+                    . 'tests',
             ]
         );
 
@@ -1369,12 +1375,12 @@ class ConfigTest extends \Psalm\Tests\TestCase
 
         $this->assertSame(
             dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Psalm' . DIRECTORY_SEPARATOR . 'Foo.php',
-            $config->getPotentialComposerFilePathForClassLike("Psalm\\Foo")
+            $config->getPotentialComposerFilePathForClassLike('Psalm\\Foo')
         );
 
         $this->assertSame(
             dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'Foo.php',
-            $config->getPotentialComposerFilePathForClassLike("Psalm\\Tests\\Foo")
+            $config->getPotentialComposerFilePathForClassLike('Psalm\\Tests\\Foo')
         );
     }
 }

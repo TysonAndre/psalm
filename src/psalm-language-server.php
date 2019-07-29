@@ -1,8 +1,8 @@
 <?php
 require_once('command_functions.php');
 
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Config;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
 
 gc_disable();
 
@@ -32,7 +32,7 @@ $valid_long_options = [
 
 $args = array_slice($argv, 1);
 
-$psalm_proxy = array_search('--language-server', $args);
+$psalm_proxy = array_search('--language-server', $args, true);
 
 if ($psalm_proxy !== false) {
     unset($args[$psalm_proxy]);
@@ -48,14 +48,14 @@ array_map(
         if (substr($arg, 0, 2) === '--' && $arg !== '--') {
             $arg_name = preg_replace('/=.*$/', '', substr($arg, 2));
 
-            if (!in_array($arg_name, $valid_long_options)
-                && !in_array($arg_name . ':', $valid_long_options)
-                && !in_array($arg_name . '::', $valid_long_options)
+            if (!in_array($arg_name, $valid_long_options, true)
+                && !in_array($arg_name . ':', $valid_long_options, true)
+                && !in_array($arg_name . '::', $valid_long_options, true)
             ) {
                 fwrite(
                     STDERR,
                     'Unrecognised argument "--' . $arg_name . '"' . PHP_EOL
-                    . 'Type --help to see a list of supported arguments'. PHP_EOL
+                    . 'Type --help to see a list of supported arguments' . PHP_EOL
                 );
                 error_log('Bad argument');
                 exit(1);
@@ -63,11 +63,13 @@ array_map(
         } elseif (substr($arg, 0, 2) === '-' && $arg !== '-' && $arg !== '--') {
             $arg_name = preg_replace('/=.*$/', '', substr($arg, 1));
 
-            if (!in_array($arg_name, $valid_short_options) && !in_array($arg_name . ':', $valid_short_options)) {
+            if (!in_array($arg_name, $valid_short_options, true)
+                && !in_array($arg_name . ':', $valid_short_options, true)
+            ) {
                 fwrite(
                     STDERR,
                     'Unrecognised argument "-' . $arg_name . '"' . PHP_EOL
-                    . 'Type --help to see a list of supported arguments'. PHP_EOL
+                    . 'Type --help to see a list of supported arguments' . PHP_EOL
                 );
                 error_log('Bad argument');
                 exit(1);
@@ -197,13 +199,7 @@ $ini_handler->check();
 
 setlocale(LC_CTYPE, 'C');
 
-$path_to_config = isset($options['c']) && is_string($options['c']) ? realpath($options['c']) : null;
-
-if ($path_to_config === false) {
-    /** @psalm-suppress InvalidCast */
-    fwrite(STDERR, 'Could not resolve path to config ' . (string)$options['c'] . PHP_EOL);
-    exit(1);
-}
+$path_to_config = get_path_to_config($options);
 
 if (isset($options['tcp'])) {
     if (!is_string($options['tcp'])) {
@@ -214,20 +210,14 @@ if (isset($options['tcp'])) {
 
 $find_dead_code = isset($options['find-dead-code']);
 
-// initialise custom config, if passed
-try {
-    if ($path_to_config) {
-        $config = Config::loadFromXMLFile($path_to_config, $current_dir);
-    } else {
-        $config = Config::getConfigForPath($current_dir, $current_dir, \Psalm\Report::TYPE_CONSOLE);
-    }
-} catch (Psalm\Exception\ConfigException $e) {
-    fwrite(STDERR, $e->getMessage());
-    exit(1);
+$config = initialiseConfig($path_to_config, $current_dir, \Psalm\Report::TYPE_CONSOLE, $first_autoloader);
+
+if ($config->resolve_from_config_file) {
+    $current_dir = $config->base_dir;
+    chdir($current_dir);
 }
 
 $config->setServerMode();
-$config->setComposerClassLoader($first_autoloader);
 
 if (isset($options['clear-cache'])) {
     $cache_directory = $config->getCacheDirectory();

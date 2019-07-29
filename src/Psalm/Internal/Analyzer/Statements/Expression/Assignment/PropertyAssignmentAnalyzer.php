@@ -365,6 +365,16 @@ class PropertyAssignmentAnalyzer
                     }
 
                     if ($assignment_value) {
+                        if ($var_id) {
+                            $context->removeVarFromConflictingClauses(
+                                $var_id,
+                                Type::getMixed(),
+                                $statements_analyzer
+                            );
+
+                            unset($context->vars_in_scope[$var_id]);
+                        }
+
                         $fake_method_call = new PhpParser\Node\Expr\MethodCall(
                             $stmt->var,
                             new PhpParser\Node\Identifier('__set', $stmt->name->getAttributes()),
@@ -722,20 +732,25 @@ class PropertyAssignmentAnalyzer
                 continue;
             }
 
+            $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
             $type_match_found = TypeAnalyzer::isContainedBy(
                 $codebase,
                 $assignment_value_type,
                 $class_property_type,
                 true,
                 true,
-                $has_scalar_match,
-                $type_coerced,
-                $type_coerced_from_mixed,
-                $to_string_cast
+                $union_comparison_results
             );
 
-            if ($type_coerced) {
-                if ($type_coerced_from_mixed) {
+            if ($type_match_found && $union_comparison_results->replacement_union_type) {
+                if ($var_id) {
+                    $context->vars_in_scope[$var_id] = $union_comparison_results->replacement_union_type;
+                }
+            }
+
+            if ($union_comparison_results->type_coerced) {
+                if ($union_comparison_results->type_coerced_from_mixed) {
                     if (IssueBuffer::accepts(
                         new MixedPropertyTypeCoercion(
                             $var_id . ' expects \'' . $class_property_type->getId() . '\', '
@@ -770,7 +785,7 @@ class PropertyAssignmentAnalyzer
                 }
             }
 
-            if ($to_string_cast) {
+            if ($union_comparison_results->to_string_cast) {
                 if (IssueBuffer::accepts(
                     new ImplicitToStringCast(
                         $var_id . ' expects \'' . $class_property_type . '\', '
@@ -787,7 +802,7 @@ class PropertyAssignmentAnalyzer
                 }
             }
 
-            if (!$type_match_found && !$type_coerced) {
+            if (!$type_match_found && !$union_comparison_results->type_coerced) {
                 if (TypeAnalyzer::canBeContainedBy(
                     $codebase,
                     $assignment_value_type,
@@ -1057,20 +1072,19 @@ class PropertyAssignmentAnalyzer
             $class_storage->parent_class
         );
 
+        $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
         $type_match_found = TypeAnalyzer::isContainedBy(
             $codebase,
             $assignment_value_type,
             $class_property_type,
             true,
             true,
-            $has_scalar_match,
-            $type_coerced,
-            $type_coerced_from_mixed,
-            $to_string_cast
+            $union_comparison_results
         );
 
-        if ($type_coerced) {
-            if ($type_coerced_from_mixed) {
+        if ($union_comparison_results->type_coerced) {
+            if ($union_comparison_results->type_coerced_from_mixed) {
                 if (IssueBuffer::accepts(
                     new MixedPropertyTypeCoercion(
                         $var_id . ' expects \'' . $class_property_type . '\', '
@@ -1105,7 +1119,7 @@ class PropertyAssignmentAnalyzer
             }
         }
 
-        if ($to_string_cast) {
+        if ($union_comparison_results->to_string_cast) {
             if (IssueBuffer::accepts(
                 new ImplicitToStringCast(
                     $var_id . ' expects \'' . $class_property_type . '\', '
@@ -1122,7 +1136,7 @@ class PropertyAssignmentAnalyzer
             }
         }
 
-        if (!$type_match_found && !$type_coerced) {
+        if (!$type_match_found && !$union_comparison_results->type_coerced) {
             if (TypeAnalyzer::canBeContainedBy($codebase, $assignment_value_type, $class_property_type)) {
                 if (IssueBuffer::accepts(
                     new PossiblyInvalidPropertyAssignmentValue(

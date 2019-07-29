@@ -391,7 +391,7 @@ class ClassTest extends TestCase
                 '<?php
                     function foo(string $s) : void {
                         if (class_exists($s) || interface_exists($s)) {}
-                    }'
+                    }',
             ],
             'classExistsWithFalseArg' => [
                 '<?php
@@ -405,7 +405,7 @@ class ClassTest extends TestCase
                         }
 
                         return $class;
-                    }'
+                    }',
             ],
             'classExistsWithFalseArgInside' => [
                 '<?php
@@ -414,7 +414,20 @@ class ClassTest extends TestCase
                             /** @psalm-suppress MixedMethodCall */
                             new $s();
                         }
-                    }'
+                    }',
+            ],
+            'classAliasOnNonexistantClass' => [
+                '<?php
+                    if (!class_exists(\PHPUnit\Framework\TestCase::class)) {
+                        /** @psalm-suppress UndefinedClass */
+                        class_alias(\PHPUnit_Framework_TestCase::class, \PHPUnit\Framework\TestCase::class);
+                    }
+
+                    class T extends \PHPUnit\Framework\TestCase {
+
+                    }',
+                [],
+                ['PropertyNotSetInConstructor'],
             ],
         ];
     }
@@ -628,6 +641,21 @@ class ClassTest extends TestCase
 
                     class Bar implements Foo {}',
                 'error_message' => 'UndefinedInterface',
+            ],
+            'classAliasAlreadyDefinedClass' => [
+                '<?php
+                    class A {}
+
+                    class B {}
+
+                    if (false) {
+                        class_alias(A::class, B::class);
+                    }
+
+                    function foo(A $a, B $b) : void {
+                        if ($a === $b) {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

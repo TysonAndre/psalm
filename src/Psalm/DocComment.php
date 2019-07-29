@@ -1,25 +1,24 @@
 <?php
-
 namespace Psalm;
 
-use Psalm\Exception\DocblockParseException;
-use function trim;
-use function preg_replace;
-use function explode;
-use function preg_match;
-use function rtrim;
-use function str_replace;
-use function implode;
-use function preg_match_all;
-use const PREG_SET_ORDER;
 use function array_filter;
-use function strlen;
-use function min;
-use function str_repeat;
-use function substr;
+use function explode;
+use function implode;
 use function in_array;
+use function min;
+use function preg_match;
+use function preg_match_all;
 use const PREG_OFFSET_CAPTURE;
+use function preg_replace;
+use const PREG_SET_ORDER;
+use Psalm\Exception\DocblockParseException;
+use function rtrim;
+use function str_repeat;
+use function str_replace;
+use function strlen;
 use function strpos;
+use function substr;
+use function trim;
 
 class DocComment
 {
@@ -149,9 +148,10 @@ class DocComment
                         'assert', 'assert-if-true', 'assert-if-false', 'suppress',
                         'ignore-nullable-return', 'override-property-visibility',
                         'override-method-visibility', 'seal-properties', 'seal-methods',
-                        'generator-return', 'ignore-falsable-return', 'variadic',
+                        'generator-return', 'ignore-falsable-return', 'variadic', 'pure',
                         'ignore-variable-method', 'ignore-variable-property', 'internal',
-                    ]
+                    ],
+                    true
                 )) {
                     throw new DocblockParseException('Unrecognised annotation @psalm-' . $special_key);
                 }
@@ -269,9 +269,10 @@ class DocComment
                         'assert', 'assert-if-true', 'assert-if-false', 'suppress',
                         'ignore-nullable-return', 'override-property-visibility',
                         'override-method-visibility', 'seal-properties', 'seal-methods',
-                        'generator-return', 'ignore-falsable-return', 'variadic',
+                        'generator-return', 'ignore-falsable-return', 'variadic', 'pure',
                         'ignore-variable-method', 'ignore-variable-property', 'internal',
-                    ]
+                    ],
+                    true
                 )) {
                     throw new DocblockParseException('Unrecognised annotation @psalm-' . $special_key);
                 }

@@ -586,6 +586,7 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\StaticCall
             || $arg->value instanceof PhpParser\Node\Expr\Assign
             || $arg->value instanceof PhpParser\Node\Expr\ArrayDimFetch
+            || $arg->value instanceof PhpParser\Node\Expr\PropertyFetch
             || $arg->value instanceof PhpParser\Node\Expr\Array_
         ) {
             if (ExpressionAnalyzer::analyze($statements_analyzer, $arg->value, $context) === false) {
@@ -2121,19 +2122,19 @@ class CallAnalyzer
                 continue;
             }
 
+            $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
             $type_match_found = TypeAnalyzer::isContainedBy(
                 $codebase,
                 $input_type,
                 $closure_param_type,
                 false,
                 false,
-                $scalar_type_match_found,
-                $type_coerced,
-                $type_coerced_from_mixed
+                $union_comparison_results
             );
 
-            if ($type_coerced) {
-                if ($type_coerced_from_mixed) {
+            if ($union_comparison_results->type_coerced) {
+                if ($union_comparison_results->type_coerced_from_mixed) {
                     if (IssueBuffer::accepts(
                         new MixedArgumentTypeCoercion(
                             'First parameter of closure passed to function ' . $method_id . ' expects ' .
@@ -2160,14 +2161,14 @@ class CallAnalyzer
                 }
             }
 
-            if (!$type_coerced && !$type_match_found) {
+            if (!$union_comparison_results->type_coerced && !$type_match_found) {
                 $types_can_be_identical = TypeAnalyzer::canExpressionTypesBeIdentical(
                     $codebase,
                     $input_type,
                     $closure_param_type
                 );
 
-                if ($scalar_type_match_found) {
+                if ($union_comparison_results->scalar_type_match_found) {
                     if (IssueBuffer::accepts(
                         new InvalidScalarArgument(
                             'First parameter of closure passed to function ' . $method_id . ' expects ' .
@@ -2299,6 +2300,7 @@ class CallAnalyzer
                 self::coerceValueAfterGatekeeperArgument(
                     $statements_analyzer,
                     $input_type,
+                    false,
                     $input_expr,
                     $param_type,
                     $signature_param_type,
@@ -2339,17 +2341,23 @@ class CallAnalyzer
             $param_type
         );
 
+        $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
         $type_match_found = TypeAnalyzer::isContainedBy(
             $codebase,
             $input_type,
             $param_type,
             true,
             true,
-            $scalar_type_match_found,
-            $type_coerced,
-            $type_coerced_from_mixed,
-            $to_string_cast
+            $union_comparison_results
         );
+
+        $replace_input_type = false;
+
+        if ($union_comparison_results->replacement_union_type) {
+            $replace_input_type = true;
+            $input_type = $union_comparison_results->replacement_union_type;
+        }
 
         if ($type_match_found
             && $param_type->hasCallableType()
@@ -2392,16 +2400,16 @@ class CallAnalyzer
             && $cased_method_id !== 'echo'
             && $cased_method_id !== 'sprintf'
         ) {
-            $scalar_type_match_found = false;
+            $union_comparison_results->scalar_type_match_found = false;
 
-            if ($to_string_cast) {
-                $to_string_cast = false;
+            if ($union_comparison_results->to_string_cast) {
+                $union_comparison_results->to_string_cast = false;
                 $type_match_found = false;
             }
         }
 
-        if ($type_coerced) {
-            if ($type_coerced_from_mixed) {
+        if ($union_comparison_results->type_coerced) {
+            if ($union_comparison_results->type_coerced_from_mixed) {
                 if (IssueBuffer::accepts(
                     new MixedArgumentTypeCoercion(
                         'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' . $param_type->getId() .
@@ -2428,7 +2436,7 @@ class CallAnalyzer
             }
         }
 
-        if ($to_string_cast && $cased_method_id !== 'echo') {
+        if ($union_comparison_results->to_string_cast && $cased_method_id !== 'echo') {
             if (IssueBuffer::accepts(
                 new ImplicitToStringCast(
                     'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
@@ -2441,7 +2449,7 @@ class CallAnalyzer
             }
         }
 
-        if (!$type_match_found && !$type_coerced) {
+        if (!$type_match_found && !$union_comparison_results->type_coerced) {
             $types_can_be_identical = TypeAnalyzer::canBeContainedBy(
                 $codebase,
                 $input_type,
@@ -2450,7 +2458,7 @@ class CallAnalyzer
                 true
             );
 
-            if ($scalar_type_match_found) {
+            if ($union_comparison_results->scalar_type_match_found) {
                 if ($cased_method_id !== 'echo') {
 
                     // TODO: Better check for scalar being part of a compound type that matched.
@@ -2689,6 +2697,7 @@ class CallAnalyzer
             self::coerceValueAfterGatekeeperArgument(
                 $statements_analyzer,
                 $input_type,
+                $replace_input_type,
                 $input_expr,
                 $param_type,
                 $signature_param_type,
@@ -2703,6 +2712,7 @@ class CallAnalyzer
     private static function coerceValueAfterGatekeeperArgument(
         StatementsAnalyzer $statements_analyzer,
         Type\Union $input_type,
+        bool $input_type_changed,
         PhpParser\Node\Expr $input_expr,
         Type\Union $param_type,
         ?Type\Union $signature_param_type,
@@ -2713,9 +2723,7 @@ class CallAnalyzer
             return;
         }
 
-        if ($param_type->from_docblock && !$input_type->hasMixed()) {
-            $input_type_changed = false;
-
+        if (!$input_type_changed && $param_type->from_docblock && !$input_type->hasMixed()) {
             $input_type = clone $input_type;
 
             foreach ($param_type->getTypes() as $param_atomic_type) {

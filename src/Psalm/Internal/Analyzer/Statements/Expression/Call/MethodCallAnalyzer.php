@@ -13,6 +13,7 @@ use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
+use Psalm\Issue\ImpureMethodCall;
 use Psalm\Issue\InvalidMethodCall;
 use Psalm\Issue\InvalidPropertyAssignmentValue;
 use Psalm\Issue\InvalidScope;
@@ -46,11 +47,6 @@ use function explode;
 use function array_search;
 use function array_keys;
 use function in_array;
-use function substr;
-use function token_get_all;
-use function array_reverse;
-use function strlen;
-use function reset;
 
 /**
  * @internal
@@ -1182,6 +1178,18 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $method_storage = $codebase->methods->getUserMethodStorage($method_id);
 
                     if ($method_storage) {
+                        if ($context->pure && !$method_storage->pure) {
+                            if (IssueBuffer::accepts(
+                                new ImpureMethodCall(
+                                    'Cannot call an impure method from a pure context',
+                                    new CodeLocation($source, $stmt->name)
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+
                         if ($method_storage->assertions) {
                             self::applyAssertionsToContext(
                                 $stmt->name,
@@ -1313,16 +1321,20 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
     ) {
         $calling_class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
+        $non_trait_class_storage = $class_storage->is_trait
+            ? $calling_class_storage
+            : $class_storage;
+
         $template_types = $class_storage->template_types;
 
         if ($calling_class_storage->template_type_extends
             && $method_name
-            && !empty($class_storage->overridden_method_ids[$method_name])
+            && !empty($non_trait_class_storage->overridden_method_ids[$method_name])
             && isset($class_storage->methods[$method_name])
-            && (!isset($class_storage->methods[$method_name]->return_type)
+            && (!isset($non_trait_class_storage->methods[$method_name]->return_type)
                 || $class_storage->methods[$method_name]->inherited_return_type)
         ) {
-            foreach ($class_storage->overridden_method_ids[$method_name] as $overridden_method_id) {
+            foreach ($non_trait_class_storage->overridden_method_ids[$method_name] as $overridden_method_id) {
                 $overridden_storage = $codebase->methods->getStorage($overridden_method_id);
 
                 if (!$overridden_storage->return_type) {
@@ -1582,20 +1594,19 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $class_storage->parent_class
                     );
 
+                    $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
                     $type_match_found = TypeAnalyzer::isContainedBy(
                         $codebase,
                         $second_arg_type,
                         $pseudo_set_type,
                         $second_arg_type->ignore_nullable_issues,
                         $second_arg_type->ignore_falsable_issues,
-                        $has_scalar_match,
-                        $type_coerced,
-                        $type_coerced_from_mixed,
-                        $to_string_cast
+                        $union_comparison_results
                     );
 
-                    if ($type_coerced) {
-                        if ($type_coerced_from_mixed) {
+                    if ($union_comparison_results->type_coerced) {
+                        if ($union_comparison_results->type_coerced_from_mixed) {
                             if (IssueBuffer::accepts(
                                 new MixedPropertyTypeCoercion(
                                     $prop_name . ' expects \'' . $pseudo_set_type . '\', '
@@ -1622,7 +1633,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         }
                     }
 
-                    if (!$type_match_found && !$type_coerced_from_mixed) {
+                    if (!$type_match_found && !$union_comparison_results->type_coerced_from_mixed) {
                         if (TypeAnalyzer::canBeContainedBy(
                             $codebase,
                             $second_arg_type,

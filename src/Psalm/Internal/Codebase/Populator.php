@@ -1,26 +1,26 @@
 <?php
 namespace Psalm\Internal\Codebase;
 
+use function array_keys;
+use function array_merge;
+use function count;
+use function explode;
+use function is_int;
+use Psalm\Config;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
-use Psalm\Config;
-use Psalm\Issue\CircularReference;
-use Psalm\IssueBuffer;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
 use Psalm\Internal\Provider\FileStorageProvider;
+use Psalm\Issue\CircularReference;
+use Psalm\IssueBuffer;
 use Psalm\Progress\Progress;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Type;
-use function strtolower;
-use function strpos;
-use function explode;
-use function count;
-use function array_keys;
-use function is_int;
-use function array_merge;
 use function reset;
+use function strpos;
+use function strtolower;
 
 /**
  * @internal
@@ -115,6 +115,12 @@ class Populator
                         }
                     }
                 }
+            }
+
+            foreach ($class_storage->dependent_classlikes as $dependent_classlike_name => $_) {
+                $dependee_storage = $this->classlike_storage_provider->get($dependent_classlike_name);
+
+                $class_storage->dependent_classlikes += $dependee_storage->dependent_classlikes;
             }
 
             if ($class_storage->aliases) {
@@ -297,10 +303,10 @@ class Populator
                     $declaring_method_storage->overridden_downstream = true;
                     $declaring_method_storage->overridden_somewhere = true;
 
-                    if (!$method_storage->throws
-                        && $method_storage->inheritdoc
-                        && $declaring_method_storage->throws
+                    if ($declaring_method_storage->throws
+                        && (!$method_storage->throws || $method_storage->inheritdoc)
                     ) {
+                        $method_storage->throws += $declaring_method_storage->throws;
                     }
 
                     if (count($storage->overridden_method_ids[$method_name]) === 1
@@ -640,6 +646,8 @@ class Populator
             $parent_interfaces = array_merge($parent_interfaces, $parent_interface_storage->parent_interfaces);
 
             $this->inheritMethodsFromParent($storage, $parent_interface_storage);
+
+            $storage->pseudo_methods += $parent_interface_storage->pseudo_methods;
         }
 
         $storage->parent_interfaces = array_merge($parent_interfaces, $storage->parent_interfaces);
@@ -765,11 +773,10 @@ class Populator
                         if (isset($interface_storage->methods[$method_name])) {
                             $interface_method_storage = $interface_storage->methods[$method_name];
 
-                            if (!$method_storage->throws
-                                && $method_storage->inheritdoc
-                                && $interface_method_storage->throws
+                            if ($interface_method_storage->throws
+                                && (!$method_storage->throws || $method_storage->inheritdoc)
                             ) {
-                                $method_storage->throws = $interface_method_storage->throws;
+                                $method_storage->throws += $interface_method_storage->throws;
                             }
 
                             if ($interface_method_storage->return_type

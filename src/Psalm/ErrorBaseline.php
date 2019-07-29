@@ -1,26 +1,31 @@
 <?php
 namespace Psalm;
 
-use Psalm\Internal\Provider\FileProvider;
-use function array_reduce;
-use const LIBXML_NOBLANKS;
-use function str_replace;
-use function min;
-use function array_intersect;
 use function array_filter;
-use function strpos;
-use function ksort;
-use function array_merge;
-use function get_loaded_extensions;
-use function usort;
-use function implode;
-use function phpversion;
+use function array_intersect;
 use function array_map;
+use function array_merge;
+use function array_reduce;
+use function explode;
+use function get_loaded_extensions;
+use function implode;
+use function ksort;
+use const LIBXML_NOBLANKS;
+use function min;
+use const PHP_VERSION;
+use function phpversion;
+use function preg_replace_callback;
+use Psalm\Internal\Provider\FileProvider;
+use RuntimeException;
+use function str_replace;
+use function strpos;
+use function usort;
 
 class ErrorBaseline
 {
     /**
      * @param array<string,array<string,array{o:int, s:array<int, string>}>> $existingIssues
+     *
      * @return int
      */
     public static function countTotalIssues(array $existingIssues)
@@ -47,18 +52,24 @@ class ErrorBaseline
      *
      * @return void
      */
-    public static function create(FileProvider $fileProvider, string $baselineFile, array $issues)
-    {
+    public static function create(
+        FileProvider $fileProvider,
+        string $baselineFile,
+        array $issues,
+        bool $include_php_versions
+    ) {
         $groupedIssues = self::countIssueTypesByFile($issues);
 
-        self::writeToFile($fileProvider, $baselineFile, $groupedIssues);
+        self::writeToFile($fileProvider, $baselineFile, $groupedIssues, $include_php_versions);
     }
 
     /**
      * @param FileProvider $fileProvider
      * @param string $baselineFile
-     * @return array<string,array<string,array{o:int, s:array<int, string>}>>
+     *
      * @throws Exception\ConfigException
+     *
+     * @return array<string,array<string,array{o:int, s:array<int, string>}>>
      */
     public static function read(FileProvider $fileProvider, string $baselineFile): array
     {
@@ -115,11 +126,17 @@ class ErrorBaseline
      * @param FileProvider $fileProvider
      * @param string $baselineFile
      * @param array<array{file_name: string, type: string, severity: string, selected_text: string}> $issues
-     * @return array<string,array<string,array{o:int, s:array<int, string>}>>
+     *
      * @throws Exception\ConfigException
+     *
+     * @return array<string,array<string,array{o:int, s:array<int, string>}>>
      */
-    public static function update(FileProvider $fileProvider, string $baselineFile, array $issues)
-    {
+    public static function update(
+        FileProvider $fileProvider,
+        string $baselineFile,
+        array $issues,
+        bool $include_php_versions
+    ) {
         $existingIssues = self::read($fileProvider, $baselineFile);
         $newIssues = self::countIssueTypesByFile($issues);
 
@@ -150,13 +167,14 @@ class ErrorBaseline
 
         $groupedIssues = array_filter($existingIssues);
 
-        self::writeToFile($fileProvider, $baselineFile, $groupedIssues);
+        self::writeToFile($fileProvider, $baselineFile, $groupedIssues, $include_php_versions);
 
         return $groupedIssues;
     }
 
     /**
      * @param array<array{file_name: string, type: string, severity: string, selected_text: string}> $issues
+     *
      * @return array<string,array<string,array{o:int, s:array<int, string>}>>
      */
     private static function countIssueTypesByFile(array $issues): array
@@ -166,6 +184,7 @@ class ErrorBaseline
             /**
              * @param array<string,array<string,array{o:int, s:array<int, string>}>> $carry
              * @param array{type: string, file_name: string, severity: string, selected_text: string} $issue
+             *
              * @return array<string,array<string,array{o:int, s:array<int, string>}>>
              */
             function (array $carry, array $issue): array {
@@ -185,7 +204,7 @@ class ErrorBaseline
                     $carry[$fileName][$issueType] = ['o' => 0, 's' => []];
                 }
 
-                $carry[$fileName][$issueType]['o']++;
+                ++$carry[$fileName][$issueType]['o'];
 
                 if (!strpos($issue['selected_text'], "\n")) {
                     $carry[$fileName][$issueType]['s'][] = $issue['selected_text'];
@@ -210,32 +229,36 @@ class ErrorBaseline
      * @param FileProvider $fileProvider
      * @param string $baselineFile
      * @param array<string,array<string,array{o:int, s:array<int, string>}>> $groupedIssues
+     *
      * @return void
      */
     private static function writeToFile(
         FileProvider $fileProvider,
         string $baselineFile,
-        array $groupedIssues
+        array $groupedIssues,
+        bool $include_php_versions
     ) {
         $baselineDoc = new \DOMDocument('1.0', 'UTF-8');
         $filesNode = $baselineDoc->createElement('files');
         $filesNode->setAttribute('psalm-version', PSALM_VERSION);
 
-        $extensions = array_merge(get_loaded_extensions(), get_loaded_extensions(true));
+        if ($include_php_versions) {
+            $extensions = array_merge(get_loaded_extensions(), get_loaded_extensions(true));
 
-        usort($extensions, 'strnatcasecmp');
+            usort($extensions, 'strnatcasecmp');
 
-        $filesNode->setAttribute('php-version', implode('; ', array_merge(
-            [
-                ('php:' . phpversion()),
-            ],
-            array_map(
-                function (string $extension) : string {
-                    return $extension . ':' . phpversion($extension);
-                },
-                $extensions
-            )
-        )));
+            $filesNode->setAttribute('php-version', implode(';' . "\n\t", array_merge(
+                [
+                    ('php:' . PHP_VERSION),
+                ],
+                array_map(
+                    function (string $extension) : string {
+                        return $extension . ':' . phpversion($extension);
+                    },
+                    $extensions
+                )
+            )));
+        }
 
         foreach ($groupedIssues as $file => $issueTypes) {
             $fileNode = $baselineDoc->createElement('file');
@@ -261,6 +284,33 @@ class ErrorBaseline
         $baselineDoc->appendChild($filesNode);
         $baselineDoc->formatOutput = true;
 
-        $fileProvider->setContents($baselineFile, $baselineDoc->saveXML());
+        $xml = preg_replace_callback(
+            '/<files (psalm-version="[^"]+") (?:php-version="(.+)"(\/?>)\n)/',
+            /**
+            * @param array<int, string> $matches
+            */
+            function (array $matches) : string {
+                return
+                    '<files' .
+                    "\n  " .
+                    $matches[1] .
+                    "\n" .
+                    '  php-version="' .
+                    "\n    " .
+                    implode("\n    ", explode('&#10;&#9;', $matches[2])) .
+                    "\n" .
+                    '  "' .
+                    "\n" .
+                    $matches[3] .
+                    "\n";
+            },
+            $baselineDoc->saveXML()
+        );
+
+        if ($xml === null) {
+            throw new RuntimeException('Failed to reformat opening attributes!');
+        }
+
+        $fileProvider->setContents($baselineFile, $xml);
     }
 }

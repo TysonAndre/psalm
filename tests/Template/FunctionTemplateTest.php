@@ -644,7 +644,7 @@ class FunctionTemplateTest extends TestCase
                 [
                     '$b' => 'string',
                     '$c' => 'int',
-                ]
+                ],
             ],
             'dontGeneraliseBoundParamWithWiderCallable' => [
                 '<?php
@@ -666,7 +666,7 @@ class FunctionTemplateTest extends TestCase
                     $c = makeConcrete(new C(), function (?C $c) : void {});',
                 [
                     '$c' => 'C',
-                ]
+                ],
             ],
             'allowTemplateTypeBeingUsedInsideFunction' => [
                 '<?php
@@ -718,6 +718,29 @@ class FunctionTemplateTest extends TestCase
                         /** @var T */
                         return new B();
                     }',
+            ],
+            'assertOnTemplatedValue' => [
+                '<?php
+                    /**
+                     * @template I
+                     * @param I $foo
+                     */
+                    function bar($foo): void {
+                        if (is_string($foo)) {}
+                        if (!is_string($foo)) {}
+                        if (is_int($foo)) {}
+                        if (!is_int($foo)) {}
+                        if (is_numeric($foo)) {}
+                        if (!is_numeric($foo)) {}
+                        if (is_scalar($foo)) {}
+                        if (!is_scalar($foo)) {}
+                        if (is_bool($foo)) {}
+                        if (!is_bool($foo)) {}
+                        if (is_object($foo)) {}
+                        if (!is_object($foo)) {}
+                        if (is_callable($foo)) {}
+                        if (!is_callable($foo)) {}
+                    }'
             ],
         ];
     }
@@ -1039,7 +1062,7 @@ class FunctionTemplateTest extends TestCase
                     function foo(callable $callable) : void {
                         $callable(new \DateTime());
                     }',
-                'error_message' => 'InvalidArgument'
+                'error_message' => 'InvalidArgument',
             ],
             'preventWrongTemplateBeingPassed' => [
                 '<?php
@@ -1054,7 +1077,7 @@ class FunctionTemplateTest extends TestCase
                     {
                         return $parameter($value);
                     }',
-                'error_message' => 'InvalidArgument'
+                'error_message' => 'InvalidArgument',
             ],
             'preventTemplateTypeReturnMoreGeneral' => [
                 '<?php
@@ -1067,7 +1090,7 @@ class FunctionTemplateTest extends TestCase
                     {
                         return new \DateTime();
                     }',
-                'error_message' => 'InvalidReturnStatement'
+                'error_message' => 'InvalidReturnStatement',
             ],
             'preventReturningString' => [
                 '<?php
@@ -1079,7 +1102,7 @@ class FunctionTemplateTest extends TestCase
                     function mirror($t) {
                         return "string";
                     }',
-                'error_message' => 'InvalidReturnStatement'
+                'error_message' => 'InvalidReturnStatement',
             ],
             'unTemplatedVarOnReturn' => [
                 '<?php
@@ -1100,7 +1123,7 @@ class FunctionTemplateTest extends TestCase
 
                         return new B();
                     }',
-                'error_message' => 'InvalidReturnStatement'
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

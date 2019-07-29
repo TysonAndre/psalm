@@ -1,28 +1,28 @@
 <?php
 namespace Psalm\Internal\Codebase;
 
+use function array_filter;
+use function array_intersect_key;
+use function array_merge;
+use function array_merge_recursive;
+use function count;
+use function explode;
+use function number_format;
+use function pathinfo;
 use PhpParser;
-use Psalm\Internal\Analyzer\FileAnalyzer;
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use function preg_replace;
 use Psalm\Config;
 use Psalm\FileManipulation;
+use Psalm\Internal\Analyzer\FileAnalyzer;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
-use Psalm\IssueBuffer;
 use Psalm\Internal\Provider\FileProvider;
 use Psalm\Internal\Provider\FileStorageProvider;
+use Psalm\IssueBuffer;
 use Psalm\Progress\Progress;
-use function pathinfo;
-use function count;
-use function array_merge;
-use function array_filter;
-use function preg_replace;
-use function substr;
 use function strpos;
-use function explode;
-use function array_merge_recursive;
-use function array_intersect_key;
-use function number_format;
+use function substr;
 use function usort;
 
 /**
@@ -256,6 +256,13 @@ class Analyzer
             $plugin::beforeAnalyzeFiles($project_analyzer);
         }
 
+        $this->files_to_analyze = array_filter(
+            $this->files_to_analyze,
+            function (string $file_path) : bool {
+                return $this->file_provider->fileExists($file_path);
+            }
+        );
+
         $analysis_worker =
             /**
              * @param int $_
@@ -339,18 +346,14 @@ class Analyzer
 
                     $this->progress->debug('Gathering data for forked process' . "\n");
 
+                    // @codingStandardsIgnoreStart
                     return [
                         'issues' => IssueBuffer::getIssuesData(),
-                        'file_references_to_classes'
-                            => $file_reference_provider->getAllFileReferencesToClasses(),
-                        'file_references_to_class_members'
-                            => $file_reference_provider->getAllFileReferencesToClassMembers(),
-                        'method_references_to_class_members'
-                            => $file_reference_provider->getAllMethodReferencesToClassMembers(),
-                        'file_references_to_missing_class_members'
-                            => $file_reference_provider->getAllFileReferencesToMissingClassMembers(),
-                        'method_references_to_missing_class_members'
-                            => $file_reference_provider->getAllMethodReferencesToMissingClassMembers(),
+                        'file_references_to_classes' => $file_reference_provider->getAllFileReferencesToClasses(),
+                        'file_references_to_class_members' => $file_reference_provider->getAllFileReferencesToClassMembers(),
+                        'method_references_to_class_members' => $file_reference_provider->getAllMethodReferencesToClassMembers(),
+                        'file_references_to_missing_class_members' => $file_reference_provider->getAllFileReferencesToMissingClassMembers(),
+                        'method_references_to_missing_class_members' => $file_reference_provider->getAllMethodReferencesToMissingClassMembers(),
                         'method_param_uses' => $file_reference_provider->getAllMethodParamUses(),
                         'mixed_member_names' => $analyzer->getMixedMemberNames(),
                         'file_manipulations' => FileManipulationBuffer::getAll(),
@@ -362,6 +365,7 @@ class Analyzer
                         'class_property_locations' => $file_reference_provider->getAllClassPropertyLocations(),
                         'possible_method_param_types' => $analyzer->getPossibleMethodParamTypes(),
                     ];
+                    // @codingStandardsIgnoreEnd
                 },
                 $task_done_closure
             );
@@ -620,12 +624,14 @@ class Analyzer
                     );
                 }
 
-                unset($method_references_to_class_members[$member_id]);
-                unset($file_references_to_class_members[$member_id]);
-                unset($method_references_to_missing_class_members[$member_id]);
-                unset($file_references_to_missing_class_members[$member_id]);
-                unset($references_to_mixed_member_names[$member_id]);
-                unset($method_param_uses[$member_id]);
+                unset(
+                    $method_references_to_class_members[$member_id],
+                    $file_references_to_class_members[$member_id],
+                    $method_references_to_missing_class_members[$member_id],
+                    $file_references_to_missing_class_members[$member_id],
+                    $references_to_mixed_member_names[$member_id],
+                    $method_param_uses[$member_id]
+                );
 
                 $member_stub = preg_replace('/::.*$/', '::*', $member_id);
 
@@ -708,49 +714,49 @@ class Analyzer
         $method_references_to_class_members = array_filter(
             $method_references_to_class_members,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
         $method_references_to_missing_class_members = array_filter(
             $method_references_to_missing_class_members,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
         $file_references_to_class_members = array_filter(
             $file_references_to_class_members,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
         $file_references_to_missing_class_members = array_filter(
             $file_references_to_missing_class_members,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
         $references_to_mixed_member_names = array_filter(
             $references_to_mixed_member_names,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
         $file_references_to_classes = array_filter(
             $file_references_to_classes,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
         $method_param_uses = array_filter(
             $method_param_uses,
             function (array $a) : bool {
-                return !!$a;
+                return (bool)$a;
             }
         );
 
@@ -785,6 +791,7 @@ class Analyzer
 
     /**
      * @param array<string, array<int, array{int, int, int, int}>> $diff_map
+     *
      * @return void
      */
     public function shiftFileOffsets(array $diff_map)
@@ -858,7 +865,7 @@ class Analyzer
                         unset($reference_map[$reference_from]);
                         $reference_map[$reference_from += $file_offset] = [
                             $reference_to += $file_offset,
-                            $tag
+                            $tag,
                         ];
                     }
                 }
@@ -885,13 +892,12 @@ class Analyzer
                     continue;
                 }
 
-
                 foreach ($file_diff_map as list($from, $to, $file_offset)) {
                     if ($type_from >= $from && $type_from <= $to) {
                         unset($type_map[$type_from]);
                         $type_map[$type_from += $file_offset] = [
                             $type_to += $file_offset,
-                            $tag
+                            $tag,
                         ];
                     }
                 }
@@ -917,7 +923,6 @@ class Analyzer
                 if ($argument_to < $first_diff_offset || $argument_from > $last_diff_offset) {
                     continue;
                 }
-
 
                 foreach ($file_diff_map as list($from, $to, $file_offset)) {
                     if ($argument_from >= $from && $argument_from <= $to) {
@@ -956,6 +961,7 @@ class Analyzer
 
     /**
      * @param array<string, array<string, bool>> $names
+     *
      * @return void
      * @psalm-suppress MixedPropertyTypeCoercion
      */
@@ -1050,7 +1056,7 @@ class Analyzer
     ) {
         $this->type_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
             ($parent_node ? (int)$parent_node->getAttribute('endFilePos') : (int)$node->getAttribute('endFilePos')) + 1,
-            $node_type
+            $node_type,
         ];
     }
 
@@ -1064,7 +1070,7 @@ class Analyzer
         $this->argument_map[$file_path][$start_position] = [
             $end_position,
             $reference,
-            $argument_number
+            $argument_number,
         ];
     }
 
@@ -1075,7 +1081,7 @@ class Analyzer
     {
         $this->reference_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
             (int)$node->getAttribute('endFilePos') + 1,
-            $reference
+            $reference,
         ];
     }
 
@@ -1086,7 +1092,7 @@ class Analyzer
     {
         $this->reference_map[$file_path][$start] = [
             $end,
-            $reference
+            $reference,
         ];
     }
 
@@ -1253,7 +1259,7 @@ class Analyzer
                 ])
             );
 
-            echo (string) $differ->diff($this->file_provider->getContents($file_path), $existing_contents);
+            echo $differ->diff($this->file_provider->getContents($file_path), $existing_contents);
 
             return;
         }

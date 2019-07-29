@@ -3,7 +3,6 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Call;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\FunctionAnalyzer;
-use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
@@ -15,6 +14,7 @@ use Psalm\Issue\DeprecatedFunction;
 use Psalm\Issue\ForbiddenCode;
 use Psalm\Issue\MixedFunctionCall;
 use Psalm\Issue\InvalidFunctionCall;
+use Psalm\Issue\ImpureFunctionCall;
 use Psalm\Issue\NullFunctionCall;
 use Psalm\Issue\PossiblyInvalidFunctionCall;
 use Psalm\Issue\PossiblyNullFunctionCall;
@@ -236,17 +236,6 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 strtolower($function_id)
             );
 
-            if (!$context->collect_initializations
-                && !$context->collect_mutations
-            ) {
-                ArgumentMapPopulator::recordArgumentPositions(
-                    $statements_analyzer,
-                    $stmt,
-                    $codebase,
-                    $function_id
-                );
-            }
-
             if (!$namespaced_function_exists
                 && !$stmt->name instanceof PhpParser\Node\Name\FullyQualified
             ) {
@@ -263,6 +252,18 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
             if ($is_stubbed || $in_call_map || $namespaced_function_exists) {
                 $function_exists = true;
+            }
+
+            if ($function_exists
+                && !$context->collect_initializations
+                && !$context->collect_mutations
+            ) {
+                ArgumentMapPopulator::recordArgumentPositions(
+                    $statements_analyzer,
+                    $stmt,
+                    $codebase,
+                    $function_id
+                );
             }
 
             $is_predefined = true;
@@ -595,6 +596,20 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 $stmt,
                 (string) $stmt->inferredType
             );
+        }
+
+        if ($context->pure) {
+            if (!$function_storage || !$function_storage->pure) {
+                if (IssueBuffer::accepts(
+                    new ImpureFunctionCall(
+                        'Cannot call an impure function from a pure context',
+                        new CodeLocation($statements_analyzer, $stmt->name)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            }
         }
 
         if ($function_storage) {

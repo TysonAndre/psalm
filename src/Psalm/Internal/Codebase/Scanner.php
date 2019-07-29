@@ -1,6 +1,17 @@
 <?php
 namespace Psalm\Internal\Codebase;
 
+use function array_filter;
+use function array_merge;
+use function array_pop;
+use function ceil;
+use function count;
+use const DIRECTORY_SEPARATOR;
+use function error_reporting;
+use function explode;
+use function file_exists;
+use function min;
+use const PHP_EOL;
 use Psalm\Codebase;
 use Psalm\Config;
 use Psalm\Internal\Provider\FileProvider;
@@ -8,20 +19,9 @@ use Psalm\Internal\Provider\FileReferenceProvider;
 use Psalm\Internal\Provider\FileStorageProvider;
 use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Progress\Progress;
-use function substr;
-use function strtolower;
-use function array_filter;
-use function count;
-use function ceil;
-use function min;
-use const PHP_EOL;
-use function explode;
-use const DIRECTORY_SEPARATOR;
-use function array_pop;
-use function file_exists;
 use function realpath;
-use function error_reporting;
-use function array_merge;
+use function strtolower;
+use function substr;
 
 /**
  * @psalm-type  IssueData = array{
@@ -238,12 +238,15 @@ class Scanner
 
     /**
      * @param  string $fq_classlike_name_lc
+     *
      * @return void
      */
     public function removeClassLike($fq_classlike_name_lc)
     {
-        unset($this->classlike_files[$fq_classlike_name_lc]);
-        unset($this->deep_scanned_classlike_files[$fq_classlike_name_lc]);
+        unset(
+            $this->classlike_files[$fq_classlike_name_lc],
+            $this->deep_scanned_classlike_files[$fq_classlike_name_lc]
+        );
     }
 
     /**
@@ -345,6 +348,7 @@ class Scanner
                 $this->convertClassesToFilePaths($classlikes);
             }
         }
+
         return $has_changes;
     }
 
@@ -354,8 +358,9 @@ class Scanner
         $files_to_scan = array_filter(
             $this->files_to_scan,
             function (string $file_path) : bool {
-                return !isset($this->scanned_files[$file_path])
-                    || (isset($this->files_to_deep_scan[$file_path]) && !$this->scanned_files[$file_path]);
+                return $this->file_provider->fileExists($file_path)
+                    && (!isset($this->scanned_files[$file_path])
+                        || (isset($this->files_to_deep_scan[$file_path]) && !$this->scanned_files[$file_path]));
             }
         );
 
@@ -422,7 +427,7 @@ class Scanner
                 $scanner_worker,
                 /**
                  * @return PoolData
-                */
+                 */
                 function () {
                     $this->progress->debug('Collecting data from forked scanner process' . PHP_EOL);
 
@@ -794,7 +799,7 @@ class Scanner
             $this->classlike_files,
             $this->deep_scanned_classlike_files,
             $this->scanned_files,
-            $this->reflected_classlikes_lc
+            $this->reflected_classlikes_lc,
         ];
     }
 

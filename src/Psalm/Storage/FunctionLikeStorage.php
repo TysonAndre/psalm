@@ -1,12 +1,11 @@
 <?php
 namespace Psalm\Storage;
 
-use Psalm\CodeLocation;
-use Psalm\Type;
-use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
-use const PHP_EOL;
-use function implode;
 use function array_map;
+use function implode;
+use Psalm\CodeLocation;
+use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Type;
 
 class FunctionLikeStorage
 {
@@ -166,6 +165,11 @@ class FunctionLikeStorage
      * @var array<string, CodeLocation>|null
      */
     public $unused_docblock_params;
+
+    /**
+     * @var bool
+     */
+    public $pure = false;
 
     public function __toString()
     {

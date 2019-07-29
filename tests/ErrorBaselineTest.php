@@ -1,12 +1,12 @@
 <?php
 namespace Psalm\Tests;
 
+use const LIBXML_NOBLANKS;
 use Prophecy\Argument;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psalm\ErrorBaseline;
 use Psalm\Exception\ConfigException;
 use Psalm\Internal\Provider\FileProvider;
-use const LIBXML_NOBLANKS;
 
 class ErrorBaselineTest extends TestCase
 {
@@ -191,7 +191,7 @@ class ErrorBaselineTest extends TestCase
                 'severity' => 'error',
                 'selected_text' => 'hardy' . "\n",
             ],
-        ]);
+        ], false);
 
         $baselineDocument = new \DOMDocument();
         $baselineDocument->loadXML($documentContent, LIBXML_NOBLANKS);
@@ -285,7 +285,8 @@ class ErrorBaselineTest extends TestCase
         $remainingBaseline = ErrorBaseline::update(
             $this->fileProvider->reveal(),
             $baselineFile,
-            $newIssues
+            $newIssues,
+            false
         );
 
         $this->assertSame([

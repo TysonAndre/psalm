@@ -12,6 +12,7 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\AbstractInstantiation;
 use Psalm\Issue\DeprecatedClass;
+use Psalm\Issue\ImpureMethodCall;
 use Psalm\Issue\InterfaceInstantiation;
 use Psalm\Issue\InternalClass;
 use Psalm\Issue\InvalidStringClass;
@@ -403,6 +404,26 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         return false;
                     }
 
+                    if ($context->pure) {
+                        $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+
+                        if ($declaring_method_id) {
+                            $method_storage = $codebase->methods->getStorage($declaring_method_id);
+
+                            if (!$method_storage->pure) {
+                                if (IssueBuffer::accepts(
+                                    new ImpureMethodCall(
+                                        'Cannot call an impure constructor from a pure context',
+                                        new CodeLocation($statements_analyzer, $stmt)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            }
+                        }
+                    }
+
                     $generic_param_types = null;
 
                     if ($storage->template_types) {
@@ -414,17 +435,21 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
 
                         foreach ($storage->template_types as $template_name => $base_type) {
                             if (isset($found_generic_params[$template_name][$fq_class_name])) {
-                                $generic_param_types[] = $found_generic_params[$template_name][$fq_class_name][0];
+                                $generic_param_type = $found_generic_params[$template_name][$fq_class_name][0];
                             } elseif ($storage->template_type_extends && $found_generic_params) {
-                                $generic_param_types[] = self::getGenericParamForOffset(
+                                $generic_param_type = self::getGenericParamForOffset(
                                     $declaring_fq_class_name,
                                     $template_name,
                                     $storage->template_type_extends,
                                     $found_generic_params
                                 );
                             } else {
-                                $generic_param_types[] = array_values($base_type)[0][0];
+                                $generic_param_type = array_values($base_type)[0][0];
                             }
+
+                            $generic_param_type->had_template = true;
+
+                            $generic_param_types[] = $generic_param_type;
                         }
                     }
 

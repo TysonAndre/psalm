@@ -1,12 +1,12 @@
 <?php
 namespace Psalm\Internal\Provider;
 
-use function strtolower;
+use function file_exists;
 use function file_get_contents;
 use function file_put_contents;
 use function filemtime;
-use function file_exists;
 use function in_array;
+use function strtolower;
 
 class FileProvider
 {
@@ -33,6 +33,10 @@ class FileProvider
 
         if (isset($this->open_files[strtolower($file_path)])) {
             return $this->open_files[strtolower($file_path)];
+        }
+
+        if (!file_exists($file_path)) {
+            throw new \UnexpectedValueException('File ' . $file_path . ' should exist to get contents');
         }
 
         return (string)file_get_contents($file_path);
@@ -77,6 +81,10 @@ class FileProvider
      */
     public function getModifiedTime($file_path)
     {
+        if (!file_exists($file_path)) {
+            throw new \UnexpectedValueException('File should exist to get modified time');
+        }
+
         return (int)filemtime($file_path);
     }
 
@@ -117,8 +125,7 @@ class FileProvider
      */
     public function closeFile(string $file_path)
     {
-        unset($this->temp_files[strtolower($file_path)]);
-        unset($this->open_files[strtolower($file_path)]);
+        unset($this->temp_files[strtolower($file_path)], $this->open_files[strtolower($file_path)]);
     }
 
     /**

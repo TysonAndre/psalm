@@ -922,6 +922,12 @@ class FunctionCallTest extends TestCase
                         return explode(" ", $s);
                     }',
             ],
+            'explodeWithThirdArg' => [
+                '<?php
+                    $elements = explode("_", "", -1);
+                    $element = array_shift($elements);
+                    assert(null !== $element);'
+            ],
             'allowPossiblyUndefinedClassInClassExists' => [
                 '<?php
                     if (class_exists(Foo::class)) {}',
@@ -1590,7 +1596,7 @@ class FunctionCallTest extends TestCase
                     '$a' => 'int|false',
                     '$b' => 'int|false',
                     '$c' => 'int',
-                ]
+                ],
             ],
             'PHP73-hrtime' => [
                 '<?php
@@ -1690,7 +1696,7 @@ class FunctionCallTest extends TestCase
             'countableSimpleXmlElement' => [
                 '<?php
                     $xml = new SimpleXMLElement("<?xml version=\"1.0\"?><a><b></b><b></b></a>");
-                    echo count($xml);'
+                    echo count($xml);',
             ],
             'refineWithTraitExists' => [
                 '<?php
@@ -1698,7 +1704,7 @@ class FunctionCallTest extends TestCase
                         if (trait_exists($s)) {
                             new ReflectionClass($s);
                         }
-                    }'
+                    }',
             ],
             'refineWithClassExistsOrTraitExists' => [
                 '<?php
@@ -1718,7 +1724,7 @@ class FunctionCallTest extends TestCase
                         if (class_exists($s) || interface_exists($s) || trait_exists($s)) {
                             new ReflectionClass($s);
                         }
-                    }'
+                    }',
             ],
             'minSingleArg' => [
                 '<?php
@@ -1740,7 +1746,7 @@ class FunctionCallTest extends TestCase
             'versionCompareAsCallable' => [
                 '<?php
                     $a = ["1.0", "2.0"];
-                    uksort($a, "version_compare");'
+                    uksort($a, "version_compare");',
             ],
             'coerceToObjectAfterBeingCalled' => [
                 '<?php
@@ -1758,7 +1764,7 @@ class FunctionCallTest extends TestCase
                         /** @psalm-suppress MixedArgument */
                         takesFoo($f);
                         $f->bar();
-                    }'
+                    }',
             ],
             'functionExists' => [
                 '<?php
@@ -1766,7 +1772,20 @@ class FunctionCallTest extends TestCase
                         function in_array($a, $b) {
                             return true;
                         }
-                    }'
+                    }',
+            ],
+            'pregReplaceCallback' => [
+                '<?php
+                    function foo(string $s) : string {
+                        return preg_replace_callback(
+                            \'/<files (psalm-version="[^"]+") (?:php-version="(.+)">\n)/\',
+                            /** @param array<int, string> $matches */
+                            function (array $matches) : string {
+                                return $matches[1];
+                            },
+                            $s
+                        );
+                    }',
             ],
         ];
     }
@@ -2305,13 +2324,13 @@ class FunctionCallTest extends TestCase
                         takesString($s);
                         takesInt($s);
                     }',
-                'error_message' => 'InvalidScalarArgument'
+                'error_message' => 'InvalidScalarArgument',
             ],
             'tooFewArgsAccurateCount' => [
                 '<?php
                     preg_match(\'/adsf/\');',
-                'error_message' => 'TooFewArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:2:21 - Too few arguments for method preg_match - expecting 2 but saw 1'
-            ]
+                'error_message' => 'TooFewArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:2:21 - Too few arguments for method preg_match - expecting 2 but saw 1',
+            ],
         ];
     }
 }

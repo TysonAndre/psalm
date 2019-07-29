@@ -82,6 +82,12 @@ class TryAnalyzer
             return false;
         }
 
+        $stmt_control_actions = ScopeAnalyzer::getFinalControlActions(
+            $stmt->stmts,
+            $codebase->config->exit_functions,
+            $context->inside_case
+        );
+
         /** @var array<string, bool> */
         $newly_assigned_var_ids = $context->assigned_var_ids;
 
@@ -362,7 +368,9 @@ class TryAnalyzer
 
             if ($catch_actions[$i] !== [ScopeAnalyzer::ACTION_END]) {
                 foreach ($catch_context->vars_in_scope as $var_id => $type) {
-                    if (isset($context->vars_in_scope[$var_id])
+                    if ($stmt_control_actions === [ScopeAnalyzer::ACTION_END]) {
+                        $context->vars_in_scope[$var_id] = $type;
+                    } elseif (isset($context->vars_in_scope[$var_id])
                         && $context->vars_in_scope[$var_id]->getId() !== $type->getId()
                     ) {
                         $context->vars_in_scope[$var_id] = Type::combineUnionTypes(

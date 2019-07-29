@@ -1,9 +1,9 @@
 <?php
 namespace Psalm\Tests\Template;
 
+use const DIRECTORY_SEPARATOR;
 use Psalm\Tests\TestCase;
 use Psalm\Tests\Traits;
-use const DIRECTORY_SEPARATOR;
 
 class ClassTemplateTest extends TestCase
 {
@@ -1183,7 +1183,7 @@ class ClassTemplateTest extends TestCase
                             if (!$t) {}
                             if ($t) {}
                          }
-                    }'
+                    }',
             ],
             'allowTemplateParamsToCoerceToMinimumTypes' => [
                 '<?php
@@ -1356,8 +1356,8 @@ class ClassTemplateTest extends TestCase
 
                     $a = $p->a;',
                 [
-                    '$a' => 'string'
-                ]
+                    '$a' => 'string',
+                ],
             ],
             'templateAsArray' => [
                 '<?php
@@ -1419,7 +1419,7 @@ class ClassTemplateTest extends TestCase
                         public function __set(string $property, $value) {
                             $this->data[$property] = $value;
                         }
-                    }'
+                    }',
             ],
             'keyOfClassTemplateReturningIndexedAccess' => [
                 '<?php
@@ -1449,7 +1449,7 @@ class ClassTemplateTest extends TestCase
                         public function __get(string $property) {
                             return $this->data[$property];
                         }
-                    }'
+                    }',
             ],
             'SKIPPED-templatedInterfaceIntersectionFirst' => [
                 '<?php
@@ -1475,7 +1475,7 @@ class ClassTemplateTest extends TestCase
                     $a = makeConcrete()->foo();',
                 [
                     '$a' => 'C',
-                ]
+                ],
             ],
             'templatedInterfaceIntersectionSecond' => [
                 '<?php
@@ -1501,7 +1501,7 @@ class ClassTemplateTest extends TestCase
                     $a = makeConcrete()->foo();',
                 [
                     '$a' => 'C',
-                ]
+                ],
             ],
             'returnTemplateIntersectionGenericObjectAndTemplate' => [
                 '<?php
@@ -1531,8 +1531,8 @@ class ClassTemplateTest extends TestCase
 
                     $a = makeConcrete(C::class);',
                 [
-                    '$a' => 'C&I<C>'
-                ]
+                    '$a' => 'C&I<C>',
+                ],
             ],
             'keyOfArrayGet' => [
                 '<?php
@@ -1586,9 +1586,9 @@ class ClassTemplateTest extends TestCase
                          * @return key-of<DATA>
                          */
                         abstract public function getRandomKey() : string;
-                    }'
+                    }',
             ],
-            'allowBoolTemplateCoercion' =>  [
+            'allowBoolTemplateCoercion' => [
                 '<?php
                     /** @template T */
                     class TestPromise {
@@ -1600,6 +1600,97 @@ class ClassTemplateTest extends TestCase
                     function test(): TestPromise {
                         return new TestPromise(true);
                     }',
+            ],
+            'classTemplatedPropertyEmptyAssignment' => [
+                '<?php
+                    /** @template T */
+                    class Foo {
+                        /** @param \Closure():T $closure */
+                        public function __construct($closure) {}
+                    }
+
+                    class Bar {
+                        /** @var Foo<array> */
+                        private $FooArray;
+
+                        public function __construct() {
+                            $this->FooArray = new Foo(function(): array { return []; });
+                        }
+                    }',
+            ],
+            'classTemplatedPropertyAssignmentWithMoreSpecificArray' => [
+                '<?php
+                    /** @template T */
+                    class Foo {
+                        /** @param \Closure():T $closure */
+                        public function __construct($closure) {}
+                    }
+                    class Bar {
+                        /** @var Foo<array> */
+                        private $FooArray;
+                        public function __construct() {
+                            $this->FooArray = new Foo(function(): array { return []; });
+                        }
+                    }',
+            ],
+            'insideClosureVarTemplate' => [
+                '<?php
+                    /**
+                     * @template T of object
+                     */
+                    class Foo {
+                        /**
+                         * @psalm-return callable(): ?T
+                         */
+                        public function bar() {
+                            return
+                                /** @psalm-return ?T */
+                                function() {
+                                    /** @psalm-var ?T */
+                                    $data = null;
+                                    return $data;
+                                };
+                        }
+                    }',
+            ],
+            'allowBoundedType' => [
+                '<?php
+                    class Base {}
+                    class Child extends Base {}
+
+                    /**
+                     * @template T
+                     */
+                    class Foo
+                    {
+                        /** @param Closure():T $t */
+                        public function __construct(Closure $t) {}
+                    }
+
+                    /**
+                     * @return Foo<Base>
+                     */
+                    function returnFooBase() : Foo {
+                        $f = new Foo(function () { return new Child(); });
+                        return $f;
+                    }',
+            ],
+            'allowMoreSpecificArray' => [
+                '<?php
+                    /** @template T */
+                    class Foo {
+                        /** @param \Closure():T $closure */
+                        public function __construct($closure) {}
+                    }
+
+                    class Bar {
+                        /** @var Foo<array> */
+                        private $FooArray;
+
+                        public function __construct() {
+                            $this->FooArray = new Foo(function(): array { return ["foo" => "bar"]; });
+                        }
+                    }'
             ],
         ];
     }
@@ -1907,6 +1998,133 @@ class ClassTemplateTest extends TestCase
 
                     $mario->ame = "Luigi";',
                 'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:47:29 - Argument 1 of CharacterRow::__set expects string(id)|string(name)|string(height), string(ame) provided',
+            ],
+            'specialiseTypeBeforeReturning' => [
+                '<?php
+                    class Base {}
+                    class Derived extends Base {}
+
+                    /**
+                     * @template T of Base
+                     */
+                    class Foo {
+                        /**
+                         * @param T $t
+                         */
+                        public function __construct ($t) {}
+                    }
+
+                    /**
+                     * @return Foo<Base>
+                     */
+                    function returnFooBase() {
+                        $f = new Foo(new Derived());
+                        takesFooDerived($f);
+                        return $f;
+                    }
+
+                    /**
+                     * @param Foo<Derived> $foo
+                     */
+                    function takesFooDerived($foo): void {}',
+                'error_message' => 'InvalidReturnStatement'
+            ],
+            'possiblySpecialiseTypeBeforeReturning' => [
+                '<?php
+                    class Base {}
+                    class Derived extends Base {}
+
+                    /**
+                     * @template T of Base
+                     */
+                    class Foo {
+                        /**
+                         * @param T $t
+                         */
+                        public function __construct ($t) {}
+                    }
+
+                    /**
+                     * @return Foo<Base>
+                     */
+                    function returnFooBase() {
+                        $f = new Foo(new Derived());
+
+                        if (rand(0, 1)) {
+                            takesFooDerived($f);
+                        }
+
+                        return $f;
+                    }
+
+                    /**
+                     * @param Foo<Derived> $foo
+                     */
+                    function takesFooDerived($foo): void {}',
+                'error_message' => 'InvalidReturnStatement'
+            ],
+            'specializeTypeInPropertyAssignment' => [
+                '<?php
+                    /** @template T */
+                    class Foo {
+                        /** @var \Closure():T $closure */
+                        private $closure;
+
+                        /** @param \Closure():T $closure */
+                        public function __construct($closure)
+                        {
+                            $this->closure = $closure;
+                        }
+                    }
+
+                    class Bar {
+                        /** @var Foo<array> */
+                        private $FooArray;
+
+                        public function __construct() {
+                            $this->FooArray = new Foo(function(): array { return ["foo" => "bar"]; });
+                            expectsShape($this->FooArray);
+                        }
+                    }
+
+                    /** @param Foo<array{foo: string}> $_ */
+                    function expectsShape($_): void {}',
+                'error_message' => 'MixedArgumentTypeCoercion'
+            ],
+            'coerceEmptyArrayToGeneral' => [
+                '<?php
+                    /** @template T */
+                    class Foo
+                    {
+                        /** @param \Closure(string):T $closure */
+                        public function __construct($closure) {}
+                    }
+
+                    class Bar
+                    {
+                      /** @var Foo<array> */
+                      private $FooArray;
+
+                      public function __construct()
+                      {
+                          $this->FooArray = new Foo(function(string $s): array {
+                              /** @psalm-suppress MixedAssignment */
+                              $json = \json_decode($s, true);
+
+                              if (! \is_array($json)) {
+                                  return [];
+                              }
+
+                              return $json;
+                          });
+
+                          takesEmpty($this->FooArray);
+                        }
+                    }
+
+                    /** @param Foo<array<empty, empty>> $_ */
+                    function takesEmpty($_): void {}',
+                'error_message' => 'MixedArgumentTypeCoercion'
             ],
         ];
     }

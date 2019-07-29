@@ -1,70 +1,70 @@
 <?php
 namespace Psalm;
 
+use Webmozart\PathUtil\Path;
+use function array_merge;
+use function array_pop;
+use function array_unique;
+use function class_exists;
 use Composer\Autoload\ClassLoader;
+use function count;
+use const DIRECTORY_SEPARATOR;
+use function dirname;
+use const E_USER_ERROR;
+use function explode;
+use function file_exists;
+use function file_get_contents;
+use function filetype;
+use function get_class;
+use function get_defined_constants;
+use function get_defined_functions;
+use function in_array;
+use function intval;
+use function is_dir;
+use function json_decode;
+use function libxml_clear_errors;
+use const LIBXML_ERR_ERROR;
+use const LIBXML_ERR_FATAL;
+use function libxml_get_errors;
+use function libxml_use_internal_errors;
+use function mkdir;
+use const PHP_EOL;
+use function phpversion;
+use function preg_match;
+use function preg_quote;
+use function preg_replace;
+use Psalm\Config\IssueHandler;
+use Psalm\Config\ProjectFileFilter;
+use Psalm\Exception\ConfigException;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Scanner\FileScanner;
+use Psalm\Issue\ArgumentIssue;
 use Psalm\Issue\ClassIssue;
 use Psalm\Issue\CodeIssue;
 use Psalm\Issue\FunctionIssue;
 use Psalm\Issue\MethodIssue;
-use Psalm\Issue\ArgumentIssue;
 use Psalm\Issue\PropertyIssue;
-use Psalm\Config\IssueHandler;
-use Psalm\Config\ProjectFileFilter;
-use Psalm\Exception\ConfigException;
-use Psalm\Internal\Analyzer\FileAnalyzer;
-use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Plugin\Hook;
-use Psalm\PluginRegistrationSocket;
 use Psalm\Progress\Progress;
 use Psalm\Progress\VoidProgress;
-use SimpleXMLElement;
-use const PHP_EOL;
 use function realpath;
-use function is_dir;
-use function dirname;
-use const DIRECTORY_SEPARATOR;
-use function file_exists;
-use function file_get_contents;
-use function sha1;
-use function libxml_use_internal_errors;
-use function libxml_get_errors;
-use const LIBXML_ERR_FATAL;
-use const LIBXML_ERR_ERROR;
-use function libxml_clear_errors;
-use function sys_get_temp_dir;
-use function mkdir;
-use function trigger_error;
-use const E_USER_ERROR;
-use function phpversion;
-use function version_compare;
-use function intval;
-use function strtolower;
-use function preg_replace;
-use function class_exists;
-use function count;
 use function reset;
-use function preg_quote;
-use function in_array;
-use function explode;
-use function get_class;
-use function array_pop;
+use function rmdir;
+use function scandir;
+use function sha1;
+use SimpleXMLElement;
 use function strpos;
-use function preg_match;
-use function array_merge;
-use function get_defined_constants;
-use function get_defined_functions;
-use function json_decode;
-use function array_unique;
-use function strtr;
 use function strrpos;
+use function strtolower;
+use function strtr;
 use function substr;
 use function substr_count;
-use function scandir;
-use function filetype;
+use function sys_get_temp_dir;
+use function trigger_error;
 use function unlink;
-use function rmdir;
+use function version_compare;
 
 class Config
 {
@@ -335,6 +335,14 @@ class Config
     public $find_unused_variables = false;
 
     /**
+     * Whether to resolve file and directory paths from the location of the config file,
+     * instead of the current working directory.
+     *
+     * @var bool
+     */
+    public $resolve_from_config_file = false;
+
+    /**
      * @var string[]
      */
     public $plugin_paths = [];
@@ -409,12 +417,14 @@ class Config
 
     /**
      * Static methods to be called after codebase has been populated
+     *
      * @var class-string<Hook\AfterCodebasePopulatedInterface>[]
      */
     public $after_codebase_populated = [];
 
     /**
      * Static methods to be called after codebase has been populated
+     *
      * @var class-string<Hook\AfterAnalysisInterface>[]
      */
     public $after_analysis = [];
@@ -449,6 +459,11 @@ class Config
     /** @var string|null */
     public $error_baseline = null;
 
+    /**
+     * @var bool
+     */
+    public $include_php_versions_in_error_baseline = false;
+
     /** @var string */
     public $shepherd_host = 'shepherd.dev';
 
@@ -478,34 +493,35 @@ class Config
      * Searches up a folder hierarchy for the most immediate config.
      *
      * @param  string $path
-     * @param  string $base_dir
+     * @param  string $current_dir
      * @param  string $output_format
-     *
-     * @throws ConfigException if a config path is not found
      *
      * @return Config
      * @psalm-suppress MixedArgument
+     *@throws ConfigException if a config path is not found
+     *
      */
-    public static function getConfigForPath($path, $base_dir, $output_format)
+    public static function getConfigForPath($path, $current_dir, $output_format)
     {
         $config_path = self::locateConfigFile($path);
 
         if (!$config_path) {
             if ($output_format === \Psalm\Report::TYPE_CONSOLE) {
-                echo 'Could not locate a config XML file in path '. $path
+                echo 'Could not locate a config XML file in path ' . $path
                     . '. Have you run \'psalm --init\' ?' . PHP_EOL;
                 exit(1);
             }
             throw new ConfigException('Config not found for path ' . $path);
         }
 
-        return self::loadFromXMLFile($config_path, $base_dir);
+        return self::loadFromXMLFile($config_path, $current_dir);
     }
 
     /**
      * Searches up a folder hierarchy for the most immediate config.
      *
      * @throws ConfigException
+     *
      * @return ?string
      */
     public static function locateConfigFile(string $path)
@@ -529,6 +545,7 @@ class Config
 
             $dir_path = dirname($dir_path);
         } while (dirname($dir_path) !== $dir_path);
+
         return null;
     }
 
@@ -536,20 +553,22 @@ class Config
      * Creates a new config object from the file
      *
      * @param  string           $file_path
-     * @param  string           $base_dir
+     * @param  string           $current_dir
      *
      * @return self
      */
-    public static function loadFromXMLFile($file_path, $base_dir)
+    public static function loadFromXMLFile($file_path, $current_dir)
     {
         $file_contents = file_get_contents($file_path);
+
+        $base_dir = dirname($file_path) . DIRECTORY_SEPARATOR;
 
         if ($file_contents === false) {
             throw new \InvalidArgumentException('Cannot open ' . $file_path);
         }
 
         try {
-            $config = self::loadFromXML($base_dir, $file_contents);
+            $config = self::loadFromXML($base_dir, $file_contents, $current_dir);
             $config->hash = sha1($file_contents . \PSALM_VERSION);
         } catch (ConfigException $e) {
             throw new ConfigException(
@@ -563,23 +582,31 @@ class Config
     /**
      * Creates a new config object from an XML string
      *
+     * @throws ConfigException
+     *
      * @param  string           $base_dir
      * @param  string           $file_contents
+     * @param  string|null      $current_dir Current working directory, if different to $base_dir
      *
      * @return self
-     * @psalm-suppress MixedArgument
-     * @psalm-suppress MixedPropertyFetch
-     * @psalm-suppress MixedMethodCall
-     * @psalm-suppress MixedAssignment
-     * @psalm-suppress MixedOperand
-     * @psalm-suppress MixedPropertyAssignment
      */
-    public static function loadFromXML($base_dir, $file_contents)
+    public static function loadFromXML($base_dir, $file_contents, $current_dir = null)
     {
-        $config = new static();
+        if ($current_dir === null) {
+            $current_dir = $base_dir;
+        }
 
-        $config->base_dir = $base_dir;
+        self::validateXmlConfig($file_contents);
 
+        return self::fromXmlAndPaths($base_dir, $file_contents, $current_dir);
+    }
+
+
+    /**
+     * @throws ConfigException
+     */
+    private static function validateXmlConfig(string $file_contents): void
+    {
         $schema_path = dirname(dirname(__DIR__)) . '/config.xsd';
 
         if (!file_exists($schema_path)) {
@@ -622,27 +649,66 @@ class Config
             }
             libxml_clear_errors();
         }
+    }
+
+
+    /**
+     * @psalm-suppress MixedMethodCall
+     * @psalm-suppress MixedAssignment
+     * @psalm-suppress MixedOperand
+     * @psalm-suppress MixedPropertyAssignment
+     * @psalm-suppress MixedArgument
+     * @psalm-suppress MixedPropertyFetch
+     *
+     * @throws ConfigException
+     */
+    private static function fromXmlAndPaths(string $base_dir, string $file_contents, string $current_dir): self
+    {
+        $config = new static();
 
         $config_xml = new SimpleXMLElement($file_contents);
 
-        if (isset($config_xml['useDocblockTypes'])) {
-            $attribute_text = (string) $config_xml['useDocblockTypes'];
-            $config->use_docblock_types = $attribute_text === 'true' || $attribute_text === '1';
+        $booleanAttributes = [
+            'useDocblockTypes' => 'use_docblock_types',
+            'useDocblockPropertyTypes' => 'use_docblock_property_types',
+            'throwExceptionOnError' => 'throw_exception',
+            'hideExternalErrors' => 'hide_external_errors',
+            'resolveFromConfigFile' => 'resolve_from_config_file',
+            'allowFileIncludes' => 'allow_includes',
+            'totallyTyped' => 'totally_typed',
+            'strictBinaryOperands' => 'strict_binary_operands',
+            'requireVoidReturnType' => 'add_void_docblocks',
+            'useAssertForType' => 'use_assert_for_type',
+            'rememberPropertyAssignmentsAfterCall' => 'remember_property_assignments_after_call',
+            'allowPhpStormGenerics' => 'allow_phpstorm_generics',
+            'allowStringToStandInForClass' => 'allow_string_standin_for_class',
+            'usePhpDocMethodsWithoutMagicCall' => 'use_phpdoc_method_without_magic_or_parent',
+            'memoizeMethodCallResults' => 'memoize_method_calls',
+            'hoistConstants' => 'hoist_constants',
+            'addParamDefaultToDocblockType' => 'add_param_default_to_docblock_type',
+            'checkForThrowsDocblock' => 'check_for_throws_docblock',
+            'checkForThrowsInGlobalScope' => 'check_for_throws_in_global_scope',
+            'forbidEcho' => 'forbid_echo',
+            'ignoreInternalFunctionFalseReturn' => 'ignore_internal_falsable_issues',
+            'ignoreInternalFunctionNullReturn' => 'ignore_internal_nullable_issues',
+            'includePhpVersionsInErrorBaseline' => 'include_php_versions_in_error_baseline',
+        ];
+
+        foreach ($booleanAttributes as $xmlName => $internalName) {
+            if (isset($config_xml[$xmlName])) {
+                $attribute_text = (string) $config_xml[$xmlName];
+                $config->setBooleanAttribute(
+                    $internalName,
+                    $attribute_text === 'true' || $attribute_text === '1'
+                );
+            }
         }
 
-        if (isset($config_xml['useDocblockPropertyTypes'])) {
-            $attribute_text = (string) $config_xml['useDocblockPropertyTypes'];
-            $config->use_docblock_property_types = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['throwExceptionOnError'])) {
-            $attribute_text = (string) $config_xml['throwExceptionOnError'];
-            $config->throw_exception = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['hideExternalErrors'])) {
-            $attribute_text = (string) $config_xml['hideExternalErrors'];
-            $config->hide_external_errors = $attribute_text === 'true' || $attribute_text === '1';
+        if ($config->resolve_from_config_file) {
+            $config->base_dir = $base_dir;
+        } else {
+            $config->base_dir = $current_dir;
+            $base_dir = $current_dir;
         }
 
         if (isset($config_xml['autoloader'])) {
@@ -669,36 +735,6 @@ class Config
             trigger_error('Could not create cache directory: ' . $config->cache_directory, E_USER_ERROR);
         }
 
-        if (isset($config_xml['allowFileIncludes'])) {
-            $attribute_text = (string) $config_xml['allowFileIncludes'];
-            $config->allow_includes = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['totallyTyped'])) {
-            $attribute_text = (string) $config_xml['totallyTyped'];
-            $config->totally_typed = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['strictBinaryOperands'])) {
-            $attribute_text = (string) $config_xml['strictBinaryOperands'];
-            $config->strict_binary_operands = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['requireVoidReturnType'])) {
-            $attribute_text = (string) $config_xml['requireVoidReturnType'];
-            $config->add_void_docblocks = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['useAssertForType'])) {
-            $attribute_text = (string) $config_xml['useAssertForType'];
-            $config->use_assert_for_type = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['rememberPropertyAssignmentsAfterCall'])) {
-            $attribute_text = (string) $config_xml['rememberPropertyAssignmentsAfterCall'];
-            $config->remember_property_assignments_after_call = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
         if (isset($config_xml['serializer'])) {
             $attribute_text = (string) $config_xml['serializer'];
             $config->use_igbinary = $attribute_text === 'igbinary';
@@ -706,50 +742,6 @@ class Config
             $config->use_igbinary = version_compare($igbinary_version, '2.0.5') >= 0;
         }
 
-        if (isset($config_xml['allowPhpStormGenerics'])) {
-            $attribute_text = (string) $config_xml['allowPhpStormGenerics'];
-            $config->allow_phpstorm_generics = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['allowStringToStandInForClass'])) {
-            $attribute_text = (string) $config_xml['allowStringToStandInForClass'];
-            $config->allow_string_standin_for_class = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['usePhpDocMethodsWithoutMagicCall'])) {
-            $attribute_text = (string) $config_xml['usePhpDocMethodsWithoutMagicCall'];
-            $config->use_phpdoc_method_without_magic_or_parent = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['memoizeMethodCallResults'])) {
-            $attribute_text = (string) $config_xml['memoizeMethodCallResults'];
-            $config->memoize_method_calls = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['hoistConstants'])) {
-            $attribute_text = (string) $config_xml['hoistConstants'];
-            $config->hoist_constants = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['addParamDefaultToDocblockType'])) {
-            $attribute_text = (string) $config_xml['addParamDefaultToDocblockType'];
-            $config->add_param_default_to_docblock_type = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['checkForThrowsDocblock'])) {
-            $attribute_text = (string) $config_xml['checkForThrowsDocblock'];
-            $config->check_for_throws_docblock = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['checkForThrowsInGlobalScope'])) {
-            $attribute_text = (string) $config_xml['checkForThrowsInGlobalScope'];
-            $config->check_for_throws_in_global_scope = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['forbidEcho'])) {
-            $attribute_text = (string) $config_xml['forbidEcho'];
-            $config->forbid_echo = $attribute_text === 'true' || $attribute_text === '1';
-        }
 
         if (isset($config_xml['findUnusedCode'])) {
             $attribute_text = (string) $config_xml['findUnusedCode'];
@@ -760,16 +752,6 @@ class Config
         if (isset($config_xml['findUnusedVariablesAndParams'])) {
             $attribute_text = (string) $config_xml['findUnusedVariablesAndParams'];
             $config->find_unused_variables = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['ignoreInternalFunctionFalseReturn'])) {
-            $attribute_text = (string) $config_xml['ignoreInternalFunctionFalseReturn'];
-            $config->ignore_internal_falsable_issues = $attribute_text === 'true' || $attribute_text === '1';
-        }
-
-        if (isset($config_xml['ignoreInternalFunctionNullReturn'])) {
-            $attribute_text = (string) $config_xml['ignoreInternalFunctionNullReturn'];
-            $config->ignore_internal_nullable_issues = $attribute_text === 'true' || $attribute_text === '1';
         }
 
         if (isset($config_xml['errorBaseline'])) {
@@ -870,7 +852,7 @@ class Config
                 foreach ($config_xml->plugins->plugin as $plugin) {
                     $plugin_file_name = (string) $plugin['filename'];
 
-                    $path = isAbsolutePath($plugin_file_name)
+                    $path = Path::isAbsolute($plugin_file_name)
                         ? $plugin_file_name
                         : $config->base_dir . $plugin_file_name;
 
@@ -1062,7 +1044,8 @@ class Config
 
                 /**
                  * @psalm-suppress InvalidStringClass
-                 * @var Plugin\PluginEntryPointInterface $plugin_object
+                 *
+                 * @var Plugin\PluginEntryPointInterface
                  */
                 $plugin_object = new $plugin_class_name;
                 $plugin_object($socket, $plugin_config);
@@ -1296,6 +1279,7 @@ class Config
 
     /**
      * @param  string $issue_type
+     *
      * @return string|null
      */
     private static function getParentIssueType($issue_type)
@@ -1803,5 +1787,10 @@ class Config
     public function addStubFile(string $stub_file)
     {
         $this->stub_files[] = $stub_file;
+    }
+
+    private function setBooleanAttribute(string $name, bool $value): void
+    {
+        $this->$name = $value;
     }
 }

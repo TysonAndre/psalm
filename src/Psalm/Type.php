@@ -2,6 +2,8 @@
 namespace Psalm;
 
 use Psalm\Exception\TypeParseTreeException;
+use Psalm\Internal\Type\ParseTree;
+use Psalm\Internal\Type\TypeCombination;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type\Atomic;
 use Psalm\Type\Atomic\ObjectLike;
@@ -14,7 +16,6 @@ use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
-use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TIterable;
 use Psalm\Type\Atomic\TLiteralClassString;
@@ -30,36 +31,35 @@ use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
-use Psalm\Internal\Type\ParseTree;
-use Psalm\Internal\Type\TypeCombination;
 use Psalm\Type\Union;
-use function count;
-use function preg_match;
-use function strlen;
-use function strtolower;
-use function array_map;
-use function array_unshift;
 use function array_keys;
-use function array_values;
-use function get_class;
-use function array_shift;
-use function strpos;
-use function preg_replace;
-use function in_array;
-use function substr;
-use function explode;
-use function str_split;
-use function is_numeric;
-use function array_push;
-use function array_splice;
-use function implode;
-use function stripos;
-use function preg_quote;
-use function array_pop;
+use function array_map;
 use function array_merge;
+use function array_pop;
+use function array_push;
+use function array_shift;
+use function array_splice;
+use function array_unshift;
+use function array_values;
+use function count;
+use function explode;
+use function get_class;
+use function implode;
+use function in_array;
+use function is_numeric;
 use function is_string;
+use function preg_match;
+use function preg_quote;
+use function preg_replace;
+use function stripos;
+use function strlen;
+use function strpos;
+use function str_split;
+use function strtolower;
+use function substr;
 
 abstract class Type
 {
@@ -262,7 +262,7 @@ abstract class Type
                     array_unshift($generic_params, new Union([new TMixed]));
                 }
 
-                for ($i = 0, $l = 4 - count($generic_params); $i < $l; $i++) {
+                for ($i = 0, $l = 4 - count($generic_params); $i < $l; ++$i) {
                     $generic_params[] = new Union([new TMixed]);
                 }
             }
@@ -288,6 +288,7 @@ abstract class Type
 
                 if (isset($template_type_map[$class_name])) {
                     $first_class = array_keys($template_type_map[$class_name])[0];
+
                     return self::getGenericParamClass(
                         $class_name,
                         $template_type_map[$class_name][$first_class][0],
@@ -581,13 +582,14 @@ abstract class Type
 
             if ($non_nullable_type instanceof Union) {
                 $non_nullable_type->addType(new TNull);
+
                 return $non_nullable_type;
             }
 
             if ($non_nullable_type instanceof Atomic) {
                 return TypeCombination::combineTypes([
                     new TNull,
-                    $non_nullable_type
+                    $non_nullable_type,
                 ]);
             }
 
@@ -730,6 +732,7 @@ abstract class Type
                 );
 
                 $as->substitute(new Union([$t]), new Union([$traversable]));
+
                 return new Atomic\TTemplateParamClass(
                     $param_name,
                     $traversable->value,
@@ -864,7 +867,7 @@ abstract class Type
 
                     $was_char = true;
 
-                    $i++;
+                    ++$i;
 
                     continue;
                 }
@@ -934,13 +937,13 @@ abstract class Type
     ) {
         $type_tokens = self::tokenize($string_type);
 
-        for ($i = 0, $l = count($type_tokens); $i < $l; $i++) {
+        for ($i = 0, $l = count($type_tokens); $i < $l; ++$i) {
             $string_type_token = $type_tokens[$i];
 
             if (in_array(
                 $string_type_token[0],
                 [
-                    '<', '>', '|', '?', ',', '{', '}', ':', '::', '[', ']', '(', ')', '&', '=', '...'
+                    '<', '>', '|', '?', ',', '{', '}', ':', '::', '[', ']', '(', ')', '&', '=', '...',
                 ],
                 true
             )) {
@@ -1178,7 +1181,7 @@ abstract class Type
                 $extends === 'object'
                     ? null
                     : new TNamedObject($extends)
-            )
+            ),
         ]);
     }
 
@@ -1422,6 +1425,10 @@ abstract class Type
 
             if ($type_1->ignore_falsable_issues || $type_2->ignore_falsable_issues) {
                 $combined_type->ignore_falsable_issues = true;
+            }
+
+            if ($type_1->had_template && $type_2->had_template) {
+                $combined_type->had_template = true;
             }
 
             if ($both_failed_reconciliation) {

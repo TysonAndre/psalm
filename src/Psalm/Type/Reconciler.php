@@ -1,12 +1,22 @@
 <?php
 namespace Psalm\Type;
 
-use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TraitAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
+use function array_filter;
+use function array_map;
+use function array_pop;
+use function array_shift;
+use function count;
+use function explode;
+use function get_class;
+use function implode;
+use function is_string;
+use function ksort;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Exception\TypeParseTreeException;
+use Psalm\Internal\Analyzer\StatementsAnalyzer;
+use Psalm\Internal\Analyzer\TraitAnalyzer;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\ParadoxicalCondition;
 use Psalm\Issue\PsalmInternalError;
@@ -27,7 +37,6 @@ use Psalm\Type\Atomic\TCallableObjectLikeArray;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
-use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
@@ -38,22 +47,13 @@ use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
+use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTrue;
-use function strpos;
-use function array_shift;
-use function ksort;
-use function substr;
-use function implode;
-use function array_map;
-use function is_string;
-use function array_filter;
-use function get_class;
-use function count;
-use function strtolower;
-use function array_pop;
-use function str_split;
-use function explode;
 use function str_replace;
+use function str_split;
+use function strpos;
+use function strtolower;
+use function substr;
 
 class Reconciler
 {
@@ -656,6 +656,9 @@ class Reconciler
                 } elseif ($type instanceof TCallable) {
                     $object_types[] = new Type\Atomic\TCallableObject();
                     $did_remove_type = true;
+                } elseif ($type instanceof TTemplateParam) {
+                    $object_types[] = $type;
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -717,6 +720,9 @@ class Reconciler
                     $type = new TCallableObjectLikeArray($type->properties);
                     $callable_types[] = $type;
                     $did_remove_type = true;
+                } elseif ($type instanceof TTemplateParam) {
+                    $callable_types[] = $type;
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -746,7 +752,7 @@ class Reconciler
         }
 
         if ($new_var_type === 'iterable') {
-            if ($existing_var_type->hasMixed()) {
+            if ($existing_var_type->hasMixed() || $existing_var_type->hasTemplate()) {
                 return new Type\Union([new Type\Atomic\TIterable]);
             }
 
@@ -788,10 +794,10 @@ class Reconciler
         }
 
         if ($new_var_type === 'countable') {
-            if ($existing_var_type->hasMixed()) {
+            if ($existing_var_type->hasMixed() || $existing_var_type->hasTemplate()) {
                 return new Type\Union([
                     new Type\Atomic\TArray([Type::getArrayKey(), Type::getMixed()]),
-                    new Type\Atomic\TNamedObject('Countable')
+                    new Type\Atomic\TNamedObject('Countable'),
                 ]);
             }
 
@@ -858,6 +864,9 @@ class Reconciler
                 } elseif ($type instanceof TScalar) {
                     $did_remove_type = true;
                     $numeric_types[] = new TNumeric();
+                } elseif ($type instanceof TTemplateParam) {
+                    $numeric_types[] = $type;
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -893,6 +902,12 @@ class Reconciler
             foreach ($existing_var_atomic_types as $type) {
                 if ($type instanceof Scalar) {
                     $scalar_types[] = $type;
+                } elseif ($type instanceof TTemplateParam) {
+                    if ($type->as->hasScalarType() || $type->as->hasMixed()) {
+                        $scalar_types[] = $type;
+                    }
+
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -931,6 +946,12 @@ class Reconciler
                     $type->from_docblock = false;
                 } elseif ($type instanceof TScalar) {
                     $bool_types[] = new TBool;
+                    $did_remove_type = true;
+                } elseif ($type instanceof TTemplateParam) {
+                    if ($type->as->hasBool() || $type->as->hasMixed()) {
+                        $bool_types[] = $type;
+                    }
+
                     $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
@@ -980,6 +1001,12 @@ class Reconciler
                 } elseif ($type instanceof TScalar || $type instanceof TArrayKey) {
                     $string_types[] = new TString;
                     $did_remove_type = true;
+                } elseif ($type instanceof TTemplateParam) {
+                    if ($type->as->hasString() || $type->as->hasMixed()) {
+                        $string_types[] = $type;
+                    }
+
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -1017,16 +1044,16 @@ class Reconciler
                 $existing_var_type->addType(
                     new TCallableObjectLikeArray([
                         new Type\Union([new TObject, new TString]),
-                        Type::getString()
+                        Type::getString(),
                     ])
                 );
             } else {
                 $array_combination = \Psalm\Internal\Type\TypeCombination::combineTypes([
                     new TCallableObjectLikeArray([
                         new Type\Union([new TObject, new TString]),
-                        Type::getString()
+                        Type::getString(),
                     ]),
-                    $existing_var_atomic_types['array']
+                    $existing_var_atomic_types['array'],
                 ]);
 
                 $existing_var_type->addType(
@@ -1107,7 +1134,7 @@ class Reconciler
 
             if ($existing_var_type->hasMixed()) {
                 $type = new Type\Union([
-                    new Type\Atomic\TNamedObject($new_var_type)
+                    new Type\Atomic\TNamedObject($new_var_type),
                 ]);
 
                 if ($allow_string_comparison) {
@@ -1157,14 +1184,16 @@ class Reconciler
 
                     $new_type = Type::getClassString($new_var_type);
 
-                    if (($new_type_has_interface_string
+                    if ((
+                        $new_type_has_interface_string
                             && !TypeAnalyzer::isContainedBy(
                                 $codebase,
                                 $existing_var_type,
                                 $new_type
                             )
                         )
-                        || ($old_type_has_interface_string
+                        || (
+                            $old_type_has_interface_string
                             && !TypeAnalyzer::isContainedBy(
                                 $codebase,
                                 $new_type,
@@ -1213,7 +1242,7 @@ class Reconciler
 
                         if (count($acceptable_atomic_types) === 1) {
                             return new Type\Union([
-                                new TClassString('object', $acceptable_atomic_types[0])
+                                new TClassString('object', $acceptable_atomic_types[0]),
                             ]);
                         }
                     }
@@ -1276,14 +1305,16 @@ class Reconciler
         $new_type_part = Atomic::create($new_var_type, null, $template_type_map);
 
         if ($new_type_part instanceof TNamedObject
-            && (($new_type_has_interface
+            && ((
+                $new_type_has_interface
                     && !TypeAnalyzer::isContainedBy(
                         $codebase,
                         $existing_var_type,
                         $new_type
                     )
                 )
-                || ($old_type_has_interface
+                || (
+                    $old_type_has_interface
                     && !TypeAnalyzer::isContainedBy(
                         $codebase,
                         $new_type,
@@ -1447,10 +1478,7 @@ class Reconciler
                     continue;
                 }
 
-                $scalar_type_match_found = false;
-                $type_coerced = false;
-                $type_coerced_from_mixed = false;
-                $atomic_to_string_cast = false;
+                $atomic_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
 
                 $atomic_contained_by = TypeAnalyzer::isAtomicContainedBy(
                     $codebase,
@@ -1458,15 +1486,12 @@ class Reconciler
                     $existing_type_part,
                     true,
                     false,
-                    $scalar_type_match_found,
-                    $type_coerced,
-                    $type_coerced_from_mixed,
-                    $atomic_to_string_cast
+                    $atomic_comparison_results
                 );
 
-                if ($atomic_contained_by || $type_coerced) {
+                if ($atomic_contained_by || $atomic_comparison_results->type_coerced) {
                     $has_local_match = true;
-                    if ($type_coerced) {
+                    if ($atomic_comparison_results->type_coerced) {
                         $matching_atomic_types[] = $existing_type_part;
                     }
                 }
@@ -1516,15 +1541,15 @@ class Reconciler
                     if ($has_any_param_match) {
                         $has_local_match = true;
                         $matching_atomic_types[] = $existing_type_part;
-                        $type_coerced = true;
+                        $atomic_comparison_results->type_coerced = true;
                     }
                 }
 
-                if ($atomic_contained_by || $type_coerced) {
+                if ($atomic_contained_by || $atomic_comparison_results->type_coerced) {
                     continue;
                 }
 
-                if ($scalar_type_match_found) {
+                if ($atomic_comparison_results->scalar_type_match_found) {
                     $any_scalar_type_match_found = true;
                 }
             }
@@ -1602,7 +1627,13 @@ class Reconciler
             $did_remove_type = false;
 
             foreach ($existing_var_atomic_types as $type) {
-                if (!$type->isObjectType()) {
+                if ($type instanceof TTemplateParam) {
+                    if (!$type->as->hasObject()) {
+                        $non_object_types[] = $type;
+                    }
+
+                    $did_remove_type = true;
+                } elseif (!$type->isObjectType()) {
                     $non_object_types[] = $type;
                 } else {
                     $did_remove_type = true;
@@ -1641,7 +1672,13 @@ class Reconciler
             $did_remove_type = false;
 
             foreach ($existing_var_atomic_types as $type) {
-                if (!($type instanceof Scalar)) {
+                if ($type instanceof TTemplateParam) {
+                    if (!$type->as->hasScalar()) {
+                        $non_scalar_types[] = $type;
+                    }
+
+                    $did_remove_type = true;
+                } elseif (!($type instanceof Scalar)) {
                     $non_scalar_types[] = $type;
                 } else {
                     $did_remove_type = true;
@@ -1680,7 +1717,13 @@ class Reconciler
             $did_remove_type = false;
 
             foreach ($existing_var_atomic_types as $type) {
-                if (!$type instanceof TBool
+                if ($type instanceof TTemplateParam) {
+                    if (!$type->as->hasBool()) {
+                        $non_bool_types[] = $type;
+                    }
+
+                    $did_remove_type = true;
+                } elseif (!$type instanceof TBool
                     || ($is_equality && get_class($type) === TBool::class)
                 ) {
                     $non_bool_types[] = $type;
@@ -1728,6 +1771,12 @@ class Reconciler
             foreach ($existing_var_atomic_types as $type) {
                 if (!$type->isNumericType()) {
                     $non_numeric_types[] = $type;
+                } elseif ($type instanceof TTemplateParam) {
+                    if (!$type->as->hasNumeric()) {
+                        $non_numeric_types[] = $type;
+                    }
+
+                    $did_remove_type = true;
                 } else {
                     $did_remove_type = true;
                 }
@@ -2086,11 +2135,7 @@ class Reconciler
                         $existing_var_type_part,
                         $new_type_part,
                         false,
-                        false,
-                        $scalar_type_match_found,
-                        $type_coerced,
-                        $type_coerced_from_mixed,
-                        $atomic_to_string_cast
+                        false
                     )) {
                         $existing_var_type->removeType($part_name);
                     }
@@ -2722,7 +2767,7 @@ class Reconciler
                     if ($base_atomic_type instanceof Type\Atomic\TArray) {
                         $base_atomic_type = new Type\Atomic\ObjectLike(
                             [
-                                $array_key_offset => clone $result_type
+                                $array_key_offset => clone $result_type,
                             ],
                             null
                         );
@@ -2794,7 +2839,7 @@ class Reconciler
                 case ']':
                     $parts_offset++;
                     $parts[$parts_offset] = $char;
-                    $parts_offset++;
+                    ++$parts_offset;
                     continue 2;
 
                 case '\'':
@@ -2811,13 +2856,14 @@ class Reconciler
                     if ($i < $char_count - 1 && $chars[$i + 1] === '>') {
                         ++$i;
 
-                        $parts_offset++;
+                        ++$parts_offset;
                         $parts[$parts_offset] = '->';
-                        $parts_offset++;
+                        ++$parts_offset;
                         continue 2;
                     }
                     // fall through
 
+                    // no break
                 default:
                     if (!isset($parts[$parts_offset])) {
                         $parts[$parts_offset] = '';
