@@ -179,6 +179,7 @@ class APIFilterPlugin implements
             /**
              * @param string $union_type_string
              * @psalm-suppress RedundantConditionGivenDocblockType
+             * @psalm-suppress DocblockTypeContradiction
              */
             function($union_type_string) : Union {
                 if (!is_string($union_type_string)) {

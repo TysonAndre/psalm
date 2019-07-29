@@ -234,7 +234,6 @@ class CommentAnalyzer
     }
 
     /**
-     * @param  string           $comment
      * @param  Aliases          $aliases
      * @param  array<string, array<int, array{0: string, 1: int}>> $type_aliases
      *

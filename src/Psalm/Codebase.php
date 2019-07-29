@@ -462,6 +462,7 @@ class Codebase
      * Scans all files their related files
      *
      * @return void
+     * @psalm-suppress PossiblyUnusedParam deliberately limiting due to plugin used with this fork requiring a single thread.
      */
     public function scanFiles(int $threads = 1)
     {
