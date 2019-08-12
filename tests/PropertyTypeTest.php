@@ -158,7 +158,7 @@ class PropertyTypeTest extends TestCase
                         /**
                          * @var mixed
                          */
-                        public $foo;
+                        public $foo = "hello";
 
                         /** @return void */
                         public function barBar()
@@ -176,7 +176,7 @@ class PropertyTypeTest extends TestCase
             'propertyWithoutTypeSuppressingIssue' => [
                 '<?php
                     class A {
-                        public $foo;
+                        public $foo = "hello";
                     }
 
                     $a = (new A)->foo;',
@@ -937,7 +937,7 @@ class PropertyTypeTest extends TestCase
                         /**
                          * @var mixed
                          */
-                        private $mixed;
+                        private $mixed = "hello";
 
                         /**
                          * @param mixed $value
@@ -1661,6 +1661,38 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
             ],
+            'readonlyPropertySetInConstructor' => [
+                '<?php
+                    class A {
+                        /**
+                         * @readonly
+                         */
+                        public string $bar;
+
+                        public function __construct() {
+                            $this->bar = "hello";
+                        }
+                    }
+
+                    echo (new A)->bar;'
+            ],
+            'readonlyPropertySetChildClass' => [
+                '<?php
+                    abstract class A {
+                        /**
+                         * @readonly
+                         */
+                        public string $bar;
+                    }
+
+                    class B extends A {
+                        public function __construct() {
+                            $this->bar = "hello";
+                        }
+                    }
+
+                    echo (new B)->bar;'
+            ],
         ];
     }
 
@@ -1718,7 +1750,7 @@ class PropertyTypeTest extends TestCase
             'missingPropertyType' => [
                 '<?php
                     class A {
-                        public $foo;
+                        public $foo = null;
 
                         public function assignToFoo(): void {
                             $this->foo = 5;
@@ -2420,6 +2452,19 @@ class PropertyTypeTest extends TestCase
                     }',
                 'error_message' => 'UninitializedProperty',
             ],
+            'unitializedPropertyWithoutType' => [
+                '<?php
+                    class A {
+                        public $foo;
+
+                        public function __construct() {
+                            echo strlen($this->foo);
+                            $this->foo = "foo";
+                        }
+                    }',
+                'error_message' => 'UninitializedProperty',
+                ['MixedArgument', 'MissingPropertyType']
+            ],
             'unitializedObjectProperty' => [
                 '<?php
                     class Foo {
@@ -2581,6 +2626,71 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'UninitializedProperty',
+            ],
+            'badStaticPropertyDefault' => [
+                '<?php
+                    class TestStatic {
+                        /**
+                         * @var array<string, bool>
+                         */
+                        public static $test = ["string-key" => 1];
+                    }',
+                'error_message' => 'InvalidPropertyAssignmentValue'
+            ],
+            'readonlyPropertySetInConstructorAndAlsoAnotherMethodInsideClass' => [
+                '<?php
+                    class A {
+                        /**
+                         * @readonly
+                         */
+                        public string $bar;
+
+                        public function __construct() {
+                            $this->bar = "hello";
+                        }
+
+                        public function setBar() : void {
+                            $this->bar = "goodbye";
+                        }
+                    }',
+                'error_message' => 'InaccessibleProperty',
+            ],
+            'readonlyPropertySetInConstructorAndAlsoAnotherMethodInSublass' => [
+                '<?php
+                    class A {
+                        /**
+                         * @readonly
+                         */
+                        public string $bar;
+
+                        public function __construct() {
+                            $this->bar = "hello";
+                        }
+                    }
+
+                    class B extends A {
+                        public function setBar() : void {
+                            $this->bar = "hello";
+                        }
+                    }',
+                'error_message' => 'InaccessibleProperty',
+            ],
+            'readonlyPropertySetInConstructorAndAlsoOutsideClass' => [
+                '<?php
+                    class A {
+                        /**
+                         * @readonly
+                         */
+                        public string $bar;
+
+                        public function __construct() {
+                            $this->bar = "hello";
+                        }
+                    }
+
+                    $a = new A();
+                    $a->bar = "goodbye";',
+                'error_message' => 'InaccessibleProperty',
             ],
         ];
     }

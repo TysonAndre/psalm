@@ -171,6 +171,11 @@ class Codebase
     public $populator;
 
     /**
+     * @var ?Internal\Codebase\Taint
+     */
+    public $taint = null;
+
+    /**
      * @var bool
      */
     public $server_mode = false;
@@ -267,6 +272,8 @@ class Codebase
      */
     public $php_minor_version = PHP_MINOR_VERSION;
 
+
+
     public function __construct(
         Config $config,
         Providers $providers,
@@ -315,7 +322,6 @@ class Codebase
         );
 
         $this->methods = new Internal\Codebase\Methods(
-            $config,
             $providers->classlike_storage_provider,
             $providers->file_reference_provider,
             $this->classlikes
@@ -356,6 +362,8 @@ class Codebase
         $this->loadAnalyzer();
 
         $this->file_reference_provider->loadReferenceCache(false);
+
+        Internal\Analyzer\FunctionLikeAnalyzer::clearCache();
 
         if (!$this->statements_provider->parser_cache_provider) {
             $diff_files = $candidate_files;
@@ -1277,8 +1285,6 @@ class Codebase
         if (!$reference_map && !$type_map) {
             return null;
         }
-
-        $recent_type = null;
 
         krsort($type_map);
 

@@ -32,6 +32,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Reconciler;
+use Psalm\Internal\Type\AssertionReconciler;
 use Psalm\Internal\Type\TypeCombination;
 use function array_merge;
 use function array_diff_key;
@@ -279,7 +280,7 @@ class BinaryOpAnalyzer
                 $var_id = ExpressionAnalyzer::getVarId($stmt->left->var, $context->self);
 
                 if ($var_id && isset($pre_op_context->vars_in_scope[$var_id])) {
-                    $left_inferred_reconciled = Reconciler::reconcileTypes(
+                    $left_inferred_reconciled = AssertionReconciler::reconcile(
                         '!falsy',
                         clone $pre_op_context->vars_in_scope[$var_id],
                         '',
@@ -328,6 +329,29 @@ class BinaryOpAnalyzer
 
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->right, $context) === false) {
                 return false;
+            }
+
+            if ($codebase->taint) {
+                $sources = [];
+                $either_tainted = 0;
+
+                if (isset($stmt->left->inferredType)) {
+                    $sources = $stmt->left->inferredType->sources ?: [];
+                    $either_tainted = $stmt->left->inferredType->tainted;
+                }
+
+                if (isset($stmt->right->inferredType)) {
+                    $sources = array_merge($sources, $stmt->right->inferredType->sources ?: []);
+                    $either_tainted = $either_tainted | $stmt->right->inferredType->tainted;
+                }
+
+                if ($sources) {
+                    $stmt->inferredType->sources = $sources;
+                }
+
+                if ($either_tainted) {
+                    $stmt->inferredType->tainted = $either_tainted;
+                }
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Coalesce) {
             $t_if_context = clone $context;
@@ -464,7 +488,7 @@ class BinaryOpAnalyzer
             $lhs_type = null;
 
             if (isset($stmt->left->inferredType)) {
-                $if_return_type_reconciled = Reconciler::reconcileTypes(
+                $if_return_type_reconciled = AssertionReconciler::reconcile(
                     '!null',
                     $stmt->left->inferredType,
                     '',
@@ -577,6 +601,22 @@ class BinaryOpAnalyzer
 
                 if ($result_type) {
                     $stmt->inferredType = $result_type;
+                }
+
+                if ($codebase->taint && $stmt->inferredType) {
+                    $sources = $stmt->left->inferredType->sources ?: [];
+                    $either_tainted = $stmt->left->inferredType->tainted;
+
+                    $sources = array_merge($sources, $stmt->right->inferredType->sources ?: []);
+                    $either_tainted = $either_tainted | $stmt->right->inferredType->tainted;
+
+                    if ($sources) {
+                        $stmt->inferredType->sources = $sources;
+                    }
+
+                    if ($either_tainted) {
+                        $stmt->inferredType->tainted = $either_tainted;
+                    }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr) {
                 self::analyzeNonDivArithmeticOp(

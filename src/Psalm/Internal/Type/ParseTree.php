@@ -341,7 +341,15 @@ class ParseTree
                         throw new TypeParseTreeException('Unexpected space');
                     }
 
+                    if ($current_leaf instanceof ParseTree\ObjectLikeTree) {
+                        break;
+                    }
+
                     $current_parent = $current_leaf->parent;
+
+                    if ($current_parent instanceof ParseTree\CallableTree) {
+                        break;
+                    }
 
                     while ($current_parent && !$current_parent instanceof ParseTree\MethodTree) {
                         $current_leaf = $current_parent;
@@ -512,7 +520,7 @@ class ParseTree
                             $nexter_token = $i + 2 < $c ? $type_tokens[$i + 2] : null;
 
                             if (!$nexter_token
-                                || (!preg_match('/^[A-Z_][A-Z_0-9]*$/', $nexter_token[0])
+                                || (!preg_match('/^[a-zA-Z_][a-zA-Z_0-9]*$/', $nexter_token[0])
                                     && strtolower($nexter_token[0]) !== 'class')
                             ) {
                                 throw new TypeParseTreeException(

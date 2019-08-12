@@ -10,8 +10,12 @@ tags
 /build/logs/
 all_output.actual
 all_output.expected
+/.phpunit.result.cache
 /composer.lock
 /phpunit.xml
 /vendor-bin/*/composer.lock
 /vendor-bin/*/vendor/
 /tests/fixtures/symlinktest/*
+
+.idea/inspectionProfiles/Project_Default.xml
+.idea/workspace.xml

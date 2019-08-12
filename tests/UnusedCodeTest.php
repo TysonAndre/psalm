@@ -187,7 +187,7 @@ class UnusedCodeTest extends TestCase
             'everythingUsed' => [
                 '<?php
                     interface I {
-                        public function foo();
+                        public function foo() : void;
                     }
                     class B implements I {
                         public function foo() : void {}
@@ -434,6 +434,71 @@ class UnusedCodeTest extends TestCase
                         A::bar();
                     }',
             ],
+            'usedParamInLoopBeforeBreak' => [
+                '<?php
+                    class Foo {}
+
+                    function takesFoo(Foo $foo1, Foo $foo2): Foo {
+                        while (rand(0, 1)) {
+                            echo get_class($foo1);
+
+                            if (rand(0, 1)) {
+                                $foo1 = $foo2;
+
+                                break;
+                            }
+                        }
+
+                        return $foo1;
+                    }',
+            ],
+            'usedParamInLoopBeforeContinue' => [
+                '<?php
+                    class Foo {}
+
+                    function takesFoo(Foo $foo1, Foo $foo2): Foo {
+                        while (rand(0, 1)) {
+                            echo get_class($foo1);
+
+                            if (rand(0, 1)) {
+                                $foo1 = $foo2;
+
+                                continue;
+                            }
+                        }
+
+                        return $foo1;
+                    }',
+            ],
+            'usedParamInLoopBeforeWithChangeContinue' => [
+                '<?php
+                    class Foo {}
+
+                    class Bar {
+                        public static function build(Foo $foo) : ?self {
+                            echo get_class($foo);
+                            return new self();
+                        }
+
+                        public function produceFoo(): Foo {
+                            return new Foo();
+                        }
+                    }
+
+                    function takesFoo(Foo $foo): Foo {
+                        while (rand(0, 1)) {
+                            $bar = Bar::build($foo);
+
+                            if ($bar) {
+                                $foo = $bar->produceFoo();
+
+                                continue;
+                            }
+                        }
+
+                        return $foo;
+                    }',
+            ],
         ];
     }
 
@@ -579,6 +644,32 @@ class UnusedCodeTest extends TestCase
 
                     new B();',
                 'error_message' => 'PossiblyUnusedProperty',
+            ],
+            'propertyUsedOnlyInConstructor' => [
+                '<?php
+                    class A {
+                        /** @var int */
+                        private $used;
+
+                        /** @var int */
+                        private $unused;
+
+                        /** @var int */
+                        private static $staticUnused;
+
+                        public function __construct() {
+                            $this->used = 4;
+                            $this->unused = 4;
+                            self::$staticUnused = 4;
+                        }
+
+                        public function handle(): void
+                        {
+                            $this->used++;
+                        }
+                    }
+                    (new A())->handle();',
+                'error_message' => 'UnusedProperty',
             ],
         ];
     }

@@ -14,6 +14,7 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\DeprecatedProperty;
 use Psalm\Issue\ImplicitToStringCast;
+use Psalm\Issue\InaccessibleProperty;
 use Psalm\Issue\InternalProperty;
 use Psalm\Issue\InvalidPropertyAssignment;
 use Psalm\Issue\InvalidPropertyAssignmentValue;
@@ -41,6 +42,7 @@ use function count;
 use function in_array;
 use function strtolower;
 use function explode;
+use Psalm\Internal\Taint\TypeSource;
 
 /**
  * @internal
@@ -360,6 +362,8 @@ class PropertyAssignmentAnalyzer
 
                             $has_regular_setter = true;
                             $property_exists = true;
+
+                            self::taintProperty($statements_analyzer, $stmt, $property_id, $assignment_value_type);
                             continue;
                         }
                     }
@@ -414,6 +418,8 @@ class PropertyAssignmentAnalyzer
                      * not in that list, fall through
                      */
                     if (!$var_id || !$class_storage->sealed_properties) {
+                        self::taintProperty($statements_analyzer, $stmt, $property_id, $assignment_value_type);
+
                         continue;
                     }
 
@@ -454,6 +460,8 @@ class PropertyAssignmentAnalyzer
                         $property_id = $self_property_id;
                     }
                 }
+
+                self::taintProperty($statements_analyzer, $stmt, $property_id, $assignment_value_type);
 
                 if (!$codebase->properties->propertyExists(
                     $property_id,
@@ -600,6 +608,32 @@ class PropertyAssignmentAnalyzer
                                     $property_id . ' is marked internal',
                                     new CodeLocation($statements_analyzer->getSource(), $stmt),
                                     $property_id
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+                    }
+
+                    if ($property_storage->readonly) {
+                        $appearing_property_class = $codebase->properties->getAppearingClassForProperty(
+                            $property_id,
+                            true
+                        );
+
+                        if ($appearing_property_class
+                            && !($context->self
+                                && ($appearing_property_class === $context->self
+                                    || $codebase->classExtends($context->self, $appearing_property_class))
+                                && (!$context->calling_method_id
+                                    || \strpos($context->calling_method_id, '::__construct'))
+                            )
+                        ) {
+                            if (IssueBuffer::accepts(
+                                new InaccessibleProperty(
+                                    $property_id . ' is marked readonly',
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt)
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
@@ -906,6 +940,56 @@ class PropertyAssignmentAnalyzer
         return null;
     }
 
+    private static function taintProperty(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Expr\PropertyFetch $stmt,
+        string $property_id,
+        Type\Union $assignment_value_type
+    ) : void {
+        $codebase = $statements_analyzer->getCodebase();
+
+        if (!$codebase->taint) {
+            return;
+        }
+
+        $method_source = new TypeSource(
+            $property_id,
+            new CodeLocation($statements_analyzer->getSource(), $stmt)
+        );
+
+        if ($codebase->taint->hasPreviousSink($method_source)) {
+            if ($assignment_value_type->sources) {
+                $codebase->taint->addSinks(
+                    $statements_analyzer,
+                    $assignment_value_type->sources,
+                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                    $method_source
+                );
+            }
+        }
+
+        if ($assignment_value_type->sources) {
+            foreach ($assignment_value_type->sources as $type_source) {
+                if ($codebase->taint->hasPreviousSource($type_source)
+                    || $assignment_value_type->tainted
+                ) {
+                    $codebase->taint->addSources(
+                        $statements_analyzer,
+                        [$method_source],
+                        new CodeLocation($statements_analyzer->getSource(), $stmt),
+                        $type_source
+                    );
+                }
+            }
+        } elseif ($assignment_value_type->tainted) {
+            throw new \UnexpectedValueException(
+                'sources should exist for tainted var in '
+                    . $statements_analyzer->getFileName() . ':'
+                    . $stmt->getLine()
+            );
+        }
+    }
+
     /**
      * @param   StatementsAnalyzer                         $statements_analyzer
      * @param   PhpParser\Node\Expr\StaticPropertyFetch   $stmt
@@ -935,6 +1019,10 @@ class PropertyAssignmentAnalyzer
         $prop_name = $stmt->name;
 
         if (!$prop_name instanceof PhpParser\Node\Identifier) {
+            if (ExpressionAnalyzer::analyze($statements_analyzer, $prop_name, $context) === false) {
+                return false;
+            }
+
             if ($fq_class_name && !$context->ignore_variable_property) {
                 $codebase->analyzer->addMixedMemberName(
                     strtolower($fq_class_name) . '::$',

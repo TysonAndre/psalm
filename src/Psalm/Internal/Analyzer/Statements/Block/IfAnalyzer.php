@@ -286,7 +286,7 @@ class IfAnalyzer
                     $changed_var_ids,
                     $cond_referenced_var_ids,
                     $statements_analyzer,
-                    [],
+                    $statements_analyzer->getTemplateTypeMap() ?: [],
                     $if_context->inside_loop,
                     $context->check_variables
                         ? new CodeLocation(
@@ -333,7 +333,7 @@ class IfAnalyzer
                 $changed_var_ids,
                 $stmt->else || $stmt->elseifs ? $cond_referenced_var_ids : [],
                 $statements_analyzer,
-                [],
+                $statements_analyzer->getTemplateTypeMap() ?: [],
                 $context->inside_loop,
                 $context->check_variables
                     ? new CodeLocation(
@@ -691,7 +691,7 @@ class IfAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
-                    [],
+                    $statements_analyzer->getTemplateTypeMap() ?: [],
                     $outer_context->inside_loop,
                     new CodeLocation(
                         $statements_analyzer->getSource(),
@@ -989,8 +989,13 @@ class IfAnalyzer
             )
         );
 
-        $reconcilable_elseif_types = Algebra::getTruthsFromFormula($elseif_context->clauses);
-        $negated_elseif_types = Algebra::getTruthsFromFormula(Algebra::negateFormula($elseif_clauses));
+        try {
+            $reconcilable_elseif_types = Algebra::getTruthsFromFormula($elseif_context->clauses);
+            $negated_elseif_types = Algebra::getTruthsFromFormula(Algebra::negateFormula($elseif_clauses));
+        } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+            $reconcilable_elseif_types = [];
+            $negated_elseif_types = [];
+        }
 
         $all_negated_vars = array_unique(
             array_merge(
@@ -1022,7 +1027,7 @@ class IfAnalyzer
                 $changed_var_ids,
                 $new_referenced_var_ids,
                 $statements_analyzer,
-                [],
+                $statements_analyzer->getTemplateTypeMap() ?: [],
                 $elseif_context->inside_loop,
                 new CodeLocation(
                     $statements_analyzer->getSource(),
@@ -1205,7 +1210,7 @@ class IfAnalyzer
                     $changed_var_ids,
                     [],
                     $statements_analyzer,
-                    [],
+                    $statements_analyzer->getTemplateTypeMap() ?: [],
                     $elseif_context->inside_loop,
                     new CodeLocation($statements_analyzer->getSource(), $elseif, $outer_context->include_location)
                 );
@@ -1303,10 +1308,14 @@ class IfAnalyzer
             $outer_context->mergeExceptions($elseif_context);
         }
 
-        $if_scope->negated_clauses = array_merge(
-            $if_scope->negated_clauses,
-            Algebra::negateFormula($elseif_clauses)
-        );
+        try {
+            $if_scope->negated_clauses = array_merge(
+                $if_scope->negated_clauses,
+                Algebra::negateFormula($elseif_clauses)
+            );
+        } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+            $if_scope->negated_clauses = [];
+        }
     }
 
     /**

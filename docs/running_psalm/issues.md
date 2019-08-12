@@ -337,9 +337,20 @@ takesString(new A);
 Emitted when calling an impure function from a function or method marked as pure.
 
 ```php
+function impure(array $a) : array {
+    /** @var int */
+    static $i = 0;
+
+    ++$i;
+
+    $a[$i] = 1;
+
+    return $a;
+}
+
 /** @psalm-pure */
 function filterOdd(array $a) : void {
-    extract($a);
+    impure($a);
 }
 ```
 
@@ -1074,7 +1085,7 @@ Emitted when a property is defined on a class without a type
 
 ```php
 class A {
-    public $foo;
+    public $foo = 5;
 }
 ```
 
@@ -2076,6 +2087,10 @@ Emitted when using a reserved word as a class name
 function foo(resource $res) : void {}
 ```
 
+### TaintedInput
+
+Emitted when tainted input detection is turned on
+
 ### TraitMethodSignatureMismatch
 
 Emitted when a method's signature or return type differs from corresponding trait-defined method
@@ -2314,7 +2329,7 @@ Emitted when a class extends another, but does not implement all of its abstract
 
 ```php
 abstract class A {
-    abstract public function foo();
+    abstract public function foo() : void;
 }
 class B extends A {}
 ```
@@ -2325,7 +2340,7 @@ Emitted when a class `implements` an interface but does not implement all of its
 
 ```php
 interface I {
-    public function foo();
+    public function foo() : void;
 }
 class A implements I {}
 ```

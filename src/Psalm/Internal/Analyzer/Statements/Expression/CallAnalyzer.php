@@ -10,6 +10,7 @@ use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\Taint\TypeSource;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\CodeLocation;
 use Psalm\Context;
@@ -29,6 +30,7 @@ use Psalm\Issue\TooFewArguments;
 use Psalm\Issue\TooManyArguments;
 use Psalm\Issue\ArgumentTypeCoercion;
 use Psalm\Issue\UndefinedFunction;
+use Psalm\Issue\UndefinedVariable;
 use Psalm\IssueBuffer;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FunctionLikeParameter;
@@ -55,6 +57,7 @@ use function preg_replace;
 use function is_int;
 use function substr;
 use function array_merge;
+use Psalm\Issue\TaintedInput;
 
 /**
  * @internal
@@ -588,6 +591,7 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\ArrayDimFetch
             || $arg->value instanceof PhpParser\Node\Expr\PropertyFetch
             || $arg->value instanceof PhpParser\Node\Expr\Array_
+            || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
         ) {
             if (ExpressionAnalyzer::analyze($statements_analyzer, $arg->value, $context) === false) {
                 return false;
@@ -1181,18 +1185,39 @@ class CallAnalyzer
                 }
             }
 
+            if ($method_id === 'compact'
+                && isset($arg->value->inferredType)
+                && $arg->value->inferredType->isSingleStringLiteral()
+            ) {
+                $literal = $arg->value->inferredType->getSingleStringLiteral();
+
+                if (!$context->hasVariable('$' . $literal->value, $statements_analyzer)) {
+                    if (IssueBuffer::accepts(
+                        new UndefinedVariable(
+                            'Cannot find referenced variable $' . $literal->value,
+                            new CodeLocation($statements_analyzer->getSource(), $arg->value)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+            }
+
             if (self::checkFunctionLikeArgumentMatches(
                 $statements_analyzer,
                 $cased_method_id,
                 $self_fq_class_name,
                 $static_fq_class_name,
+                $code_location,
                 $function_param,
                 $argument_offset,
                 $arg,
                 $context,
                 $existing_generic_params,
                 $generic_params,
-                $template_types
+                $template_types,
+                $function_storage ? $function_storage->pure : false
             ) === false) {
                 return false;
             }
@@ -1314,10 +1339,6 @@ class CallAnalyzer
     }
 
     /**
-     * @param  string|null $cased_method_id
-     * @param  string|null $self_fq_class_name
-     * @param  string|null $static_fq_class_name
-     * @param  FunctionLikeParameter|null $function_param
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $existing_generic_params
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
      * @param  array<string, array<string, array{Type\Union}>> $template_types
@@ -1325,16 +1346,18 @@ class CallAnalyzer
      */
     private static function checkFunctionLikeArgumentMatches(
         StatementsAnalyzer $statements_analyzer,
-        $cased_method_id,
-        $self_fq_class_name,
-        $static_fq_class_name,
-        $function_param,
+        ?string $cased_method_id,
+        ?string $self_fq_class_name,
+        ?string $static_fq_class_name,
+        CodeLocation $function_location,
+        ?FunctionLikeParameter $function_param,
         int $argument_offset,
         PhpParser\Node\Arg $arg,
         Context $context,
         array $existing_generic_params,
         array &$generic_params = null,
-        array $template_types = null
+        array $template_types = null,
+        bool $function_is_pure
     ) {
         $codebase = $statements_analyzer->getCodebase();
 
@@ -1380,12 +1403,17 @@ class CallAnalyzer
             return;
         }
 
+        if (!$function_param) {
+            return;
+        }
+
         if (self::checkFunctionLikeTypeMatches(
             $statements_analyzer,
             $codebase,
             $cased_method_id,
             $self_fq_class_name,
             $static_fq_class_name,
+            $function_location,
             $function_param,
             $arg->value->inferredType,
             $argument_offset,
@@ -1393,7 +1421,8 @@ class CallAnalyzer
             $context,
             $existing_generic_params,
             $generic_params,
-            $template_types
+            $template_types,
+            $function_is_pure
         ) === false) {
             return false;
         }
@@ -1536,34 +1565,28 @@ class CallAnalyzer
     }
 
     /**
-     * @param  string|null $cased_method_id
-     * @param  string|null $self_fq_class_name
-     * @param  string|null $static_fq_class_name
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $existing_generic_params
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
      * @param  array<string, array<string, array{Type\Union}>> $template_types
-     * @param  FunctionLikeParameter|null $function_param
      * @return false|null
      */
     private static function checkFunctionLikeTypeMatches(
         StatementsAnalyzer $statements_analyzer,
         Codebase $codebase,
-        $cased_method_id,
-        $self_fq_class_name,
-        $static_fq_class_name,
-        $function_param,
+        ?string $cased_method_id,
+        ?string $self_fq_class_name,
+        ?string $static_fq_class_name,
+        CodeLocation $function_location,
+        FunctionLikeParameter $function_param,
         Type\Union $arg_type,
         int $argument_offset,
         PhpParser\Node\Arg $arg,
         Context $context,
-        array $existing_generic_params = null,
-        array &$generic_params = null,
-        array $template_types = null
+        ?array $existing_generic_params,
+        ?array &$generic_params,
+        ?array $template_types,
+        bool $function_is_pure
     ) {
-        if (!$function_param) {
-            return;
-        }
-
         if (!$function_param->type) {
             if (!$codebase->infer_types_from_usage) {
                 return;
@@ -1718,9 +1741,10 @@ class CallAnalyzer
             new CodeLocation($statements_analyzer->getSource(), $arg->value),
             $arg->value,
             $context,
-            $function_param->by_ref,
-            $function_param->is_variadic,
-            $arg->unpack
+            $function_param,
+            $arg->unpack,
+            $function_is_pure,
+            $function_location
         ) === false) {
             return false;
         }
@@ -2211,15 +2235,6 @@ class CallAnalyzer
     }
 
     /**
-     * @param   StatementsAnalyzer   $statements_analyzer
-     * @param   Type\Union          $input_type
-     * @param   Type\Union          $param_type
-     * @param   string|null         $cased_method_id
-     * @param   int                 $argument_offset
-     * @param   CodeLocation        $code_location
-     * @param   bool                $by_ref
-     * @param   bool                $variadic
-     *
      * @return  null|false
      */
     public static function checkFunctionArgumentType(
@@ -2227,14 +2242,15 @@ class CallAnalyzer
         Type\Union $input_type,
         Type\Union $param_type,
         ?Type\Union $signature_param_type,
-        $cased_method_id,
+        ?string $cased_method_id,
         int $argument_offset,
         CodeLocation $code_location,
         PhpParser\Node\Expr $input_expr,
         Context $context,
-        bool $by_ref = false,
-        bool $variadic = false,
-        bool $unpack = false
+        FunctionLikeParameter $function_param,
+        bool $unpack,
+        bool $function_is_pure,
+        CodeLocation $function_location
     ) {
         $codebase = $statements_analyzer->getCodebase();
 
@@ -2265,6 +2281,19 @@ class CallAnalyzer
                 }
             }
 
+            if ($cased_method_id) {
+                self::processTaintedness(
+                    $statements_analyzer,
+                    $cased_method_id,
+                    $argument_offset,
+                    $code_location,
+                    $function_location,
+                    $function_param,
+                    $input_type,
+                    $function_is_pure
+                );
+            }
+
             return null;
         }
 
@@ -2293,8 +2322,8 @@ class CallAnalyzer
                 // fall through
             }
 
-            if (!$by_ref
-                && !($variadic xor $unpack)
+            if (!$function_param->by_ref
+                && !($function_param->is_variadic xor $unpack)
                 && $cased_method_id !== 'echo'
             ) {
                 self::coerceValueAfterGatekeeperArgument(
@@ -2306,6 +2335,19 @@ class CallAnalyzer
                     $signature_param_type,
                     $context,
                     $unpack
+                );
+            }
+
+            if ($cased_method_id) {
+                self::processTaintedness(
+                    $statements_analyzer,
+                    $cased_method_id,
+                    $argument_offset,
+                    $code_location,
+                    $function_location,
+                    $function_param,
+                    $input_type,
+                    $function_is_pure
                 );
             }
 
@@ -2357,6 +2399,25 @@ class CallAnalyzer
         if ($union_comparison_results->replacement_union_type) {
             $replace_input_type = true;
             $input_type = $union_comparison_results->replacement_union_type;
+        }
+
+        if ($cased_method_id) {
+            $old_input_type = $input_type;
+
+            self::processTaintedness(
+                $statements_analyzer,
+                $cased_method_id,
+                $argument_offset,
+                $code_location,
+                $function_location,
+                $function_param,
+                $input_type,
+                $function_is_pure
+            );
+
+            if ($old_input_type !== $input_type) {
+                $replace_input_type = true;
+            }
         }
 
         if ($type_match_found
@@ -2690,8 +2751,8 @@ class CallAnalyzer
         }
 
         if ($type_match_found
-            && !$by_ref
-            && !($variadic xor $unpack)
+            && !$function_param->by_ref
+            && !($function_param->is_variadic xor $unpack)
             && $cased_method_id !== 'echo'
         ) {
             self::coerceValueAfterGatekeeperArgument(
@@ -2707,6 +2768,131 @@ class CallAnalyzer
         }
 
         return null;
+    }
+
+    private static function processTaintedness(
+        StatementsAnalyzer $statements_analyzer,
+        string $cased_method_id,
+        int $argument_offset,
+        CodeLocation $code_location,
+        CodeLocation $function_location,
+        FunctionLikeParameter $function_param,
+        Type\Union &$input_type,
+        bool $function_is_pure
+    ) : void {
+        $codebase = $statements_analyzer->getCodebase();
+
+        if (!$codebase->taint) {
+            return;
+        }
+
+        $method_source = TypeSource::getForMethodArgument(
+            $cased_method_id,
+            $argument_offset,
+            $code_location
+        );
+
+        if (($function_param->is_sink || $codebase->taint->hasPreviousSink($method_source))
+            && $input_type->sources
+        ) {
+            $all_possible_sinks = [];
+
+            foreach ($input_type->sources as $source) {
+                if ($codebase->taint->hasExistingSink($source)) {
+                    continue;
+                }
+
+                $all_possible_sinks[] = $source;
+
+                if (strpos($source->id, '::') && strpos($source->id, '#')) {
+                    list($fq_classlike_name, $method_name) = explode('::', $source->id);
+
+                    $method_name_parts = explode('#', $method_name);
+
+                    $method_name = strtolower($method_name_parts[0]);
+
+                    $class_storage = $codebase->classlike_storage_provider->get($fq_classlike_name);
+
+                    foreach ($class_storage->dependent_classlikes as $dependent_classlike => $_) {
+                        $all_possible_sinks[] = TypeSource::getForMethodArgument(
+                            $dependent_classlike . '::' . $method_name,
+                            (int) $method_name_parts[1] - 1,
+                            $code_location,
+                            null
+                        );
+                    }
+
+                    if (isset($class_storage->overridden_method_ids[$method_name])) {
+                        foreach ($class_storage->overridden_method_ids[$method_name] as $parent_method_id) {
+                            $all_possible_sinks[] = TypeSource::getForMethodArgument(
+                                $parent_method_id,
+                                (int) $method_name_parts[1] - 1,
+                                $code_location,
+                                null
+                            );
+                        }
+                    }
+                }
+            }
+
+            $codebase->taint->addSinks(
+                $statements_analyzer,
+                $all_possible_sinks,
+                $code_location,
+                $method_source
+            );
+        }
+
+        if ($function_param->is_sink && $input_type->tainted && $input_type->sources) {
+            foreach ($input_type->sources as $input_source) {
+                if (IssueBuffer::accepts(
+                    new TaintedInput(
+                        'in path ' . $codebase->taint->getPredecessorPath($input_source)
+                            . ' out path ' . $codebase->taint->getSuccessorPath($method_source),
+                        $code_location
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            }
+        } elseif ($input_type->sources) {
+            if ($function_is_pure) {
+                $codebase->taint->addSpecialization(
+                    strtolower($cased_method_id . '#' . ($argument_offset + 1)),
+                    $function_location->file_name . ':' . $function_location->raw_file_start
+                );
+
+                $method_source = TypeSource::getForMethodArgument(
+                    $cased_method_id,
+                    $argument_offset,
+                    $code_location,
+                    $function_location
+                );
+            }
+
+            foreach ($input_type->sources as $type_source) {
+                if ($codebase->taint->hasPreviousSource($type_source) || $input_type->tainted) {
+                    $codebase->taint->addSources(
+                        $statements_analyzer,
+                        [$method_source],
+                        $code_location,
+                        $type_source
+                    );
+                }
+            }
+        } elseif ($input_type->tainted) {
+            throw new \UnexpectedValueException(
+                'sources should exist for tainted var in '
+                    . $code_location->getShortSummary()
+            );
+        }
+
+        if ($function_param->assert_untainted) {
+            $input_type = clone $input_type;
+            $input_type->tainted = null;
+            $input_type->sources = [];
+        }
     }
 
     private static function coerceValueAfterGatekeeperArgument(
@@ -2756,19 +2942,27 @@ class CallAnalyzer
         );
 
         if ($var_id) {
-            $input_type = clone $input_type;
+            $was_cloned = false;
 
             if ($input_type->isNullable() && !$param_type->isNullable()) {
+                $input_type = clone $input_type;
+                $was_cloned = true;
                 $input_type->removeType('null');
             }
 
             if ($input_type->getId() === $param_type->getId()) {
+                if (!$was_cloned) {
+                    $was_cloned = true;
+                    $input_type = clone $input_type;
+                }
+
                 $input_type->from_docblock = false;
 
                 foreach ($input_type->getTypes() as $atomic_type) {
                     $atomic_type->from_docblock = false;
                 }
             } elseif ($input_type->hasMixed() && $signature_param_type) {
+                $was_cloned = true;
                 $input_type = clone $signature_param_type;
 
                 if ($input_type->isNullable()) {
@@ -2776,7 +2970,9 @@ class CallAnalyzer
                 }
             }
 
-            $context->removeVarFromConflictingClauses($var_id, null, $statements_analyzer);
+            if ($was_cloned) {
+                $context->removeVarFromConflictingClauses($var_id, null, $statements_analyzer);
+            }
 
             if ($unpack) {
                 $input_type = new Type\Union([
@@ -2989,39 +3185,43 @@ class CallAnalyzer
                     $rule = substr($rule, 1);
                 }
 
-                if (isset($template_type_map[$rule][''])) {
-                    if ($template_type_map[$rule][''][0]->hasMixed()) {
-                        continue;
-                    }
-
-                    $replacement_atomic_types = $template_type_map[$rule][''][0]->getTypes();
-
-                    if (count($replacement_atomic_types) > 1) {
-                        continue;
-                    }
-
-                    $ored_type_assertions = [];
-
-                    foreach ($replacement_atomic_types as $replacement_atomic_type) {
-                        if ($replacement_atomic_type instanceof Type\Atomic\TMixed) {
+                if (isset($template_type_map[$rule])) {
+                    foreach ($template_type_map[$rule] as $template_map) {
+                        if ($template_map[0]->hasMixed()) {
                             continue 2;
                         }
 
-                        if ($replacement_atomic_type instanceof Type\Atomic\TArray
-                            || $replacement_atomic_type instanceof Type\Atomic\ObjectLike
-                        ) {
-                            $ored_type_assertions[] = $prefix . 'array';
-                        } elseif ($replacement_atomic_type instanceof Type\Atomic\TNamedObject) {
-                            $ored_type_assertions[] = $prefix . $replacement_atomic_type->value;
-                        } elseif ($replacement_atomic_type instanceof Type\Atomic\Scalar) {
-                            $ored_type_assertions[] = $prefix . $replacement_atomic_type->getId();
-                        } elseif ($replacement_atomic_type instanceof Type\Atomic\TNull) {
-                            $ored_type_assertions[] = $prefix . 'null';
-                        }
-                    }
+                        $replacement_atomic_types = $template_map[0]->getTypes();
 
-                    if ($ored_type_assertions) {
-                        $type_assertions[$assertion_var_id] = [$ored_type_assertions];
+                        if (count($replacement_atomic_types) > 1) {
+                            continue 2;
+                        }
+
+                        $ored_type_assertions = [];
+
+                        foreach ($replacement_atomic_types as $replacement_atomic_type) {
+                            if ($replacement_atomic_type instanceof Type\Atomic\TMixed) {
+                                continue 3;
+                            }
+
+                            if ($replacement_atomic_type instanceof Type\Atomic\TArray
+                                || $replacement_atomic_type instanceof Type\Atomic\ObjectLike
+                            ) {
+                                $ored_type_assertions[] = $prefix . 'array';
+                            } elseif ($replacement_atomic_type instanceof Type\Atomic\TNamedObject) {
+                                $ored_type_assertions[] = $prefix . $replacement_atomic_type->value;
+                            } elseif ($replacement_atomic_type instanceof Type\Atomic\Scalar) {
+                                $ored_type_assertions[] = $prefix . $replacement_atomic_type->getId();
+                            } elseif ($replacement_atomic_type instanceof Type\Atomic\TNull) {
+                                $ored_type_assertions[] = $prefix . 'null';
+                            } elseif ($replacement_atomic_type instanceof Type\Atomic\TTemplateParam) {
+                                $ored_type_assertions[] = $prefix . $replacement_atomic_type->param_name;
+                            }
+                        }
+
+                        if ($ored_type_assertions) {
+                            $type_assertions[$assertion_var_id] = [$ored_type_assertions];
+                        }
                     }
                 } else {
                     $type_assertions[$assertion_var_id] = $assertion->rule;

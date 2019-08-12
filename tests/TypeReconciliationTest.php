@@ -45,7 +45,7 @@ class TypeReconciliationTest extends TestCase
      */
     public function testReconcilation($expected, $type, $string)
     {
-        $reconciled = Reconciler::reconcileTypes(
+        $reconciled = \Psalm\Internal\Type\AssertionReconciler::reconcile(
             $type,
             Type::parseString($string),
             null,
@@ -131,6 +131,13 @@ class TypeReconciliationTest extends TestCase
             'nullableClassStringFalsy' => ['null', 'falsy', 'class-string<A>|null'],
             'nullableClassStringEqualsNull' => ['null', '=null', 'class-string<A>|null'],
             'nullableClassStringTruthy' => ['class-string<A>', '!falsy', 'class-string<A>|null'],
+            'iterableToArray' => ['array<int, int>', 'array', 'iterable<int, int>'],
+            'iterableToTraversable' => ['Traversable<int, int>', 'Traversable', 'iterable<int, int>'],
+            'callableToCallableArray' => ['callable-array{0: string|object, 1: string}', 'array', 'callable'],
+            'callableOrArrayToCallableArray' => ['array<array-key, mixed>|callable-array{0: string|object, 1: string}', 'array', 'callable|array'],
+            'traversableToIntersection' => ['Countable&Traversable', 'Traversable', 'Countable'],
+            'iterableWithoutParamsToTraversableWithoutParams' => ['Traversable', '!array', 'iterable'],
+            'iterableWithParamsToTraversableWithParams' => ['Traversable<int, string>', '!array', 'iterable<int, string>'],
         ];
     }
 
@@ -496,7 +503,7 @@ class TypeReconciliationTest extends TestCase
                       public function bat() : void {}
                     }
                     interface I {
-                      public function baz();
+                      public function baz() : void;
                     }
 
                     function foo(I $i) : void {
@@ -1301,7 +1308,7 @@ class TypeReconciliationTest extends TestCase
 
                     class A {
                         /** @var mixed */
-                        public $_array_value;
+                        public $_array_value = null;
 
                         private function getArrayValue() : ?array {
                             return rand(0, 1) ? [] : null;
@@ -1377,6 +1384,82 @@ class TypeReconciliationTest extends TestCase
 
                         return false;
                     }'
+            ],
+            'checkIterableType' => [
+                '<?php
+                    /**
+                     * @param array<int> $x
+                     * @psalm-suppress UnusedParam
+                     */
+                    function takesArray (array $x): void {}
+
+                    /** @var iterable<int> */
+                    $x = null;
+                    assert(is_array($x));
+                    takesArray($x);
+
+                    /**
+                     * @param Traversable<int> $x
+                     * @psalm-suppress UnusedParam
+                     */
+                    function takesTraversable (Traversable $x): void {}
+
+                    /** @var iterable<int> */
+                    $x = null;
+                    assert($x instanceof Traversable);
+                    takesTraversable($x);',
+            ],
+            'dontReconcileArrayOffset' => [
+                '<?php
+                    /** @psalm-suppress TypeDoesNotContainType */
+                    function foo(array $a) : void {
+                        if (!is_array($a)) {
+                            return;
+                        }
+
+                        if ($a[0] === 5) {}
+                    }'
+            ],
+            'assertHasArrayAccess' => [
+                '<?php
+                    /**
+                     * @return array|ArrayAccess
+                     */
+                    function getBar(array $array) {
+                        if (isset($array[\'foo\'][\'bar\'])) {
+                            return $array[\'foo\'];
+                        }
+
+                        return [];
+                    }',
+            ],
+            'assertHasArrayAccessWithType' => [
+                '<?php
+                    /**
+                     * @param array<string, array<string, string>> $array
+                     * @return array<string, string>
+                     */
+                    function getBar(array $array) : array {
+                        if (isset($array[\'foo\'][\'bar\'])) {
+                            return $array[\'foo\'];
+                        }
+
+                        return [];
+                    }',
+            ],
+            'assertHasArrayAccessOnSimpleXMLElement' => [
+                '<?php
+                    function getBar(SimpleXMLElement $e, string $s) : void {
+                        if (isset($e[$s])) {
+                            echo (string) $e[$s];
+                        }
+
+                        if (isset($e[\'foo\'])) {
+                            echo (string) $e[\'foo\'];
+                        }
+
+                        if (isset($e->bar)) {}
+                    }',
             ],
         ];
     }

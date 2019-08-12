@@ -550,6 +550,41 @@ class FunctionClassStringTemplateTest extends TestCase
                         throw new RuntimeException();
                     }',
             ],
+            'instanceofTemplatedClassStringOnMixed' => [
+                '<?php
+                    interface Foo {}
+
+                    /**
+                     * @template T as Foo
+                     * @param class-string<T> $fooClass
+                     * @param mixed $foo
+                     * @return T
+                     */
+                    function get($fooClass, $foo) {
+                        if ($foo instanceof $fooClass) {
+                            return $foo;
+                        }
+
+                        throw new \Exception();
+                    }',
+            ],
+            'instanceofTemplatedClassStringOnObjectType' => [
+                '<?php
+                    interface Foo {}
+
+                    /**
+                     * @template T as Foo
+                     * @param class-string<T> $fooClass
+                     * @return T
+                     */
+                    function get($fooClass, Foo $foo) {
+                        if ($foo instanceof $fooClass) {
+                            return $foo;
+                        }
+
+                        throw new \Exception();
+                    }',
+            ],
         ];
     }
 

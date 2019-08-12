@@ -31,6 +31,7 @@ use function strpos;
 use function is_string;
 use function strlen;
 use function substr;
+use Psalm\Internal\Taint\TypeSource;
 
 /**
  * @internal
@@ -177,7 +178,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             }
         } else {
             ExpressionAnalyzer::analyze($statements_analyzer, $stmt->class, $context);
-            $lhs_type = $stmt->class->inferredType;
+            $lhs_type = $stmt->class->inferredType ?? Type::getMixed();
         }
 
         if (!$lhs_type) {
@@ -989,6 +990,45 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 }
 
                 if ($return_type_candidate) {
+                    if ($codebase->taint && $method_id) {
+                        if ($method_storage && $method_storage->pure) {
+                            $code_location = new CodeLocation($statements_analyzer->getSource(), $stmt);
+
+                            $method_source = new TypeSource(
+                                strtolower(
+                                    $method_id
+                                        . '-' . $code_location->file_name
+                                        . ':' . $code_location->raw_file_start
+                                ),
+                                new CodeLocation($source, $stmt->name)
+                            );
+                        } else {
+                            $method_source = new TypeSource(
+                                strtolower($method_id),
+                                new CodeLocation($source, $stmt->name)
+                            );
+                        }
+
+                        if ($codebase->taint->hasPreviousSource($method_source, $suffixes)) {
+                            $return_type_candidate->tainted = 1;
+
+                            if ($suffixes !== null) {
+                                $specialized_sources = [];
+
+                                foreach ($suffixes as $suffix) {
+                                    $specialized_sources[] = new TypeSource(
+                                        $method_source->id . '-' . $suffix,
+                                        $method_source->code_location
+                                    );
+                                }
+
+                                $return_type_candidate->sources = $specialized_sources;
+                            } else {
+                                $return_type_candidate->sources = [$method_source];
+                            }
+                        }
+                    }
+
                     if (isset($stmt->inferredType)) {
                         $stmt->inferredType = Type::combineUnionTypes($stmt->inferredType, $return_type_candidate);
                     } else {
@@ -996,6 +1036,10 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
                 }
             } else {
+                if ($stmt->name instanceof PhpParser\Node\Expr) {
+                    ExpressionAnalyzer::analyze($statements_analyzer, $stmt->name, $context);
+                }
+
                 if (!$context->ignore_variable_method) {
                     $codebase->analyzer->addMixedMemberName(
                         strtolower($fq_class_name) . '::',

@@ -1054,7 +1054,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             try {
                 $docblock_info = CommentAnalyzer::extractClassLikeDocblockInfo(
                     $node,
-                    $doc_comment
+                    $doc_comment,
+                    $this->aliases
                 );
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
@@ -1210,6 +1211,20 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         PhpParser\Node\Stmt\ClassLike $node,
         string $extended_class_name
     ) {
+        if (trim($extended_class_name) === '') {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    'Extended class cannot be empty in docblock for ' . implode('.', $this->fq_classlike_names),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+
+            $storage->has_docblock_issues = true;
+
+            return;
+        }
+
         try {
             $extended_union_type = Type::parseTokens(
                 Type::fixUpLocalType(
@@ -1297,6 +1312,20 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         PhpParser\Node\Stmt\ClassLike $node,
         string $implemented_class_name
     ) {
+        if (trim($implemented_class_name) === '') {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    'Extended class cannot be empty in docblock for ' . implode('.', $this->fq_classlike_names),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+
+            $storage->has_docblock_issues = true;
+
+            return;
+        }
+
         try {
             $implemented_union_type = Type::parseTokens(
                 Type::fixUpLocalType(
@@ -1382,6 +1411,20 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         PhpParser\Node\Stmt\TraitUse $node,
         string $used_class_name
     ) {
+        if (trim($used_class_name) === '') {
+            if (IssueBuffer::accepts(
+                new InvalidDocblock(
+                    'Extended class cannot be empty in docblock for ' . implode('.', $this->fq_classlike_names),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                )
+            )) {
+            }
+
+            $storage->has_docblock_issues = true;
+
+            return;
+        }
+
         try {
             $used_union_type = Type::parseTokens(
                 Type::fixUpLocalType(
@@ -1899,7 +1942,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                     $param_index = \array_search($param_name, \array_keys($storage->param_types), true);
 
-                    if (!isset($storage->params[$param_index]->type)) {
+                    if ($param_index === false || !isset($storage->params[$param_index]->type)) {
                         continue;
                     }
 
@@ -2238,6 +2281,26 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     );
 
                     $storage->param_out_types[$i] = $out_type;
+                }
+            }
+        }
+
+        foreach ($docblock_info->taint_sink_params as $taint_sink_param) {
+            $param_name = substr($taint_sink_param['name'], 1);
+
+            foreach ($storage->params as $param_storage) {
+                if ($param_storage->name === $param_name) {
+                    $param_storage->is_sink = true;
+                }
+            }
+        }
+
+        foreach ($docblock_info->assert_untainted_params as $untainted_assert_param) {
+            $param_name = substr($untainted_assert_param['name'], 1);
+
+            foreach ($storage->params as $param_storage) {
+                if ($param_storage->name === $param_name) {
+                    $param_storage->assert_untainted = true;
                 }
             }
         }
@@ -2907,6 +2970,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
             $property_storage->internal = $var_comment ? $var_comment->internal : false;
             $property_storage->psalm_internal = $var_comment ? $var_comment->psalm_internal : null;
+            $property_storage->readonly = $var_comment ? $var_comment->readonly : false;
 
             if (!$signature_type && !$doc_var_group_type) {
                 if ($property->default) {

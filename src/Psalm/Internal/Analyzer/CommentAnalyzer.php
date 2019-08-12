@@ -94,10 +94,6 @@ class CommentAnalyzer
 
         $comment_text = $comment->getText();
 
-        if (!isset($parsed_docblock['specials']['var']) && !isset($parsed_docblock['specials']['psalm-var'])) {
-            return [];
-        }
-
         $var_line_number = $comment->getLine();
 
         if ($parsed_docblock) {
@@ -186,6 +182,7 @@ class CommentAnalyzer
                 $var_comment->type_end = $type_end;
                 $var_comment->deprecated = isset($parsed_docblock['specials']['deprecated']);
                 $var_comment->internal = isset($parsed_docblock['specials']['internal']);
+                $var_comment->readonly = isset($parsed_docblock['specials']['readonly']);
                 if (isset($parsed_docblock['specials']['psalm-internal'])) {
                     $psalm_internal = reset($parsed_docblock['specials']['psalm-internal']);
                     if ($psalm_internal) {
@@ -202,6 +199,19 @@ class CommentAnalyzer
 
                 $var_comments[] = $var_comment;
             }
+        }
+
+        if (!$var_comments
+            && (isset($parsed_docblock['specials']['deprecated'])
+                || isset($parsed_docblock['specials']['internal'])
+                || isset($parsed_docblock['specials']['readonly']))
+        ) {
+            $var_comment = new VarDocblockComment();
+            $var_comment->deprecated = isset($parsed_docblock['specials']['deprecated']);
+            $var_comment->internal = isset($parsed_docblock['specials']['internal']);
+            $var_comment->readonly = isset($parsed_docblock['specials']['readonly']);
+
+            $var_comments[] = $var_comment;
         }
 
         return $var_comments;
@@ -456,6 +466,24 @@ class CommentAnalyzer
                 } else {
                     throw new DocblockParseException('Badly-formatted @param');
                 }
+            }
+        }
+
+        if (isset($parsed_docblock['specials']['psalm-taint-sink'])) {
+            /** @var string $param */
+            foreach ($parsed_docblock['specials']['psalm-taint-sink'] as $param) {
+                $param = trim($param);
+
+                $info->taint_sink_params[] = ['name' => $param];
+            }
+        }
+
+        if (isset($parsed_docblock['specials']['psalm-assert-untainted'])) {
+            /** @var string $param */
+            foreach ($parsed_docblock['specials']['psalm-assert-untainted'] as $param) {
+                $param = trim($param);
+
+                $info->assert_untainted_params[] = ['name' => $param];
             }
         }
 
@@ -728,8 +756,11 @@ class CommentAnalyzer
      * @return ClassLikeDocblockComment
      * @psalm-suppress MixedArrayAccess
      */
-    public static function extractClassLikeDocblockInfo(\PhpParser\Node $node, PhpParser\Comment\Doc $comment)
-    {
+    public static function extractClassLikeDocblockInfo(
+        \PhpParser\Node $node,
+        PhpParser\Comment\Doc $comment,
+        Aliases $aliases
+    ) {
         $parsed_docblock = DocComment::parsePreservingLength($comment);
 
         $info = new ClassLikeDocblockComment();
@@ -908,7 +939,13 @@ class CommentAnalyzer
                 $method_entry = preg_replace('/ (?!(\$|\.\.\.|&))/', '', trim($method_entry));
 
                 try {
-                    $method_tree = ParseTree::createFromTokens(Type::tokenize($method_entry, false));
+                    $method_tree = ParseTree::createFromTokens(
+                        Type::fixUpLocalType(
+                            $method_entry,
+                            $aliases,
+                            null
+                        )
+                    );
                 } catch (TypeParseTreeException $e) {
                     throw new DocblockParseException($method_entry . ' is not a valid method');
                 }
@@ -942,7 +979,7 @@ class CommentAnalyzer
 
                     if ($method_tree_child->children) {
                         $param_type = Type::getTypeFromTree($method_tree_child->children[0]);
-                        $docblock_lines[] = '@param ' . $param_type . ' '
+                        $docblock_lines[] = '@param \\' . $param_type . ' '
                             . ($method_tree_child->variadic ? '...' : '')
                             . $method_tree_child->name;
                     }

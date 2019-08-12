@@ -40,6 +40,7 @@ use function strtolower;
 use function substr;
 use function count;
 use function in_array;
+use Psalm\Internal\Taint\TypeSource;
 
 /**
  * @internal
@@ -77,12 +78,26 @@ class ReturnTypeAnalyzer
             $function_like_storage = $function_like_analyzer->getFunctionLikeStorage();
         }
 
+        $cased_method_id = $function_like_analyzer->getCorrectlyCasedMethodId();
+
         if (!$function->getStmts() &&
             (
                 $function instanceof ClassMethod &&
                 ($source instanceof InterfaceAnalyzer || $function->isAbstract())
             )
         ) {
+            if (!$return_type) {
+                if (IssueBuffer::accepts(
+                    new MissingReturnType(
+                        'Method ' . $cased_method_id . ' does not have a return type',
+                        new CodeLocation($function_like_analyzer, $function->name, null, true)
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+            }
+
             return null;
         }
 
@@ -96,8 +111,6 @@ class ReturnTypeAnalyzer
             // do not check __construct, __set, __get, __call etc.
             return null;
         }
-
-        $cased_method_id = $function_like_analyzer->getCorrectlyCasedMethodId();
 
         if (!$return_type_location) {
             $return_type_location = new CodeLocation(

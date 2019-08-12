@@ -779,14 +779,20 @@ abstract class Type
         $rtc = 0;
 
         $chars = str_split($string_type);
+        $was_space = false;
+
         for ($i = 0, $c = count($chars); $i < $c; ++$i) {
             $char = $chars[$i];
 
             if (!$quote_char && $char === ' ' && $ignore_space) {
+                $was_space = true;
                 continue;
             }
 
-            if ($was_char) {
+            if ($was_space && ($char === '$' || $char === '.')) {
+                $type_tokens[++$rtc] = [' ', $i - 1];
+                $type_tokens[++$rtc] = ['', $i];
+            } elseif ($was_char) {
                 $type_tokens[++$rtc] = ['', $i];
             }
 
@@ -828,6 +834,8 @@ abstract class Type
                 $quote_char = $char;
 
                 $was_char = false;
+                $was_space = false;
+
                 continue;
             }
 
@@ -853,6 +861,7 @@ abstract class Type
                 }
 
                 $was_char = true;
+                $was_space = false;
 
                 continue;
             }
@@ -866,6 +875,7 @@ abstract class Type
                     }
 
                     $was_char = true;
+                    $was_space = false;
 
                     ++$i;
 
@@ -879,6 +889,7 @@ abstract class Type
                 }
 
                 $was_char = true;
+                $was_space = false;
 
                 continue;
             }
@@ -891,6 +902,7 @@ abstract class Type
                 ) {
                     $type_tokens[$rtc][0] .= $char;
                     $was_char = false;
+                    $was_space = false;
 
                     continue;
                 }
@@ -906,6 +918,7 @@ abstract class Type
                 }
 
                 $was_char = true;
+                $was_space = false;
 
                 $i += 2;
 
@@ -914,6 +927,7 @@ abstract class Type
 
             $type_tokens[$rtc][0] .= $char;
             $was_char = false;
+            $was_space = false;
         }
 
         self::$memoized_tokens[$string_type] = $type_tokens;
@@ -948,6 +962,12 @@ abstract class Type
                 true
             )) {
                 continue;
+            }
+
+            if ($string_type_token[0][0] === '\\'
+                && strlen($string_type_token[0]) === 1
+            ) {
+                throw new TypeParseTreeException("Backslash \"\\\" has to be part of class name.");
             }
 
             if ($string_type_token[0][0] === '"'
@@ -1003,7 +1023,11 @@ abstract class Type
                 }
             }
 
-            if ($string_type_token[0][0] === '$') {
+            if ($string_type_token[0][0] === '$' || $string_type_token[0][0] === ' ') {
+                continue;
+            }
+
+            if (isset($type_tokens[$i + 1]) && $type_tokens[$i + 1][0] === '(') {
                 continue;
             }
 
@@ -1434,10 +1458,20 @@ abstract class Type
             if ($both_failed_reconciliation) {
                 $combined_type->failed_reconciliation = true;
             }
+
+            if ($type_1->tainted || $type_2->tainted) {
+                $combined_type->tainted = $type_1->tainted & $type_2->tainted;
+            }
         }
 
         if ($type_1->possibly_undefined || $type_2->possibly_undefined) {
             $combined_type->possibly_undefined = true;
+        }
+
+        if ($type_1->sources || $type_2->sources) {
+            $combined_type->sources = \array_unique(
+                array_merge($type_1->sources ?: [], $type_2->sources ?: [])
+            );
         }
 
         return $combined_type;

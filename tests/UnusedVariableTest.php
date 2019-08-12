@@ -1002,6 +1002,38 @@ class UnusedVariableTest extends TestCase
                         }
                     }',
             ],
+            'varPassedByRef' => [
+                '<?php
+                    function foo(array $b) : void {
+                        $a = &$b;
+                        $a["foo"] = 5;
+                    }',
+            ],
+            'usedAsMethodName' => [
+                '<?php
+                    class A {
+                        public static function foo() : void {}
+                    }
+
+                    function foo() : void {
+                        $method = "foo";
+                        A::$method();
+                    }',
+            ],
+            'usedAsStaticPropertyName' => [
+                '<?php
+                    class A {
+                        private static bool $something = false;
+
+                        public function foo() : void {
+                            $var = "something";
+
+                            if (true) {
+                                static::${$var} = true;
+                            }
+                        }
+                    }'
+            ],
         ];
     }
 

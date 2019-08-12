@@ -46,6 +46,7 @@ use function array_search;
 use function array_keys;
 use function end;
 use function array_diff;
+use Psalm\Internal\Taint\TypeSource;
 
 /**
  * @internal
@@ -271,7 +272,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             $context->calling_method_id = strtolower($method_id);
         } elseif ($this->function instanceof Function_) {
-            $cased_method_id = $this->function->name;
+            $cased_method_id = $this->function->name->name;
         } else { // Closure
             if ($storage->return_type) {
                 $closure_return_type = ExpressionAnalyzer::fleshOutType(
@@ -593,6 +594,20 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                         $param_type,
                     ]),
                 ]);
+            }
+
+            if ($cased_method_id && $codebase->taint) {
+                $type_source = TypeSource::getForMethodArgument(
+                    $cased_method_id,
+                    $offset,
+                    $function_param->location,
+                    null
+                );
+                $var_type->sources = [$type_source];
+
+                if ($codebase->taint->hasExistingSource($type_source)) {
+                    $var_type->tainted = 1;
+                }
             }
 
             $context->vars_in_scope['$' . $function_param->name] = $var_type;

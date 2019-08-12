@@ -39,6 +39,7 @@ use function array_reverse;
 use function array_keys;
 use function count;
 use function explode;
+use Psalm\Internal\Taint\TypeSource;
 
 /**
  * @internal
@@ -172,6 +173,8 @@ class PropertyFetchAnalyzer
                         }
 
                         $property_id = $lhs_type_part->value . '::$' . $stmt->name->name;
+
+                        self::processTaints($statements_analyzer, $stmt, $stmt->inferredType, $property_id);
 
                         $codebase->properties->propertyExists(
                             $property_id,
@@ -488,6 +491,7 @@ class PropertyFetchAnalyzer
 
                 if (isset($class_storage->pseudo_property_get_types['$' . $prop_name])) {
                     $stmt->inferredType = clone $class_storage->pseudo_property_get_types['$' . $prop_name];
+                    self::processTaints($statements_analyzer, $stmt, $stmt->inferredType, $property_id);
                     continue;
                 }
 
@@ -530,6 +534,8 @@ class PropertyFetchAnalyzer
                 }
 
                 $stmt->inferredType = $fake_method_call->inferredType ?? Type::getMixed();
+
+                $property_id = $lhs_type_part->value . '::$' . $prop_name;
 
                 /*
                  * If we have an explicit list of all allowed magic properties on the class, and we're
@@ -783,6 +789,8 @@ class PropertyFetchAnalyzer
                 }
             }
 
+            self::processTaints($statements_analyzer, $stmt, $class_property_type, $property_id);
+
             if (isset($stmt->inferredType)) {
                 $stmt->inferredType = Type::combineUnionTypes($class_property_type, $stmt->inferredType);
             } else {
@@ -832,6 +840,28 @@ class PropertyFetchAnalyzer
             $context->vars_in_scope[$var_id] = isset($stmt->inferredType) ? $stmt->inferredType : Type::getMixed();
         }
         return null;
+    }
+
+    private static function processTaints(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Expr\PropertyFetch $stmt,
+        Type\Union $type,
+        string $property_id
+    ) : void {
+        $codebase = $statements_analyzer->getCodebase();
+
+        if ($codebase->taint) {
+            $method_source = new TypeSource(
+                $property_id,
+                new CodeLocation($statements_analyzer, $stmt->name)
+            );
+
+            $type->sources = [$method_source];
+
+            if ($codebase->taint->hasPreviousSource($method_source)) {
+                $type->tainted = 1;
+            }
+        }
     }
 
     /**

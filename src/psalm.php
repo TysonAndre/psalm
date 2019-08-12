@@ -63,6 +63,7 @@ $valid_long_options = [
     'shepherd::',
     'no-progress',
     'include-php-versions', // used for baseline
+    'track-tainted-input'
 ];
 
 gc_collect_cycles();
@@ -128,7 +129,7 @@ array_map(
 if (!array_key_exists('use-ini-defaults', $options)) {
     ini_set('display_errors', '1');
     ini_set('display_startup_errors', '1');
-    ini_set('memory_limit', (string) (4 * 1024 * 1024 * 1024));
+    ini_set('memory_limit', (string) (8 * 1024 * 1024 * 1024));
 }
 
 if (array_key_exists('help', $options)) {
@@ -179,6 +180,20 @@ if (isset($options['root'])) {
 }
 
 $current_dir = (string)getcwd() . DIRECTORY_SEPARATOR;
+
+if (isset($options['r']) && is_string($options['r'])) {
+    $root_path = realpath($options['r']);
+
+    if (!$root_path) {
+        fwrite(
+            STDERR,
+            'Could not locate root directory ' . $current_dir . DIRECTORY_SEPARATOR . $options['r'] . PHP_EOL
+        );
+        exit(1);
+    }
+
+    $current_dir = $root_path . DIRECTORY_SEPARATOR;
+}
 
 $path_to_config = get_path_to_config($options);
 
@@ -255,21 +270,6 @@ $config = initialiseConfig($path_to_config, $current_dir, $output_format, $first
 if ($config->resolve_from_config_file) {
     $current_dir = $config->base_dir;
     chdir($current_dir);
-}
-
-
-if (isset($options['r']) && is_string($options['r'])) {
-    $root_path = realpath($options['r']);
-
-    if (!$root_path) {
-        fwrite(
-            STDERR,
-            'Could not locate root directory ' . $current_dir . DIRECTORY_SEPARATOR . $options['r'] . PHP_EOL
-        );
-        exit(1);
-    }
-
-    $current_dir = $root_path . DIRECTORY_SEPARATOR;
 }
 
 $threads = isset($options['threads']) ? (int)$options['threads'] : 1;
@@ -506,6 +506,10 @@ if ($find_unused_code) {
 
 if ($config->find_unused_variables) {
     $project_analyzer->getCodebase()->reportUnusedVariables();
+}
+
+if (isset($options['track-tainted-input'])) {
+    $project_analyzer->trackTaintedInputs();
 }
 
 /** @var string $plugin_path */

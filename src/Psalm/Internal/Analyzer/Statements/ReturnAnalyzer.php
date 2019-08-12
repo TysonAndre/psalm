@@ -12,6 +12,7 @@ use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
+use Psalm\Internal\Taint\TypeSource;
 use Psalm\Issue\FalsableReturnStatement;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidReturnStatement;
@@ -21,10 +22,12 @@ use Psalm\Issue\MixedReturnTypeCoercion;
 use Psalm\Issue\NoValue;
 use Psalm\Issue\NullableReturnStatement;
 use Psalm\Issue\PossiblyInvalidReturnStatement;
+use Psalm\Issue\TaintedInput;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use function explode;
 use function strtolower;
+use UnexpectedValueException;
 
 /**
  * @internal
@@ -162,15 +165,94 @@ class ReturnAnalyzer
             $cased_method_id = $source->getCorrectlyCasedMethodId();
 
             if ($stmt->expr) {
-                if ($storage->return_type && !$storage->return_type->hasMixed()) {
-                    $inferred_type = ExpressionAnalyzer::fleshOutType(
-                        $codebase,
-                        $stmt->inferredType,
-                        $source->getFQCLN(),
-                        $source->getFQCLN(),
-                        $source->getParentFQCLN()
+                $inferred_type = ExpressionAnalyzer::fleshOutType(
+                    $codebase,
+                    $stmt->inferredType,
+                    $source->getFQCLN(),
+                    $source->getFQCLN(),
+                    $source->getParentFQCLN()
+                );
+
+                if ($codebase->taint) {
+                    $method_source = new TypeSource(
+                        strtolower($cased_method_id),
+                        new CodeLocation($source, $stmt->expr)
                     );
 
+                    if ($codebase->taint->hasPreviousSink($method_source, $suffixes)) {
+                        if ($inferred_type->sources) {
+                            if ($suffixes !== null) {
+                                foreach ($suffixes as $suffix) {
+                                    foreach ($inferred_type->sources as $inferred_source) {
+                                        $codebase->taint->addSpecialization($inferred_source->id, $suffix);
+
+                                        $codebase->taint->addSinks(
+                                            $statements_analyzer,
+                                            [new TypeSource(
+                                                $inferred_source->id . '-' . $suffix,
+                                                $inferred_source->code_location
+                                            )],
+                                            new CodeLocation($source, $stmt->expr),
+                                            new TypeSource(
+                                                strtolower($cased_method_id . '-' . $suffix),
+                                                new CodeLocation($source, $stmt->expr)
+                                            )
+                                        );
+                                    }
+                                }
+                            } else {
+                                $codebase->taint->addSinks(
+                                    $statements_analyzer,
+                                    $inferred_type->sources,
+                                    new CodeLocation($source, $stmt->expr),
+                                    $method_source
+                                );
+                            }
+                        }
+                    }
+
+                    if ($inferred_type->sources) {
+                        foreach ($inferred_type->sources as $type_source) {
+                            if ($codebase->taint->hasPreviousSource($type_source, $suffixes)
+                                || $inferred_type->tainted
+                            ) {
+                                if ($suffixes !== null) {
+                                    foreach ($suffixes as $suffix) {
+                                        $codebase->taint->addSpecialization(strtolower($cased_method_id), $suffix);
+
+                                        $codebase->taint->addSources(
+                                            $statements_analyzer,
+                                            [new TypeSource(
+                                                strtolower($cased_method_id . '-' . $suffix),
+                                                new CodeLocation($source, $stmt->expr)
+                                            )],
+                                            new CodeLocation($source, $stmt->expr),
+                                            new TypeSource(
+                                                $type_source->id . '-' . $suffix,
+                                                $type_source->code_location
+                                            )
+                                        );
+                                    }
+                                } else {
+                                    $codebase->taint->addSources(
+                                        $statements_analyzer,
+                                        [$method_source],
+                                        new CodeLocation($source, $stmt->expr),
+                                        $type_source
+                                    );
+                                }
+                            }
+                        }
+                    } elseif ($inferred_type->tainted) {
+                        throw new \UnexpectedValueException(
+                            'sources should exist for tainted var in '
+                                . $statements_analyzer->getFileName() . ':'
+                                . $stmt->getLine()
+                        );
+                    }
+                }
+
+                if ($storage->return_type && !$storage->return_type->hasMixed()) {
                     $local_return_type = $source->getLocalReturnType($storage->return_type);
 
                     if ($storage instanceof \Psalm\Storage\MethodStorage) {

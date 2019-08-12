@@ -305,21 +305,6 @@ class AnnotationTest extends TestCase
                 'assertions' => [],
                 'error_level' => ['RedundantConditionGivenDocblockType'],
             ],
-            'checkArrayWithIsInsideLoop' => [
-                '<?php
-                    /** @param array<mixed, array<mixed, mixed>> $data */
-                    function foo($data): void {
-                        foreach ($data as $key => $val) {
-                            if (!\is_array($data)) {
-                                $data = [$key => null];
-                            } else {
-                                $data[$key] = !empty($val);
-                            }
-                        }
-                    }',
-                'assertions' => [],
-                'error_level' => ['LoopInvalidation', 'MixedArrayOffset', 'DocblockTypeContradiction'],
-            ],
             'goodDocblock' => [
                 '<?php
                     class A {
@@ -1201,6 +1186,16 @@ class AnnotationTest extends TestCase
                     function fooBar(): void {
                     }',
                 'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:5:21 - Badly-formatted @param',
+            ],
+            'invalidSlashWithString' => [
+                '<?php
+                    /**
+                     * @return \?string
+                     */
+                    function foo() {
+                      return rand(0, 1) ? "hello" : null;
+                    }',
+                'error_message' => 'InvalidDocblock',
             ],
             'missingReturnTypeWithBadDocblock' => [
                 '<?php

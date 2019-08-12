@@ -27,6 +27,7 @@ use Psalm\Issue\PossiblyUnusedMethod;
 use Psalm\Issue\PossiblyUnusedProperty;
 use Psalm\Issue\UnusedMethod;
 use Psalm\Issue\UnusedProperty;
+use Psalm\Issue\UnusedVariable;
 use Psalm\Progress\Progress;
 use Psalm\Progress\VoidProgress;
 use Psalm\Report;
@@ -81,6 +82,7 @@ use function file_get_contents;
 use function substr_count;
 use function array_map;
 use function end;
+use Psalm\Internal\Codebase\Taint;
 
 /**
  * @internal
@@ -205,6 +207,7 @@ class ProjectAnalyzer
         PossiblyUnusedProperty::class,
         UnusedMethod::class,
         UnusedProperty::class,
+        UnusedVariable::class,
     ];
 
     /**
@@ -545,6 +548,14 @@ class ProjectAnalyzer
             $this->codebase->methods,
             $this->progress
         );
+    }
+
+    /**
+     * @return void
+     */
+    public function trackTaintedInputs()
+    {
+        $this->codebase->taint = new Taint();
     }
 
     public function interpretRefactors() : void
