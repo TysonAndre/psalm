@@ -2035,16 +2035,18 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         $storage->suppressed_issues = $docblock_info->suppress;
 
-        foreach ($docblock_info->throws as $throw_class) {
-            $exception_fqcln = Type::getFQCLNFromString(
-                $throw_class,
-                $this->aliases
-            );
+        foreach ($docblock_info->throws as $throw_union_type) {
+            foreach (array_map('trim', explode('|', $throw_union_type)) as $throw_class) {
+                $exception_fqcln = Type::getFQCLNFromString(
+                    $throw_class,
+                    $this->aliases
+                );
 
-            $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln, $this->file_path);
-            $this->file_storage->referenced_classlikes[strtolower($exception_fqcln)] = $exception_fqcln;
+                $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln, $this->file_path);
+                $this->file_storage->referenced_classlikes[strtolower($exception_fqcln)] = $exception_fqcln;
 
-            $storage->throws[$exception_fqcln] = true;
+                $storage->throws[$exception_fqcln] = true;
+            }
         }
 
         if (!$this->config->use_docblock_types) {
