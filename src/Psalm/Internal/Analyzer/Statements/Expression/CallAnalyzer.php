@@ -593,8 +593,15 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\Array_
             || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
         ) {
+            $was_inside_call = $context->inside_call;
+            $context->inside_call = true;
+
             if (ExpressionAnalyzer::analyze($statements_analyzer, $arg->value, $context) === false) {
                 return false;
+            }
+
+            if (!$was_inside_call) {
+                $context->inside_call = false;
             }
         }
 
@@ -852,6 +859,7 @@ class CallAnalyzer
         array $args,
         Context $context
     ) {
+        $context->inside_call = true;
         $array_arg = $args[0]->value;
 
         if (ExpressionAnalyzer::analyze(
@@ -899,6 +907,8 @@ class CallAnalyzer
         ) === false) {
             return false;
         }
+
+        $context->inside_call = false;
 
         if (isset($replacement_arg->inferredType)
             && !$replacement_arg->inferredType->hasArray()

@@ -67,6 +67,10 @@ class AssignmentAnalyzer
         $var_comments = [];
         $comment_type = null;
 
+        $was_in_assignment = $context->inside_assignment;
+
+        $context->inside_assignment = true;
+
         $codebase = $statements_analyzer->getCodebase();
 
         if ($doc_comment) {
@@ -658,6 +662,10 @@ class AssignmentAnalyzer
 
                 $context->vars_in_scope[$var_id] = Type::getNull();
 
+                if (!$was_in_assignment) {
+                    $context->inside_assignment = false;
+                }
+
                 return $context->vars_in_scope[$var_id];
             }
 
@@ -674,8 +682,16 @@ class AssignmentAnalyzer
 
                 $context->vars_in_scope[$var_id] = Type::getEmpty();
 
+                if (!$was_in_assignment) {
+                    $context->inside_assignment = false;
+                }
+
                 return $context->vars_in_scope[$var_id];
             }
+        }
+
+        if (!$was_in_assignment) {
+            $context->inside_assignment = false;
         }
 
         return $assign_value_type;
@@ -693,6 +709,10 @@ class AssignmentAnalyzer
         PhpParser\Node\Expr\AssignOp $stmt,
         Context $context
     ) {
+        $was_in_assignment = $context->inside_assignment;
+
+        $context->inside_assignment = true;
+
         if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->var, $context) === false) {
             return false;
         }
@@ -805,6 +825,10 @@ class AssignmentAnalyzer
                 $context->vars_in_scope[$array_var_id] = $result_type;
                 $stmt->inferredType = clone $context->vars_in_scope[$array_var_id];
             }
+        }
+
+        if (!$was_in_assignment) {
+            $context->inside_assignment = false;
         }
 
         return null;

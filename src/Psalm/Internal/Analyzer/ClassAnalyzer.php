@@ -1037,6 +1037,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         $uninitialized_variables = [];
         $uninitialized_properties = [];
+        $uninitialized_typed_properties = [];
 
         foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
             $property_class_name = (string) $codebase->properties->getDeclaringClassForProperty(
@@ -1084,6 +1085,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
             $uninitialized_variables[] = '$this->' . $property_name;
             $uninitialized_properties[$property_class_name . '::$' . $property_name] = $property;
+
+            if ($property->type && !$property->type->isMixed()) {
+                $uninitialized_typed_properties[$property_class_name . '::$' . $property_name] = $property;
+            }
         }
 
         if (!$uninitialized_properties) {
@@ -1195,7 +1200,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
             $constructor_analyzer->analyze($method_context, $global_context, true);
 
-            foreach ($uninitialized_properties as $property_id => $property_storage) {
+            foreach ($uninitialized_typed_properties as $property_id => $property_storage) {
                 list(,$property_name) = explode('::$', $property_id);
 
                 if (!isset($method_context->vars_in_scope['$this->' . $property_name])) {
@@ -1257,8 +1262,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             return;
         }
 
-        if (!$storage->abstract) {
-            $first_uninitialized_property = array_shift($uninitialized_properties);
+        if (!$storage->abstract && $uninitialized_typed_properties) {
+            $first_uninitialized_property = array_shift($uninitialized_typed_properties);
 
             if ($first_uninitialized_property->location) {
                 if (IssueBuffer::accepts(
