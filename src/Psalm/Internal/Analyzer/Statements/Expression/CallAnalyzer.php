@@ -2770,6 +2770,9 @@ class CallAnalyzer
         return null;
     }
 
+    /**
+     * @psalm-suppress UnusedVariable due to #2014
+     */
     private static function processTaintedness(
         StatementsAnalyzer $statements_analyzer,
         string $cased_method_id,
@@ -2792,7 +2795,9 @@ class CallAnalyzer
             $code_location
         );
 
-        if (($function_param->is_sink || $codebase->taint->hasPreviousSink($method_source))
+        $found_sink = null;
+
+        if (($function_param->sink || ($found_sink = $codebase->taint->hasPreviousSink($method_source)))
             && $input_type->sources
         ) {
             $all_possible_sinks = [];
@@ -2814,22 +2819,30 @@ class CallAnalyzer
                     $class_storage = $codebase->classlike_storage_provider->get($fq_classlike_name);
 
                     foreach ($class_storage->dependent_classlikes as $dependent_classlike => $_) {
-                        $all_possible_sinks[] = TypeSource::getForMethodArgument(
+                        $new_sink = TypeSource::getForMethodArgument(
                             $dependent_classlike . '::' . $method_name,
                             (int) $method_name_parts[1] - 1,
                             $code_location,
                             null
                         );
+
+                        $new_sink->taint = $found_sink ? $found_sink->taint : $function_param->sink;
+
+                        $all_possible_sinks[] = $new_sink;
                     }
 
                     if (isset($class_storage->overridden_method_ids[$method_name])) {
                         foreach ($class_storage->overridden_method_ids[$method_name] as $parent_method_id) {
-                            $all_possible_sinks[] = TypeSource::getForMethodArgument(
+                            $new_sink = TypeSource::getForMethodArgument(
                                 $parent_method_id,
                                 (int) $method_name_parts[1] - 1,
                                 $code_location,
                                 null
                             );
+
+                            $new_sink->taint = $found_sink ? $found_sink->taint : $function_param->sink;
+
+                            $all_possible_sinks[] = $new_sink;
                         }
                     }
                 }
@@ -2843,7 +2856,11 @@ class CallAnalyzer
             );
         }
 
-        if ($function_param->is_sink && $input_type->tainted && $input_type->sources) {
+        if ($function_param->sink
+            && $input_type->tainted
+            && ($function_param->sink & $input_type->tainted)
+            && $input_type->sources
+        ) {
             foreach ($input_type->sources as $input_source) {
                 if (IssueBuffer::accepts(
                     new TaintedInput(
@@ -3015,7 +3032,13 @@ class CallAnalyzer
         }
 
         if ($callable_arg instanceof PhpParser\Node\Scalar\String_) {
-            return [preg_replace('/^\\\/', '', $callable_arg->value)];
+            $potential_id = preg_replace('/^\\\/', '', $callable_arg->value);
+
+            if (preg_match('/^[A-Za-z0-9_]+(\\\[A-Za-z0-9_]+)*(::[A-Za-z0-9_]+)?$/', $potential_id)) {
+                return [$potential_id];
+            }
+
+            return [];
         }
 
         if (count($callable_arg->items) !== 2) {

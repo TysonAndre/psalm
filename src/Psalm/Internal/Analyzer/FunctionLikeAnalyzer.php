@@ -605,8 +605,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 );
                 $var_type->sources = [$type_source];
 
-                if ($codebase->taint->hasExistingSource($type_source)) {
-                    $var_type->tainted = 1;
+                if ($tainted_source = $codebase->taint->hasExistingSource($type_source)) {
+                    $var_type->tainted = $tainted_source->taint;
+                    $type_source->taint = $tainted_source->taint;
                 }
             }
 
@@ -1017,6 +1018,35 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                                 $method_id_lc
                             );
                         }
+                    }
+                }
+            }
+        }
+
+        foreach ($storage->throws as $expected_exception => $_) {
+            if ($storage->location
+                && ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
+                    $statements_analyzer,
+                    $expected_exception,
+                    $storage->location,
+                    $statements_analyzer->getSuppressedIssues(),
+                    false
+                )
+            ) {
+                $input_type = new Type\Union([new TNamedObject($expected_exception)]);
+                $container_type = new Type\Union([new TNamedObject('Exception'), new TNamedObject('Throwable')]);
+
+                if (!TypeAnalyzer::isContainedBy($codebase, $input_type, $container_type)) {
+                    if (IssueBuffer::accepts(
+                        new \Psalm\Issue\InvalidThrow(
+                            'Class supplied for @throws ' . $expected_exception
+                                . ' does not implement Throwable',
+                            $storage->location,
+                            $expected_exception
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
                     }
                 }
             }
