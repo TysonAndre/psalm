@@ -134,6 +134,7 @@ return [
         'vendor/amphp/amp/lib',
         'vendor/sebastian/diff/src',
         'vendor/symfony/console',
+        'vendor/webmozart/path-util/src',
         'src',
         'examples',
     ],
@@ -164,6 +165,11 @@ return [
         'PregRegexCheckerPlugin',
         'PrintfCheckerPlugin',
         'DuplicateExpressionPlugin',
+        'UseReturnValuePlugin',
+    ],
+
+    'plugin_config' => [
+        'infer_pure_methods' => true,
     ],
 
     'redundant_condition_detection' => true,
