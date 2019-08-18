@@ -47,7 +47,7 @@ use function explode;
 use function array_search;
 use function array_keys;
 use function in_array;
-use Psalm\Internal\Taint\TypeSource;
+use Psalm\Internal\Taint\Source;
 
 /**
  * @internal
@@ -894,6 +894,16 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 return;
             }
 
+            if (self::checkFunctionArguments(
+                $statements_analyzer,
+                $args,
+                null,
+                null,
+                $context
+            ) === false) {
+                return false;
+            }
+
             if ($all_intersection_return_type && $all_intersection_existent_method_ids) {
                 $existent_method_ids = array_merge($existent_method_ids, $all_intersection_existent_method_ids);
 
@@ -1153,7 +1163,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         );
 
                         $return_type_candidate->sources = [
-                            new TypeSource(strtolower($method_id), new CodeLocation($source, $stmt->name))
+                            new Source(strtolower($method_id), new CodeLocation($source, $stmt->name))
                         ];
 
                         $return_type_location = $codebase->methods->getMethodReturnTypeLocation(
@@ -1229,7 +1239,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         if ($method_storage && $method_storage->pure) {
                             $code_location = new CodeLocation($statements_analyzer->getSource(), $stmt);
 
-                            $method_source = new TypeSource(
+                            $method_source = new Source(
                                 strtolower(
                                     $method_id
                                         . '-' . $code_location->file_name
@@ -1238,7 +1248,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                 new CodeLocation($source, $stmt->name)
                             );
                         } else {
-                            $method_source = new TypeSource(
+                            $method_source = new Source(
                                 strtolower($method_id),
                                 new CodeLocation($source, $stmt->name)
                             );

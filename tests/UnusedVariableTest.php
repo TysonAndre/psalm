@@ -1056,6 +1056,38 @@ class UnusedVariableTest extends TestCase
                         return $row;
                     }',
             ],
+            'pureWithReflectionMethodSetValue' => [
+                '<?php
+                    function foo(object $mock) : void {
+                        $m = new \ReflectionProperty($mock, "bar");
+                        $m->setValue([get_class($mock) => "hello"]);
+                    }'
+            ],
+            'defineBeforeAssignmentInConditional' => [
+                '<?php
+                    $i = null;
+
+                    if (rand(0, 1) || ($i = rand(0, 1))) {
+                        echo $i;
+                    }',
+            ],
+            'definedInFirstAssignmentInConditional' => [
+                '<?php
+                    if (($b = rand(0, 1)) || rand(0, 1)) {
+                        echo $b;
+                    }',
+            ],
+            'noUnusedVariableWhenUndefinedMethod' => [
+                '<?php
+                    class A {}
+
+                    function foo(A $a) : void {
+                        $i = 0;
+
+                        /** @psalm-suppress UndefinedMethod */
+                        $a->bar($i);
+                    }',
+            ],
         ];
     }
 
@@ -1744,6 +1776,15 @@ class UnusedVariableTest extends TestCase
                             $last = $num;
                         }
                         return 4;
+                    }',
+                'error_message' => 'UnusedVariable',
+            ],
+            'defineInBothBranchesOfConditional' => [
+                '<?php
+                    $i = null;
+
+                    if (($i = rand(0, 5)) || ($i = rand(0, 3))) {
+                        echo $i;
                     }',
                 'error_message' => 'UnusedVariable',
             ],

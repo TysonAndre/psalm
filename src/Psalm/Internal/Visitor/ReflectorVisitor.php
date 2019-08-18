@@ -2035,8 +2035,15 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         $storage->suppressed_issues = $docblock_info->suppress;
 
-        foreach ($docblock_info->throws as $throw_union_type) {
-            foreach (array_map('trim', explode('|', $throw_union_type)) as $throw_class) {
+        foreach ($docblock_info->throws as [$throw, $offset, $line]) {
+            $throw_location = new CodeLocation\DocblockTypeLocation(
+                $this->file_scanner,
+                $offset,
+                $offset + \strlen($throw),
+                $line
+            );
+
+            foreach (\array_map('trim', explode('|', $throw)) as $throw_class) {
                 $exception_fqcln = Type::getFQCLNFromString(
                     $throw_class,
                     $this->aliases
@@ -2044,8 +2051,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln, $this->file_path);
                 $this->file_storage->referenced_classlikes[strtolower($exception_fqcln)] = $exception_fqcln;
-
                 $storage->throws[$exception_fqcln] = true;
+                $storage->throw_locations[$exception_fqcln] = $throw_location;
             }
         }
 
