@@ -135,7 +135,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     ),
                     $class_name
                 ),
-                array_merge($storage->suppressed_issues, $this->source->getSuppressedIssues())
+                $storage->suppressed_issues + $this->getSuppressedIssues()
             )) {
                 // fall through
             }
@@ -223,7 +223,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $this->getSource(),
                 $parent_fq_class_name,
                 $parent_reference_location,
-                array_merge($storage->suppressed_issues, $this->getSuppressedIssues()),
+                $storage->suppressed_issues + $this->getSuppressedIssues(),
                 false
             ) === false) {
                 return false;
@@ -256,7 +256,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $code_location,
                             $parent_fq_class_name . ' as class'
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         // fall through
                     }
@@ -269,7 +269,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $code_location,
                             $parent_fq_class_name
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         // fall through
                     }
@@ -289,7 +289,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                 $code_location,
                                 $parent_fq_class_name
                             ),
-                            array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                            $storage->suppressed_issues + $this->getSuppressedIssues()
                         )) {
                             // fall through
                         }
@@ -305,7 +305,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $code_location,
                             $parent_fq_class_name
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         // fall through
                     }
@@ -407,7 +407,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         $code_location,
                         $fq_interface_name
                     ),
-                    array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                    $storage->suppressed_issues + $this->getSuppressedIssues()
                 )) {
                     // fall through
                 }
@@ -493,7 +493,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $code_location,
                             $interface_name
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         // fall through
                     }
@@ -525,7 +525,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                     $storage->name,
                                     $code_location
                                 ),
-                                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                                $storage->suppressed_issues + $this->getSuppressedIssues()
                             )) {
                                 return false;
                             }
@@ -564,7 +564,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                         . ' must be public in ' . $storage->name,
                                     $code_location
                                 ),
-                                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                                $storage->suppressed_issues + $this->getSuppressedIssues()
                             )) {
                                 return false;
                             }
@@ -635,7 +635,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                 true
                             )
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         return false;
                     }
@@ -731,7 +731,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $fleshed_out_type->check(
                     $this,
                     $property_type_location,
-                    array_merge($this->getSuppressedIssues(), $storage->suppressed_issues),
+                    $storage->suppressed_issues + $this->getSuppressedIssues(),
                     [],
                     false
                 );
@@ -1246,7 +1246,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $error_location,
                             $property_id
                         ),
-                        array_merge($this->source->getSuppressedIssues(), $storage->suppressed_issues)
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         continue;
                     }
@@ -1272,7 +1272,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             ', but no constructor',
                         $first_uninitialized_property->location
                     ),
-                    array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                    $storage->suppressed_issues + $this->getSuppressedIssues()
                 )) {
                     // fall through
                 }
@@ -1311,7 +1311,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         'Trait ' . $fq_trait_name . ' does not exist',
                         new CodeLocation($this, $trait_name)
                     ),
-                    array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                    $storage->suppressed_issues + $this->getSuppressedIssues()
                 )) {
                     return false;
                 }
@@ -1322,7 +1322,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             'Trait ' . $fq_trait_name . ' has wrong casing',
                             new CodeLocation($this, $trait_name)
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         return false;
                     }
@@ -1338,7 +1338,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             'Trait ' . $fq_trait_name . ' is deprecated',
                             new CodeLocation($this, $trait_name)
                         ),
-                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
                         // fall through
                     }
@@ -1747,7 +1747,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         . $template_type_count,
                     $code_location
                 ),
-                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                $storage->suppressed_issues + $this->getSuppressedIssues()
             )) {
                 // fall through
             }
@@ -1758,7 +1758,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         . $template_type_count,
                     $code_location
                 ),
-                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                $storage->suppressed_issues + $this->getSuppressedIssues()
             )) {
                 // fall through
             }
@@ -1792,7 +1792,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                                 . ' from an invariant context',
                                             $code_location
                                         ),
-                                        array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                                        $storage->suppressed_issues + $this->getSuppressedIssues()
                                     )) {
                                         // fall through
                                     }
@@ -1810,7 +1810,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                         . ', type ' . $extended_type->getId() . ' given',
                                     $code_location
                                 ),
-                                array_merge($storage->suppressed_issues, $this->getSuppressedIssues())
+                                $storage->suppressed_issues + $this->getSuppressedIssues()
                             )) {
                                 // fall through
                             }

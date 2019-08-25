@@ -61,9 +61,11 @@ class UnusedCodeTest extends TestCase
         $context = new Context();
         $context->collect_references = true;
 
-        $this->analyzeFile($file_path, $context);
+        $this->analyzeFile($file_path, $context, false);
 
         $this->project_analyzer->checkClassReferences();
+
+        \Psalm\IssueBuffer::processUnusedSuppressions($this->project_analyzer->getCodebase()->file_provider);
     }
 
     /**
@@ -98,9 +100,11 @@ class UnusedCodeTest extends TestCase
         $context = new Context();
         $context->collect_references = true;
 
-        $this->analyzeFile($file_path, $context);
+        $this->analyzeFile($file_path, $context, false);
 
         $this->project_analyzer->checkClassReferences();
+
+        \Psalm\IssueBuffer::processUnusedSuppressions($this->project_analyzer->getCodebase()->file_provider);
     }
 
     /**
@@ -241,6 +245,11 @@ class UnusedCodeTest extends TestCase
                     function foo(int $unusedArg) : void {}
 
                     foo(4);',
+            ],
+            'usedFunctionCall' => [
+                '<?php
+                    $a = strlen("goodbye");
+                    echo $a;',
             ],
             'possiblyUnusedParamWithUnderscore' => [
                 '<?php
@@ -499,6 +508,35 @@ class UnusedCodeTest extends TestCase
                         return $foo;
                     }',
             ],
+            'suppressUnusedMethod' => [
+                '<?php
+                    class A {
+                        /**
+                         * @psalm-suppress UnusedMethod
+                         */
+                        public function foo() : void {}
+                    }
+
+                    new A();'
+            ],
+            'usedFunctionInCall' => [
+                '<?php
+                    function fooBar(): void {}
+
+                    $foo = "foo";
+                    $bar = "bar";
+
+                    ($foo . ucfirst($bar))();',
+            ],
+            'usedParamInUnknownMethodConcat' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedMethodCall
+                     */
+                    function foo(string $s, object $o) : void {
+                        $o->foo("COUNT{$s}");
+                    }'
+            ],
         ];
     }
 
@@ -629,6 +667,11 @@ class UnusedCodeTest extends TestCase
 
                     (new C)->bar();',
                 'error_message' => 'PossiblyUnusedMethod',
+            ],
+            'unusedFunctionCall' => [
+                '<?php
+                    strlen("goodbye");',
+                'error_message' => 'UnusedFunctionCall',
             ],
             'propertyOverriddenDownstreamAndNotUsed' => [
                 '<?php

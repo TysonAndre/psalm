@@ -133,11 +133,22 @@ class Taint
             }
 
             if (($existing_sink = $this->hasExistingSink($source)) && $source->code_location) {
+                $last_location = $existing_sink;
+
+                while ($last_location->children) {
+                    $first_child = \reset($last_location->children);
+                    if (!$first_child->code_location) {
+                        break;
+                    }
+
+                    $last_location = $first_child;
+                }
+
                 if (IssueBuffer::accepts(
                     new TaintedInput(
                         'in path ' . $this->getPredecessorPath($source)
                             . ' out path ' . $this->getSuccessorPath($existing_sink),
-                        $source->code_location
+                        $last_location->code_location ?: $source->code_location
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {
@@ -162,11 +173,22 @@ class Taint
             }
 
             if (($existing_source = $this->hasExistingSource($sink)) && $sink->code_location) {
+                $last_location = $sink;
+
+                while ($last_location->children) {
+                    $first_child = \reset($last_location->children);
+                    if (!$first_child->code_location) {
+                        break;
+                    }
+
+                    $last_location = $first_child;
+                }
+
                 if (IssueBuffer::accepts(
                     new TaintedInput(
                         'in path ' . $this->getPredecessorPath($existing_source)
                             . ' out path ' . $this->getSuccessorPath($sink),
-                        $sink->code_location
+                        $last_location->code_location ?: $sink->code_location
                     ),
                     $statements_analyzer->getSuppressedIssues()
                 )) {

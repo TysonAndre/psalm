@@ -341,6 +341,63 @@ class MethodCallTest extends TestCase
                         );
                     }',
             ],
+            'callMethodAfterCheckingExistence' => [
+                '<?php
+                    class A {}
+
+                    function foo(A $a) : void {
+                        if (method_exists($a, "bar")) {
+                            /** @psalm-suppress MixedArgument */
+                            echo $a->bar();
+                        }
+                    }'
+            ],
+            'callMethodAfterCheckingExistenceInClosure' => [
+                '<?php
+                    class A {}
+
+                    function foo(A $a) : void {
+                        if (method_exists($a, "bar")) {
+                            (function() use ($a) : void {
+                                /** @psalm-suppress MixedArgument */
+                                echo $a->bar();
+                            })();
+
+                        }
+                    }'
+            ],
+            'callManyMethodsAfterCheckingExistence' => [
+                '<?php
+                    function foo(object $object) : void {
+                        if (!method_exists($object, "foo")) {
+                            return;
+                        }
+                        if (!method_exists($object, "bar")) {
+                            return;
+                        }
+                        $object->foo();
+                        $object->bar();
+                    }'
+            ],
+            'callManyMethodsAfterCheckingExistenceChained' => [
+                '<?php
+                    function foo(object $object) : void {
+                        if (method_exists($object, "foo") && method_exists($object, "bar")) {
+                            $object->foo();
+                            $object->bar();
+                        }
+                    }'
+            ],
+            'callManyMethodsOnKnownObjectAfterCheckingExistenceChained' => [
+                '<?php
+                    class A {}
+                    function foo(A $object) : void {
+                        if (method_exists($object, "foo") && method_exists($object, "bar")) {
+                            $object->foo();
+                            $object->bar();
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -612,6 +669,39 @@ class MethodCallTest extends TestCase
                         }
                     }',
                 'error_message' => 'UndefinedThisPropertyFetch',
+            ],
+            'alreadyHasmethod' => [
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                    }
+
+                    function foo(A $a) : void {
+                        if (method_exists($a, "foo")) {
+                            $object->foo();
+                        }
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'possiblyNullOrMixedArg' => [
+                '<?php
+                    class A {
+                        /**
+                         * @var mixed
+                         */
+                        public $foo;
+                    }
+
+                    function takesString(string $s) : void {}
+
+                    function takesA(?A $a) : void {
+                        /**
+                         * @psalm-suppress PossiblyNullPropertyFetch
+                         * @psalm-suppress MixedArgument
+                         */
+                        takesString($a->foo);
+                    }',
+                'error_message' => 'PossiblyNullArgument',
             ],
         ];
     }

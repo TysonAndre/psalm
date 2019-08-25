@@ -47,7 +47,6 @@ class CommentAnalyzer
      * @throws DocblockParseException if there was a problem parsing the docblock
      *
      * @return VarDocblockComment[]
-     * @psalm-suppress MixedArrayAccess
      */
     public static function getTypeFromComment(
         PhpParser\Comment\Doc $comment,
@@ -346,7 +345,6 @@ class CommentAnalyzer
      * @throws DocblockParseException if there was a problem parsing the docblock
      *
      * @return FunctionDocblockComment
-     * @psalm-suppress MixedArrayAccess
      */
     public static function extractFunctionDocblockInfo(PhpParser\Comment\Doc $comment)
     {
@@ -547,8 +545,8 @@ class CommentAnalyzer
 
 
         if (isset($parsed_docblock['specials']['psalm-suppress'])) {
-            foreach ($parsed_docblock['specials']['psalm-suppress'] as $suppress_entry) {
-                $info->suppress[] = preg_split('/[\s]+/', $suppress_entry)[0];
+            foreach ($parsed_docblock['specials']['psalm-suppress'] as $offset => $suppress_entry) {
+                $info->suppressed_issues[$offset + $comment->getFilePos()] = preg_split('/[\s]+/', $suppress_entry)[0];
             }
         }
 
@@ -897,8 +895,8 @@ class CommentAnalyzer
         }
 
         if (isset($parsed_docblock['specials']['psalm-suppress'])) {
-            foreach ($parsed_docblock['specials']['psalm-suppress'] as $suppress_entry) {
-                $info->suppressed_issues[] = preg_split('/[\s]+/', $suppress_entry)[0];
+            foreach ($parsed_docblock['specials']['psalm-suppress'] as $offset => $suppress_entry) {
+                $info->suppressed_issues[$offset + $comment->getFilePos()] = preg_split('/[\s]+/', $suppress_entry)[0];
             }
         }
 

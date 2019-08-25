@@ -684,7 +684,6 @@ class TypeReconciliationTest extends TestCase
                 '<?php
                     /**
                      * @param string|null $b
-                     * @psalm-suppress DocblockTypeContradiction
                      */
                     function foo($b = null) : void {
                         if (is_numeric($b) || is_string($b)) {
@@ -1389,7 +1388,6 @@ class TypeReconciliationTest extends TestCase
                 '<?php
                     /**
                      * @param array<int> $x
-                     * @psalm-suppress UnusedParam
                      */
                     function takesArray (array $x): void {}
 
@@ -1400,7 +1398,6 @@ class TypeReconciliationTest extends TestCase
 
                     /**
                      * @param Traversable<int> $x
-                     * @psalm-suppress UnusedParam
                      */
                     function takesTraversable (Traversable $x): void {}
 
@@ -1459,6 +1456,29 @@ class TypeReconciliationTest extends TestCase
                         }
 
                         if (isset($e->bar)) {}
+                    }',
+            ],
+            'assertArrayOffsetToTraversable' => [
+                '<?php
+                    function render(array $data): ?Traversable {
+                        if ($data["o"] instanceof Traversable) {
+                            return $data["o"];
+                        }
+
+                        return null;
+                    }'
+            ],
+            'nullCoalesceTypedArrayValue' => [
+                '<?php
+                    /** @param string[] $arr */
+                    function foo(array $arr) : string {
+                        return $arr["b"] ?? "bar";
+                    }',
+            ],
+            'nullCoalesceTypedValue' => [
+                '<?php
+                    function foo(?string $s) : string {
+                        return $s ?? "bar";
                     }',
             ],
         ];
@@ -1744,6 +1764,13 @@ class TypeReconciliationTest extends TestCase
 
                     if (false !== firstChar("sdf")) {}',
                 'error_message' => 'RedundantCondition',
+            ],
+            'nullCoalesceImpossible' => [
+                '<?php
+                    function foo(?string $s) : string {
+                        return ((string) $s) ?? "bar";
+                    }',
+                'error_message' => 'TypeDoesNotContainType'
             ],
         ];
     }

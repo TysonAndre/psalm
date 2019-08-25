@@ -69,7 +69,8 @@ use function usort;
  *      class_method_locations: array<string, array<int, \Psalm\CodeLocation>>,
  *      class_property_locations: array<string, array<int, \Psalm\CodeLocation>>,
  *      possible_method_param_types: array<string, array<int, \Psalm\Type\Union>>,
- *      taint_data: ?\Psalm\Internal\Codebase\Taint
+ *      taint_data: ?\Psalm\Internal\Codebase\Taint,
+ *      unused_suppressions: array<string, array<int, int>>
  * }
  */
 
@@ -210,8 +211,6 @@ class Analyzer
      * @param  array<string, class-string<FileAnalyzer>> $filetype_analyzers
      *
      * @return FileAnalyzer
-     *
-     * @psalm-suppress MixedOperand
      */
     private function getFileAnalyzer(ProjectAnalyzer $project_analyzer, $file_path, array $filetype_analyzers)
     {
@@ -282,6 +281,10 @@ class Analyzer
             && ($project_analyzer->full_run || $codebase->find_unused_code === 'always')
         ) {
             $project_analyzer->checkClassReferences();
+        }
+
+        if ($codebase->track_unused_suppressions) {
+            IssueBuffer::processUnusedSuppressions($codebase->file_provider);
         }
 
         $scanned_files = $codebase->scanner->getScannedFiles();
@@ -417,6 +420,7 @@ class Analyzer
                         'class_property_locations' => $rerun ? [] : $file_reference_provider->getAllClassPropertyLocations(),
                         'possible_method_param_types' => $rerun ? [] : $analyzer->getPossibleMethodParamTypes(),
                         'taint_data' => $codebase->taint,
+                        'unused_suppressions' => $codebase->track_unused_suppressions ? IssueBuffer::getUnusedSuppressions() : [],
                     ];
                     // @codingStandardsIgnoreEnd
                 },
@@ -435,6 +439,10 @@ class Analyzer
 
             foreach ($forked_pool_data as $pool_data) {
                 IssueBuffer::addIssues($pool_data['issues']);
+
+                if ($codebase->track_unused_suppressions) {
+                    IssueBuffer::addUnusedSuppressions($pool_data['unused_suppressions']);
+                }
 
                 if ($codebase->taint && $pool_data['taint_data']) {
                     $codebase->taint->addThreadData($pool_data['taint_data']);
@@ -990,7 +998,6 @@ class Analyzer
      * @param array<string, array<string, bool>> $names
      *
      * @return void
-     * @psalm-suppress MixedPropertyTypeCoercion
      */
     public function addMixedMemberNames(array $names)
     {

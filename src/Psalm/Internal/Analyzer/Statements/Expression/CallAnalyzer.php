@@ -342,10 +342,10 @@ class CallAnalyzer
     protected static function checkFunctionArguments(
         StatementsAnalyzer $statements_analyzer,
         array $args,
-        $function_params,
-        $method_id,
+        ?array $function_params,
+        ?string $method_id,
         Context $context,
-        $generic_params = null
+        ?array $generic_params = null
     ) {
         $last_param = $function_params
             ? $function_params[count($function_params) - 1]
@@ -593,6 +593,7 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\PropertyFetch
             || $arg->value instanceof PhpParser\Node\Expr\Array_
             || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
+            || $arg->value instanceof PhpParser\Node\Scalar\Encapsed
         ) {
             $was_inside_call = $context->inside_call;
             $context->inside_call = true;
@@ -2336,20 +2337,22 @@ class CallAnalyzer
                 // fall through
             }
 
-            if (!$function_param->by_ref
-                && !($function_param->is_variadic xor $unpack)
-                && $cased_method_id !== 'echo'
-            ) {
-                self::coerceValueAfterGatekeeperArgument(
-                    $statements_analyzer,
-                    $input_type,
-                    false,
-                    $input_expr,
-                    $param_type,
-                    $signature_param_type,
-                    $context,
-                    $unpack
-                );
+            if ($input_type->isMixed()) {
+                if (!$function_param->by_ref
+                    && !($function_param->is_variadic xor $unpack)
+                    && $cased_method_id !== 'echo'
+                ) {
+                    self::coerceValueAfterGatekeeperArgument(
+                        $statements_analyzer,
+                        $input_type,
+                        false,
+                        $input_expr,
+                        $param_type,
+                        $signature_param_type,
+                        $context,
+                        $unpack
+                    );
+                }
             }
 
             if ($cased_method_id) {
@@ -2365,7 +2368,9 @@ class CallAnalyzer
                 );
             }
 
-            return null;
+            if ($input_type->isMixed()) {
+                return null;
+            }
         }
 
         if ($input_type->isNever()) {
@@ -2483,7 +2488,7 @@ class CallAnalyzer
             }
         }
 
-        if ($union_comparison_results->type_coerced) {
+        if ($union_comparison_results->type_coerced && !$input_type->hasMixed()) {
             if ($union_comparison_results->type_coerced_from_mixed) {
                 if (IssueBuffer::accepts(
                     new MixedArgumentTypeCoercion(
@@ -2764,7 +2769,7 @@ class CallAnalyzer
             }
         }
 
-        if ($type_match_found
+        if (($type_match_found || $input_type->hasMixed())
             && !$function_param->by_ref
             && !($function_param->is_variadic xor $unpack)
             && $cased_method_id !== 'echo'

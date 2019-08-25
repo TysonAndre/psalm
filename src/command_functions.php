@@ -10,8 +10,6 @@ use Psalm\Exception\ConfigException;
  * @param  string $vendor_dir
  * @param  bool   $skipAutoloaderCheck
  *
- * @psalm-suppress MixedInferred
- *
  * @return ?\Composer\Autoload\ClassLoader
  */
 function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skipAutoloaderCheck = false)
@@ -79,7 +77,6 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
     foreach ($autoload_files as $file) {
         /**
          * @psalm-suppress UnresolvableInclude
-         * @psalm-suppress MixedAssignment
          *
          * @var mixed
          */
@@ -117,7 +114,6 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
  *
  * @return string
  *
- * @psalm-suppress PossiblyFalseArgument
  * @psalm-suppress MixedArrayAccess
  * @psalm-suppress MixedAssignment
  */
@@ -322,6 +318,9 @@ Options:
     --find-unused-code[=auto]
         Look for unused code. Options are 'auto' or 'always'. If no value is specified, default is 'auto'
 
+    --find-unused-psalm-suppress
+        Finds all @psalm-suppress annotations that aren’t used
+
     --find-references-to=[class|method|property]
         Searches the codebase for references to the given fully-qualified class or method,
         where method is in the format class::methodName
@@ -419,7 +418,6 @@ function get_path_to_config(array $options): ?string
     $path_to_config = isset($options['c']) && is_string($options['c']) ? realpath($options['c']) : null;
 
     if ($path_to_config === false) {
-        /** @psalm-suppress InvalidCast */
         fwrite(STDERR, 'Could not resolve path to config ' . (string)$options['c'] . PHP_EOL);
         exit(1);
     }

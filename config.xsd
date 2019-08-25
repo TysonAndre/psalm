@@ -269,6 +269,7 @@
             <xs:element name="OverriddenPropertyAccess" type="PropertyIssueHandlerType" minOccurs="0" />
             <xs:element name="ParadoxicalCondition" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ParentNotFound" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossibleRawObjectIteration" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalseArgument" type="ArgumentIssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalseIterator" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyFalseOperand" type="IssueHandlerType" minOccurs="0" />
@@ -348,6 +349,7 @@
             <xs:element name="UnusedVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedProperty" type="PropertyIssueHandlerType" minOccurs="0" />
+            <xs:element name="UnusedPsalmSuppress" type="FunctionIssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedClass" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedMethod" type="MethodIssueHandlerType" minOccurs="0" />
         </xs:choice>

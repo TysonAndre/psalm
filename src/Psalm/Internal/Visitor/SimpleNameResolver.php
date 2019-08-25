@@ -122,7 +122,6 @@ class SimpleNameResolver extends NodeVisitorAbstract
             }
 
             foreach ($node->adaptations as $adaptation) {
-                /** @psalm-suppress RedundantConditionGivenDocblockType */
                 if (null !== $adaptation->trait) {
                     $adaptation->trait = $this->resolveClassName($adaptation->trait);
                 }
@@ -176,8 +175,6 @@ class SimpleNameResolver extends NodeVisitorAbstract
      * @param  PhpParser\Node|string|null $node
      *
      * @return null|PhpParser\Node\Identifier|PhpParser\Node\Name|PhpParser\Node\NullableType
-     * @psalm-suppress MoreSpecificReturnType
-     * @psalm-suppress LessSpecificReturnStatement
      * @psalm-suppress InvalidReturnType
      * @psalm-suppress InvalidReturnStatement
      */

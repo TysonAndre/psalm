@@ -137,6 +137,11 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
     private $removed_unref_vars = [];
 
     /**
+     * @var ?string
+     */
+    private $fake_this_class = null;
+
+    /**
      * @param SourceAnalyzer $source
      */
     public function __construct(SourceAnalyzer $source)
@@ -268,6 +273,14 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
                 $comments = $this->parsed_docblock;
 
+                if (isset($comments['specials']['psalm-scope-this'])) {
+                    $trimmed = trim(\reset($comments['specials']['psalm-scope-this']));
+                    $this_type = Type::parseString($trimmed);
+                    $context->self = $trimmed;
+                    $context->vars_in_scope['$this'] = $this_type;
+                    $this->setFQCLN($trimmed);
+                }
+
                 if (isset($comments['specials']['psalm-suppress'])) {
                     $suppressed = array_filter(
                         array_map(
@@ -284,8 +297,21 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     );
 
                     if ($suppressed) {
-                        $new_issues = array_diff($suppressed, $this->source->getSuppressedIssues());
-                        /** @psalm-suppress MixedTypeCoercion */
+                        $new_issues = [];
+
+                        foreach ($suppressed as $offset => $issue_type) {
+                            $offset += $docblock->getFilePos();
+                            $new_issues[$offset] = $issue_type;
+
+                            if ($issue_type === 'InaccessibleMethod') {
+                                continue;
+                            }
+
+                            if ($codebase->track_unused_suppressions) {
+                                IssueBuffer::addUnusedSuppression($this->getFilePath(), $offset, $issue_type);
+                            }
+                        }
+
                         $this->addSuppressedIssues($new_issues);
                     }
                 }
@@ -727,7 +753,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     }
 
                     foreach ($var_comments as $var_comment) {
-                        if (!$var_comment->var_id) {
+                        if (!$var_comment->var_id || !$var_comment->type) {
                             continue;
                         }
 
@@ -792,13 +818,11 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 }
 
                 if ($file_manipulations) {
-                    /** @psalm-suppress MixedTypeCoercion */
                     FileManipulationBuffer::add($this->getFilePath(), $file_manipulations);
                 }
             }
 
             if ($new_issues) {
-                /** @psalm-suppress MixedTypeCoercion */
                 $this->removeSuppressedIssues($new_issues);
             }
 
@@ -1302,6 +1326,10 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 }
 
                 foreach ($var_comments as $var_comment) {
+                    if (!$var_comment->type) {
+                        continue;
+                    }
+
                     try {
                         $var_comment_type = ExpressionAnalyzer::fleshOutType(
                             $codebase,
@@ -2157,5 +2185,19 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
     public function getParsedDocblock() : ?array
     {
         return $this->parsed_docblock;
+    }
+
+    public function getFQCLN()
+    {
+        if ($this->fake_this_class) {
+            return $this->fake_this_class;
+        }
+
+        return parent::getFQCLN();
+    }
+
+    public function setFQCLN(string $fake_this_class) : void
+    {
+        $this->fake_this_class = $fake_this_class;
     }
 }

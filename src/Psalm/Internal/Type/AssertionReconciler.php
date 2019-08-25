@@ -800,7 +800,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
      */
     private static function reconcileHasMethod(
         Codebase $codebase,
-        string $method_id,
+        string $method_name,
         Union $existing_var_type,
         ?string $key,
         ?CodeLocation $code_location,
@@ -816,11 +816,51 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         foreach ($existing_var_atomic_types as $type) {
             if ($type instanceof TNamedObject
                 && $codebase->classOrInterfaceExists($type->value)
-                && $codebase->methodExists($type->value . '::' . $method_id)
             ) {
                 $object_types[] = $type;
+
+                if (!$codebase->methodExists($type->value . '::' . $method_name)) {
+                    $match_found = false;
+
+                    if ($type->extra_types) {
+                        foreach ($type->extra_types as $extra_type) {
+                            if ($extra_type instanceof TNamedObject
+                                && $codebase->classOrInterfaceExists($extra_type->value)
+                                && $codebase->methodExists($extra_type->value . '::' . $method_name)
+                            ) {
+                                $match_found = true;
+                            } elseif ($extra_type instanceof Atomic\TObjectWithProperties) {
+                                $match_found = true;
+
+                                if (!isset($extra_type->methods[$method_name])) {
+                                    $extra_type->methods[$method_name] = 'object::' . $method_name;
+                                    $did_remove_type = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!$match_found) {
+                        $obj = new Atomic\TObjectWithProperties(
+                            [],
+                            [$method_name => $type->value . '::' . $method_name]
+                        );
+                        $type->extra_types[$obj->getKey()] = $obj;
+                        $did_remove_type = true;
+                    }
+                }
+            } elseif ($type instanceof Atomic\TObjectWithProperties) {
+                $object_types[] = $type;
+
+                if (!isset($type->methods[$method_name])) {
+                    $type->methods[$method_name] = 'object::' . $method_name;
+                    $did_remove_type = true;
+                }
             } elseif ($type instanceof TObject || $type instanceof TMixed) {
-                $object_types[] = new Atomic\TObjectWithProperties([], [$method_id => true]);
+                $object_types[] = new Atomic\TObjectWithProperties(
+                    [],
+                    [$method_name =>  'object::' . $method_name]
+                );
                 $did_remove_type = true;
             } elseif ($type instanceof TTemplateParam) {
                 $object_types[] = $type;
@@ -830,13 +870,13 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             }
         }
 
-        if (!$object_types || !$did_remove_type) {
+        if (!$object_types) {
             if ($key && $code_location) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
                     $old_var_type_string,
                     $key,
-                    'object',
+                    'object with method ' . $method_name,
                     !$did_remove_type,
                     $code_location,
                     $suppressed_issues
@@ -1298,7 +1338,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         $existing_var_atomic_types = $existing_var_type->getTypes();
 
         if ($existing_var_type->hasMixed() || $existing_var_type->hasTemplate()) {
-            return new Type\Union([new Type\Atomic\TIterable]);
+            return new Type\Union([new Type\Atomic\TNamedObject('Traversable')]);
         }
 
         $traversable_types = [];

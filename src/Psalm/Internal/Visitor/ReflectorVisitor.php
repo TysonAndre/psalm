@@ -457,6 +457,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
 
                 foreach ($var_comments as $var_comment) {
+                    if (!$var_comment->type) {
+                        continue;
+                    }
+
                     $var_type = $var_comment->type;
                     $var_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
                 }
@@ -696,7 +700,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($string_value && class_exists($string_value)) {
-                /** @psalm-suppress ArgumentTypeCoercion - special case where the class is internal  */
                 $reflection_class = new \ReflectionClass($string_value);
 
                 if ($reflection_class->getFileName() !== $this->file_path) {
@@ -724,7 +727,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
 
             if ($string_value && interface_exists($string_value)) {
-                /** @psalm-suppress ArgumentTypeCoercion - special case where the class is internal  */
                 $reflection_class = new \ReflectionClass($string_value);
 
                 if ($reflection_class->getFileName() !== $this->file_path) {
@@ -2033,7 +2035,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->return_type->ignore_falsable_issues = true;
         }
 
-        $storage->suppressed_issues = $docblock_info->suppress;
+        $storage->suppressed_issues = $docblock_info->suppressed_issues;
 
         foreach ($docblock_info->throws as [$throw, $offset, $line]) {
             $throw_location = new CodeLocation\DocblockTypeLocation(

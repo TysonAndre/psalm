@@ -949,6 +949,26 @@ class ForeachTest extends \Psalm\Tests\TestCase
                         foreach ($v as $value) {}
                     }',
             ],
+            'possibleRawObjectIterationFromIssetSuppressed' => [
+                '<?php
+                    /**
+                     * @psalm-suppress RawObjectIteration
+                     * @psalm-suppress MixedAssignment
+                     */
+                    function foo(array $a) : void {
+                        if (isset($a["a"]["b"])) {
+                            foreach ($a["a"] as $c) {}
+                        }
+                    }',
+            ],
+            'simpleXmlIterator' => [
+                '<?php
+                    function f(SimpleXMLElement $elt): void {
+                        foreach ($elt as $item) {
+                            f($item);
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -1118,6 +1138,18 @@ class ForeachTest extends \Psalm\Tests\TestCase
                         public $foo;
                     }
 
+                    $arr = new A;
+
+                    foreach ($arr as $a) {}',
+                'error_message' => 'RawObjectIteration',
+            ],
+            'possibleRawObjectIteration' => [
+                '<?php
+                    class A {
+                        /** @var ?string */
+                        public $foo;
+                    }
+
                     class B extends A {}
 
                     function bar(A $a): void {}
@@ -1133,7 +1165,16 @@ class ForeachTest extends \Psalm\Tests\TestCase
                     foreach ($arr as $a) {
                         bar($a);
                     }',
-                'error_message' => 'RawObjectIteration',
+                'error_message' => 'PossibleRawObjectIteration',
+            ],
+            'possibleRawObjectIterationFromIsset' => [
+                '<?php
+                    function foo(array $a) : void {
+                        if (isset($a["a"]["b"])) {
+                            foreach ($a["a"] as $c) {}
+                        }
+                    }',
+                'error_message' => 'PossibleRawObjectIteration',
             ],
             'ifSpecificNonEmptyValues' => [
                 '<?php
