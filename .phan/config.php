@@ -116,6 +116,8 @@ return [
     // phase.
     'processes' => 1,
 
+    'assume_real_types_for_internal_functions' => true,
+
     // A list of directories that should be parsed for class and
     // method information. After excluding the directories
     // defined in exclude_analysis_directory_list, the remaining
