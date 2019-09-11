@@ -567,13 +567,6 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
             }
         }
 
-        if (!$config->remember_property_assignments_after_call
-            && !$in_call_map
-            && !$context->collect_initializations
-        ) {
-            $context->removeAllObjectVars();
-        }
-
         if ($stmt->name instanceof PhpParser\Node\Name &&
             ($stmt->name->parts === ['get_class'] || $stmt->name->parts === ['gettype']) &&
             $stmt->args
@@ -619,19 +612,27 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
             );
         }
 
-        if ($context->pure || $codebase->find_unused_variables) {
+        if (!$context->collect_initializations
+            && !$context->collect_mutations
+            && ($context->mutation_free
+                || $context->external_mutation_free
+                || $codebase->find_unused_variables
+                || !$config->remember_property_assignments_after_call)
+        ) {
+            $must_use = true;
+
             $callmap_function_pure = $function_id && $in_call_map
-                ? $codebase->functions->isCallMapFunctionPure($codebase, $function_id, $stmt->args)
+                ? $codebase->functions->isCallMapFunctionPure($codebase, $function_id, $stmt->args, $must_use)
                 : null;
 
             if (($function_storage
                     && !$function_storage->pure)
                 || ($callmap_function_pure === false)
             ) {
-                if ($context->pure) {
+                if ($context->mutation_free || $context->external_mutation_free) {
                     if (IssueBuffer::accepts(
                         new ImpureFunctionCall(
-                            'Cannot call an impure function from a pure context',
+                            'Cannot call an impure function from a mutation-free context',
                             new CodeLocation($statements_analyzer, $stmt->name)
                         ),
                         $statements_analyzer->getSuppressedIssues()
@@ -639,8 +640,13 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         // fall through
                     }
                 }
+
+                if (!$config->remember_property_assignments_after_call) {
+                    $context->removeAllObjectVars();
+                }
             } elseif ($function_id
-                && (($function_storage && $function_storage->pure) || $callmap_function_pure === true)
+                && (($function_storage && $function_storage->pure && $must_use)
+                    || ($callmap_function_pure === true && $must_use))
                 && $codebase->find_unused_variables
                 && !$context->inside_conditional
                 && !$context->inside_unset
@@ -667,6 +673,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
             if ($function_storage->assertions && $stmt->name instanceof PhpParser\Node\Name) {
                 self::applyAssertionsToContext(
                     $stmt->name,
+                    null,
                     $function_storage->assertions,
                     $stmt->args,
                     $generic_params ?: [],

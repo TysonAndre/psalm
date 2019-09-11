@@ -15,6 +15,7 @@ use Psalm\Storage\FunctionLikeStorage;
 use function strpos;
 use function strtolower;
 use function substr;
+use Closure;
 
 /**
  * @internal
@@ -262,10 +263,14 @@ class Functions
     }
 
     /**
-     * @param array<int, \PhpParser\Node\Arg> $args
+     * @param ?array<int, \PhpParser\Node\Arg> $args
      */
-    public function isCallMapFunctionPure(Codebase $codebase, string $function_id, array $args) : bool
-    {
+    public function isCallMapFunctionPure(
+        Codebase $codebase,
+        string $function_id,
+        ?array $args,
+        bool &$must_use = true
+    ) : bool {
         $impure_functions = [
             // file io
             'chdir', 'chgrp', 'chmod', 'chown', 'chroot', 'closedir', 'copy', 'file_put_contents',
@@ -284,7 +289,7 @@ class Functions
             'header', 'header_remove', 'http_response_code', 'setcookie',
 
             // output buffer
-            'ob_start', 'ob_end_clean', 'readfile', 'var_dump', 'printf', 'print_r', 'phpinfo',
+            'ob_start', 'ob_end_clean', 'readfile', 'printf', 'var_dump', 'phpinfo',
 
             // internal optimisation
             'opcache_compile_file', 'clearstatcache',
@@ -309,15 +314,17 @@ class Functions
             'shell_exec', 'exec', 'system', 'passthru', 'pcntl_exec',
 
             // well-known functions
-            'libxml_use_internal_errors', 'array_map', 'curl_exec',
+            'libxml_use_internal_errors', 'curl_exec',
             'mt_srand', 'openssl_pkcs7_sign', 'mysqli_select_db', 'preg_replace_callback',
+            'mt_rand', 'rand',
 
             // php environment
             'ini_set', 'sleep', 'usleep', 'register_shutdown_function',
             'error_reporting', 'register_tick_function', 'unregister_tick_function',
             'set_error_handler', 'user_error', 'trigger_error', 'restore_error_handler',
-            'date_default_timezone_set',  'assert', 'assert_options', 'setlocale',
+            'date_default_timezone_set', 'assert_options', 'setlocale',
             'set_exception_handler', 'set_time_limit', 'putenv', 'spl_autoload_register',
+            'microtime', 'array_rand',
 
             // logging
             'openlog', 'syslog', 'error_log', 'define_syslog_variables',
@@ -340,23 +347,44 @@ class Functions
             return false;
         }
 
-        if ($function_id === 'var_export' && !isset($args[1])) {
+        if (($function_id === 'var_export' || $function_id === 'print_r') && !isset($args[1])) {
             return false;
+        }
+
+        if ($function_id === 'assert') {
+            $must_use = false;
+            return true;
         }
 
         $function_callable = \Psalm\Internal\Codebase\CallMap::getCallableFromCallMapById(
             $codebase,
             $function_id,
-            $args
+            $args ?: []
         );
 
-        if (!$function_callable->params || !$args) {
+        if (!$function_callable->params || ($args !== null && \count($args) === 0)) {
             return false;
         }
 
+        $must_use = $function_id !== 'array_map'
+            || (isset($args[0]) && !$args[0]->value instanceof \PhpParser\Node\Expr\Closure);
+
         foreach ($function_callable->params as $i => $param) {
+            if ($param->type && $param->type->hasCallableType() && isset($args[$i])) {
+                foreach ($param->type->getTypes() as $possible_callable) {
+                    $possible_callable = \Psalm\Internal\Analyzer\TypeAnalyzer::getCallableFromAtomic(
+                        $codebase,
+                        $possible_callable
+                    );
+
+                    if ($possible_callable && !$possible_callable->is_pure) {
+                        return false;
+                    }
+                }
+            }
+
             if ($param->by_ref && isset($args[$i])) {
-                return false;
+                $must_use = false;
             }
         }
 

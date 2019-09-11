@@ -149,7 +149,7 @@ is not within the given namespace.
 
 As other tools do not support `@psalm-internal`, it may only be used in conjunction with `@internal`.
 
-```PHP
+```php
 namespace A\B {
     /**
     * @internal
@@ -174,6 +174,116 @@ namespace A\C {
     }
 }
 ```
+
+### `@psalm-readonly` and `@readonly`
+
+Used to annotate a property that can only be written to in its defining class's constructor.
+
+```php
+<?php
+class B {
+  /** @readonly */
+  public string $s;
+
+  public function __construct(string $s) {
+    $this->s = $s;
+  }
+}
+
+$b = new B("hello");
+echo $b->s;
+$b->s = "boo"; // disallowed
+```
+
+### `@psalm-mutation-free`
+
+Used to annotate a class method that does not mutate state, either internally or externally of the class's scope.
+
+```php
+class D {
+  private string $s;
+
+  public function __construct(string $s) {
+    $this->s = $s;
+  }
+
+  /**
+   * @psalm-mutation-free
+   */
+  public function getShort() : string {
+    return substr($this->s, 0, 5);
+  }
+
+  /**
+   * @psalm-mutation-free
+   */
+  public function getShortMutating() : string {
+    $this->s .= "hello"; // this is a bug
+    return substr($this->s, 0, 5);
+  }
+}
+```
+
+### `@psalm-external-mutation-free`
+
+Used to annotate a class method that does not mutate state externally of the class's scope.
+
+```php
+class E {
+  private string $s;
+
+  public function __construct(string $s) {
+    $this->s = $s;
+  }
+
+  /**
+   * @psalm-external-mutation-free
+   */
+  public function getShortMutating() : string {
+    $this->s .= "hello"; // this is fine
+    return substr($this->s, 0, 5);
+  }
+
+  /**
+   * @psalm-external-mutation-free
+   */
+  public function save() : void {
+    file_put_contents("foo.txt", $this->s); // this is a bug
+  }
+}
+```
+
+### `@psalm-immutable`
+
+Used to annotate a class where every property is treated by consumers as `@psalm-readonly` and every instance method is treated as `@psalm-mutation-free`.
+
+### `@psalm-pure`
+
+Used to annotate a [pure function](https://en.wikipedia.org/wiki/Pure_function) - one whose output is just a function of its input.
+
+```php
+class Arithmetic {
+  /** @psalm-pure */
+  public static function add(int $left, int $right) : int {
+    return $left + $right;
+  }
+
+  /** @psalm-pure - this is wrong */
+  public static function addCumulative(int $left) : int {
+    /** @var int */
+    static $i = 0; // this is a side effect, and thus a bug
+    $i += $left;
+    return $i;
+  }
+}
+
+echo Arithmetic::add(40, 2);
+echo Arithmetic::add(40, 2); // same value is emitted
+
+echo Arithmetic::addCumulative(3); // outputs 3
+echo Arithmetic::addCumulative(3); // outputs 6
+```
+
 ## Type Syntax
 
 Psalm supports PHPDoc’s [type syntax](https://docs.phpdoc.org/guides/types.html), and also the [proposed PHPDoc PSR type syntax](https://github.com/php-fig/fig-standards/blob/master/proposed/phpdoc.md#appendix-a-types).

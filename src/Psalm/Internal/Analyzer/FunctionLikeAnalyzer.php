@@ -182,6 +182,13 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 }
             } elseif ($context->self) {
                 $context->vars_in_scope['$this'] = new Type\Union([new TNamedObject($context->self)]);
+
+                if ($storage->external_mutation_free
+                    && !$storage->mutation_free_inferred
+                ) {
+                    $context->vars_in_scope['$this']->external_mutation_free = true;
+                }
+
                 $context->vars_possibly_in_scope['$this'] = true;
             }
 
@@ -417,6 +424,21 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             $context->pure = true;
         }
 
+        if ($storage->mutation_free
+            && $cased_method_id
+            && !strpos($cased_method_id, '__construct')
+            && !($storage instanceof MethodStorage && $storage->mutation_free_inferred)
+        ) {
+            $context->mutation_free = true;
+        }
+
+        if ($storage instanceof MethodStorage
+            && $storage->external_mutation_free
+            && !$storage->mutation_free_inferred
+        ) {
+            $context->external_mutation_free = true;
+        }
+
         if ($storage->unused_docblock_params) {
             foreach ($storage->unused_docblock_params as $param_name => $param_location) {
                 if (IssueBuffer::accepts(
@@ -529,13 +551,14 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             if ($closure_return_types) {
                 $closure_return_type = new Type\Union($closure_return_types);
 
-                if (!$storage->return_type
-                    || $storage->return_type->hasMixed()
-                    || TypeAnalyzer::isContainedBy(
-                        $codebase,
-                        $closure_return_type,
-                        $storage->return_type
-                    )
+                if (($storage->return_type === $storage->signature_return_type)
+                    && (!$storage->return_type
+                        || $storage->return_type->hasMixed()
+                        || TypeAnalyzer::isContainedBy(
+                            $codebase,
+                            $closure_return_type,
+                            $storage->return_type
+                        ))
                 ) {
                     if ($this->function->inferredType) {
                         /** @var Type\Atomic\TFn */

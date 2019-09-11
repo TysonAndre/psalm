@@ -120,6 +120,3 @@ workflows:
           requires:
             - test
             - "Code Style Analysis"
-      - test-with-real-projects:
-          requires:
-            - phar-build

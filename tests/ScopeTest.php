@@ -254,9 +254,18 @@ class ScopeTest extends TestCase
             ],
             'psalmScopeThisInTemplate' => [
                 '<?php
+                    $e = new Exception(); // necessary to trick Psalm’s scanner for test
                     /** @psalm-scope-this Exception */
                 ?>
                 <h1><?= $this->getMessage() ?></h1>',
+            ],
+            'bleedElseifAssignedVarsIntoElseScope' => [
+                '<?php
+                    if (rand(0, 1) === 0) {
+                        $foo = 0;
+                    } elseif ($foo = rand(0, 10)) {}
+
+                    echo substr("banana", $foo);',
             ],
         ];
     }

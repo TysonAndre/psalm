@@ -51,6 +51,25 @@ class AssertTest extends TestCase
                         return $s;
                     }',
             ],
+            'sortOfReplacementForAssert' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @param mixed $_b
+                     * @psalm-assert true $_b
+                     */
+                    function myAssert($_b) : void {
+                        if ($_b !== true) {
+                            throw new \Exception("bad");
+                        }
+                    }
+
+                    function bar(?string $s) : string {
+                        myAssert($s !== null);
+                        return $s;
+                    }',
+            ],
             'assertInstanceOfInterface' => [
                 '<?php
                     namespace Bar;
@@ -666,6 +685,32 @@ class AssertTest extends TestCase
                         }
                     }'
             ],
+            'assertPropertyVisibleOutside' => [
+                '<?php
+                    class A {
+                        public ?int $x = null;
+
+                        public function maybeAssignX() : void {
+                            if (rand(0, 0) == 0) {
+                                $this->x = 0;
+                            }
+                        }
+
+                        /**
+                         * @psalm-assert !null $this->x
+                         */
+                        public function assertProperty() : void {
+                            if (is_null($this->x)) {
+                                throw new RuntimeException();
+                            }
+                        }
+                    }
+
+                    $a = new A();
+                    $a->maybeAssignX();
+                    $a->assertProperty();
+                    echo (2 * $a->x);',
+            ],
         ];
     }
 
@@ -815,6 +860,26 @@ class AssertTest extends TestCase
                     $a = "";
                     assertFooBar($a);',
                 'error_message' => 'InvalidDocblock',
+            ],
+            'sortOfReplacementForAssert' => [
+                '<?php
+                    namespace Bar;
+
+                    /**
+                     * @param mixed $_b
+                     * @psalm-assert true $_b
+                     */
+                    function myAssert($_b) : void {
+                        if ($_b !== true) {
+                            throw new \Exception("bad");
+                        }
+                    }
+
+                    function bar(?string $s) : string {
+                        myAssert($s);
+                        return $s;
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

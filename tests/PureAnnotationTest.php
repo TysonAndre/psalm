@@ -53,6 +53,108 @@ class PureAnnotationTest extends TestCase
                         return $output;
                     }'
             ],
+            'implicitAnnotations' => [
+                '<?php
+                    abstract class Foo {
+                        private array $options;
+                        private array $defaultOptions;
+
+                        function __construct(array $options) {
+                            $this->setOptions($options);
+                            $this->setDefaultOptions($this->getOptions());
+                        }
+
+                        function getOptions(): array {
+                            return $this->options;
+                        }
+
+                        function setOptions(array $options): void {
+                            $this->options = $options;
+                        }
+
+                        function setDefaultOptions(array $defaultOptions): void {
+                            $this->defaultOptions = $defaultOptions;
+                        }
+                    }',
+            ],
+            'canCreateObjectWithNoExternalMutations' => [
+                '<?php
+                    /** @psalm-external-mutation-free */
+                    class Counter {
+                        private int $count = 0;
+
+                        public function __construct(int $count) {
+                            $this->count = $count;
+                        }
+
+                        public function increment() : void {
+                            $this->count++;
+                        }
+
+                        public function incrementByTwo() : void {
+                            $this->count = $this->count + 2;
+                        }
+
+                        public function incrementByFive() : void {
+                            $this->count += 5;
+                        }
+                    }
+
+                    /** @psalm-pure */
+                    function makesACounter(int $i) : Counter {
+                        $c = new Counter($i);
+                        $c->increment();
+                        $c->incrementByTwo();
+                        $c->incrementByFive();
+                        return $c;
+                    }',
+            ],
+            'canCreateImmutableObject' => [
+                '<?php
+                    /** @psalm-immutable */
+                    class A {
+                        private string $s;
+
+                        public function __construct(string $s) {
+                            $this->s = $s;
+                        }
+
+                        public function getShort() : string {
+                            return substr($this->s, 0, 5);
+                        }
+                    }
+
+                    /** @psalm-pure */
+                    function makeA(string $s) : A {
+                        $a = new A($s);
+
+                        if ($a->getShort() === "bar") {
+                            return new A("foo");
+                        }
+
+                        return $a;
+                    }'
+            ],
+            'assertIsPureInProductionn' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function toDateTime(?DateTime $dateTime) : DateTime {
+                        assert($dateTime instanceof DateTime);
+                        return $dateTime;
+                    }'
+            ],
+            'allowArrayMapClosure' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     * @param string[] $arr
+                     */
+                    function foo(array $arr) : array {
+                        return \array_map(function(string $s) { return $s;}, $arr);
+                    }'
+            ],
         ];
     }
 
@@ -150,6 +252,50 @@ class PureAnnotationTest extends TestCase
                         return null;
                     }',
                 'error_message' => 'ImpureMethodCall',
+            ],
+            'canCreateObjectWithNoExternalMutations' => [
+                '<?php
+                    class Counter {
+                        private int $count = 0;
+
+                        public function __construct(int $count) {
+                            $this->count = $count;
+                        }
+
+                        public function increment() : void {
+                            $this->count += rand(0, 5);
+                        }
+                    }
+
+                    /** @psalm-pure */
+                    function makesACounter(int $i) : Counter {
+                        $c = new Counter($i);
+                        $c->increment();
+                        return $c;
+                    }',
+                'error_message' => 'ImpureMethodCall',
+            ],
+            'useOfStaticMakesFunctionImpure' => [
+                '<?php
+                    /** @psalm-pure */
+                    function addCumulative(int $left) : int {
+                        /** @var int */
+                        static $i = 0;
+                        $i += $left;
+                        return $left;
+                    }',
+                'error_message' => 'ImpureStaticVariable',
+            ],
+            'preventImpureArrayMapClosure' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     * @param string[] $arr
+                     */
+                    function foo(array $arr) : array {
+                        return \array_map(function(string $s) { return $s . rand(0, 1);}, $arr);
+                    }',
+                'error_message' => 'ImpureFunctionCall',
             ],
         ];
     }

@@ -385,8 +385,8 @@ class UnusedCodeTest extends TestCase
                 class C {
                     /** @var int */
                     protected $foo = 1;
-                    public function bar() : int {
-                        return $this->foo;
+                    public function bar() : void {
+                        $this->foo = 5;
                     }
                 }
 
@@ -537,6 +537,89 @@ class UnusedCodeTest extends TestCase
                         $o->foo("COUNT{$s}");
                     }'
             ],
+            'usedFunctioninMethodCallName' => [
+                '<?php
+                    class Foo {
+                        /**
+                         * @psalm-suppress MixedArgument
+                         */
+                        public function bar(): void {
+                            /** @var mixed $action */
+                            $action = "";
+                            $this->{"execute" . ucfirst($action)}($request);
+                        }
+                    }
+
+                    (new Foo)->bar();'
+            ],
+            'usedMethodCallForExternalMutationFreeClass' => [
+                '<?php
+                    /**
+                     * @psalm-external-mutation-free
+                     */
+                    class A {
+                        private string $foo;
+
+                        public function __construct(string $foo) {
+                            $this->foo = $foo;
+                        }
+
+                        public function setFoo(string $foo) : void {
+                            $this->foo = $foo;
+                        }
+
+                        public function getFoo() : string {
+                            return $this->foo;
+                        }
+                    }
+
+                    $a = new A("hello");
+                    $a->setFoo($a->getFoo() . "cool");',
+            ],
+            'functionUsedAsArrayKeyInc' => [
+                '<?php
+                    /** @param array<int, int> $arr */
+                    function inc(array $arr) : array {
+                        $arr[strlen("hello")]++;
+                        return $arr;
+                    }'
+            ],
+            'pureFunctionUsesMethodBeforeReturning' => [
+                '<?php
+                    /** @psalm-external-mutation-free */
+                    class Counter {
+                        private int $count = 0;
+
+                        public function __construct(int $count) {
+                            $this->count = $count;
+                        }
+
+                        public function increment() : void {
+                            $this->count++;
+                        }
+                    }
+
+                    /** @psalm-pure */
+                    function makesACounter(int $i) : Counter {
+                        $c = new Counter($i);
+                        $c->increment();
+                        return $c;
+                    }',
+            ],
+            'usedUsort' => [
+                '<?php
+                    /** @param string[] $arr */
+                    function foo(array $arr) : array {
+                        usort($arr, "strnatcasecmp");
+                        return $arr;
+                    }'
+            ],
+            'allowArrayMapWithClosure' => [
+                '<?php
+                    $a = [1, 2, 3];
+
+                    array_map(function($i) { echo $i;}, $a);'
+            ],
         ];
     }
 
@@ -673,6 +756,24 @@ class UnusedCodeTest extends TestCase
                     strlen("goodbye");',
                 'error_message' => 'UnusedFunctionCall',
             ],
+            'unusedMethodCall' => [
+                '<?php
+                    class A {
+                        private string $foo;
+
+                        public function __construct(string $foo) {
+                            $this->foo = $foo;
+                        }
+
+                        public function getFoo() : string {
+                            return $this->foo;
+                        }
+                    }
+
+                    $a = new A("hello");
+                    $a->getFoo();',
+                'error_message' => 'UnusedMethodCall',
+            ],
             'propertyOverriddenDownstreamAndNotUsed' => [
                 '<?php
                     class A {
@@ -713,6 +814,83 @@ class UnusedCodeTest extends TestCase
                     }
                     (new A())->handle();',
                 'error_message' => 'UnusedProperty',
+            ],
+            'unusedMethodCallForExternalMutationFreeClass' => [
+                '<?php
+                    /**
+                     * @psalm-external-mutation-free
+                     */
+                    class A {
+                        private string $foo;
+
+                        public function __construct(string $foo) {
+                            $this->foo = $foo;
+                        }
+
+                        public function setFoo(string $foo) : void {
+                            $this->foo = $foo;
+                        }
+                    }
+
+                    function foo() : void {
+                        (new A("hello"))->setFoo("goodbye");
+                    }',
+                'error_message' => 'UnusedMethodCall',
+            ],
+            'unusedMethodCallForGeneratingMethod' => [
+                '<?php
+                    /**
+                     * @psalm-external-mutation-free
+                     */
+                    class A {
+                        private string $foo;
+
+                        public function __construct(string $foo) {
+                            $this->foo = $foo;
+                        }
+
+                        public function getFoo() : string {
+                            return "abular" . $this->foo;
+                        }
+                    }
+
+                    /**
+                     * @psalm-pure
+                     */
+                    function makeA(string $s) : A {
+                        return new A($s);
+                    }
+
+                    function foo() : void {
+                        makeA("hello")->getFoo();
+                    }',
+                'error_message' => 'UnusedMethodCall',
+            ],
+            'annotatedMutationFreeUnused' => [
+                '<?php
+                    class A {
+                        private string $s;
+
+                        public function __construct(string $s) {
+                            $this->s = $s;
+                        }
+
+                        /** @psalm-mutation-free */
+                        public function getShort() : string {
+                            return substr($this->s, 0, 5);
+                        }
+                    }
+
+                    $a = new A("hello");
+                    $a->getShort();',
+                'error_message' => 'UnusedMethodCall',
+            ],
+            'dateTimeImmutable' => [
+                '<?php
+                    function foo(DateTimeImmutable $dt) : void {
+                        $dt->modify("+1 day");
+                    }',
+                'error_message' => 'UnusedMethodCall',
             ],
         ];
     }

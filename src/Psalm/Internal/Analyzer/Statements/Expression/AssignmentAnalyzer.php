@@ -568,18 +568,6 @@ class AssignmentAnalyzer
                 $assign_value_type
             );
         } elseif ($assign_var instanceof PhpParser\Node\Expr\PropertyFetch) {
-            if ($context->pure) {
-                if (IssueBuffer::accepts(
-                    new ImpurePropertyAssignment(
-                        'Cannot assign to a property from a pure context',
-                        new CodeLocation($statements_analyzer, $assign_var)
-                    ),
-                    $statements_analyzer->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-            }
-
             if (!$assign_var->name instanceof PhpParser\Node\Identifier) {
                 // this can happen when the user actually means to type $this-><autocompleted>, but there's
                 // a variable on the next line
@@ -634,6 +622,25 @@ class AssignmentAnalyzer
 
             if ($var_id) {
                 $context->vars_possibly_in_scope[$var_id] = true;
+            }
+
+            $method_pure_compatible = !empty($assign_var->var->inferredType->external_mutation_free)
+                || isset($assign_var->var->pure);
+
+            if (($context->mutation_free || $context->external_mutation_free)
+                && !$method_pure_compatible
+                && !$context->collect_mutations
+                && !$context->collect_initializations
+            ) {
+                if (IssueBuffer::accepts(
+                    new ImpurePropertyAssignment(
+                        'Cannot assign to a property from a mutation-free context',
+                        new CodeLocation($statements_analyzer, $assign_var)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
             }
         } elseif ($assign_var instanceof PhpParser\Node\Expr\StaticPropertyFetch &&
             $assign_var->class instanceof PhpParser\Node\Name
@@ -736,10 +743,10 @@ class AssignmentAnalyzer
             $statements_analyzer
         );
 
-        if ($array_var_id && $context->pure && strpos($array_var_id, '->')) {
+        if ($array_var_id && $context->mutation_free && strpos($array_var_id, '->')) {
             if (IssueBuffer::accepts(
                 new ImpurePropertyAssignment(
-                    'Cannot assign to a property from a pure context',
+                    'Cannot assign to a property from a mutation-free context',
                     new CodeLocation($statements_analyzer, $stmt->var)
                 ),
                 $statements_analyzer->getSuppressedIssues()
@@ -855,14 +862,15 @@ class AssignmentAnalyzer
         PhpParser\Node\Expr\AssignRef $stmt,
         Context $context
     ) {
-        if (self::analyze(
+        $assignment_type = self::analyze(
             $statements_analyzer,
             $stmt->var,
             $stmt->expr,
             null,
             $context,
             $stmt->getDocComment()
-        ) === false) {
+        );
+        if ($assignment_type === false) {
             return false;
         }
 
@@ -879,11 +887,11 @@ class AssignmentAnalyzer
         );
 
         if ($lhs_var_id) {
-            $context->vars_in_scope[$lhs_var_id] = Type::getMixed();
+            $context->vars_in_scope[$lhs_var_id] = $assignment_type;
             $context->hasVariable($lhs_var_id, $statements_analyzer);
         }
 
-        if ($rhs_var_id) {
+        if ($rhs_var_id && !isset($context->vars_in_scope[$rhs_var_id])) {
             $context->vars_in_scope[$rhs_var_id] = Type::getMixed();
         }
     }

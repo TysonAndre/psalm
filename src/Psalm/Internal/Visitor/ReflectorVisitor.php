@@ -465,6 +465,23 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $var_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
                 }
             }
+
+            if ($node instanceof PhpParser\Node\Expr\Assign
+                || $node instanceof PhpParser\Node\Expr\AssignOp
+                || $node instanceof PhpParser\Node\Expr\AssignRef
+            ) {
+                if ($node->var instanceof PhpParser\Node\Expr\PropertyFetch
+                    && $node->var->var instanceof PhpParser\Node\Expr\Variable
+                    && $node->var->var->name === 'this'
+                    && $node->var->name instanceof PhpParser\Node\Identifier
+                ) {
+                    $functionlike_storage = end($this->functionlike_storages);
+
+                    if ($functionlike_storage instanceof MethodStorage) {
+                        $functionlike_storage->this_property_mutations[$node->var->name->name] = true;
+                    }
+                }
+            }
         } elseif ($node instanceof PhpParser\Node\Stmt\Const_) {
             foreach ($node->consts as $const) {
                 $const_type = StatementsAnalyzer::getSimpleType($this->codebase, $const->value, $this->aliases)
@@ -1174,6 +1191,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->sealed_properties = $docblock_info->sealed_properties;
                 $storage->sealed_methods = $docblock_info->sealed_methods;
 
+                $storage->mutation_free = $docblock_info->mutation_free;
+                $storage->external_mutation_free = $docblock_info->external_mutation_free;
+
                 $storage->override_property_visibility = $docblock_info->override_property_visibility;
                 $storage->override_method_visibility = $docblock_info->override_method_visibility;
 
@@ -1775,71 +1795,84 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         if (($stmt instanceof PhpParser\Node\Stmt\Function_
                 || $stmt instanceof PhpParser\Node\Stmt\ClassMethod)
-            && strpos($stmt->name->name, 'assert') === 0
             && $stmt->stmts
         ) {
-            $var_assertions = [];
+            if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
+                && $storage instanceof MethodStorage
+                && count($stmt->stmts) === 1
+                && !count($stmt->params)
+                && $stmt->stmts[0] instanceof PhpParser\Node\Stmt\Return_
+                && $stmt->stmts[0]->expr instanceof PhpParser\Node\Expr\PropertyFetch
+                && $stmt->stmts[0]->expr->var instanceof PhpParser\Node\Expr\Variable
+                && $stmt->stmts[0]->expr->var->name === 'this'
+            ) {
+                $storage->mutation_free = true;
+                $storage->external_mutation_free = true;
+                $storage->mutation_free_inferred = true;
+            } elseif (strpos($stmt->name->name, 'assert') === 0) {
+                $var_assertions = [];
 
-            foreach ($stmt->stmts as $function_stmt) {
-                if ($function_stmt instanceof PhpParser\Node\Stmt\If_) {
-                    $final_actions = \Psalm\Internal\Analyzer\ScopeAnalyzer::getFinalControlActions(
-                        $function_stmt->stmts,
-                        $this->config->exit_functions,
-                        false,
-                        false
-                    );
+                foreach ($stmt->stmts as $function_stmt) {
+                    if ($function_stmt instanceof PhpParser\Node\Stmt\If_) {
+                        $final_actions = \Psalm\Internal\Analyzer\ScopeAnalyzer::getFinalControlActions(
+                            $function_stmt->stmts,
+                            $this->config->exit_functions,
+                            false,
+                            false
+                        );
 
-                    if ($final_actions !== [\Psalm\Internal\Analyzer\ScopeAnalyzer::ACTION_END]) {
-                        $var_assertions = [];
-                        break;
-                    }
+                        if ($final_actions !== [\Psalm\Internal\Analyzer\ScopeAnalyzer::ACTION_END]) {
+                            $var_assertions = [];
+                            break;
+                        }
 
-                    $if_clauses = \Psalm\Type\Algebra::getFormula(
-                        $function_stmt->cond,
-                        $this->fq_classlike_names
-                            ? $this->fq_classlike_names[count($this->fq_classlike_names) - 1]
-                            : null,
-                        $this->file_scanner,
-                        null
-                    );
+                        $if_clauses = \Psalm\Type\Algebra::getFormula(
+                            $function_stmt->cond,
+                            $this->fq_classlike_names
+                                ? $this->fq_classlike_names[count($this->fq_classlike_names) - 1]
+                                : null,
+                            $this->file_scanner,
+                            null
+                        );
 
-                    $negated_formula = \Psalm\Type\Algebra::negateFormula($if_clauses);
+                        $negated_formula = \Psalm\Type\Algebra::negateFormula($if_clauses);
 
-                    $rules = \Psalm\Type\Algebra::getTruthsFromFormula($negated_formula);
+                        $rules = \Psalm\Type\Algebra::getTruthsFromFormula($negated_formula);
 
-                    if (!$rules) {
-                        $var_assertions = [];
-                        break;
-                    }
+                        if (!$rules) {
+                            $var_assertions = [];
+                            break;
+                        }
 
-                    foreach ($rules as $var_id => $rule) {
-                        foreach ($rule as $rule_part) {
-                            if (count($rule_part) > 1) {
-                                continue 2;
+                        foreach ($rules as $var_id => $rule) {
+                            foreach ($rule as $rule_part) {
+                                if (count($rule_part) > 1) {
+                                    continue 2;
+                                }
+                            }
+
+                            if (isset($existing_params[$var_id])) {
+                                $param_offset = $existing_params[$var_id];
+
+                                $var_assertions[] = new \Psalm\Storage\Assertion(
+                                    $param_offset,
+                                    $rule
+                                );
+                            } elseif (strpos($var_id, '$this->') === 0) {
+                                $var_assertions[] = new \Psalm\Storage\Assertion(
+                                    $var_id,
+                                    $rule
+                                );
                             }
                         }
-
-                        if (isset($existing_params[$var_id])) {
-                            $param_offset = $existing_params[$var_id];
-
-                            $var_assertions[] = new \Psalm\Storage\Assertion(
-                                $param_offset,
-                                $rule
-                            );
-                        } elseif (strpos($var_id, '$this->') === 0) {
-                            $var_assertions[] = new \Psalm\Storage\Assertion(
-                                $var_id,
-                                $rule
-                            );
-                        }
+                    } else {
+                        $var_assertions = [];
+                        break;
                     }
-                } else {
-                    $var_assertions = [];
-                    break;
                 }
-            }
 
-            $storage->assertions = $var_assertions;
+                $storage->assertions = $var_assertions;
+            }
         }
 
         if (!$this->scan_deep
@@ -1913,66 +1946,19 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->returns_by_ref = true;
         }
 
-        if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
-            && $stmt->name->name === '__construct'
-            && $stmt->stmts
-            && $storage->params
-            && $class_storage
-            && $this->config->infer_property_types_from_constructor
-        ) {
-            $assigned_properties = [];
-
-            foreach ($stmt->stmts as $function_stmt) {
-                if ($function_stmt instanceof PhpParser\Node\Stmt\Expression
-                    && $function_stmt->expr instanceof PhpParser\Node\Expr\Assign
-                    && $function_stmt->expr->var instanceof PhpParser\Node\Expr\PropertyFetch
-                    && $function_stmt->expr->var->var instanceof PhpParser\Node\Expr\Variable
-                    && $function_stmt->expr->var->var->name === 'this'
-                    && $function_stmt->expr->var->name instanceof PhpParser\Node\Identifier
-                    && ($property_name = $function_stmt->expr->var->name->name)
-                    && isset($class_storage->properties[$property_name])
-                    && $function_stmt->expr->expr instanceof PhpParser\Node\Expr\Variable
-                    && is_string($function_stmt->expr->expr->name)
-                    && ($param_name = $function_stmt->expr->expr->name)
-                    && array_key_exists($param_name, $storage->param_types)
-                ) {
-                    if ($class_storage->properties[$property_name]->type
-                        || !isset($storage->param_types[$param_name])
-                    ) {
-                        continue;
-                    }
-
-                    $param_index = \array_search($param_name, \array_keys($storage->param_types), true);
-
-                    if ($param_index === false || !isset($storage->params[$param_index]->type)) {
-                        continue;
-                    }
-
-                    $param_type = $storage->params[$param_index]->type;
-
-                    $assigned_properties[$property_name] =
-                        $storage->params[$param_index]->is_variadic
-                            ? new Type\Union([
-                                new Type\Atomic\TArray([
-                                    Type::getInt(),
-                                    $param_type,
-                                ]),
-                            ])
-                            : $param_type;
-                } else {
-                    $assigned_properties = [];
-                    break;
-                }
-            }
-
-            foreach ($assigned_properties as $property_name => $property_type) {
-                $class_storage->properties[$property_name]->type = clone $property_type;
-            }
-        }
-
         $doc_comment = $stmt->getDocComment();
 
         if (!$doc_comment) {
+            if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
+                && $stmt->name->name === '__construct'
+                && $class_storage
+                && $storage instanceof MethodStorage
+                && $storage->params
+                && $this->config->infer_property_types_from_constructor
+            ) {
+                $this->inferPropertyTypeFromConstructor($stmt, $storage, $class_storage);
+            }
+
             return $storage;
         }
 
@@ -2007,6 +1993,18 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             return $storage;
         }
 
+        if ($docblock_info->mutation_free) {
+            $storage->mutation_free = true;
+
+            if ($storage instanceof MethodStorage) {
+                $storage->external_mutation_free = true;
+            }
+        }
+
+        if ($storage instanceof MethodStorage && $docblock_info->external_mutation_free) {
+            $storage->external_mutation_free = true;
+        }
+
         if ($docblock_info->deprecated) {
             $storage->deprecated = true;
         }
@@ -2025,6 +2023,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         if ($docblock_info->pure) {
             $storage->pure = true;
+            $storage->mutation_free = true;
+            if ($storage instanceof MethodStorage) {
+                $storage->external_mutation_free = true;
+            }
         }
 
         if ($docblock_info->ignore_nullable_return && $storage->return_type) {
@@ -2460,7 +2462,82 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->return_type_description = $docblock_info->return_type_description;
         }
 
+        if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
+            && $stmt->name->name === '__construct'
+            && $class_storage
+            && $storage instanceof MethodStorage
+            && $storage->params
+            && $this->config->infer_property_types_from_constructor
+        ) {
+            $this->inferPropertyTypeFromConstructor($stmt, $storage, $class_storage);
+        }
+
         return $storage;
+    }
+
+    private function inferPropertyTypeFromConstructor(
+        PhpParser\Node\Stmt\ClassMethod $stmt,
+        MethodStorage $storage,
+        ClassLikeStorage $class_storage
+    ) : void {
+        if (!$stmt->stmts) {
+            return;
+        }
+
+        $assigned_properties = [];
+
+        foreach ($stmt->stmts as $function_stmt) {
+            if ($function_stmt instanceof PhpParser\Node\Stmt\Expression
+                && $function_stmt->expr instanceof PhpParser\Node\Expr\Assign
+                && $function_stmt->expr->var instanceof PhpParser\Node\Expr\PropertyFetch
+                && $function_stmt->expr->var->var instanceof PhpParser\Node\Expr\Variable
+                && $function_stmt->expr->var->var->name === 'this'
+                && $function_stmt->expr->var->name instanceof PhpParser\Node\Identifier
+                && ($property_name = $function_stmt->expr->var->name->name)
+                && isset($class_storage->properties[$property_name])
+                && $function_stmt->expr->expr instanceof PhpParser\Node\Expr\Variable
+                && is_string($function_stmt->expr->expr->name)
+                && ($param_name = $function_stmt->expr->expr->name)
+                && array_key_exists($param_name, $storage->param_types)
+            ) {
+                if ($class_storage->properties[$property_name]->type
+                    || !isset($storage->param_types[$param_name])
+                ) {
+                    continue;
+                }
+
+                $param_index = \array_search($param_name, \array_keys($storage->param_types), true);
+
+                if ($param_index === false || !isset($storage->params[$param_index]->type)) {
+                    continue;
+                }
+
+                $param_type = $storage->params[$param_index]->type;
+
+                $assigned_properties[$property_name] =
+                    $storage->params[$param_index]->is_variadic
+                        ? new Type\Union([
+                            new Type\Atomic\TArray([
+                                Type::getInt(),
+                                $param_type,
+                            ]),
+                        ])
+                        : $param_type;
+            } else {
+                $assigned_properties = [];
+                break;
+            }
+        }
+
+        if (!$assigned_properties) {
+            return;
+        }
+
+        $storage->external_mutation_free = true;
+
+        foreach ($assigned_properties as $property_name => $property_type) {
+            $class_storage->properties[$property_name]->type = clone $property_type;
+        }
     }
 
     /**

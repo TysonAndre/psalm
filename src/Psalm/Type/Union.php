@@ -154,6 +154,11 @@ class Union
      */
     public $by_ref = false;
 
+    /**
+     * @var bool
+     */
+    public $external_mutation_free = false;
+
     /** @var null|string */
     private $id;
 
@@ -1162,7 +1167,8 @@ class Union
                                         ? new Union([$input_atomic_type->as_type])
                                         : ($input_atomic_type->as === 'object'
                                             ? Type::getObject()
-                                            : Type::getMixed())
+                                            : Type::getMixed()),
+                                    $input_atomic_type->defining_class
                                 );
                             } elseif ($input_atomic_type instanceof Type\Atomic\TClassString) {
                                 if ($input_atomic_type->as_type) {

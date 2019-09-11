@@ -51,10 +51,12 @@ use function count;
 use function in_array;
 use function array_reverse;
 use function array_filter;
+use function is_null;
 use function is_string;
 use function assert;
 use function preg_match;
 use function preg_replace;
+use function str_replace;
 use function is_int;
 use function substr;
 use function array_merge;
@@ -778,6 +780,8 @@ class CallAnalyzer
     ) {
         $array_arg = $args[0]->value;
 
+        $context->inside_call = true;
+
         if (ExpressionAnalyzer::analyze(
             $statements_analyzer,
             $array_arg,
@@ -786,7 +790,16 @@ class CallAnalyzer
             return false;
         }
 
-        $context->inside_call = true;
+        for ($i = 1; $i < count($args); $i++) {
+            if (ExpressionAnalyzer::analyze(
+                $statements_analyzer,
+                $args[$i]->value,
+                $context
+            ) === false) {
+                return false;
+            }
+        }
+
         if (isset($array_arg->inferredType) && $array_arg->inferredType->hasArray()) {
             /** @var TArray|ObjectLike */
             $array_type = $array_arg->inferredType->getTypes()['array'];
@@ -3193,6 +3206,7 @@ class CallAnalyzer
     /**
      * @param PhpParser\Node\Identifier|PhpParser\Node\Name $expr
      * @param  \Psalm\Storage\Assertion[] $assertions
+     * @param  string $thisName
      * @param  array<int, PhpParser\Node\Arg> $args
      * @param  Context           $context
      * @param  array<string, array<string, array{Type\Union}>> $template_type_map,
@@ -3202,6 +3216,7 @@ class CallAnalyzer
      */
     protected static function applyAssertionsToContext(
         $expr,
+        ?string $thisName,
         array $assertions,
         array $args,
         array $template_type_map,
@@ -3231,6 +3246,8 @@ class CallAnalyzer
                 }
             } elseif (isset($context->vars_in_scope[$assertion->var_id])) {
                 $assertion_var_id = $assertion->var_id;
+            } elseif (strpos($assertion->var_id, '$this->') === 0 && !is_null($thisName)) {
+                $assertion_var_id = $thisName . str_replace('$this->', '->', $assertion->var_id);
             }
 
             if ($assertion_var_id) {
@@ -3291,13 +3308,25 @@ class CallAnalyzer
                 } else {
                     $type_assertions[$assertion_var_id] = $assertion->rule;
                 }
-            } elseif ($arg_value && $assertion->rule === [['!falsy']]) {
-                $assert_clauses = \Psalm\Type\Algebra::getFormula(
-                    $arg_value,
-                    $statements_analyzer->getFQCLN(),
-                    $statements_analyzer,
-                    $statements_analyzer->getCodebase()
-                );
+            } elseif ($arg_value && ($assertion->rule === [['!falsy']] || $assertion->rule === [['true']])) {
+                if ($assertion->rule === [['true']]) {
+                    $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                        new PhpParser\Node\Expr\BinaryOp\Identical(
+                            $arg_value,
+                            new PhpParser\Node\Expr\ConstFetch(new PhpParser\Node\Name('true'))
+                        ),
+                        $statements_analyzer->getFQCLN(),
+                        $statements_analyzer,
+                        $statements_analyzer->getCodebase()
+                    );
+                } else {
+                    $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                        $arg_value,
+                        $statements_analyzer->getFQCLN(),
+                        $statements_analyzer,
+                        $statements_analyzer->getCodebase()
+                    );
+                }
 
                 $simplified_clauses = \Psalm\Type\Algebra::simplifyCNF(
                     array_merge($context->clauses, $assert_clauses)

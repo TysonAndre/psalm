@@ -202,7 +202,7 @@ class ArrayAssignmentTest extends TestCase
                 'assertions' => [
                     '$foo' => 'array{0: string, 1: string, 2: string}',
                     '$bar' => 'array{0: int, 1: int, 2: int}',
-                    '$bat' => 'array<string, int>',
+                    '$bat' => 'non-empty-array<string, int>',
                 ],
             ],
             'implicitStringArrayCreation' => [
@@ -369,7 +369,7 @@ class ArrayAssignmentTest extends TestCase
                     $c[$b][$b][] = "bam";',
                 'assertions' => [
                     '$a' => 'array{boop: array<int, string>}',
-                    '$c' => 'array{boop: array<string, array<int, string>>}',
+                    '$c' => 'array{boop: non-empty-array<string, array<int, string>>}',
                 ],
             ],
             'assignExplicitValueToGeneric' => [
@@ -438,7 +438,7 @@ class ArrayAssignmentTest extends TestCase
                     '$e' => 'int',
                 ],
             ],
-            'objectLikeArrayAddition' => [
+            'objectLikeArrayAdditionNotNested' => [
                 '<?php
                     $foo = [];
                     $foo["a"] = 1;
@@ -553,10 +553,10 @@ class ArrayAssignmentTest extends TestCase
                     $e[0][$int] = 3;
                     $e[0][$string] = 5;',
                 'assertions' => [
-                    '$b' => 'array{0: array<string|int, int>}',
-                    '$c' => 'array{0: array<int|string, int>}',
-                    '$d' => 'array{0: array<int|string, int>}',
-                    '$e' => 'array{0: array<string|int, int>}',
+                    '$b' => 'array{0: non-empty-array<string|int, int>}',
+                    '$c' => 'array{0: non-empty-array<int|string, int>}',
+                    '$d' => 'array{0: non-empty-array<int|string, int>}',
+                    '$e' => 'array{0: non-empty-array<string|int, int>}',
                 ],
             ],
             'updateStringIntKeyWithObjectLikeRootAndNumberOffset' => [
@@ -597,10 +597,10 @@ class ArrayAssignmentTest extends TestCase
                     $e["root"][$int] = 3;
                     $e["root"][$string] = 5;',
                 'assertions' => [
-                    '$b' => 'array{root: array<string|int, int>}',
-                    '$c' => 'array{root: array<int|string, int>}',
-                    '$d' => 'array{root: array<int|string, int>}',
-                    '$e' => 'array{root: array<string|int, int>}',
+                    '$b' => 'array{root: non-empty-array<string|int, int>}',
+                    '$c' => 'array{root: non-empty-array<int|string, int>}',
+                    '$d' => 'array{root: non-empty-array<int|string, int>}',
+                    '$e' => 'array{root: non-empty-array<string|int, int>}',
                 ],
             ],
             'mixedArrayAssignmentWithStringKeys' => [
@@ -1072,6 +1072,42 @@ class ArrayAssignmentTest extends TestCase
                     $c = new C();
                     $c[] = "hello";',
             ],
+            'addToMixedArray' => [
+                '<?php
+                    /**
+                     * @param array{key: string} $a
+                     */
+                    function foo(array $a): void {
+                        echo $a["key"];
+                    }
+
+                    function bar(array $arr) : void {
+                        $arr["key"] = "qqq";
+                        foo($arr);
+                    }'
+            ],
+            'checkEmptinessAfterConditionalArrayAdjustment' => [
+                '<?php
+                    class A {
+                        public array $arr = [];
+
+                        public function foo() : void {
+                            if (rand(0, 1)) {
+                                $this->arr["a"] = "hello";
+                            }
+
+                            if (!$this->arr) {}
+                        }
+                    }'
+            ],
+            'arrayAssignmentAddsTypePossibilities' => [
+                '<?php
+                    function bar(array $value): void {
+                        $value["b"] = "hello";
+                        $value = $value + ["a" => 0];
+                        if (is_int($value["a"])) {}
+                    }'
+            ],
         ];
     }
 
@@ -1207,9 +1243,11 @@ class ArrayAssignmentTest extends TestCase
                     ];',
                 'error_message' => 'DuplicateArrayKey',
             ],
-            'mixedArrayAssignment' => [
+            'mixedArrayAssignmentOnVariable' => [
                 '<?php
-                    $_GET["foo"][0] = "5";',
+                    function foo(array $arr) : void {
+                        $arr["foo"][0] = "5";
+                    }',
                 'error_message' => 'MixedArrayAssignment',
             ],
             'implementsArrayAccessPreventNullOffset' => [

@@ -400,6 +400,20 @@ function filterOdd(int $i, A $a) : ?int {
 }
 ```
 
+### ImpureStaticVariable
+
+Emitted when attempting to use a static variable from a function or method marked as pure
+
+```php
+/** @psalm-pure */
+function addCumulative(int $left) : int {
+    /** @var int */
+    static $i = 0;
+    $i += $left;
+    return $left;
+}
+```
+
 ### InaccessibleClassConstant
 
 Emitted when a public/private class constant is not accessible from the calling context
@@ -2110,6 +2124,15 @@ Emitted when using a reserved word as a class name
 function foo(resource $res) : void {}
 ```
 
+### StringIncrement
+
+Emitted when attempting to increment a string - this works in PHP, but is unexpected behaviour for most people.
+
+```php
+$a = "hello";
+$a++;
+```
+
 ### TaintedInput
 
 Emitted when tainted input detection is turned on
@@ -2446,12 +2469,33 @@ function foo(callable $c) : int {
 
 ### UnusedFunctionCall
 
-Emitted when `--find-dead-code` is turned on and Psalm finds a function call that is not used anywhere
+Emitted when `--find-dead-code` is turned on and Psalm finds a function call whose return value is not used anywhere
 
 ```php
 $a = strlen("hello");
 strlen("goodbye"); // unused
 echo $a;
+```
+
+### UnusedMethodCall
+
+Emitted when `--find-dead-code` is turned on and Psalm finds a method call whose return value is not used anywhere
+
+```php
+class A {
+    private string $foo;
+
+    public function __construct(string $foo) {
+        $this->foo = $foo;
+    }
+
+    public function getFoo() : string {
+        return $this->foo;
+    }
+}
+
+$a = new A("hello");
+$a->getFoo();
 ```
 
 ### UnusedParam

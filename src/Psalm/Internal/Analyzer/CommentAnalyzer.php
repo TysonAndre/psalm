@@ -181,7 +181,8 @@ class CommentAnalyzer
                 $var_comment->type_end = $type_end;
                 $var_comment->deprecated = isset($parsed_docblock['specials']['deprecated']);
                 $var_comment->internal = isset($parsed_docblock['specials']['internal']);
-                $var_comment->readonly = isset($parsed_docblock['specials']['readonly']);
+                $var_comment->readonly = isset($parsed_docblock['specials']['readonly'])
+                    || isset($parsed_docblock['specials']['psalm-readonly']);
                 if (isset($parsed_docblock['specials']['psalm-internal'])) {
                     $psalm_internal = reset($parsed_docblock['specials']['psalm-internal']);
                     if ($psalm_internal) {
@@ -203,12 +204,14 @@ class CommentAnalyzer
         if (!$var_comments
             && (isset($parsed_docblock['specials']['deprecated'])
                 || isset($parsed_docblock['specials']['internal'])
-                || isset($parsed_docblock['specials']['readonly']))
+                || isset($parsed_docblock['specials']['readonly'])
+                || isset($parsed_docblock['specials']['psalm-readonly']))
         ) {
             $var_comment = new VarDocblockComment();
             $var_comment->deprecated = isset($parsed_docblock['specials']['deprecated']);
             $var_comment->internal = isset($parsed_docblock['specials']['internal']);
-            $var_comment->readonly = isset($parsed_docblock['specials']['readonly']);
+            $var_comment->readonly = isset($parsed_docblock['specials']['readonly'])
+                || isset($parsed_docblock['specials']['psalm-readonly']);
 
             $var_comments[] = $var_comment;
         }
@@ -696,6 +699,15 @@ class CommentAnalyzer
         $info->variadic = isset($parsed_docblock['specials']['psalm-variadic']);
         $info->pure = isset($parsed_docblock['specials']['psalm-pure'])
             || isset($parsed_docblock['specials']['pure']);
+
+        if (isset($parsed_docblock['specials']['psalm-mutation-free'])) {
+            $info->mutation_free = true;
+        }
+
+        if (isset($parsed_docblock['specials']['psalm-external-mutation-free'])) {
+            $info->external_mutation_free = true;
+        }
+
         $info->ignore_nullable_return = isset($parsed_docblock['specials']['psalm-ignore-nullable-return']);
         $info->ignore_falsable_return = isset($parsed_docblock['specials']['psalm-ignore-falsable-return']);
 
@@ -886,6 +898,17 @@ class CommentAnalyzer
             $info->sealed_methods = true;
         }
 
+        if (isset($parsed_docblock['specials']['psalm-immutable'])
+            || isset($parsed_docblock['specials']['psalm-mutation-free'])
+        ) {
+            $info->mutation_free = true;
+            $info->external_mutation_free = true;
+        }
+
+        if (isset($parsed_docblock['specials']['psalm-external-mutation-free'])) {
+            $info->external_mutation_free = true;
+        }
+
         if (isset($parsed_docblock['specials']['psalm-override-property-visibility'])) {
             $info->override_property_visibility = true;
         }
@@ -924,9 +947,11 @@ class CommentAnalyzer
                         array_shift($doc_line_parts);
                     }
 
-                    $docblock_lines[] = '@return ' . array_shift($doc_line_parts);
+                    if (count($doc_line_parts) > 1) {
+                        $docblock_lines[] = '@return ' . array_shift($doc_line_parts);
 
-                    $method_entry = implode(' ', $doc_line_parts);
+                        $method_entry = implode(' ', $doc_line_parts);
+                    }
                 }
 
                 $method_entry = trim(preg_replace('/\/\/.*/', '', $method_entry));

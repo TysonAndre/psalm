@@ -201,7 +201,6 @@ abstract class Type
             case 'false':
             case 'null':
             case 'mixed':
-            case 'resource':
                 return $type_string_lc;
         }
 
@@ -1453,6 +1452,10 @@ abstract class Type
 
             if ($type_1->had_template && $type_2->had_template) {
                 $combined_type->had_template = true;
+            }
+
+            if ($type_1->external_mutation_free && $type_2->external_mutation_free) {
+                $combined_type->external_mutation_free = true;
             }
 
             if ($both_failed_reconciliation) {

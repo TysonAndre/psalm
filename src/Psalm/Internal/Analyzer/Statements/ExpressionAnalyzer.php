@@ -325,8 +325,18 @@ class ExpressionAnalyzer
             $stmt instanceof PhpParser\Node\Expr\PreInc ||
             $stmt instanceof PhpParser\Node\Expr\PreDec
         ) {
+            $was_inside_assignment = $context->inside_assignment;
+            $context->inside_assignment = true;
+
             if (self::analyze($statements_analyzer, $stmt->var, $context) === false) {
+                if (!$was_inside_assignment) {
+                    $context->inside_assignment = false;
+                }
                 return false;
+            }
+
+            if (!$was_inside_assignment) {
+                $context->inside_assignment = false;
             }
 
             if (isset($stmt->var->inferredType)) {
@@ -357,10 +367,10 @@ class ExpressionAnalyzer
 
                 $var_id = self::getArrayVarId($stmt->var, null);
 
-                if ($var_id && $context->pure && strpos($var_id, '->')) {
+                if ($var_id && $context->mutation_free && strpos($var_id, '->')) {
                     if (IssueBuffer::accepts(
                         new ImpurePropertyAssignment(
-                            'Cannot assign to a property from a pure context',
+                            'Cannot assign to a property from a mutation-free context',
                             new CodeLocation($statements_analyzer, $stmt->var)
                         ),
                         $statements_analyzer->getSuppressedIssues()
@@ -426,6 +436,9 @@ class ExpressionAnalyzer
 
             $use_context = new Context($context->self);
             $use_context->collect_references = $codebase->collect_references;
+            $use_context->mutation_free = $context->mutation_free;
+            $use_context->external_mutation_free = $context->external_mutation_free;
+            $use_context->pure = $context->pure;
 
             if (!$statements_analyzer->isStatic()) {
                 if ($context->collect_mutations &&
@@ -1757,6 +1770,8 @@ class ExpressionAnalyzer
         if (isset($stmt->expr->inferredType)) {
             $clone_type = $stmt->expr->inferredType;
 
+            $immutable_cloned = false;
+
             foreach ($clone_type->getTypes() as $clone_type_part) {
                 if (!$clone_type_part instanceof TNamedObject
                     && !$clone_type_part instanceof TObject
@@ -1787,9 +1802,25 @@ class ExpressionAnalyzer
 
                     return;
                 }
+
+                $codebase = $statements_analyzer->getCodebase();
+
+                if ($clone_type_part instanceof TNamedObject
+                    && $codebase->classExists($clone_type_part->value)
+                ) {
+                    $class_storage = $codebase->classlike_storage_provider->get($clone_type_part->value);
+
+                    if ($class_storage->mutation_free) {
+                        $immutable_cloned = true;
+                    }
+                }
             }
 
             $stmt->inferredType = $stmt->expr->inferredType;
+
+            if ($immutable_cloned) {
+                $stmt->inferredType->external_mutation_free = true;
+            }
         }
     }
 

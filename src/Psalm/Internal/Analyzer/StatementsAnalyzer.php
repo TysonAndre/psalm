@@ -275,10 +275,23 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
                 if (isset($comments['specials']['psalm-scope-this'])) {
                     $trimmed = trim(\reset($comments['specials']['psalm-scope-this']));
-                    $this_type = Type::parseString($trimmed);
-                    $context->self = $trimmed;
-                    $context->vars_in_scope['$this'] = $this_type;
-                    $this->setFQCLN($trimmed);
+
+                    if (!$codebase->classExists($trimmed)) {
+                        if (IssueBuffer::accepts(
+                            new \Psalm\Issue\UndefinedDocblockClass(
+                                'Scope class ' . $trimmed . ' does not exist',
+                                new CodeLocation($this->getSource(), $stmt, null, true),
+                                $trimmed
+                            )
+                        )) {
+                            // fall through
+                        }
+                    } else {
+                        $this_type = Type::parseString($trimmed);
+                        $context->self = $trimmed;
+                        $context->vars_in_scope['$this'] = $this_type;
+                        $this->setFQCLN($trimmed);
+                    }
                 }
 
                 if (isset($comments['specials']['psalm-suppress'])) {
@@ -1282,6 +1295,18 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
     private function analyzeStatic(PhpParser\Node\Stmt\Static_ $stmt, Context $context)
     {
         $codebase = $this->getCodebase();
+
+        if ($context->mutation_free) {
+            if (IssueBuffer::accepts(
+                new \Psalm\Issue\ImpureStaticVariable(
+                    'Cannot use a static variable in a mutation-free context',
+                    new CodeLocation($this, $stmt)
+                ),
+                $this->getSuppressedIssues()
+            )) {
+                // fall through
+            }
+        }
 
         foreach ($stmt->vars as $var) {
             if (!is_string($var->var->name)) {

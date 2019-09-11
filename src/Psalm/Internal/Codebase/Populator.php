@@ -260,6 +260,23 @@ class Populator
             }
         }
 
+        if ($storage->mutation_free || $storage->external_mutation_free) {
+            foreach ($storage->methods as $method) {
+                if (!$method->is_static && !$method->external_mutation_free) {
+                    $method->mutation_free = $storage->mutation_free;
+                    $method->external_mutation_free = $storage->external_mutation_free;
+                }
+            }
+
+            if ($storage->mutation_free) {
+                foreach ($storage->properties as $property) {
+                    if (!$property->is_static) {
+                        $property->readonly = true;
+                    }
+                }
+            }
+        }
+
         if ($storage->internal
             && !$storage->is_interface
             && !$storage->is_trait

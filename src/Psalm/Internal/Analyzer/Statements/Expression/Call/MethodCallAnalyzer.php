@@ -39,11 +39,13 @@ use Psalm\Type\Atomic\TNamedObject;
 use function is_string;
 use function array_values;
 use function array_shift;
+use function array_unshift;
 use function get_class;
 use function strtolower;
 use function array_map;
 use function array_merge;
 use function explode;
+use function implode;
 use function array_search;
 use function array_keys;
 use function in_array;
@@ -69,13 +71,26 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
     ) {
         $stmt->inferredType = null;
 
+        $was_inside_call = $context->inside_call;
+
+        $context->inside_call = true;
+
         if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->var, $context) === false) {
             return false;
         }
 
+        if (!$was_inside_call) {
+            $context->inside_call = false;
+        }
+
         if (!$stmt->name instanceof PhpParser\Node\Identifier) {
+            $was_inside_call = $context->inside_call;
+            $context->inside_call = true;
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->name, $context) === false) {
                 return false;
+            }
+            if (!$was_inside_call) {
+                $context->inside_call = false;
             }
         }
 
@@ -180,7 +195,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         }
 
         $codebase = $statements_analyzer->getCodebase();
-        $config = $codebase->config;
 
         $non_existent_class_method_ids = [];
         $non_existent_interface_method_ids = [];
@@ -351,10 +365,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                 $statements_analyzer
             );
-        }
-
-        if (!$config->remember_property_assignments_after_call && !$context->collect_initializations) {
-            $context->removeAllObjectVars();
         }
 
         // if we called a method on this nullable variable, remove the nullable status here
@@ -840,7 +850,10 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             $method_id,
             $context->calling_method_id,
             $method_id !== $source_method_id ? new CodeLocation($source, $stmt->name) : null
-        )) {
+        )
+            || ($config->use_phpdoc_method_without_magic_or_parent
+                && isset($class_storage->pseudo_methods[$method_name_lc]))
+        ) {
             $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
             if (($is_interface || $config->use_phpdoc_method_without_magic_or_parent)
@@ -1105,6 +1118,27 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $static_type,
                         $class_storage->parent_class
                     );
+
+                    if ($fq_class_name === 'DateTimeImmutable'
+                        && !$context->inside_conditional
+                        && !$context->inside_unset
+                    ) {
+                        if (!$context->inside_assignment && !$context->inside_call) {
+                            if (IssueBuffer::accepts(
+                                new \Psalm\Issue\UnusedMethodCall(
+                                    'The call to ' . $method_id . ' is not used',
+                                    new CodeLocation($statements_analyzer, $stmt->name),
+                                    $method_id
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        } else {
+                            /** @psalm-suppress UndefinedPropertyAssignment */
+                            $stmt->pure = true;
+                        }
+                    }
                 } else {
                     $name_code_location = new CodeLocation($source, $stmt->name);
 
@@ -1200,21 +1234,103 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $method_storage = $codebase->methods->getUserMethodStorage($method_id);
 
                     if ($method_storage) {
-                        if ($context->pure && !$method_storage->pure) {
-                            if (IssueBuffer::accepts(
-                                new ImpureMethodCall(
-                                    'Cannot call an impure method from a pure context',
-                                    new CodeLocation($source, $stmt->name)
-                                ),
-                                $statements_analyzer->getSuppressedIssues()
-                            )) {
-                                // fall through
+                        if (!$context->collect_mutations && !$context->collect_initializations) {
+                            $method_pure_compatible = $method_storage->external_mutation_free
+                                && (!empty($stmt->var->inferredType->external_mutation_free)
+                                    || isset($stmt->var->pure));
+
+                            if ($context->pure
+                                && !$method_storage->mutation_free
+                                && !$method_pure_compatible
+                            ) {
+                                if (IssueBuffer::accepts(
+                                    new ImpureMethodCall(
+                                        'Cannot call an mutation-free method ' . $method_id . ' from a pure context',
+                                        new CodeLocation($source, $stmt->name)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            } elseif ($context->mutation_free
+                                && !$method_storage->mutation_free
+                                && !$method_pure_compatible
+                            ) {
+                                if (IssueBuffer::accepts(
+                                    new ImpureMethodCall(
+                                        'Cannot call an possibly-mutating method '
+                                            . $method_id . ' from a mutation-free context',
+                                        new CodeLocation($source, $stmt->name)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            } elseif ($context->external_mutation_free
+                                && !$method_storage->mutation_free
+                                && $fq_class_name !== $context->self
+                                && !$method_pure_compatible
+                            ) {
+                                if (IssueBuffer::accepts(
+                                    new ImpureMethodCall(
+                                        'Cannot call an possibly-mutating method '
+                                            . $method_id . ' from a mutation-free context',
+                                        new CodeLocation($source, $stmt->name)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            } elseif (($method_storage->mutation_free
+                                    || ($method_storage->external_mutation_free
+                                        && (isset($stmt->var->external_mutation_free) || isset($stmt->var->pure))))
+                                && $codebase->find_unused_variables
+                                && !$context->inside_conditional
+                                && !$context->inside_unset
+                            ) {
+                                if (!$context->inside_assignment && !$context->inside_call) {
+                                    if (IssueBuffer::accepts(
+                                        new \Psalm\Issue\UnusedMethodCall(
+                                            'The call to ' . $method_id . ' is not used',
+                                            new CodeLocation($statements_analyzer, $stmt->name),
+                                            $method_id
+                                        ),
+                                        $statements_analyzer->getSuppressedIssues()
+                                    )) {
+                                        // fall through
+                                    }
+                                } else {
+                                    /** @psalm-suppress UndefinedPropertyAssignment */
+                                    $stmt->pure = true;
+                                }
+                            }
+
+                            if (!$config->remember_property_assignments_after_call
+                                && !$method_storage->mutation_free
+                                && !$method_pure_compatible
+                            ) {
+                                $context->removeAllObjectVars();
+                            } elseif ($method_storage->this_property_mutations) {
+                                foreach ($method_storage->this_property_mutations as $name => $_) {
+                                    $mutation_var_id = $lhs_var_id . '->' . $name;
+
+                                    $this_property_didnt_exist = $lhs_var_id === '$this'
+                                        && isset($context->vars_in_scope[$mutation_var_id])
+                                        && !isset($class_storage->declaring_property_ids[$name]);
+
+                                    $context->remove($mutation_var_id);
+
+                                    if ($this_property_didnt_exist) {
+                                        $context->vars_in_scope[$mutation_var_id] = Type::getMixed();
+                                    }
+                                }
                             }
                         }
 
                         if ($method_storage->assertions) {
                             self::applyAssertionsToContext(
                                 $stmt->name,
+                                ExpressionAnalyzer::getArrayVarId($stmt->var, null, $statements_analyzer),
                                 $method_storage->assertions,
                                 $args,
                                 $class_template_params ?: [],
