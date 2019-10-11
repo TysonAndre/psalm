@@ -42,8 +42,10 @@ use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TEmpty;
+use Psalm\Type\Atomic\TList;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNonEmptyArray;
+use Psalm\Type\Atomic\TNonEmptyList;
 use function strtolower;
 use function strpos;
 use function explode;
@@ -61,6 +63,7 @@ use function is_int;
 use function substr;
 use function array_merge;
 use Psalm\Issue\TaintedInput;
+use Doctrine\Instantiator\Exception\UnexpectedValueException;
 
 /**
  * @internal
@@ -354,7 +357,12 @@ class CallAnalyzer
             : null;
 
         // if this modifies the array type based on further args
-        if ($method_id && in_array($method_id, ['array_push', 'array_unshift'], true) && $function_params) {
+        if ($method_id
+            && in_array($method_id, ['array_push', 'array_unshift'], true)
+            && $function_params
+            && isset($args[0])
+            && isset($args[1])
+        ) {
             if (self::handleArrayAddition($statements_analyzer, $args, $context) === false) {
                 return false;
             }
@@ -728,11 +736,18 @@ class CallAnalyzer
             if (isset($arg->value->inferredType)
                 && $arg->value->inferredType->hasArray()
             ) {
-                /** @var TArray|ObjectLike */
+                /**
+                 * @psalm-suppress PossiblyUndefinedArrayOffset
+                 * @var TArray|TList|ObjectLike
+                 */
                 $array_type = $arg->value->inferredType->getTypes()['array'];
 
                 if ($array_type instanceof ObjectLike) {
                     $array_type = $array_type->getGenericArrayType();
+                }
+
+                if ($array_type instanceof TList) {
+                    $array_type = new TArray([Type::getInt(), $array_type->type_param]);
                 }
 
                 if (in_array($method_id, ['shuffle', 'sort', 'rsort', 'usort'], true)) {
@@ -801,7 +816,10 @@ class CallAnalyzer
         }
 
         if (isset($array_arg->inferredType) && $array_arg->inferredType->hasArray()) {
-            /** @var TArray|ObjectLike */
+            /**
+             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @var TArray|ObjectLike|TList
+             */
             $array_type = $array_arg->inferredType->getTypes()['array'];
 
             if ($array_type instanceof ObjectLike) {
@@ -943,14 +961,20 @@ class CallAnalyzer
             && isset($replacement_arg->inferredType)
             && $replacement_arg->inferredType->hasArray()
         ) {
-            /** @var TArray|ObjectLike */
+            /**
+             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @var TArray|ObjectLike|TList
+             */
             $array_type = $array_arg->inferredType->getTypes()['array'];
 
             if ($array_type instanceof ObjectLike) {
                 $array_type = $array_type->getGenericArrayType();
             }
 
-            /** @var TArray|ObjectLike */
+            /**
+             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @var TArray|ObjectLike|TList
+             */
             $replacement_array_type = $replacement_arg->inferredType->getTypes()['array'];
 
             if ($replacement_array_type instanceof ObjectLike) {
@@ -1007,27 +1031,10 @@ class CallAnalyzer
 
                 foreach ($array_atomic_types as $array_atomic_type) {
                     if ($array_atomic_type instanceof ObjectLike) {
-                        $generic_array_type = $array_atomic_type->getGenericArrayType();
+                        $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                    }
 
-                        if ($generic_array_type instanceof TNonEmptyArray) {
-                            if (!$context->inside_loop && $generic_array_type->count !== null) {
-                                if ($generic_array_type->count === 0) {
-                                    $generic_array_type = new TArray(
-                                        [
-                                            new Type\Union([new TEmpty]),
-                                            new Type\Union([new TEmpty]),
-                                        ]
-                                    );
-                                } else {
-                                    $generic_array_type->count--;
-                                }
-                            } else {
-                                $generic_array_type = new TArray($generic_array_type->type_params);
-                            }
-                        }
-
-                        $array_type->addType($generic_array_type);
-                    } elseif ($array_atomic_type instanceof TNonEmptyArray) {
+                    if ($array_atomic_type instanceof TNonEmptyArray) {
                         if (!$context->inside_loop && $array_atomic_type->count !== null) {
                             if ($array_atomic_type->count === 0) {
                                 $array_atomic_type = new TArray(
@@ -1044,6 +1051,25 @@ class CallAnalyzer
                         }
 
                         $array_type->addType($array_atomic_type);
+                        $context->removeDescendents($var_id, $array_type);
+                    } elseif ($array_atomic_type instanceof TNonEmptyList) {
+                        if (!$context->inside_loop && $array_atomic_type->count !== null) {
+                            if ($array_atomic_type->count === 0) {
+                                $array_atomic_type = new TArray(
+                                    [
+                                        new Type\Union([new TEmpty]),
+                                        new Type\Union([new TEmpty]),
+                                    ]
+                                );
+                            } else {
+                                $array_atomic_type->count--;
+                            }
+                        } else {
+                            $array_atomic_type = new TList($array_atomic_type->type_param);
+                        }
+
+                        $array_type->addType($array_atomic_type);
+                        $context->removeDescendents($var_id, $array_type);
                     }
                 }
 
@@ -1245,7 +1271,8 @@ class CallAnalyzer
                 $existing_generic_params,
                 $generic_params,
                 $template_types,
-                $function_storage ? $function_storage->pure : false
+                $function_storage ? $function_storage->pure : false,
+                $in_call_map
             ) === false) {
                 return false;
             }
@@ -1383,9 +1410,10 @@ class CallAnalyzer
         PhpParser\Node\Arg $arg,
         Context $context,
         array $existing_generic_params,
-        array &$generic_params = null,
-        array $template_types = null,
-        bool $function_is_pure
+        ?array &$generic_params,
+        ?array $template_types,
+        bool $function_is_pure,
+        bool $in_call_map
     ) {
         $codebase = $statements_analyzer->getCodebase();
 
@@ -1407,10 +1435,17 @@ class CallAnalyzer
                     && $param_type
                     && $param_type->hasArray()
                 ) {
-                    /** @var TArray */
+                    /**
+                     * @psalm-suppress PossiblyUndefinedArrayOffset
+                     * @var TList|TArray
+                     */
                     $array_type = $param_type->getTypes()['array'];
 
-                    $param_type = $array_type->type_params[1];
+                    if ($array_type instanceof TList) {
+                        $param_type = $array_type->type_param;
+                    } else {
+                        $param_type = $array_type->type_params[1];
+                    }
                 }
 
                 if ($param_type && !$param_type->hasMixed()) {
@@ -1450,7 +1485,8 @@ class CallAnalyzer
             $existing_generic_params,
             $generic_params,
             $template_types,
-            $function_is_pure
+            $function_is_pure,
+            $in_call_map
         ) === false) {
             return false;
         }
@@ -1613,7 +1649,8 @@ class CallAnalyzer
         ?array $existing_generic_params,
         ?array &$generic_params,
         ?array $template_types,
-        bool $function_is_pure
+        bool $function_is_pure,
+        bool $in_call_map
     ) {
         if (!$function_param->type) {
             if (!$codebase->infer_types_from_usage) {
@@ -1652,12 +1689,19 @@ class CallAnalyzer
 
             if ($arg->unpack) {
                 if ($arg_type->hasArray()) {
-                    /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                    /**
+                     * @psalm-suppress PossiblyUndefinedArrayOffset
+                     * @var Type\Atomic\TArray|Type\Atomic\TList|Type\Atomic\ObjectLike
+                     */
                     $array_atomic_type = $arg_type->getTypes()['array'];
+
                     if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                        $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                        $arg_type_param = $array_atomic_type->getGenericValueType();
+                    } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
+                        $arg_type_param = $array_atomic_type->type_param;
+                    } else {
+                        $arg_type_param = $array_atomic_type->type_params[1];
                     }
-                    $arg_type_param = $array_atomic_type->type_params[1];
                 } else {
                     $arg_type_param = Type::getMixed();
                 }
@@ -1728,14 +1772,19 @@ class CallAnalyzer
             }
 
             if ($arg_type->hasArray()) {
-                /** @var Type\Atomic\TArray|Type\Atomic\ObjectLike */
+                /**
+                 * @psalm-suppress PossiblyUndefinedArrayOffset
+                 * @var Type\Atomic\TArray|Type\Atomic\TList|Type\Atomic\ObjectLike
+                 */
                 $array_atomic_type = $arg_type->getTypes()['array'];
 
                 if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                    $array_atomic_type = $array_atomic_type->getGenericArrayType();
+                    $arg_type = $array_atomic_type->getGenericValueType();
+                } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
+                    $arg_type = $array_atomic_type->type_param;
+                } else {
+                    $arg_type = $array_atomic_type->type_params[1];
                 }
-
-                $arg_type = $array_atomic_type->type_params[1];
             } else {
                 foreach ($arg_type->getTypes() as $atomic_type) {
                     if (!$atomic_type->isIterable($codebase)) {
@@ -1772,6 +1821,7 @@ class CallAnalyzer
             $function_param,
             $arg->unpack,
             $function_is_pure,
+            $in_call_map,
             $function_location
         ) === false) {
             return false;
@@ -1876,24 +1926,30 @@ class CallAnalyzer
 
             $array_arg = isset($arg->value) ? $arg->value : null;
 
-            /** @var ObjectLike|TArray|null */
+            /**
+             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @var ObjectLike|TArray|TList|null
+             */
             $array_arg_type = $array_arg
                     && isset($array_arg->inferredType)
-                    && isset($array_arg->inferredType->getTypes()['array'])
-                ? $array_arg->inferredType->getTypes()['array']
+                    && ($types = $array_arg->inferredType->getTypes())
+                    && isset($types['array'])
+                ? $types['array']
                 : null;
 
             if ($array_arg_type instanceof ObjectLike) {
                 $array_arg_type = $array_arg_type->getGenericArrayType();
             }
 
+            if ($array_arg_type instanceof TList) {
+                $array_arg_type = new TArray([Type::getInt(), $array_arg_type->type_param]);
+            }
+
             $array_arg_types[] = $array_arg_type;
         }
 
-        /** @var null|PhpParser\Node\Arg */
         $closure_arg = isset($args[$closure_index]) ? $args[$closure_index] : null;
 
-        /** @var Type\Union|null */
         $closure_arg_type = $closure_arg && isset($closure_arg->value->inferredType)
                 ? $closure_arg->value->inferredType
                 : null;
@@ -2157,7 +2213,6 @@ class CallAnalyzer
                 continue;
             }
 
-            /** @var Type\Atomic\TArray */
             $array_arg_type = $array_arg_types[$i];
 
             $input_type = $array_arg_type->type_params[1];
@@ -2278,6 +2333,7 @@ class CallAnalyzer
         FunctionLikeParameter $function_param,
         bool $unpack,
         bool $function_is_pure,
+        bool $in_call_map,
         CodeLocation $function_location
     ) {
         $codebase = $statements_analyzer->getCodebase();
@@ -2354,6 +2410,7 @@ class CallAnalyzer
                 if (!$function_param->by_ref
                     && !($function_param->is_variadic xor $unpack)
                     && $cased_method_id !== 'echo'
+                    && (!$in_call_map || $context->strict_types)
                 ) {
                     self::coerceValueAfterGatekeeperArgument(
                         $statements_analyzer,
@@ -2786,6 +2843,7 @@ class CallAnalyzer
             && !$function_param->by_ref
             && !($function_param->is_variadic xor $unpack)
             && $cased_method_id !== 'echo'
+            && (!$in_call_map || $context->strict_types)
         ) {
             self::coerceValueAfterGatekeeperArgument(
                 $statements_analyzer,
@@ -2994,6 +3052,7 @@ class CallAnalyzer
                                 if ($type_param->isEmpty() && isset($param_atomic_type->type_params[$i])) {
                                     $input_type_changed = true;
 
+                                    /** @psalm-suppress PropertyTypeCoercion */
                                     $input_atomic_type->type_params[$i] = clone $param_atomic_type->type_params[$i];
                                 }
                             }

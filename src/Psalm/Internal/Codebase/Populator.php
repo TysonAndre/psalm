@@ -78,7 +78,7 @@ class Populator
     /**
      * @return void
      */
-    public function populateCodebase(\Psalm\Codebase $codebase)
+    public function populateCodebase()
     {
         $this->progress->debug('ClassLikeStorage is populating' . "\n");
 
@@ -121,47 +121,6 @@ class Populator
                 $dependee_storage = $this->classlike_storage_provider->get($dependent_classlike_name);
 
                 $class_storage->dependent_classlikes += $dependee_storage->dependent_classlikes;
-            }
-
-            if ($class_storage->aliases) {
-                foreach ($class_storage->public_class_constant_nodes as $const_name => $node) {
-                    $const_type = \Psalm\Internal\Analyzer\StatementsAnalyzer::getSimpleType(
-                        $codebase,
-                        $node,
-                        $class_storage->aliases,
-                        null,
-                        null,
-                        $class_storage->name
-                    );
-
-                    $class_storage->public_class_constants[$const_name] = $const_type ?: Type::getMixed();
-                }
-
-                foreach ($class_storage->protected_class_constant_nodes as $const_name => $node) {
-                    $const_type = \Psalm\Internal\Analyzer\StatementsAnalyzer::getSimpleType(
-                        $codebase,
-                        $node,
-                        $class_storage->aliases,
-                        null,
-                        null,
-                        $class_storage->name
-                    );
-
-                    $class_storage->protected_class_constants[$const_name] = $const_type ?: Type::getMixed();
-                }
-
-                foreach ($class_storage->private_class_constant_nodes as $const_name => $node) {
-                    $const_type = \Psalm\Internal\Analyzer\StatementsAnalyzer::getSimpleType(
-                        $codebase,
-                        $node,
-                        $class_storage->aliases,
-                        null,
-                        null,
-                        $class_storage->name
-                    );
-
-                    $class_storage->private_class_constants[$const_name] = $const_type ?: Type::getMixed();
-                }
             }
         }
 
@@ -303,9 +262,33 @@ class Populator
     ) {
         foreach ($storage->methods as $method_name => $method_storage) {
             if (isset($storage->overridden_method_ids[$method_name])) {
-                foreach ($storage->overridden_method_ids[$method_name] as $declaring_method_id) {
+                $overridden_method_ids = $storage->overridden_method_ids[$method_name];
+
+                $candidate_overridden_ids = null;
+
+                $declaring_class_storages = [];
+
+                foreach ($overridden_method_ids as $declaring_method_id) {
+                    list($declaring_class) = explode('::', $declaring_method_id);
+                    $declaring_class_storage
+                        = $declaring_class_storages[$declaring_class]
+                        = $this->classlike_storage_provider->get($declaring_class);
+
+                    if ($candidate_overridden_ids === null) {
+                        $candidate_overridden_ids = $declaring_class_storage->overridden_method_ids[$method_name]
+                            + [$declaring_method_id => $declaring_method_id];
+                    } else {
+                        $candidate_overridden_ids = \array_intersect_key(
+                            $candidate_overridden_ids,
+                            $declaring_class_storage->overridden_method_ids[$method_name]
+                                + [$declaring_method_id => $declaring_method_id]
+                        );
+                    }
+                }
+
+                foreach ($overridden_method_ids as $declaring_method_id) {
                     list($declaring_class, $declaring_method_name) = explode('::', $declaring_method_id);
-                    $declaring_class_storage = $this->classlike_storage_provider->get($declaring_class);
+                    $declaring_class_storage = $declaring_class_storages[$declaring_class];
 
                     $declaring_method_storage = $declaring_class_storage->methods[strtolower($declaring_method_name)];
 
@@ -320,13 +303,20 @@ class Populator
                     $declaring_method_storage->overridden_downstream = true;
                     $declaring_method_storage->overridden_somewhere = true;
 
+                    if ($declaring_method_storage->mutation_free_inferred) {
+                        $declaring_method_storage->mutation_free = false;
+                        $declaring_method_storage->external_mutation_free = false;
+                        $declaring_method_storage->mutation_free_inferred = false;
+                    }
+
                     if ($declaring_method_storage->throws
                         && (!$method_storage->throws || $method_storage->inheritdoc)
                     ) {
                         $method_storage->throws += $declaring_method_storage->throws;
                     }
 
-                    if (count($storage->overridden_method_ids[$method_name]) === 1
+                    if ((count($overridden_method_ids) === 1
+                        || $candidate_overridden_ids)
                         && $method_storage->signature_return_type
                         && !$method_storage->signature_return_type->isVoid()
                         && ($method_storage->return_type === $method_storage->signature_return_type
@@ -614,8 +604,8 @@ class Populator
                 $parent_interface_storage->invalid_dependencies
             );
 
-            foreach ($parent_interface_storage->public_class_constant_nodes as $name => $_) {
-                $storage->public_class_constants[$name] = Type::getMixed();
+            foreach ($parent_interface_storage->public_class_constant_nodes as $name => $node) {
+                $storage->public_class_constant_nodes[$name] = $node;
             }
 
             if ($parent_interface_storage->template_types) {
@@ -1049,6 +1039,13 @@ class Populator
                     }
                 } else {
                     $storage->overridden_method_ids[$method_name][$declaring_method_id] = $declaring_method_id;
+                }
+
+                if (isset($parent_storage->overridden_method_ids[$method_name])
+                    && isset($storage->overridden_method_ids[$method_name])
+                ) {
+                    $storage->overridden_method_ids[$method_name]
+                        += $parent_storage->overridden_method_ids[$method_name];
                 }
             }
 

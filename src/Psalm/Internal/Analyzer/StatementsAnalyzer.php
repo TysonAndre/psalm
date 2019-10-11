@@ -568,6 +568,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                             $context,
                             $echo_param,
                             false,
+                            false,
                             true,
                             new CodeLocation($this->source, $stmt)
                         ) === false) {
@@ -620,6 +621,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 ) {
                     $function_id = strtolower($stmt->name->name);
                     $function_context = new Context($context->self);
+                    $function_context->strict_types = $context->strict_types;
                     $config = Config::getInstance();
                     $function_context->collect_references = $codebase->collect_references;
                     $function_context->collect_exceptions = $config->check_for_throws_docblock;
@@ -1117,9 +1119,6 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         // Check if we have to remove assignment statemnt as expression (i.e. just "$var = ")
 
                         // Consider chain of assignments
-                        /** @var PhpParser\Node\Expr\Assign | PhpParser\Node\Expr\AssignOp |
-                        PhpParser\Node\Expr\AssignRef $assign_exp */
-                        /** @var PhpParser\Node\Expr $rhs_exp */
                         $rhs_exp = $assign_exp->expr;
                         if ($rhs_exp instanceof PhpParser\Node\Expr\Assign
                             || $rhs_exp instanceof PhpParser\Node\Expr\AssignOp
@@ -1238,11 +1237,13 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                 }
 
                                 if (!$atomic_root_type->properties) {
-                                    if ($atomic_root_type->had_mixed_value) {
+                                    if ($atomic_root_type->previous_value_type) {
                                         $root_type->addType(
                                             new Type\Atomic\TArray([
-                                                new Type\Union([new Type\Atomic\TArrayKey]),
-                                                new Type\Union([new Type\Atomic\TMixed]),
+                                                $atomic_root_type->previous_key_type
+                                                    ? clone $atomic_root_type->previous_key_type
+                                                    : new Type\Union([new Type\Atomic\TArrayKey]),
+                                                clone $atomic_root_type->previous_value_type,
                                             ])
                                         );
                                     } else {
@@ -1268,6 +1269,13 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         } elseif ($atomic_root_type instanceof Type\Atomic\TNonEmptyMixed) {
                             $root_type->addType(
                                 new Type\Atomic\TMixed()
+                            );
+                        } elseif ($atomic_root_type instanceof Type\Atomic\TList) {
+                            $root_type->addType(
+                                new Type\Atomic\TArray([
+                                    Type::getInt(),
+                                    $atomic_root_type->type_param
+                                ])
                             );
                         }
                     }
@@ -1637,15 +1645,19 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     return Type::getLiteralClassString($const_fq_class_name);
                 }
 
-                if ($existing_class_constants === null) {
+                if ($existing_class_constants === null
+                    && $file_source instanceof StatementsAnalyzer
+                ) {
                     try {
-                        $foreign_class_constants = $codebase->classlikes->getConstantsForClass(
+                        $foreign_class_constant = $codebase->classlikes->getConstantForClass(
                             $const_fq_class_name,
-                            \ReflectionProperty::IS_PRIVATE
+                            $stmt->name->name,
+                            \ReflectionProperty::IS_PRIVATE,
+                            $file_source
                         );
 
-                        if (isset($foreign_class_constants[$stmt->name->name])) {
-                            return clone $foreign_class_constants[$stmt->name->name];
+                        if ($foreign_class_constant) {
+                            return clone $foreign_class_constant;
                         }
 
                         return null;
@@ -1896,9 +1908,9 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
      * @return  Type\Union|null
      */
     public function getConstType(
-        $const_name,
-        $is_fully_qualified,
-        Context $context
+        string $const_name,
+        bool $is_fully_qualified,
+        ?Context $context
     ) {
         $aliased_constants = $this->getAliases()->constants;
 
@@ -1924,7 +1936,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             }
         }
 
-        if ($context->hasVariable($fq_const_name, $this)) {
+        if ($context && $context->hasVariable($fq_const_name, $this)) {
             return $context->vars_in_scope[$fq_const_name];
         }
 

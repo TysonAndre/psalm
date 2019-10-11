@@ -314,8 +314,12 @@ if (isset($options['generate-json-map']) && is_string($options['generate-json-ma
     $type_map_location = $options['generate-json-map'];
 }
 
-// If XDebug is enabled, restart without it
+// If Xdebug is enabled, restart without it
 $ini_handler->check();
+
+if (is_null($config->load_xdebug_stub) && '' !== $ini_handler->getSkippedVersion()) {
+    $config->load_xdebug_stub = true;
+}
 
 setlocale(LC_CTYPE, 'C');
 
@@ -324,11 +328,6 @@ if (isset($options['set-baseline'])) {
         die('Only one baseline file can be created at a time' . PHP_EOL);
     }
 }
-
-
-$output_format = isset($options['output-format']) && is_string($options['output-format'])
-    ? $options['output-format']
-    : \Psalm\Report::TYPE_CONSOLE;
 
 $paths_to_check = getPathsToCheck(isset($options['f']) ? $options['f'] : null);
 
@@ -415,9 +414,15 @@ if (isset($_SERVER['TRAVIS'])
 }
 
 $debug = array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options);
-$progress = $debug
-    ? new DebugProgress()
-    : (isset($options['no-progress']) ? new VoidProgress() : new DefaultProgress(!$config->error_baseline, $show_info));
+
+if ($debug) {
+    $progress = new DebugProgress();
+} elseif (isset($options['no-progress'])) {
+    $progress = new VoidProgress();
+} else {
+    $show_errors = !$config->error_baseline || isset($options['ignore-baseline']);
+    $progress = new DefaultProgress($show_errors, $show_info);
+}
 
 if (isset($options['no-cache'])) {
     $providers = new Provider\Providers(

@@ -100,7 +100,6 @@ class Reflection
             ? PropertyMap::getPropertyMap()[strtolower($class_name)]
             : [];
 
-        /** @var \ReflectionProperty $class_property */
         foreach ($class_properties as $class_property) {
             $property_name = $class_property->getName();
             $storage->properties[$property_name] = new PropertyStorage();
@@ -173,7 +172,6 @@ class Reflection
 
         $interfaces = $reflected_class->getInterfaces();
 
-        /** @var \ReflectionClass $interface */
         foreach ($interfaces as $interface) {
             $interface_name = $interface->getName();
             $this->registerClass($interface);
@@ -185,7 +183,6 @@ class Reflection
             }
         }
 
-        /** @var \ReflectionMethod $reflection_method */
         foreach ($reflection_methods as $reflection_method) {
             $method_reflection_class = $reflection_method->getDeclaringClass();
 
@@ -246,6 +243,7 @@ class Reflection
 
         $storage->is_static = $method->isStatic();
         $storage->abstract = $method->isAbstract();
+        $storage->mutation_free = $storage->external_mutation_free = $method_name === '__construct';
 
         $declaring_method_id = $declaring_class->name . '::' . strtolower((string)$method->getName());
 
@@ -283,7 +281,6 @@ class Reflection
 
             $storage->params = [];
 
-            /** @var \ReflectionParameter $param */
             foreach ($params as $param) {
                 $param_array = $this->getReflectionParamData($param);
                 $storage->params[] = $param_array;
@@ -340,6 +337,10 @@ class Reflection
 
             $callmap_callable = null;
 
+            if (isset(self::$builtin_functions[$function_id])) {
+                return;
+            }
+
             $storage = self::$builtin_functions[$function_id] = new FunctionLikeStorage();
 
             if (CallMap::inCallMap($function_id)) {
@@ -359,7 +360,6 @@ class Reflection
             } else {
                 $reflection_params = $reflection_function->getParameters();
 
-                /** @var \ReflectionParameter $param */
                 foreach ($reflection_params as $param) {
                     $param_obj = $this->getReflectionParamData($param);
                     $storage->params[] = $param_obj;

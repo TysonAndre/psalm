@@ -67,7 +67,7 @@ class IssueBuffer
     /**
      * @var array<string, array<int, bool>>
      */
-    protected static $already_used_suppressions = [];
+    protected static $used_suppressions = [];
 
     /**
      * @param   CodeIssue $e
@@ -86,7 +86,7 @@ class IssueBuffer
 
     public static function addUnusedSuppression(string $file_path, int $offset, string $issue_type) : void
     {
-        if (isset(self::$already_used_suppressions[$file_path][$offset])) {
+        if (isset(self::$used_suppressions[$file_path][$offset])) {
             return;
         }
 
@@ -119,8 +119,7 @@ class IssueBuffer
 
         if ($suppressed_issue_position !== false) {
             if (\is_int($suppressed_issue_position)) {
-                self::$already_used_suppressions[$file_path][$suppressed_issue_position] = true;
-                unset(self::$unused_suppressions[$file_path][$suppressed_issue_position]);
+                self::$used_suppressions[$file_path][$suppressed_issue_position] = true;
             }
 
             return true;
@@ -133,8 +132,7 @@ class IssueBuffer
 
             if ($suppressed_issue_position !== false) {
                 if (\is_int($suppressed_issue_position)) {
-                    self::$already_used_suppressions[$file_path][$suppressed_issue_position] = true;
-                    unset(self::$unused_suppressions[$file_path][$suppressed_issue_position]);
+                    self::$used_suppressions[$file_path][$suppressed_issue_position] = true;
                 }
 
                 return true;
@@ -177,6 +175,10 @@ class IssueBuffer
         $project_analyzer = ProjectAnalyzer::getInstance();
 
         if (!$project_analyzer->show_issues) {
+            return false;
+        }
+
+        if ($project_analyzer->getCodebase()->taint && $issue_type !== 'TaintedInput') {
             return false;
         }
 
@@ -233,9 +235,34 @@ class IssueBuffer
         return self::$unused_suppressions;
     }
 
+    /**
+     * @return array<string, array<int, bool>>
+     */
+    public static function getUsedSuppressions() : array
+    {
+        return self::$used_suppressions;
+    }
+
+    /**
+     * @param array<string, array<int, int>> $unused_suppressions
+     */
     public static function addUnusedSuppressions(array $unused_suppressions) : void
     {
         self::$unused_suppressions += $unused_suppressions;
+    }
+
+    /**
+     * @param array<string, array<int, bool>> $used_suppressions
+     */
+    public static function addUsedSuppressions(array $used_suppressions) : void
+    {
+        foreach ($used_suppressions as $file => $offsets) {
+            if (!isset(self::$used_suppressions[$file])) {
+                self::$used_suppressions[$file] = $offsets;
+            } else {
+                self::$used_suppressions[$file] += $offsets;
+            }
+        }
     }
 
     public static function processUnusedSuppressions(\Psalm\Internal\Provider\FileProvider $file_provider) : void
@@ -250,6 +277,10 @@ class IssueBuffer
             $file_contents = $file_provider->getContents($file_path);
 
             foreach ($offsets as $start => $end) {
+                if (isset(self::$used_suppressions[$file_path][$start])) {
+                    continue;
+                }
+
                 self::add(
                     new UnusedPsalmSuppress(
                         'This suppression is never used',
@@ -327,6 +358,10 @@ class IssueBuffer
         if (self::$issues_data) {
             usort(
                 self::$issues_data,
+                /**
+                 * @param array{file_path: string, line_from: int, column_from: int} $d1
+                 * @param array{file_path: string, line_from: int, column_from: int} $d2
+                 */
                 function (array $d1, array $d2) : int {
                     if ($d1['file_path'] === $d2['file_path']) {
                         if ($d1['line_from'] === $d2['line_from']) {
@@ -569,7 +604,7 @@ class IssueBuffer
         self::$recorded_issues = [];
         self::$console_issues = [];
         self::$unused_suppressions = [];
-        self::$already_used_suppressions = [];
+        self::$used_suppressions = [];
     }
 
     /**

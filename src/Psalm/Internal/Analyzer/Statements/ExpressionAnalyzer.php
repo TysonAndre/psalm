@@ -17,6 +17,7 @@ use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\NewAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\StaticCallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ArrayFetchAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ClassConstFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ConstFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\PropertyFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\VariableFetchAnalyzer;
@@ -42,6 +43,7 @@ use Psalm\Issue\PossiblyInvalidOperand;
 use Psalm\Issue\PossiblyUndefinedVariable;
 use Psalm\Issue\UndefinedConstant;
 use Psalm\Issue\UndefinedVariable;
+use Psalm\Issue\UnnecessaryVarAnnotation;
 use Psalm\Issue\UnrecognizedExpression;
 use Psalm\IssueBuffer;
 use Psalm\Type;
@@ -233,7 +235,7 @@ class ExpressionAnalyzer
             self::analyzeIsset($statements_analyzer, $stmt, $context);
             $stmt->inferredType = Type::getBool();
         } elseif ($stmt instanceof PhpParser\Node\Expr\ClassConstFetch) {
-            if (ConstFetchAnalyzer::analyzeClassConst($statements_analyzer, $stmt, $context) === false) {
+            if (ClassConstFetchAnalyzer::analyze($statements_analyzer, $stmt, $context) === false) {
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\PropertyFetch) {
@@ -448,6 +450,7 @@ class ExpressionAnalyzer
                         (string)$statements_analyzer->getFQCLN()
                     )
                 ) {
+                    /** @psalm-suppress PossiblyUndefinedArrayOffset */
                     $use_context->vars_in_scope['$this'] = clone $context->vars_in_scope['$this'];
                 } elseif ($context->self) {
                     $use_context->vars_in_scope['$this'] = new Type\Union([new TNamedObject($context->self)]);
@@ -962,6 +965,12 @@ class ExpressionAnalyzer
                     $offset = '$' . $stmt->dim->name;
                 } elseif ($stmt->dim instanceof PhpParser\Node\Expr\ConstFetch) {
                     $offset = implode('\\', $stmt->dim->name->parts);
+                } elseif ($stmt->dim instanceof PhpParser\Node\Expr\PropertyFetch) {
+                    $object_id = self::getArrayVarId($stmt->dim->var, $this_class_name, $source);
+
+                    if ($object_id && $stmt->dim->name instanceof PhpParser\Node\Identifier) {
+                        $offset = $object_id . '->' . $stmt->dim->name;
+                    }
                 } elseif (isset($stmt->dim->inferredType)) {
                     if ($stmt->dim->inferredType->isSingleStringLiteral()) {
                         $offset = '\'' . $stmt->dim->inferredType->getSingleStringLiteral()->value . '\'';
@@ -1181,18 +1190,17 @@ class ExpressionAnalyzer
                     return new Type\Atomic\TLiteralClassString($return_type->fq_classlike_name);
                 }
 
-                $class_constants = $codebase->classlikes->getConstantsForClass(
+                $class_constant = $codebase->classlikes->getConstantForClass(
                     $return_type->fq_classlike_name,
+                    $return_type->const_name,
                     \ReflectionProperty::IS_PRIVATE
                 );
 
-                if (isset($class_constants[$return_type->const_name])) {
-                    $const_type = $class_constants[$return_type->const_name];
+                if ($class_constant) {
+                    if ($class_constant->isSingle()) {
+                        $class_constant = clone $class_constant;
 
-                    if ($const_type->isSingle()) {
-                        $const_type = clone $const_type;
-
-                        return array_values($const_type->getTypes())[0];
+                        return array_values($class_constant->getTypes())[0];
                     }
                 }
             }
@@ -1208,15 +1216,14 @@ class ExpressionAnalyzer
             }
 
             if ($evaluate && $codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
-                $class_constants = $codebase->classlikes->getConstantsForClass(
+                $class_constant_type = $codebase->classlikes->getConstantForClass(
                     $return_type->fq_classlike_name,
+                    $return_type->const_name,
                     \ReflectionProperty::IS_PRIVATE
                 );
 
-                if (isset($class_constants[$return_type->const_name])) {
-                    $const_type = $class_constants[$return_type->const_name];
-
-                    foreach ($const_type->getTypes() as $const_type_atomic) {
+                if ($class_constant_type) {
+                    foreach ($class_constant_type->getTypes() as $const_type_atomic) {
                         if ($const_type_atomic instanceof Type\Atomic\ObjectLike
                             || $const_type_atomic instanceof Type\Atomic\TArray
                         ) {
@@ -1397,15 +1404,9 @@ class ExpressionAnalyzer
                     continue;
                 }
             } elseif ($use->byRef) {
-                foreach ($context->vars_in_scope[$use_var_id]->getTypes() as $atomic_type) {
-                    if ($atomic_type instanceof Type\Atomic\TLiteralInt) {
-                        $context->vars_in_scope[$use_var_id]->addType(new Type\Atomic\TInt);
-                    } elseif ($atomic_type instanceof Type\Atomic\TLiteralFloat) {
-                        $context->vars_in_scope[$use_var_id]->addType(new Type\Atomic\TFloat);
-                    } elseif ($atomic_type instanceof Type\Atomic\TLiteralString) {
-                        $context->vars_in_scope[$use_var_id]->addType(new Type\Atomic\TString);
-                    }
-                }
+                $context->remove($use_var_id);
+
+                $context->vars_in_scope[$use_var_id] = Type::getMixed();
             }
         }
 
@@ -1462,9 +1463,44 @@ class ExpressionAnalyzer
                     $statements_analyzer->getParentFQCLN()
                 );
 
+                $type_location = null;
+
+                if ($var_comment->type_start
+                    && $var_comment->type_end
+                    && $var_comment->line_number
+                ) {
+                    $type_location = new CodeLocation\DocblockTypeLocation(
+                        $statements_analyzer,
+                        $var_comment->type_start,
+                        $var_comment->type_end,
+                        $var_comment->line_number
+                    );
+                }
+
                 if (!$var_comment->var_id) {
                     $var_comment_type = $comment_type;
                     continue;
+                }
+
+                if ($codebase->find_unused_variables
+                    && $type_location
+                    && isset($context->vars_in_scope[$var_comment->var_id])
+                    && $context->vars_in_scope[$var_comment->var_id]->getId() === $comment_type->getId()
+                ) {
+                    $project_analyzer = $statements_analyzer->getProjectAnalyzer();
+
+                    if ($codebase->alter_code
+                        && isset($project_analyzer->getIssuesToFix()['UnnecessaryVarAnnotation'])
+                    ) {
+                        FileManipulationBuffer::addVarAnnotationToRemove($type_location);
+                    } elseif (IssueBuffer::accepts(
+                        new UnnecessaryVarAnnotation(
+                            'The @var annotation for ' . $var_comment->var_id . ' is unnecessary',
+                            $type_location
+                        )
+                    )) {
+                        // fall through
+                    }
                 }
 
                 $context->vars_in_scope[$var_comment->var_id] = $comment_type;
@@ -1620,7 +1656,6 @@ class ExpressionAnalyzer
         PhpParser\Node\Scalar\Encapsed $stmt,
         Context $context
     ) {
-        /** @var PhpParser\Node\Expr $part */
         foreach ($stmt->parts as $part) {
             if (self::analyze($statements_analyzer, $part, $context) === false) {
                 return false;
@@ -1819,7 +1854,9 @@ class ExpressionAnalyzer
             $stmt->inferredType = $stmt->expr->inferredType;
 
             if ($immutable_cloned) {
+                $stmt->inferredType = clone $stmt->inferredType;
                 $stmt->inferredType->external_mutation_free = true;
+                $stmt->inferredType->mutation_free = false;
             }
         }
     }

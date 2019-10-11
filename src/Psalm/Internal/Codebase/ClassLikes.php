@@ -21,6 +21,7 @@ use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
+use Psalm\Internal\Scanner\UnresolvedConstant;
 use Psalm\Issue\PossiblyUnusedMethod;
 use Psalm\Issue\PossiblyUnusedParam;
 use Psalm\Issue\PossiblyUnusedProperty;
@@ -37,6 +38,7 @@ use function strlen;
 use function strrpos;
 use function strtolower;
 use function substr;
+use Psalm\Internal\Scanner\UnresolvedConstantComponent;
 
 /**
  * @internal
@@ -1425,6 +1427,214 @@ class ClassLikes
         }
 
         throw new \InvalidArgumentException('Must specify $visibility');
+    }
+
+    public function getConstantForClass(
+        string $class_name,
+        string $constant_name,
+        int $visibility,
+        ?\Psalm\Internal\Analyzer\StatementsAnalyzer $statements_analyzer = null
+    ) : ?Type\Union {
+        $class_name = strtolower($class_name);
+
+        $storage = $this->classlike_storage_provider->get($class_name);
+
+        if ($visibility === ReflectionProperty::IS_PUBLIC) {
+            $type_candidates = $storage->public_class_constants;
+
+            $fallbacks = $storage->public_class_constant_nodes;
+        } elseif ($visibility === ReflectionProperty::IS_PROTECTED) {
+            $type_candidates = array_merge(
+                $storage->public_class_constants,
+                $storage->protected_class_constants
+            );
+
+            $fallbacks = array_merge(
+                $storage->public_class_constant_nodes,
+                $storage->protected_class_constant_nodes
+            );
+        } elseif ($visibility === ReflectionProperty::IS_PRIVATE) {
+            $type_candidates = array_merge(
+                $storage->public_class_constants,
+                $storage->protected_class_constants,
+                $storage->private_class_constants
+            );
+
+            $fallbacks = array_merge(
+                $storage->public_class_constant_nodes,
+                $storage->protected_class_constant_nodes,
+                $storage->private_class_constant_nodes
+            );
+        } else {
+            throw new \InvalidArgumentException('Must specify $visibility');
+        }
+
+        if (isset($type_candidates[$constant_name])) {
+            return $type_candidates[$constant_name];
+        }
+
+        if (isset($fallbacks[$constant_name])) {
+            return new Type\Union([$this->resolveConstantType($fallbacks[$constant_name], $statements_analyzer)]);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  string|int|float|bool|null $value
+     */
+    private static function getLiteralTypeFromScalarValue($value) : Type\Atomic
+    {
+        if (\is_string($value)) {
+            return new Type\Atomic\TLiteralString($value);
+        } elseif (\is_int($value)) {
+            return new Type\Atomic\TLiteralInt($value);
+        } elseif (\is_float($value)) {
+            return new Type\Atomic\TLiteralFloat($value);
+        } elseif ($value === false) {
+            return new Type\Atomic\TFalse;
+        } elseif ($value === true) {
+            return new Type\Atomic\TTrue;
+        } else {
+            return new Type\Atomic\TNull;
+        }
+    }
+
+    private function resolveConstantType(
+        \Psalm\Internal\Scanner\UnresolvedConstantComponent $c,
+        \Psalm\Internal\Analyzer\StatementsAnalyzer $statements_analyzer = null
+    ) : Type\Atomic {
+        if ($c instanceof UnresolvedConstant\ScalarValue) {
+            return self::getLiteralTypeFromScalarValue($c->value);
+        }
+
+        if ($c instanceof UnresolvedConstant\UnresolvedBinaryOp) {
+            $left = $this->resolveConstantType($c->left, $statements_analyzer);
+            $right = $this->resolveConstantType($c->right, $statements_analyzer);
+
+            if ($left instanceof Type\Atomic\TMixed || $right instanceof Type\Atomic\TMixed) {
+                return new Type\Atomic\TMixed;
+            }
+
+            if ($c instanceof UnresolvedConstant\UnresolvedConcatOp) {
+                if ($left instanceof Type\Atomic\TLiteralString && $right instanceof Type\Atomic\TLiteralString) {
+                    return new Type\Atomic\TLiteralString($left->value . $right->value);
+                }
+
+                return new Type\Atomic\TMixed;
+            }
+
+            if ($c instanceof UnresolvedConstant\UnresolvedAdditionOp
+                || $c instanceof UnresolvedConstant\UnresolvedSubtractionOp
+                || $c instanceof UnresolvedConstant\UnresolvedDivisionOp
+                || $c instanceof UnresolvedConstant\UnresolvedMultiplicationOp
+                || $c instanceof UnresolvedConstant\UnresolvedBinaryOr
+            ) {
+                if (($left instanceof Type\Atomic\TLiteralFloat || $left instanceof Type\Atomic\TLiteralInt)
+                    && ($right instanceof Type\Atomic\TLiteralFloat || $right instanceof Type\Atomic\TLiteralInt)
+                ) {
+                    if ($c instanceof UnresolvedConstant\UnresolvedAdditionOp) {
+                        return self::getLiteralTypeFromScalarValue($left->value + $right->value);
+                    }
+
+                    if ($c instanceof UnresolvedConstant\UnresolvedSubtractionOp) {
+                        return self::getLiteralTypeFromScalarValue($left->value - $right->value);
+                    }
+
+                    if ($c instanceof UnresolvedConstant\UnresolvedDivisionOp) {
+                        return self::getLiteralTypeFromScalarValue($left->value / $right->value);
+                    }
+
+                    if ($c instanceof UnresolvedConstant\UnresolvedBinaryOr) {
+                        return self::getLiteralTypeFromScalarValue($left->value | $right->value);
+                    }
+
+                    return self::getLiteralTypeFromScalarValue($left->value * $right->value);
+                }
+
+                return new Type\Atomic\TMixed;
+            }
+
+            return new Type\Atomic\TMixed;
+        }
+
+        if ($c instanceof UnresolvedConstant\UnresolvedTernary) {
+            $cond = $this->resolveConstantType($c->cond, $statements_analyzer);
+            $if = $c->if ? $this->resolveConstantType($c->if, $statements_analyzer) : null;
+            $else = $this->resolveConstantType($c->else, $statements_analyzer);
+
+            if ($cond instanceof Type\Atomic\TLiteralFloat
+                || $cond instanceof Type\Atomic\TLiteralInt
+                || $cond instanceof Type\Atomic\TLiteralString
+            ) {
+                if ($cond->value) {
+                    return $if ? $if : $cond;
+                }
+            } elseif ($cond instanceof Type\Atomic\TFalse || $cond instanceof Type\Atomic\TNull) {
+                return $else;
+            } elseif ($cond instanceof Type\Atomic\TTrue) {
+                return $if ? $if : $cond;
+            }
+        }
+
+        if ($c instanceof UnresolvedConstant\ArrayValue) {
+            $properties = [];
+
+            if (!$c->entries) {
+                return new Type\Atomic\TArray([Type::getEmpty(), Type::getEmpty()]);
+            }
+
+            foreach ($c->entries as $i => $entry) {
+                if ($entry->key) {
+                    $key_type = $this->resolveConstantType($entry->key, $statements_analyzer);
+                } else {
+                    $key_type = new Type\Atomic\TLiteralInt($i);
+                }
+
+                if ($key_type instanceof Type\Atomic\TLiteralInt
+                    || $key_type instanceof Type\Atomic\TLiteralString
+                ) {
+                    $key_value = $key_type->value;
+                } else {
+                    return new Type\Atomic\TArray([Type::getArrayKey(), Type::getMixed()]);
+                }
+
+                $value_type = new Type\Union([$this->resolveConstantType($entry->value, $statements_analyzer)]);
+
+                $properties[$key_value] = $value_type;
+            }
+
+            return new Type\Atomic\ObjectLike($properties);
+        }
+
+        if ($c instanceof UnresolvedConstant\ClassConstant) {
+            $found_type = $this->getConstantForClass(
+                $c->fqcln,
+                $c->name,
+                ReflectionProperty::IS_PRIVATE,
+                $statements_analyzer
+            );
+
+            if ($found_type) {
+                return \array_values($found_type->getTypes())[0];
+            }
+        }
+
+        if ($c instanceof UnresolvedConstant\Constant) {
+            if ($statements_analyzer) {
+                $found_type = $statements_analyzer->getConstType(
+                    $c->name,
+                    $c->is_fully_qualified,
+                    null
+                );
+
+                if ($found_type) {
+                    return \array_values($found_type->getTypes())[0];
+                }
+            }
+        }
+
+        return new Type\Atomic\TMixed;
     }
 
     /**

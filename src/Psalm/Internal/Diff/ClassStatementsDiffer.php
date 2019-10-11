@@ -62,7 +62,9 @@ class ClassStatementsDiffer extends AstDiffer
                 $a_comments_end = $a_start;
                 $b_comments_end = $b_start;
 
+                /** @var list<PhpParser\Comment> */
                 $a_comments = $a->getComments();
+                /** @var list<PhpParser\Comment> */
                 $b_comments = $b->getComments();
 
                 $signature_change = false;
@@ -233,6 +235,7 @@ class ClassStatementsDiffer extends AstDiffer
             }
         }
 
+        /** @var array<int, array{0: int, 1: int, 2: int, 3: int}> $diff_map */
         return [$keep, $keep_signature, $add_or_delete, $diff_map];
     }
 }

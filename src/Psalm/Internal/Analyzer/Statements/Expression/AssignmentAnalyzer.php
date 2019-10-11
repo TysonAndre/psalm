@@ -12,6 +12,7 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
 use Psalm\Exception\IncorrectDocblockException;
+use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\AssignmentToVoid;
 use Psalm\Issue\ImpurePropertyAssignment;
 use Psalm\Issue\InvalidDocblock;
@@ -22,6 +23,7 @@ use Psalm\Issue\MixedAssignment;
 use Psalm\Issue\NoValue;
 use Psalm\Issue\PossiblyUndefinedArrayOffset;
 use Psalm\Issue\ReferenceConstraintViolation;
+use Psalm\Issue\UnnecessaryVarAnnotation;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use function is_string;
@@ -66,6 +68,7 @@ class AssignmentAnalyzer
 
         $var_comments = [];
         $comment_type = null;
+        $comment_type_location = null;
 
         $was_in_assignment = $context->inside_assignment;
 
@@ -132,8 +135,9 @@ class AssignmentAnalyzer
                         $statements_analyzer->getSuppressedIssues()
                     );
 
-                    if ($codebase->alter_code
-                        && $var_comment->type_start
+                    $type_location = null;
+
+                    if ($var_comment->type_start
                         && $var_comment->type_end
                         && $var_comment->line_number
                     ) {
@@ -144,18 +148,42 @@ class AssignmentAnalyzer
                             $var_comment->line_number
                         );
 
-                        $codebase->classlikes->handleDocblockTypeInMigration(
-                            $codebase,
-                            $statements_analyzer,
-                            $var_comment_type,
-                            $type_location,
-                            $context->calling_method_id
-                        );
+                        if ($codebase->alter_code) {
+                            $codebase->classlikes->handleDocblockTypeInMigration(
+                                $codebase,
+                                $statements_analyzer,
+                                $var_comment_type,
+                                $type_location,
+                                $context->calling_method_id
+                            );
+                        }
                     }
 
                     if (!$var_comment->var_id || $var_comment->var_id === $var_id) {
                         $comment_type = $var_comment_type;
+                        $comment_type_location = $type_location;
                         continue;
+                    }
+
+                    if ($codebase->find_unused_variables
+                        && $type_location
+                        && isset($context->vars_in_scope[$var_comment->var_id])
+                        && $context->vars_in_scope[$var_comment->var_id]->getId() === $var_comment_type->getId()
+                    ) {
+                        $project_analyzer = $statements_analyzer->getProjectAnalyzer();
+
+                        if ($codebase->alter_code
+                            && isset($project_analyzer->getIssuesToFix()['UnnecessaryVarAnnotation'])
+                        ) {
+                            FileManipulationBuffer::addVarAnnotationToRemove($type_location);
+                        } elseif (IssueBuffer::accepts(
+                            new UnnecessaryVarAnnotation(
+                                'The @var annotation for ' . $var_comment->var_id . ' is unnecessary',
+                                $type_location
+                            )
+                        )) {
+                            // fall through
+                        }
                     }
 
                     $context->vars_in_scope[$var_comment->var_id] = $var_comment_type;
@@ -203,7 +231,28 @@ class AssignmentAnalyzer
             }
         }
 
-        if ($comment_type) {
+        if ($comment_type && $comment_type_location) {
+            $temp_assign_value_type = $assign_value_type ?: ($assign_value->inferredType ?? null);
+
+            if ($codebase->find_unused_variables
+                && $temp_assign_value_type
+                && $array_var_id
+                && $temp_assign_value_type->getId() === $comment_type->getId()
+            ) {
+                if ($codebase->alter_code
+                    && isset($statements_analyzer->getProjectAnalyzer()->getIssuesToFix()['UnnecessaryVarAnnotation'])
+                ) {
+                    FileManipulationBuffer::addVarAnnotationToRemove($comment_type_location);
+                } elseif (IssueBuffer::accepts(
+                    new UnnecessaryVarAnnotation(
+                        'The @var annotation for ' . $array_var_id . ' is unnecessary',
+                        $comment_type_location
+                    )
+                )) {
+                    // fall through
+                }
+            }
+
             $assign_value_type = $comment_type;
         } elseif (!$assign_value_type) {
             if (isset($assign_value->inferredType)) {
@@ -362,7 +411,6 @@ class AssignmentAnalyzer
         } elseif ($assign_var instanceof PhpParser\Node\Expr\List_
             || $assign_var instanceof PhpParser\Node\Expr\Array_
         ) {
-            /** @var int $offset */
             foreach ($assign_var->items as $offset => $assign_var_item) {
                 // $assign_var_item can be null e.g. list($a, ) = ['a', 'b']
                 if (!$assign_var_item) {
@@ -386,8 +434,10 @@ class AssignmentAnalyzer
                     continue;
                 }
 
-                if (isset($assign_value_type->getTypes()['array'])
-                    && ($array_atomic_type = $assign_value_type->getTypes()['array'])
+                $assign_value_types = $assign_value_type->getTypes();
+
+                if (isset($assign_value_types['array'])
+                    && ($array_atomic_type = $assign_value_types['array'])
                     && $array_atomic_type instanceof Type\Atomic\ObjectLike
                     && !$assign_var_item->key
                     && isset($array_atomic_type->properties[$offset]) // if object-like has int offsets
@@ -424,13 +474,23 @@ class AssignmentAnalyzer
                 if ($var instanceof PhpParser\Node\Expr\List_
                     || $var instanceof PhpParser\Node\Expr\Array_
                 ) {
-                    /** @var Type\Atomic\ObjectLike|Type\Atomic\TArray|null */
+                    /**
+                     * @psalm-suppress PossiblyUndefinedArrayOffset
+                     * @var Type\Atomic\ObjectLike|Type\Atomic\TList|Type\Atomic\TArray|null
+                     */
                     $array_value_type = isset($assign_value_type->getTypes()['array'])
                         ? $assign_value_type->getTypes()['array']
                         : null;
 
                     if ($array_value_type instanceof Type\Atomic\ObjectLike) {
                         $array_value_type = $array_value_type->getGenericArrayType();
+                    }
+
+                    if ($array_value_type instanceof Type\Atomic\TList) {
+                        $array_value_type = new Type\Atomic\TArray([
+                            Type::getInt(),
+                            $array_value_type->type_param
+                        ]);
                     }
 
                     self::analyze(
@@ -483,11 +543,15 @@ class AssignmentAnalyzer
 
                     $new_assign_type = null;
 
-                    if (isset($assign_value_type->getTypes()['array'])) {
-                        $array_atomic_type = $assign_value_type->getTypes()['array'];
+                    $types = $assign_value_type->getTypes();
+
+                    if (isset($types['array'])) {
+                        $array_atomic_type = $types['array'];
 
                         if ($array_atomic_type instanceof Type\Atomic\TArray) {
                             $new_assign_type = clone $array_atomic_type->type_params[1];
+                        } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
+                            $new_assign_type = clone $array_atomic_type->type_param;
                         } elseif ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
                             if ($assign_var_item->key
                                 && ($assign_var_item->key instanceof PhpParser\Node\Scalar\String_
@@ -743,7 +807,13 @@ class AssignmentAnalyzer
             $statements_analyzer
         );
 
-        if ($array_var_id && $context->mutation_free && strpos($array_var_id, '->')) {
+        if ($array_var_id
+            && $context->mutation_free
+            && $stmt->var instanceof PhpParser\Node\Expr\PropertyFetch
+            && isset($stmt->var->var->inferredType)
+            && (!$stmt->var->var->inferredType->external_mutation_free
+                || $stmt->var->var->inferredType->mutation_free)
+        ) {
             if (IssueBuffer::accepts(
                 new ImpurePropertyAssignment(
                     'Cannot assign to a property from a mutation-free context',

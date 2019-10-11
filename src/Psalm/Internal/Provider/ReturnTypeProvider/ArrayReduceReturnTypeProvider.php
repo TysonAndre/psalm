@@ -53,12 +53,15 @@ class ArrayReduceReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
 
         if (isset($array_arg_types['array'])
             && ($array_arg_types['array'] instanceof Type\Atomic\TArray
-                || $array_arg_types['array'] instanceof Type\Atomic\ObjectLike)
+                || $array_arg_types['array'] instanceof Type\Atomic\ObjectLike
+                || $array_arg_types['array'] instanceof Type\Atomic\TList)
         ) {
             $array_arg_type = $array_arg_types['array'];
 
             if ($array_arg_type instanceof Type\Atomic\ObjectLike) {
                 $array_arg_type = $array_arg_type->getGenericArrayType();
+            } elseif ($array_arg_type instanceof Type\Atomic\TList) {
+                $array_arg_type = new Type\Atomic\TArray([Type::getInt(), clone $array_arg_type->type_param]);
             }
         }
 
@@ -79,12 +82,9 @@ class ArrayReduceReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
 
         $initial_type = $reduce_return_type;
 
-        if (($first_arg_atomic_types = $function_call_arg->inferredType->getTypes())
-            && ($closure_atomic_type = isset($first_arg_atomic_types['Closure'])
-                ? $first_arg_atomic_types['Closure']
-                : null)
-            && $closure_atomic_type instanceof Type\Atomic\TFn
-        ) {
+        if ($closure_types = $function_call_arg->inferredType->getClosureTypes()) {
+            $closure_atomic_type = \reset($closure_types);
+
             $closure_return_type = $closure_atomic_type->return_type ?: Type::getMixed();
 
             if ($closure_return_type->isVoid()) {

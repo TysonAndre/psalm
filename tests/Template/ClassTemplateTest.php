@@ -1703,6 +1703,108 @@ class ClassTemplateTest extends TestCase
                         }
                     }',
             ],
+            'anonymousClassMustNotBreakParentTemplate' => [
+                '<?php
+                    /** @template T */
+                    class Foo {
+                        /** @psalm-var ?T */
+                        private $value;
+
+                        /** @psalm-param T $val */
+                        public function set($val) : void {
+                            $this->value = $val;
+                            new class extends Foo {};
+                        }
+
+                        /** @psalm-return ?T */
+                        public function get() {
+                            return $this->value;
+                        }
+                    }'
+            ],
+            'templatedInvoke' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Foo {
+                        /** @var T */
+                        private $value;
+
+                        /** @param T $val */
+                        public function __construct($val) {
+                            $this->value = $val;
+                        }
+
+                        /** @return T */
+                        public function get() {
+                            return $this->value;
+                        }
+
+                        /**
+                         * @param T $val
+                         * @return Foo<T>
+                         */
+                        public function __invoke($val) {
+                            return new static($val);
+                        }
+
+                        /**
+                         * @param T $val
+                         * @return Foo<T>
+                         */
+                        public function create($val) {
+                            return new static($val);
+                        }
+                    }
+
+                    function bar(string $s) : string {
+                        $foo = new Foo($s);
+                        $bar = $foo($s);
+                        return $bar->get();
+                    }'
+            ],
+            'templatedThing' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    final class Value {
+                        /**
+                         * @psalm-var T
+                         */
+                        private $value;
+
+                        /**
+                         * @psalm-param T $value
+                         */
+                        public function __construct($value) {
+                            $this->value = $value;
+                        }
+
+                        /**
+                         * @psalm-return T
+                         */
+                        public function value() {
+                            return $this->value;
+                        }
+                    }
+
+                    /**
+                     * @template T
+                     * @psalm-param T $value
+                     * @psalm-return Value<T>
+                     */
+                    function value($value): Value {
+                        return new Value($value);
+                    }
+
+                    /**
+                     * @psalm-param Value<string> $value
+                     */
+                    function client($value): void {}
+                    client(value("awdawd"));'
+            ],
         ];
     }
 

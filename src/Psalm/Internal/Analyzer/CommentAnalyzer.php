@@ -358,7 +358,6 @@ class CommentAnalyzer
         $info = new FunctionDocblockComment();
 
         if (isset($parsed_docblock['specials']['return']) || isset($parsed_docblock['specials']['psalm-return'])) {
-            /** @var array<int, string> */
             $return_specials = isset($parsed_docblock['specials']['psalm-return'])
                 ? $parsed_docblock['specials']['psalm-return']
                 : $parsed_docblock['specials']['return'];
@@ -379,7 +378,6 @@ class CommentAnalyzer
                     ? $parsed_docblock['specials']['psalm-param']
                     : []);
 
-            /** @var string $param */
             foreach ($all_params as $offset => $param) {
                 $line_parts = self::splitDocLine($param);
                 if (count($line_parts) >= 1) {
@@ -430,7 +428,6 @@ class CommentAnalyzer
         }
 
         if (isset($parsed_docblock['specials']['param-out'])) {
-            /** @var string $param */
             foreach ($parsed_docblock['specials']['param-out'] as $offset => $param) {
                 $line_parts = self::splitDocLine($param);
 
@@ -471,7 +468,6 @@ class CommentAnalyzer
         }
 
         if (isset($parsed_docblock['specials']['psalm-taint-sink'])) {
-            /** @var string $param */
             foreach ($parsed_docblock['specials']['psalm-taint-sink'] as $param) {
                 $param = trim($param);
 
@@ -480,7 +476,6 @@ class CommentAnalyzer
         }
 
         if (isset($parsed_docblock['specials']['psalm-assert-untainted'])) {
-            /** @var string $param */
             foreach ($parsed_docblock['specials']['psalm-assert-untainted'] as $param) {
                 $param = trim($param);
 
@@ -653,15 +648,15 @@ class CommentAnalyzer
 
         if (isset($parsed_docblock['specials']['psalm-assert'])) {
             foreach ($parsed_docblock['specials']['psalm-assert'] as $assertion) {
-                $assertion_parts = preg_split('/[\s]+/', preg_replace('@^[ \t]*\*@m', '', $assertion));
+                $line_parts = self::splitDocLine($assertion);
 
-                if (count($assertion_parts) < 2 || $assertion_parts[1][0] !== '$') {
+                if (count($line_parts) < 2 || $line_parts[1][0] !== '$') {
                     throw new IncorrectDocblockException('Misplaced variable');
                 }
 
                 $info->assertions[] = [
-                    'type' => $assertion_parts[0],
-                    'param_name' => substr($assertion_parts[1], 1),
+                    'type' => $line_parts[0],
+                    'param_name' => substr($line_parts[1], 1),
                 ];
             }
         }

@@ -30,6 +30,7 @@ use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TIterable;
+use Psalm\Type\Atomic\TList;
 use Psalm\Type\Atomic\TLiteralClassString;
 use Psalm\Type\Atomic\TLiteralFloat;
 use Psalm\Type\Atomic\TLiteralInt;
@@ -37,6 +38,7 @@ use Psalm\Type\Atomic\TLiteralString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNonEmptyArray;
+use Psalm\Type\Atomic\TNonEmptyList;
 use Psalm\Type\Atomic\TNonEmptyMixed;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
@@ -84,11 +86,11 @@ class TypeCombination
     /** @var bool */
     private $objectlike_sealed = true;
 
-    /** @var bool */
-    private $objectlike_had_mixed_value = false;
+    /** @var ?Union */
+    private $objectlike_key_type = null;
 
-    /** @var ?array<int, \Psalm\Storage\FunctionLikeParameter> */
-    private $closure_params;
+    /** @var ?Union */
+    private $objectlike_value_type = null;
 
     /** @var bool */
     private $has_mixed = false;
@@ -116,6 +118,9 @@ class TypeCombination
      */
     private $extra_types;
 
+    /** @var ?bool */
+    private $all_arrays_lists;
+
     /**
      * Combines types together
      *  - so `int + string = int|string`
@@ -125,7 +130,7 @@ class TypeCombination
      *  - and `array<string> + array<empty> = array<string>`
      *  - and `array + array<string> = array<mixed>`
      *
-     * @param  array<Atomic>    $types
+     * @param  list<Atomic>    $types
      * @param  int    $literal_limit any greater number of literal types than this
      *                               will be merged to a scalar
      *
@@ -262,20 +267,6 @@ class TypeCombination
             );
         }
 
-        if (isset($combination->value_types['callable'])
-            && $combination->value_types['callable'] instanceof Type\Atomic\TCallable
-            && $combination->closure_params
-        ) {
-            $combination->value_types['callable']->params = $combination->closure_params;
-        }
-
-        if (isset($combination->named_object_types['Closure'])
-            && $combination->named_object_types['Closure'] instanceof Type\Atomic\TFn
-            && $combination->closure_params
-        ) {
-            $combination->named_object_types['Closure']->params = $combination->closure_params;
-        }
-
         if ($combination->empty_mixed && $combination->non_empty_mixed) {
             $combination->value_types['mixed'] = new TMixed((bool) $combination->mixed_from_loop_isset);
         }
@@ -311,7 +302,9 @@ class TypeCombination
                         }
                     }
 
-                    if ($combination->objectlike_had_mixed_value) {
+                    if ($combination->objectlike_value_type
+                        && $combination->objectlike_value_type->isMixed()
+                    ) {
                         $combination->objectlike_entries = array_filter(
                             $combination->objectlike_entries,
                             function (Type\Union $type) : bool {
@@ -327,8 +320,16 @@ class TypeCombination
                             $objectlike->sealed = true;
                         }
 
-                        if ($combination->objectlike_had_mixed_value) {
-                            $objectlike->had_mixed_value = true;
+                        if ($combination->objectlike_key_type) {
+                            $objectlike->previous_key_type = $combination->objectlike_key_type;
+                        }
+
+                        if ($combination->objectlike_value_type) {
+                            $objectlike->previous_value_type = $combination->objectlike_value_type;
+                        }
+
+                        if ($combination->all_arrays_lists) {
+                            $objectlike->is_list = true;
                         }
 
                         $new_types[] = $objectlike;
@@ -373,9 +374,27 @@ class TypeCombination
                     }
                 }
 
+                if ($combination->objectlike_value_type) {
+                    $objectlike_generic_type = Type::combineUnionTypes(
+                        $combination->objectlike_value_type,
+                        $objectlike_generic_type,
+                        $codebase,
+                        $overwrite_empty_array
+                    );
+                }
+
                 $objectlike_generic_type->possibly_undefined = false;
 
                 $objectlike_key_type = new Type\Union(array_values($objectlike_keys));
+
+                if ($combination->objectlike_key_type) {
+                    $objectlike_key_type = Type::combineUnionTypes(
+                        $combination->objectlike_key_type,
+                        $objectlike_key_type,
+                        $codebase,
+                        $overwrite_empty_array
+                    );
+                }
 
                 $generic_type_params[0] = Type::combineUnionTypes(
                     $generic_type_params[0],
@@ -402,14 +421,25 @@ class TypeCombination
                     && $combination->objectlike_sealed
                     && $overwrite_empty_array)
             ) {
-                if ($combination->array_counts && count($combination->array_counts) === 1) {
-                    $array_type = new TNonEmptyArray($generic_type_params);
-                    $array_type->count = array_keys($combination->array_counts)[0];
+                if ($combination->all_arrays_lists) {
+                    $array_type = new TNonEmptyList($generic_type_params[1]);
+
+                    if ($combination->array_counts && count($combination->array_counts) === 1) {
+                        $array_type->count = array_keys($combination->array_counts)[0];
+                    }
                 } else {
                     $array_type = new TNonEmptyArray($generic_type_params);
+
+                    if ($combination->array_counts && count($combination->array_counts) === 1) {
+                        $array_type->count = array_keys($combination->array_counts)[0];
+                    }
                 }
             } else {
-                $array_type = new TArray($generic_type_params);
+                if ($combination->all_arrays_lists) {
+                    $array_type = new TList($generic_type_params[1]);
+                } else {
+                    $array_type = new TArray($generic_type_params);
+                }
             }
 
             $new_types[] = $array_type;
@@ -623,55 +653,6 @@ class TypeCombination
             );
         }
 
-        if ($type instanceof Type\Atomic\TFn
-            || $type instanceof Type\Atomic\TCallable
-        ) {
-            if ($type->params) {
-                if ($combination->closure_params === null) {
-                    foreach ($type->params as $param) {
-                        $combination->closure_params[] = clone $param;
-                    }
-                } else {
-                    $param_count = max(count($combination->closure_params), count($type->params));
-
-                    for ($i = 0, $l = $param_count; $i < $l; ++$i) {
-                        $input_param = $type->params[$i] ?? null;
-
-                        if (isset($combination->closure_params[$i])) {
-                            if ($input_param) {
-                                $combination->closure_params[$i]->type = Type::combineUnionTypes(
-                                    $combination->closure_params[$i]->type ?: Type::getMixed(),
-                                    $input_param->type ?: Type::getMixed(),
-                                    $codebase
-                                );
-                            }
-
-                            $combination->closure_params[$i]->is_optional = !$input_param
-                                || ($combination->closure_params[$i]->is_optional && $input_param->is_optional);
-                        } else {
-                            /** @var \Psalm\Storage\FunctionLikeParameter $input_param */
-                            $combination->closure_params[$i] = clone $input_param;
-
-                            $combination->closure_params[$i]->is_optional = true;
-                        }
-                    }
-                }
-            } else {
-                $combination->closure_params = [
-                    new \Psalm\Storage\FunctionLikeParameter(
-                        '',
-                        false,
-                        Type::getMixed(),
-                        null,
-                        null,
-                        false,
-                        false,
-                        true
-                    ),
-                ];
-            }
-        }
-
         if ($type instanceof TNamedObject
             || $type instanceof TTemplateParam
             || $type instanceof TIterable
@@ -712,6 +693,41 @@ class TypeCombination
             } else {
                 $combination->array_always_filled = false;
             }
+
+            if (!$type->type_params[1]->isEmpty()) {
+                $combination->all_arrays_lists = false;
+            }
+        } elseif ($type instanceof TList) {
+            foreach ([Type::getInt(), $type->type_param] as $i => $type_param) {
+                if (isset($combination->array_type_params[$i])) {
+                    $combination->array_type_params[$i] = Type::combineUnionTypes(
+                        $combination->array_type_params[$i],
+                        $type_param,
+                        $codebase,
+                        $overwrite_empty_array
+                    );
+                } else {
+                    $combination->array_type_params[$i] = $type_param;
+                }
+            }
+
+            if ($type instanceof TNonEmptyList) {
+                if ($combination->array_counts !== null) {
+                    if ($type->count === null) {
+                        $combination->array_counts = null;
+                    } else {
+                        $combination->array_counts[$type->count] = true;
+                    }
+                }
+
+                $combination->array_sometimes_filled = true;
+            } else {
+                $combination->array_always_filled = false;
+            }
+
+            if ($combination->all_arrays_lists !== false) {
+                $combination->all_arrays_lists = true;
+            }
         } elseif (($type instanceof TGenericObject && ($type->value === 'Traversable' || $type->value === 'Generator'))
             || ($type instanceof TIterable && $type->has_docblock_params)
             || ($type instanceof TArray && $type_key === 'iterable')
@@ -745,8 +761,32 @@ class TypeCombination
             $existing_objectlike_entries = (bool) $combination->objectlike_entries;
             $possibly_undefined_entries = $combination->objectlike_entries;
             $combination->objectlike_sealed = $combination->objectlike_sealed && $type->sealed;
-            $combination->objectlike_had_mixed_value =
-                $combination->objectlike_had_mixed_value || $type->had_mixed_value;
+
+            if ($type->previous_value_type) {
+                if (!$combination->objectlike_value_type) {
+                    $combination->objectlike_value_type = $type->previous_value_type;
+                } else {
+                    $combination->objectlike_value_type = Type::combineUnionTypes(
+                        $type->previous_value_type,
+                        $combination->objectlike_value_type,
+                        $codebase,
+                        $overwrite_empty_array
+                    );
+                }
+            }
+
+            if ($type->previous_key_type) {
+                if (!$combination->objectlike_key_type) {
+                    $combination->objectlike_key_type = $type->previous_key_type;
+                } else {
+                    $combination->objectlike_key_type = Type::combineUnionTypes(
+                        $type->previous_key_type,
+                        $combination->objectlike_key_type,
+                        $codebase,
+                        $overwrite_empty_array
+                    );
+                }
+            }
 
             foreach ($type->properties as $candidate_property_name => $candidate_property_type) {
                 $value_type = isset($combination->objectlike_entries[$candidate_property_name])
@@ -767,7 +807,7 @@ class TypeCombination
                     );
                 }
 
-                if (!$type->had_mixed_value) {
+                if (!$type->previous_value_type) {
                     unset($possibly_undefined_entries[$candidate_property_name]);
                 }
             }
@@ -776,8 +816,14 @@ class TypeCombination
                 $combination->array_counts[count($type->properties)] = true;
             }
 
-            foreach ($possibly_undefined_entries as $type) {
-                $type->possibly_undefined = true;
+            foreach ($possibly_undefined_entries as $possibly_undefined_type) {
+                $possibly_undefined_type->possibly_undefined = true;
+            }
+
+            if (!$type->is_list) {
+                $combination->all_arrays_lists = false;
+            } elseif ($combination->all_arrays_lists !== false) {
+                $combination->all_arrays_lists = true;
             }
         } else {
             if ($type instanceof TObject) {

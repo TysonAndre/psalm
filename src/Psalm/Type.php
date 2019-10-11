@@ -18,12 +18,14 @@ use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TIterable;
+use Psalm\Type\Atomic\TList;
 use Psalm\Type\Atomic\TLiteralClassString;
 use Psalm\Type\Atomic\TLiteralFloat;
 use Psalm\Type\Atomic\TLiteralInt;
 use Psalm\Type\Atomic\TLiteralString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Atomic\TNonEmptyList;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TObject;
@@ -104,6 +106,8 @@ abstract class Type
         'key-of' => true,
         'value-of' => true,
         'non-empty-countable' => true,
+        'list' => true,
+        'non-empty-list' => true,
     ];
 
     /**
@@ -280,6 +284,14 @@ abstract class Type
 
             if ($generic_type_value === 'iterable') {
                 return new TIterable($generic_params);
+            }
+
+            if ($generic_type_value === 'list') {
+                return new TList($generic_params[0]);
+            }
+
+            if ($generic_type_value === 'non-empty-list') {
+                return new TNonEmptyList($generic_params[0]);
             }
 
             if ($generic_type_value === 'class-string') {
@@ -623,7 +635,10 @@ abstract class Type
 
             $offset_defining_class = array_keys($offset_template_data)[0];
 
-            if (!$offset_defining_class && $offset_template_data[''][0]->isSingle()) {
+            if (!$offset_defining_class
+                && isset($offset_template_data[''])
+                && $offset_template_data[''][0]->isSingle()
+            ) {
                 $offset_template_type = array_values($offset_template_data[''][0]->getTypes())[0];
 
                 if ($offset_template_type instanceof Type\Atomic\TTemplateKeyOf) {
@@ -1338,6 +1353,16 @@ abstract class Type
         return new Type\Union([
             $array_type,
         ]);
+    }
+
+    /**
+     * @return Type\Union
+     */
+    public static function getList()
+    {
+        $type = new TList(new Type\Union([new TMixed]));
+
+        return new Union([$type]);
     }
 
     /**

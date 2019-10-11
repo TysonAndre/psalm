@@ -19,6 +19,7 @@ use Psalm\Issue\InternalClass;
 use Psalm\Issue\InvalidTemplateParam;
 use Psalm\Issue\MethodSignatureMismatch;
 use Psalm\Issue\MissingConstructor;
+use Psalm\Issue\MissingImmutableAnnotation;
 use Psalm\Issue\MissingPropertyType;
 use Psalm\Issue\MissingTemplateParam;
 use Psalm\Issue\OverriddenPropertyAccess;
@@ -313,6 +314,21 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
+                if ($parent_class_storage->external_mutation_free
+                    && !$storage->external_mutation_free
+                ) {
+                    if (IssueBuffer::accepts(
+                        new MissingImmutableAnnotation(
+                            $parent_fq_class_name . ' is marked immutable, but '
+                                . $fq_class_name . ' is not marked immutable',
+                            $code_location
+                        ),
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
                 if ($codebase->store_node_types && $parent_fq_class_name) {
                     $codebase->analyzer->addNodeReference(
                         $this->getFilePath(),
@@ -494,6 +510,21 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $interface_name . ' is marked deprecated',
                             $code_location,
                             $interface_name
+                        ),
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
+                if ($interface_storage->external_mutation_free
+                    && !$storage->external_mutation_free
+                ) {
+                    if (IssueBuffer::accepts(
+                        new MissingImmutableAnnotation(
+                            $interface_name . ' is marked immutable, but '
+                                . $fq_class_name . ' is not marked immutable',
+                            $code_location
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
@@ -1100,6 +1131,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         if (!$storage->abstract
             && !$constructor_analyzer
             && isset($storage->declaring_method_ids['__construct'])
+            && isset($storage->appearing_method_ids['__construct'])
             && $class->extends
         ) {
             list($constructor_declaring_fqcln) = explode('::', $storage->declaring_method_ids['__construct']);

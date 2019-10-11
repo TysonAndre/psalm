@@ -27,7 +27,6 @@ use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
-use Psalm\Type\Atomic\TCallableArray;
 use Psalm\Type\Atomic\TCallableObjectLikeArray;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
@@ -164,33 +163,15 @@ class Reconciler
         $codebase = $statements_analyzer->getCodebase();
 
         foreach ($new_types as $key => $new_type_parts) {
-            $result_type = isset($existing_types[$key])
-                ? clone $existing_types[$key]
-                : self::getValueForKey(
-                    $codebase,
-                    $key,
-                    $existing_types,
-                    $new_type_parts,
-                    $code_location
-                );
-
-            if ($result_type && empty($result_type->getTypes())) {
-                throw new \InvalidArgumentException('Union::$types cannot be empty after get value for ' . $key);
-            }
-
-            $before_adjustment = $result_type ? clone $result_type : null;
-
-            $failed_reconciliation = 0;
             $has_negation = false;
             $has_equality = false;
             $has_isset = false;
-            $has_not_isset = false;
+            $has_inverted_isset = false;
             $has_falsyish = false;
+            $has_empty = false;
             $has_count_check = false;
 
             foreach ($new_type_parts as $new_type_part_parts) {
-                $orred_type = null;
-
                 foreach ($new_type_part_parts as $new_type_part_part) {
                     switch ($new_type_part_part[0]) {
                         case '!':
@@ -206,15 +187,42 @@ class Reconciler
                         || $new_type_part_part === '=isset'
                         || $new_type_part_part === 'array-key-exists';
 
+                    $has_empty = $has_empty || $new_type_part_part === 'empty';
+
                     $has_falsyish = $has_falsyish
                         || $new_type_part_part === 'empty'
                         || $new_type_part_part === 'falsy';
 
-                    $has_not_isset = $has_not_isset || $new_type_part_part === '!isset';
+                    $has_inverted_isset = $has_inverted_isset || $new_type_part_part === '!isset';
 
                     $has_count_check = $has_count_check
                         || $new_type_part_part === 'non-empty-countable';
+                }
+            }
 
+            $result_type = isset($existing_types[$key])
+                ? clone $existing_types[$key]
+                : self::getValueForKey(
+                    $codebase,
+                    $key,
+                    $existing_types,
+                    $code_location,
+                    $has_isset,
+                    $has_empty
+                );
+
+            if ($result_type && empty($result_type->getTypes())) {
+                throw new \InvalidArgumentException('Union::$types cannot be empty after get value for ' . $key);
+            }
+
+            $before_adjustment = $result_type ? clone $result_type : null;
+
+            $failed_reconciliation = 0;
+
+            foreach ($new_type_parts as $new_type_part_parts) {
+                $orred_type = null;
+
+                foreach ($new_type_part_parts as $new_type_part_part) {
                     $result_type_candidate = AssertionReconciler::reconcile(
                         $new_type_part_part,
                         $result_type ? clone $result_type : null,
@@ -252,14 +260,13 @@ class Reconciler
             if ($type_changed || $failed_reconciliation) {
                 $changed_var_ids[] = $key;
 
-                if (substr($key, -1) === ']') {
+                if (substr($key, -1) === ']' && !$has_inverted_isset) {
                     $key_parts = self::breakUpPathIntoParts($key);
                     self::adjustObjectLikeType(
                         $key_parts,
                         $existing_types,
                         $changed_var_ids,
-                        $result_type,
-                        $has_not_isset
+                        $result_type
                     );
                 }
             } elseif ($code_location
@@ -324,6 +331,7 @@ class Reconciler
 
         $string_char = null;
         $escape_char = false;
+        $brackets = 0;
 
         $parts = [''];
         $parts_offset = 0;
@@ -350,6 +358,13 @@ class Reconciler
                     $parts_offset++;
                     $parts[$parts_offset] = $char;
                     ++$parts_offset;
+
+                    if ($char === '[') {
+                        $brackets++;
+                    } else {
+                        $brackets--;
+                    }
+
                     continue 2;
 
                 case '\'':
@@ -363,7 +378,10 @@ class Reconciler
                     continue 2;
 
                 case '-':
-                    if ($i < $char_count - 1 && $chars[$i + 1] === '>') {
+                    if (!$brackets
+                        && $i < $char_count - 1
+                        && $chars[$i + 1] === '>'
+                    ) {
                         ++$i;
 
                         ++$parts_offset;
@@ -382,6 +400,8 @@ class Reconciler
             }
         }
 
+        $parts = \array_values($parts);
+
         self::$broken_paths[$path] = $parts;
 
         return $parts;
@@ -398,10 +418,11 @@ class Reconciler
      */
     private static function getValueForKey(
         Codebase $codebase,
-        $key,
+        string $key,
         array &$existing_keys,
-        array $new_type_parts,
-        CodeLocation $code_location = null
+        ?CodeLocation $code_location,
+        bool $has_isset,
+        bool $has_empty
     ) {
         $key_parts = self::breakUpPathIntoParts($key);
 
@@ -415,13 +436,15 @@ class Reconciler
             if (strpos($base_key, '::')) {
                 list($fq_class_name, $const_name) = explode('::', $base_key);
 
-                $all_class_constants = $codebase->classlikes->getConstantsForClass(
+                $class_constant = $codebase->classlikes->getConstantForClass(
                     $fq_class_name,
-                    \ReflectionProperty::IS_PRIVATE
+                    $const_name,
+                    \ReflectionProperty::IS_PRIVATE,
+                    null
                 );
 
-                if (isset($all_class_constants[$const_name])) {
-                    $existing_keys[$base_key] = clone $all_class_constants[$const_name];
+                if ($class_constant) {
+                    $existing_keys[$base_key] = clone $class_constant;
                 } else {
                     return null;
                 }
@@ -444,14 +467,32 @@ class Reconciler
 
                     foreach ($existing_keys[$base_key]->getTypes() as $existing_key_type_part) {
                         if ($existing_key_type_part instanceof Type\Atomic\TArray) {
+                            if ($has_empty) {
+                                return null;
+                            }
+
                             $new_base_type_candidate = clone $existing_key_type_part->type_params[1];
 
-                            if ($new_type_parts[0][0] === 'empty' || $new_type_parts[0][0] === '=empty') {
+                            if ($has_isset) {
+                                $new_base_type_candidate->possibly_undefined = true;
+                            }
+                        } elseif ($existing_key_type_part instanceof Type\Atomic\TList) {
+                            if ($has_empty) {
+                                return null;
+                            }
+
+                            $new_base_type_candidate = clone $existing_key_type_part->type_param;
+
+                            if ($has_isset) {
                                 $new_base_type_candidate->possibly_undefined = true;
                             }
                         } elseif (!$existing_key_type_part instanceof Type\Atomic\ObjectLike) {
                             return Type::getMixed();
                         } elseif ($array_key[0] === '$') {
+                            if ($has_empty) {
+                                return null;
+                            }
+
                             $new_base_type_candidate = $existing_key_type_part->getGenericValueType();
                         } else {
                             $array_properties = $existing_key_type_part->properties;
@@ -459,10 +500,15 @@ class Reconciler
                             $key_parts_key = str_replace('\'', '', $array_key);
 
                             if (!isset($array_properties[$key_parts_key])) {
-                                return null;
+                                if ($existing_key_type_part->previous_value_type) {
+                                    $new_base_type_candidate = clone $existing_key_type_part->previous_value_type;
+                                    $new_base_type_candidate->different = true;
+                                } else {
+                                    return null;
+                                }
+                            } else {
+                                $new_base_type_candidate = clone $array_properties[$key_parts_key];
                             }
-
-                            $new_base_type_candidate = clone $array_properties[$key_parts_key];
                         }
 
                         if (!$new_base_type) {
@@ -657,8 +703,7 @@ class Reconciler
         array $key_parts,
         array &$existing_types,
         array &$changed_var_ids,
-        Type\Union $result_type,
-        bool $has_not_isset
+        Type\Union $result_type
     ) {
         array_pop($key_parts);
         $array_key = array_pop($key_parts);
@@ -676,16 +721,18 @@ class Reconciler
 
         $base_key = implode($key_parts);
 
-        if (isset($existing_types[$base_key]) && $array_key_offset !== false && !$has_not_isset) {
+        if (isset($existing_types[$base_key]) && $array_key_offset !== false) {
             foreach ($existing_types[$base_key]->getTypes() as $base_atomic_type) {
                 if ($base_atomic_type instanceof Type\Atomic\ObjectLike
                     || ($base_atomic_type instanceof Type\Atomic\TArray
-                        && $base_atomic_type->type_params[0]->isArrayKey()
-                        && $base_atomic_type->type_params[1]->isMixed())
+                        && !$base_atomic_type->type_params[1]->isEmpty())
                 ) {
                     $new_base_type = clone $existing_types[$base_key];
 
                     if ($base_atomic_type instanceof Type\Atomic\TArray) {
+                        $previous_key_type = clone $base_atomic_type->type_params[0];
+                        $previous_value_type = clone $base_atomic_type->type_params[1];
+
                         $base_atomic_type = new Type\Atomic\ObjectLike(
                             [
                                 $array_key_offset => clone $result_type,
@@ -693,7 +740,10 @@ class Reconciler
                             null
                         );
 
-                        $base_atomic_type->had_mixed_value = true;
+                        if (!$previous_key_type->isEmpty()) {
+                            $base_atomic_type->previous_key_type = $previous_key_type;
+                        }
+                        $base_atomic_type->previous_value_type = $previous_value_type;
                     } else {
                         $base_atomic_type = clone $base_atomic_type;
                         $base_atomic_type->properties[$array_key_offset] = clone $result_type;
@@ -708,8 +758,7 @@ class Reconciler
                             $key_parts,
                             $existing_types,
                             $changed_var_ids,
-                            $new_base_type,
-                            $has_not_isset
+                            $new_base_type
                         );
                     }
 

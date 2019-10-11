@@ -8,6 +8,7 @@ use function is_string;
 use PhpParser;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
 use Psalm\Internal\Codebase\CallMap;
 use Psalm\Issue\InvalidReturnType;
@@ -39,8 +40,9 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
             && isset($array_arg->inferredType)
             && $array_arg->inferredType->hasType('array')
             && ($array_atomic_type = $array_arg->inferredType->getTypes()['array'])
-            && ($array_atomic_type instanceof Type\Atomic\TArray ||
-                $array_atomic_type instanceof Type\Atomic\ObjectLike)
+            && ($array_atomic_type instanceof Type\Atomic\TArray
+                || $array_atomic_type instanceof Type\Atomic\ObjectLike
+                || $array_atomic_type instanceof Type\Atomic\TList)
             ? $array_atomic_type
             : null;
 
@@ -51,14 +53,27 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
         if ($first_arg_array instanceof Type\Atomic\TArray) {
             $inner_type = $first_arg_array->type_params[1];
             $key_type = clone $first_arg_array->type_params[0];
+        } elseif ($first_arg_array instanceof Type\Atomic\TList) {
+            $inner_type = $first_arg_array->type_param;
+            $key_type = Type::getInt();
         } else {
             $inner_type = $first_arg_array->getGenericValueType();
             $key_type = $first_arg_array->getGenericKeyType();
         }
 
         if (!isset($call_args[1])) {
-            $inner_type->removeType('null');
-            $inner_type->removeType('false');
+            if ($statements_source instanceof StatementsAnalyzer) {
+                $inner_type = \Psalm\Internal\Type\AssertionReconciler::reconcile(
+                    '!falsy',
+                    clone $inner_type,
+                    '',
+                    $statements_source,
+                    $context->inside_loop,
+                    [],
+                    null,
+                    $statements_source->getSuppressedIssues()
+                );
+            }
         } elseif (!isset($call_args[2])) {
             $function_call_arg = $call_args[1];
 
@@ -114,9 +129,9 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
 
             if ($first_arg_value instanceof PhpParser\Node\Expr\Closure
                 && isset($first_arg_value->inferredType)
-                && ($closure_atomic_type = $first_arg_value->inferredType->getTypes()['Closure'])
-                && $closure_atomic_type instanceof Type\Atomic\TFn
+                && ($closure_types = $first_arg_value->inferredType->getClosureTypes())
             ) {
+                $closure_atomic_type = \reset($closure_types);
                 $closure_return_type = $closure_atomic_type->return_type ?: Type::getMixed();
 
                 if ($closure_return_type->isVoid()) {

@@ -18,6 +18,7 @@ use Psalm\Type\Atomic\TEmptyMixed;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TGenericObject;
+use Psalm\Type\Atomic\TList;
 use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\GetClassT;
 use Psalm\Type\Atomic\GetTypeT;
@@ -31,6 +32,8 @@ use Psalm\Type\Atomic\TLiteralString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNever;
+use Psalm\Type\Atomic\TNonEmptyArray;
+use Psalm\Type\Atomic\TNonEmptyList;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
@@ -733,6 +736,10 @@ class TypeAnalyzer
         if ($input_type_part->shallowEquals($container_type_part)
             || ($input_type_part instanceof Type\Atomic\TCallableObjectLikeArray
                 && $container_type_part instanceof TArray)
+            || ($input_type_part instanceof TCallable
+                && $container_type_part instanceof TCallable)
+            || ($input_type_part instanceof Type\Atomic\TFn
+                && $container_type_part instanceof Type\Atomic\TFn)
             || (($input_type_part instanceof TNamedObject
                     || ($input_type_part instanceof TTemplateParam
                         && $input_type_part->as->hasObjectType())
@@ -1032,9 +1039,14 @@ class TypeAnalyzer
         }
 
         if ($container_type_part instanceof TIterable) {
-            if ($input_type_part instanceof TArray || $input_type_part instanceof ObjectLike) {
+            if ($input_type_part instanceof TArray
+                || $input_type_part instanceof ObjectLike
+                || $input_type_part instanceof TList
+            ) {
                 if ($input_type_part instanceof ObjectLike) {
                     $input_type_part = $input_type_part->getGenericArrayType();
+                } elseif ($input_type_part instanceof TList) {
+                    $input_type_part = new TArray([Type::getInt(), $input_type_part->type_param]);
                 }
 
                 $all_types_contain = true;
@@ -1327,16 +1339,43 @@ class TypeAnalyzer
 
         if ($container_type_part instanceof TCallable &&
             (
-                $input_type_part instanceof TString ||
-                $input_type_part instanceof TArray ||
-                $input_type_part instanceof ObjectLike ||
-                (
+                $input_type_part instanceof TString
+                || $input_type_part instanceof TArray
+                || $input_type_part instanceof ObjectLike
+                || $input_type_part instanceof TList
+                || (
                     $input_type_part instanceof TNamedObject &&
                     $codebase->classExists($input_type_part->value) &&
                     $codebase->methodExists($input_type_part->value . '::__invoke')
                 )
             )
         ) {
+            if ($input_type_part instanceof TList) {
+                if ($input_type_part->type_param->isMixed()
+                    || $input_type_part->type_param->hasScalar()
+                ) {
+                    if ($atomic_comparison_result) {
+                        $atomic_comparison_result->type_coerced_from_mixed = true;
+                        $atomic_comparison_result->type_coerced = true;
+                    }
+
+                    return false;
+                }
+
+                if (!$input_type_part->type_param->hasString()) {
+                    return false;
+                }
+
+                if (!$input_type_part instanceof Type\Atomic\TCallableList) {
+                    if ($atomic_comparison_result) {
+                        $atomic_comparison_result->type_coerced_from_mixed = true;
+                        $atomic_comparison_result->type_coerced = true;
+                    }
+
+                    return false;
+                }
+            }
+
             if ($input_type_part instanceof TArray) {
                 if ($input_type_part->type_params[1]->isMixed()
                     || $input_type_part->type_params[1]->hasScalar()
@@ -1553,7 +1592,7 @@ class TypeAnalyzer
                     $function_storage->return_type,
                     $function_storage->pure
                 );
-            } catch (\Exception $e) {
+            } catch (\UnexpectedValueException $e) {
                 if (CallMap::inCallMap($input_type_part->value)) {
                     $args = [];
 
@@ -1591,13 +1630,26 @@ class TypeAnalyzer
             if ($method_id = self::getCallableMethodIdFromObjectLike($input_type_part)) {
                 try {
                     $method_storage = $codebase->methods->getStorage($method_id);
+                    list($method_fqcln) = \explode('::', $method_id);
+
+                    $converted_return_type = null;
+
+                    if ($method_storage->return_type) {
+                        $converted_return_type = ExpressionAnalyzer::fleshOutType(
+                            $codebase,
+                            $method_storage->return_type,
+                            $method_fqcln,
+                            $method_fqcln,
+                            null
+                        );
+                    }
 
                     return new TCallable(
                         'callable',
                         $method_storage->params,
-                        $method_storage->return_type
+                        $converted_return_type
                     );
-                } catch (\Exception $e) {
+                } catch (\UnexpectedValueException $e) {
                     // do nothing
                 }
             }
@@ -1700,6 +1752,10 @@ class TypeAnalyzer
                             if (is_string($key)) {
                                 $generic_params[] = $value;
                             }
+                        }
+
+                        if (!$generic_params) {
+                            throw new \UnexpectedValueException('$generic_params should not be empty');
                         }
 
                         $input_type_part = new TGenericObject(
@@ -1818,6 +1874,7 @@ class TypeAnalyzer
                         }
 
                         if ($atomic_comparison_result->replacement_atomic_type instanceof TGenericObject) {
+                            /** @psalm-suppress PropertyTypeCoercion */
                             $atomic_comparison_result->replacement_atomic_type->type_params[$i]
                                 = clone $container_param;
                         }
@@ -1870,8 +1927,48 @@ class TypeAnalyzer
             }
         }
 
-        if (($input_type_part instanceof TArray || $input_type_part instanceof ObjectLike)
-            && ($container_type_part instanceof TArray || $container_type_part instanceof ObjectLike)
+        if ($container_type_part instanceof TList
+            && $input_type_part instanceof ObjectLike
+        ) {
+            if ($input_type_part->is_list) {
+                $input_type_part = $input_type_part->getList();
+            } else {
+                return false;
+            }
+        }
+
+        if ($container_type_part instanceof TList
+            && $input_type_part instanceof TArray
+            && $input_type_part->type_params[1]->isEmpty()
+        ) {
+            return !$container_type_part instanceof TNonEmptyList;
+        }
+
+        if ($input_type_part instanceof TList
+            && $container_type_part instanceof TList
+        ) {
+            if (!self::isContainedBy(
+                $codebase,
+                $input_type_part->type_param,
+                $container_type_part->type_param,
+                $input_type_part->type_param->ignore_nullable_issues,
+                $input_type_part->type_param->ignore_falsable_issues,
+                $atomic_comparison_result,
+                $allow_interface_equality
+            )) {
+                return false;
+            }
+
+            return $input_type_part instanceof TNonEmptyList
+                || !$container_type_part instanceof TNonEmptyList;
+        }
+
+        if (($input_type_part instanceof TArray
+                || $input_type_part instanceof ObjectLike
+                || $input_type_part instanceof TList)
+            && ($container_type_part instanceof TArray
+                || $container_type_part instanceof ObjectLike
+                || $container_type_part instanceof TList)
         ) {
             if ($container_type_part instanceof ObjectLike) {
                 $generic_container_type_part = $container_type_part->getGenericArrayType();
@@ -1890,6 +1987,7 @@ class TypeAnalyzer
                 );
 
                 if (!$input_type_part instanceof ObjectLike
+                    && !$input_type_part instanceof TList
                     && !$input_type_part->type_params[0]->hasMixed()
                     && !($input_type_part->type_params[1]->isEmpty()
                         && $container_params_can_be_undefined)
@@ -1903,6 +2001,21 @@ class TypeAnalyzer
 
             if ($input_type_part instanceof ObjectLike) {
                 $input_type_part = $input_type_part->getGenericArrayType();
+            }
+
+            if ($container_type_part instanceof TList) {
+                $all_types_contain = false;
+                $atomic_comparison_result->type_coerced = true;
+
+                $container_type_part = new TArray([Type::getInt(), clone $container_type_part->type_param]);
+            }
+
+            if ($input_type_part instanceof TList) {
+                if ($input_type_part instanceof TNonEmptyList) {
+                    $input_type_part = new TNonEmptyArray([Type::getInt(), clone $input_type_part->type_param]);
+                } else {
+                    $input_type_part = new TArray([Type::getInt(), clone $input_type_part->type_param]);
+                }
             }
 
             $any_scalar_param_match = false;
@@ -1978,7 +2091,9 @@ class TypeAnalyzer
 
         if ($container_type_part instanceof Type\Atomic\TNonEmptyArray
             && !$input_type_part instanceof Type\Atomic\TNonEmptyArray
-            && !($input_type_part instanceof ObjectLike && $input_type_part->sealed)
+            && !($input_type_part instanceof ObjectLike
+                && ($input_type_part->sealed || $input_type_part->previous_value_type)
+            )
         ) {
             if ($all_types_contain) {
                 $atomic_comparison_result->type_coerced = true;

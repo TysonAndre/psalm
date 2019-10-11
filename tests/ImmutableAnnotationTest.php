@@ -127,28 +127,6 @@ class ImmutableAnnotationTest extends TestCase
 
                         public function withBar(string $bar): self {
                             $new = new Foo("hello");
-                            /** @psalm-suppress InaccessibleProperty */
-                            $new->bar = $bar;
-
-                            return $new;
-                        }
-                    }'
-            ],
-            'allowClone' => [
-                '<?php
-                    /**
-                     * @psalm-immutable
-                     */
-                    class Foo {
-                        protected string $bar;
-
-                        public function __construct(string $bar) {
-                            $this->bar = $bar;
-                        }
-
-                        public function withBar(string $bar): self {
-                            $new = clone $this;
-                            /** @psalm-suppress InaccessibleProperty */
                             $new->bar = $bar;
 
                             return $new;
@@ -218,6 +196,61 @@ class ImmutableAnnotationTest extends TestCase
                             return $this->data;
                         }
                     }'
+            ],
+            'allowMethodOverriding' => [
+                '<?php
+                    class A {
+                        private string $a;
+
+                        public function __construct(string $a) {
+                            $this->a = $a;
+                        }
+
+                        public function getA() : string {
+                            return $this->a;
+                        }
+                    }
+
+                    /** @method string getA() */
+                    class B extends A {}',
+            ],
+            'immutableClassWithCloneAndPropertyChange' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Foo {
+                        protected string $bar;
+
+                        public function __construct(string $bar) {
+                            $this->bar = $bar;
+                        }
+
+                        public function withBar(string $bar): self {
+                            $new = clone $this;
+                            $new->bar = $bar;
+                            return $new;
+                        }
+                    }',
+            ],
+            'immutableClassWithCloneAndPropertyAppend' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Foo {
+                        protected string $bar;
+
+                        public function __construct(string $bar) {
+                            $this->bar = $bar;
+                        }
+
+                        public function withBar(string $bar): self {
+                            $new = clone $this;
+                            $new->bar .= $bar;
+                            return $new;
+                        }
+                    }',
             ],
         ];
     }
@@ -350,6 +383,36 @@ class ImmutableAnnotationTest extends TestCase
                         public string $a = "hello";
                     }',
                 'error_message' => 'ImpurePropertyAssignment',
+            ],
+            'mustBeImmutableLikeInterfaces' => [
+                '<?php
+                    /** @psalm-immutable */
+                    interface SomethingImmutable {
+                        public function someInteger() : int;
+                    }
+
+                    class MutableImplementation implements SomethingImmutable {
+                        private int $counter = 0;
+                        public function someInteger() : int {
+                            return ++$this->counter;
+                        }
+                    }',
+                'error_message' => 'MissingImmutableAnnotation',
+            ],
+            'inheritImmutabilityFromParent' => [
+                '<?php
+                    /** @psalm-immutable */
+                    abstract class SomethingImmutable {
+                        abstract public function someInteger() : int;
+                    }
+
+                    class MutableImplementation extends SomethingImmutable {
+                        private int $counter = 0;
+                        public function someInteger() : int {
+                            return ++$this->counter;
+                        }
+                    }',
+                'error_message' => 'MissingImmutableAnnotation',
             ],
         ];
     }

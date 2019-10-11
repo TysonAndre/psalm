@@ -6,7 +6,7 @@
  * @param mixed           $search_value
  * @param bool            $strict
  *
- * @return array<int, T>
+ * @return list<T>
  * @psalm-pure
  */
 function array_keys(array $arr, $search_value = null, bool $strict = false)
@@ -14,28 +14,17 @@ function array_keys(array $arr, $search_value = null, bool $strict = false)
 }
 
 /**
- * @psalm-template T
- *
- * @param array<mixed, T> $arr
- *
- * @return array<int, T>
- * @psalm-pure
- */
-function array_values(array $arr)
-{
-}
-
-/**
  * @psalm-template TKey as array-key
  * @psalm-template TValue
  *
  * @param array<TKey, TValue> $arr
- * @param int $sort_flags
+ * @param array $arr2
+ * @param array ...$arr3
  *
  * @return array<TKey, TValue>
  * @psalm-pure
  */
-function array_unique(array $arr, int $sort_flags = 0)
+function array_intersect(array $arr, array $arr2, array ...$arr3)
 {
 }
 
@@ -45,29 +34,12 @@ function array_unique(array $arr, int $sort_flags = 0)
  *
  * @param array<TKey, TValue> $arr
  * @param array $arr2
- * @param array|null $arr3
- * @param array|null $arr4
+ * @param array ...$arr3
  *
  * @return array<TKey, TValue>
  * @psalm-pure
  */
-function array_intersect(array $arr, array $arr2, array $arr3 = null, array $arr4 = null)
-{
-}
-
-/**
- * @psalm-template TKey as array-key
- * @psalm-template TValue
- *
- * @param array<TKey, TValue> $arr
- * @param array $arr2
- * @param array|null $arr3
- * @param array|null $arr4
- *
- * @return array<TKey, TValue>
- * @psalm-pure
- */
-function array_intersect_key(array $arr, array $arr2, array $arr3 = null, array $arr4 = null)
+function array_intersect_key(array $arr, array $arr2, array ...$arr3)
 {
 }
 
@@ -92,13 +64,12 @@ function array_combine(array $arr, array $arr2)
  *
  * @param array<TKey, TValue> $arr
  * @param array $arr2
- * @param array|null $arr3
- * @param array|null $arr4
+ * @param array ...$arr3
  *
  * @return array<TKey, TValue>
  * @psalm-pure
  */
-function array_diff(array $arr, array $arr2, array $arr3 = null, array $arr4 = null)
+function array_diff(array $arr, array $arr2, array ...$arr3)
 {
 }
 
@@ -108,13 +79,12 @@ function array_diff(array $arr, array $arr2, array $arr3 = null, array $arr4 = n
  *
  * @param array<TKey, TValue> $arr
  * @param array $arr2
- * @param array|null $arr3
- * @param array|null $arr4
+ * @param array ...$arr3
  *
  * @return array<TKey, TValue>
  * @psalm-pure
  */
-function array_diff_key(array $arr, array $arr2, array $arr3 = null, array $arr4 = null)
+function array_diff_key(array $arr, array $arr2, array ...$arr3)
 {
 }
 
@@ -141,18 +111,6 @@ function array_flip(array $arr)
  * @psalm-pure
  */
 function key($arr)
-{
-}
-
-/**
- * @psalm-template TValue
- *
- * @param TValue $value
- *
- * @return array<int, TValue>
- * @psalm-pure
- */
-function array_fill(int $start_index, int $num, $value) : array
 {
 }
 

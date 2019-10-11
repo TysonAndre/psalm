@@ -197,7 +197,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $a = array_keys(["a" => 1, "b" => 2]);',
                 'assertions' => [
-                    '$a' => 'array<int, string>',
+                    '$a' => 'list<string>',
                 ],
             ],
             'arrayKeysMixed' => [
@@ -206,15 +206,17 @@ class FunctionCallTest extends TestCase
                     $b = ["a" => 5];
                     $a = array_keys($b);',
                 'assertions' => [
-                    '$a' => 'array<int, array-key>',
+                    '$a' => 'list<array-key>',
                 ],
                 'error_levels' => ['MixedArgument'],
             ],
             'arrayValues' => [
                 '<?php
-                    $b = array_values(["a" => 1, "b" => 2]);',
+                    $b = array_values(["a" => 1, "b" => 2]);
+                    $c = array_values(["a" => "hello", "b" => "jello"]);',
                 'assertions' => [
-                    '$b' => 'array<int, int>',
+                    '$b' => 'non-empty-list<int>',
+                    '$c' => 'non-empty-list<string>',
                 ],
             ],
             'arrayCombine' => [
@@ -265,6 +267,16 @@ class FunctionCallTest extends TestCase
                 'assertions' => [
                     '$d' => 'array<string, int>',
                 ],
+            ],
+            'arrayDiffIsVariadic' => [
+                '<?php
+                    array_diff([], [], [], [], []);',
+                'assertions' => [],
+            ],
+            'arrayDiffKeyIsVariadic' => [
+                '<?php
+                    array_diff_key([], [], [], [], []);',
+                'assertions' => [],
             ],
             'arrayPopMixed' => [
                 '<?php
@@ -622,8 +634,8 @@ class FunctionCallTest extends TestCase
                 'assertions' => [
                     '$vars' => 'array{x: string, y: string}',
                     '$c' => 'string',
-                    '$e' => 'array<int, string>',
-                    '$f' => 'array<int, string>|string',
+                    '$e' => 'list<string>',
+                    '$f' => 'list<string>|string',
                 ],
             ],
             'arrayKeysNoEmpty' => [
@@ -979,6 +991,21 @@ class FunctionCallTest extends TestCase
                     '$a' => 'array<int, string>',
                 ],
             ],
+            'iteratorToArrayWithGetIteratorReturningList' => [
+                '<?php
+                    class C implements IteratorAggregate {
+                        /**
+                         * @return Traversable<int,string>
+                         */
+                        public function getIterator() {
+                            yield 1 => "1";
+                        }
+                    }
+                    $a = iterator_to_array(new C, false);',
+                'assertions' => [
+                    '$a' => 'list<string>',
+                ],
+            ],
             'arrayColumnInference' => [
                 '<?php
                     function makeMixedArray(): array { return []; }
@@ -1031,6 +1058,16 @@ class FunctionCallTest extends TestCase
                 'assertions' => [
                     '$bar' => 'array<int, int>',
                 ],
+            ],
+            'arrayIntersectIsVariadic' => [
+                '<?php
+                    array_intersect([], [], [], [], []);',
+                'assertions' => [],
+            ],
+            'arrayIntersectKeyIsVariadic' => [
+                '<?php
+                    array_intersect_key([], [], [], [], []);',
+                'assertions' => [],
             ],
             'arrayReduce' => [
                 '<?php
@@ -1272,8 +1309,8 @@ class FunctionCallTest extends TestCase
                     $d = array_slice($a, 1, 2);',
                 'assertions' => [
                     '$b' => 'non-empty-array<string, int>',
-                    '$c' => 'array<int, int>',
-                    '$d' => 'array<int, int>',
+                    '$c' => 'non-empty-array<string, int>',
+                    '$d' => 'non-empty-array<string, int>',
                 ],
             ],
             'printrOutput' => [
@@ -1858,6 +1895,25 @@ class FunctionCallTest extends TestCase
                     $a = print_r([], 1);
                     echo $a;',
             ],
+            'dontCoerceCallMapArgs' => [
+                '<?php
+                    function getStr() : ?string {
+                        return rand(0,1) ? "test" : null;
+                    }
+
+                    function test() : void {
+                        $g = getStr();
+                        /** @psalm-suppress PossiblyNullArgument */
+                        $x = strtoupper($g);
+                        $c = "prefix " . (strtoupper($g ?? "") === "x" ? "xa" : "ya");
+                        echo "$x, $c\n";
+                    }'
+            ],
+            'mysqliRealConnectFunctionAllowsNullParameters' => [
+                '<?php
+                    $mysqli = mysqli_init();
+                    mysqli_real_connect($mysqli, null, \'test\', null);',
+            ],
         ];
     }
 
@@ -2428,6 +2484,28 @@ class FunctionCallTest extends TestCase
                         array_unshift($data, $a);
                     }',
                 'error_message' => 'UndefinedVariable',
+            ],
+            'coerceCallMapArgsInStrictMode' => [
+                '<?php
+                    declare(strict_types=1);
+
+                    function getStr() : ?string {
+                        return rand(0,1) ? "test" : null;
+                    }
+
+                    function test() : void {
+                        $g = getStr();
+                        /** @psalm-suppress PossiblyNullArgument */
+                        $x = strtoupper($g);
+                        $c = "prefix " . (strtoupper($g ?? "") === "x" ? "xa" : "ya");
+                        echo "$x, $c\n";
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'noCrashOnEmptyArrayPush' => [
+                '<?php
+                    array_push();',
+                'error_message' => 'TooFewArguments',
             ],
         ];
     }

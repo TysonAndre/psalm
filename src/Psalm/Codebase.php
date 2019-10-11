@@ -415,7 +415,7 @@ class Codebase
 
         $this->file_reference_provider->updateReferenceCache($this, $referenced_files);
 
-        $this->populator->populateCodebase($this);
+        $this->populator->populateCodebase();
     }
 
     /** @return void */
@@ -480,7 +480,7 @@ class Codebase
         $has_changes = $this->scanner->scanFiles($this->classlikes, 1);
 
         if ($has_changes) {
-            $this->populator->populateCodebase($this);
+            $this->populator->populateCodebase();
         }
     }
 
@@ -497,7 +497,7 @@ class Codebase
     /**
      * @param  string $file_path
      *
-     * @return array<int, PhpParser\Node\Stmt>
+     * @return list<PhpParser\Node\Stmt>
      */
     public function getStatementsForFile($file_path)
     {

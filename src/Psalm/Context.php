@@ -16,6 +16,8 @@ use Psalm\Internal\Type\AssertionReconciler;
 use Psalm\Type\Union;
 use function strpos;
 use function strtolower;
+use function array_search;
+use function is_int;
 
 class Context
 {
@@ -141,7 +143,7 @@ class Context
     /**
      * A list of clauses in Conjunctive Normal Form
      *
-     * @var array<int, Clause>
+     * @var list<Clause>
      */
     public $clauses = [];
 
@@ -486,22 +488,24 @@ class Context
      */
     public function removeReconciledClauses(array $changed_var_ids)
     {
-        $this->clauses = array_filter(
-            $this->clauses,
-            /** @return bool */
-            function (Clause $c) use ($changed_var_ids) {
-                if ($c->wedge) {
+        $this->clauses = \array_values(
+            array_filter(
+                $this->clauses,
+                /** @return bool */
+                function (Clause $c) use ($changed_var_ids) {
+                    if ($c->wedge) {
+                        return true;
+                    }
+
+                    foreach ($c->possibilities as $key => $_) {
+                        if (in_array($key, $changed_var_ids, true)) {
+                            return false;
+                        }
+                    }
+
                     return true;
                 }
-
-                foreach ($c->possibilities as $key => $_) {
-                    if (in_array($key, $changed_var_ids, true)) {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
+            )
         );
     }
 
@@ -511,7 +515,7 @@ class Context
      * @param  Union|null             $new_type
      * @param  StatementsAnalyzer|null $statements_analyzer
      *
-     * @return array<int, Clause>
+     * @return list<Clause>
      */
     public static function filterClauses(
         $remove_var_id,
@@ -731,7 +735,7 @@ class Context
 
         $stripped_var = preg_replace('/(->|\[).*$/', '', $var_name);
 
-        if ($stripped_var[0] === '$' && ($stripped_var !== '$this' || $var_name !== $stripped_var)) {
+        if ($stripped_var !== '$this' || $var_name !== $stripped_var) {
             $this->referenced_var_ids[$var_name] = true;
 
             if (!isset($this->vars_possibly_in_scope[$var_name])
@@ -812,7 +816,14 @@ class Context
 
         $issue_type = $this->is_global ? 'UncaughtThrowInGlobalScope' : 'MissingThrowsDocblock';
         $suppressed_issues = $statements_analyzer->getSuppressedIssues();
-        if (in_array($issue_type, $suppressed_issues, true)) {
+        $suppressed_issue_position = array_search($issue_type, $suppressed_issues, true);
+        if ($suppressed_issue_position !== false) {
+            if (is_int($suppressed_issue_position)) {
+                $file = $statements_analyzer->getFileAnalyzer()->getFilePath();
+                IssueBuffer::addUsedSuppressions([
+                    $file => [$suppressed_issue_position => true],
+                ]);
+            }
             return true;
         }
 

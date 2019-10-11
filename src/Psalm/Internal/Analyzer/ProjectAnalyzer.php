@@ -25,6 +25,7 @@ use Psalm\Issue\PossiblyUndefinedGlobalVariable;
 use Psalm\Issue\PossiblyUndefinedVariable;
 use Psalm\Issue\PossiblyUnusedMethod;
 use Psalm\Issue\PossiblyUnusedProperty;
+use Psalm\Issue\UnnecessaryVarAnnotation;
 use Psalm\Issue\UnusedMethod;
 use Psalm\Issue\UnusedProperty;
 use Psalm\Issue\UnusedVariable;
@@ -208,6 +209,7 @@ class ProjectAnalyzer
         UnusedMethod::class,
         UnusedProperty::class,
         UnusedVariable::class,
+        UnnecessaryVarAnnotation::class,
     ];
 
     /**
@@ -1349,7 +1351,6 @@ class ProjectAnalyzer
             $ret = @shell_exec('nproc');
             if (is_string($ret)) {
                 $ret = trim($ret);
-                /** @var int|false */
                 $tmp = filter_var($ret, FILTER_VALIDATE_INT);
                 if (is_int($tmp)) {
                     return $tmp;
@@ -1360,7 +1361,6 @@ class ProjectAnalyzer
         $ret = @shell_exec('sysctl -n hw.ncpu');
         if (is_string($ret)) {
             $ret = trim($ret);
-            /** @var int|false */
             $tmp = filter_var($ret, FILTER_VALIDATE_INT);
             if (is_int($tmp)) {
                 return $tmp;

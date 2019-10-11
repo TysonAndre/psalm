@@ -1417,57 +1417,6 @@ class TypeReconciliationTest extends TestCase
                         if ($a[0] === 5) {}
                     }'
             ],
-            'assertHasArrayAccess' => [
-                '<?php
-                    /**
-                     * @return array|ArrayAccess
-                     */
-                    function getBar(array $array) {
-                        if (isset($array[\'foo\'][\'bar\'])) {
-                            return $array[\'foo\'];
-                        }
-
-                        return [];
-                    }',
-            ],
-            'assertHasArrayAccessWithType' => [
-                '<?php
-                    /**
-                     * @param array<string, array<string, string>> $array
-                     * @return array<string, string>
-                     */
-                    function getBar(array $array) : array {
-                        if (isset($array[\'foo\'][\'bar\'])) {
-                            return $array[\'foo\'];
-                        }
-
-                        return [];
-                    }',
-            ],
-            'assertHasArrayAccessOnSimpleXMLElement' => [
-                '<?php
-                    function getBar(SimpleXMLElement $e, string $s) : void {
-                        if (isset($e[$s])) {
-                            echo (string) $e[$s];
-                        }
-
-                        if (isset($e[\'foo\'])) {
-                            echo (string) $e[\'foo\'];
-                        }
-
-                        if (isset($e->bar)) {}
-                    }',
-            ],
-            'assertArrayOffsetToTraversable' => [
-                '<?php
-                    function render(array $data): ?Traversable {
-                        if ($data["o"] instanceof Traversable) {
-                            return $data["o"];
-                        }
-
-                        return null;
-                    }'
-            ],
             'nullCoalesceTypedArrayValue' => [
                 '<?php
                     /** @param string[] $arr */
@@ -1480,6 +1429,73 @@ class TypeReconciliationTest extends TestCase
                     function foo(?string $s) : string {
                         return $s ?? "bar";
                     }',
+            ],
+            'looseEqualityShouldNotConvertMixedToLiteralString' => [
+                '<?php
+                    /** @var mixed */
+                    $int = 0;
+                    $string = "0";
+
+                    function takes_string(string $string) : void {}
+                    function takes_int(int $int) : void {}
+
+                    if ($int == $string) {
+                        /** @psalm-suppress MixedArgument */
+                        takes_int($int);
+                    }'
+            ],
+            'looseEqualityShouldNotConverMixedToString' => [
+                '<?php
+                    /** @var mixed */
+                    $int = 0;
+                    /** @var string */
+                    $string = "0";
+
+                    function takes_string(string $string) : void {}
+                    function takes_int(int $int) : void {}
+
+                    if ($int == $string) {
+                        /** @psalm-suppress MixedArgument */
+                        takes_int($int);
+                    }'
+            ],
+            'looseEqualityShouldNotConvertIntToString' => [
+                '<?php
+                    /** @var int */
+                    $int = 0;
+                    /** @var string */
+                    $string = "0";
+
+                    function takes_string(string $string) : void {}
+                    function takes_int(int $int) : void {}
+
+                    if ($int == $string) {
+                        /** @psalm-suppress MixedArgument */
+                        takes_int($int);
+                    }'
+            ],
+            'removeAllObjects' => [
+                '<?php
+                    class A {}
+                    class B extends A {
+                        public function foo() : void {}
+                    }
+                    class BChild extends B {}
+                    class C extends A {}
+                    class D extends A {}
+
+                    /** @param B|C|D $a */
+                    function foo(A $a) : B {
+                        if ($a instanceof C) {
+                            $a = new B();
+                        } elseif ($a instanceof D) {
+                            $a = new B();
+                        } elseif (!$a instanceof BChild) {
+                            // do something
+                        }
+
+                        return $a;
+                    }'
             ],
         ];
     }

@@ -54,6 +54,9 @@
         <xs:attribute name="maxStringLength" type="xs:string" />
         <xs:attribute name="resolveFromConfigFile" type="xs:string" />
         <xs:attribute name="includePhpVersionsInErrorBaseline" type="xs:string" />
+        <xs:attribute name="loadXdebugStub" type="xs:string" />
+        <xs:attribute name="ensureArrayStringOffsetsExist" type="xs:string" />
+        <xs:attribute name="ensureArrayIntOffsetsExist" type="xs:string" />
     </xs:complexType>
 
     <xs:complexType name="ProjectFilesType">
@@ -228,6 +231,7 @@
             <xs:element name="MissingConstructor" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingDependency" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingFile" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="MissingImmutableAnnotation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingParamType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingPropertyType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MissingReturnType" type="IssueHandlerType" minOccurs="0" />
@@ -346,6 +350,7 @@
             <xs:element name="UnrecognizedStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnresolvableInclude" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnevaluatedCode" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="UnnecessaryVarAnnotation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedClosureParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedFunctionCall" type="FunctionIssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedMethodCall" type="MethodIssueHandlerType" minOccurs="0" />

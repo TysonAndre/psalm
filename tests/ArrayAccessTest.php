@@ -9,6 +9,204 @@ class ArrayAccessTest extends TestCase
     use Traits\ValidCodeAnalysisTestTrait;
 
     /**
+     * @return void
+     */
+    public function testEnsureArrayOffsetsExist()
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('PossiblyUndefinedArrayOffset');
+
+        \Psalm\Config::getInstance()->ensure_array_string_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param array<string, string> $arr */
+                function takesArrayIteratorOfString(array $arr): void {
+                    echo $arr["hello"];
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testEnsureArrayOffsetsExistWithIssetCheck()
+    {
+        \Psalm\Config::getInstance()->ensure_array_string_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param array<string, string> $arr */
+                function takesArrayIteratorOfString(array $arr): void {
+                    if (isset($arr["hello"])) {
+                        echo $arr["hello"];
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testDontEnsureArrayOffsetsExist()
+    {
+        \Psalm\Config::getInstance()->ensure_array_string_offsets_exist = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param array<string, string> $arr */
+                function takesArrayIteratorOfString(array $arr): void {
+                    echo $arr["hello"];
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testEnsureArrayOffsetsExistWithIssetCheckFollowedByIsArray()
+    {
+        \Psalm\Config::getInstance()->ensure_array_string_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /** @param array<string, mixed> $s */
+                function foo(array $s) : void {
+                    if (isset($s["a"]) && \is_array($s["a"])) {}
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testComplainAfterFirstIsset()
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('PossiblyUndefinedArrayOffset');
+
+        \Psalm\Config::getInstance()->ensure_array_string_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                    function foo(array $arr) : void {
+                        if (isset($arr["a"]) && $arr["b"]) {}
+                    }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testEnsureArrayIntOffsetsExist()
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('PossiblyUndefinedArrayOffset');
+
+        \Psalm\Config::getInstance()->ensure_array_int_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function takesString(string $s): void {}
+
+                /** @param array<int, string> $arr */
+                function takesArrayIteratorOfString(array $arr): void {
+                    echo $arr[4];
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testNoIssueWhenUsingArrayValuesOnNonEmptyArray()
+    {
+        \Psalm\Config::getInstance()->ensure_array_int_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /** @param string[][] $arr */
+                function foo(array $arr) : void {
+                    if (count($arr) === 1 && count(array_values($arr)[0]) === 1) {}
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testEnsureListOffsetExistsNotEmpty()
+    {
+        \Psalm\Config::getInstance()->ensure_array_int_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /** @param list<string> $arr */
+                function takesList(array $arr) : void {
+                    if ($arr) {
+                        echo $arr[0];
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testEnsureListOffsetExistsAfterArrayPop()
+    {
+        \Psalm\Config::getInstance()->ensure_array_int_offsets_exist = true;
+
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('PossiblyUndefinedArrayOffset');
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /** @param list<string> $arr */
+                function takesList(array $arr) : void {
+                    if ($arr) {
+                        echo $arr[0];
+                        array_pop($arr);
+                        echo $arr[0];
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()
@@ -527,6 +725,13 @@ class ArrayAccessTest extends TestCase
                     /** @psalm-suppress MixedPropertyFetch */
                     print_r([&$a->foo->bar]);',
             ],
+            'accessOffsetOnList' => [
+                '<?php
+                    /** @param list<int> $arr */
+                    function foo(array $arr) : void {
+                        echo $arr[3] ?? null;
+                    }',
+            ],
         ];
     }
 
@@ -747,6 +952,19 @@ class ArrayAccessTest extends TestCase
 
                     $array[$a] = "b";',
                 'error_message' => 'UndefinedGlobalVariable',
+            ],
+            'unsetListElementShouldChangeToArray' => [
+                '<?php
+                    /**
+                     * @param list<string> $arr
+                     * @return list<string>
+                     */
+                    function takesList(array $arr) : array {
+                        unset($arr[0]);
+
+                        return $arr;
+                    }',
+                'error_message' => 'LessSpecificReturnStatement',
             ],
         ];
     }

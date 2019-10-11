@@ -187,6 +187,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     && !$storage->mutation_free_inferred
                 ) {
                     $context->vars_in_scope['$this']->external_mutation_free = true;
+
+                    if ($storage->mutation_free) {
+                        $context->vars_in_scope['$this']->mutation_free = true;
+                    }
                 }
 
                 $context->vars_possibly_in_scope['$this'] = true;
@@ -299,7 +303,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 $closure_return_type = Type::getMixed();
             }
 
-            /** @var PhpParser\Node\Expr\Closure $this->function */
             $this->function->inferredType = new Type\Union([
                 new Type\Atomic\TFn(
                     'Closure',
@@ -561,8 +564,11 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                         ))
                 ) {
                     if ($this->function->inferredType) {
-                        /** @var Type\Atomic\TFn */
-                        $closure_atomic = $this->function->inferredType->getTypes()['Closure'];
+                        /**
+                         * @psalm-suppress PossiblyUndefinedArrayOffset
+                         * @var Type\Atomic\TFn
+                         */
+                        $closure_atomic = \array_values($this->function->inferredType->getTypes())[0];
                         $closure_atomic->return_type = $closure_return_type;
                     }
                 }
@@ -619,7 +625,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             foreach ($storage->throws as $expected_exception => $_) {
                 if ($expected_exception === $possibly_thrown_exception
-                    || $codebase->classExtends($possibly_thrown_exception, $expected_exception)
+                    || $codebase->classExtendsOrImplements($possibly_thrown_exception, $expected_exception)
                 ) {
                     $is_expected = true;
                     break;
@@ -892,10 +898,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             if ($function_param->is_variadic) {
                 $var_type = new Type\Union([
-                    new Type\Atomic\TArray([
-                        Type::getInt(),
-                        $param_type,
-                    ]),
+                    new Type\Atomic\TList($param_type),
                 ]);
             }
 
@@ -923,9 +926,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 ];
             }
 
-            /**
-             * @var PhpParser\Node\Param
-             */
             $parser_param = $this->function->getParams()[$offset];
 
             if (!$function_param->type_location || !$function_param->location) {

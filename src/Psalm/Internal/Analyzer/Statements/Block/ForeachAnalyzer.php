@@ -10,6 +10,7 @@ use Psalm\Internal\Analyzer\Statements\Expression\AssignmentAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
@@ -21,6 +22,7 @@ use Psalm\Issue\PossiblyInvalidIterator;
 use Psalm\Issue\PossiblyNullIterator;
 use Psalm\Issue\PossibleRawObjectIteration;
 use Psalm\Issue\RawObjectIteration;
+use Psalm\Issue\UnnecessaryVarAnnotation;
 use Psalm\IssueBuffer;
 use Psalm\Internal\Scope\LoopScope;
 use Psalm\Type;
@@ -120,6 +122,8 @@ class ForeachAnalyzer
                 $statements_analyzer->getParentFQCLN()
             );
 
+            $type_location = null;
+
             if ($var_comment->type_start
                 && $var_comment->type_end
                 && $var_comment->line_number
@@ -131,18 +135,42 @@ class ForeachAnalyzer
                     $var_comment->line_number
                 );
 
-                $codebase->classlikes->handleDocblockTypeInMigration(
-                    $codebase,
-                    $statements_analyzer,
-                    $comment_type,
-                    $type_location,
-                    $context->calling_method_id
-                );
+                if ($codebase->alter_code) {
+                    $codebase->classlikes->handleDocblockTypeInMigration(
+                        $codebase,
+                        $statements_analyzer,
+                        $comment_type,
+                        $type_location,
+                        $context->calling_method_id
+                    );
+                }
             }
 
             if (isset($context->vars_in_scope[$var_comment->var_id])
                 || $statements_analyzer->isSuperGlobal($var_comment->var_id)
             ) {
+                if ($codebase->find_unused_variables
+                    && $doc_comment
+                    && $type_location
+                    && isset($context->vars_in_scope[$var_comment->var_id])
+                    && $context->vars_in_scope[$var_comment->var_id]->getId() === $comment_type->getId()
+                ) {
+                    $project_analyzer = $statements_analyzer->getProjectAnalyzer();
+
+                    if ($codebase->alter_code
+                        && isset($project_analyzer->getIssuesToFix()['UnnecessaryVarAnnotation'])
+                    ) {
+                        FileManipulationBuffer::addVarAnnotationToRemove($type_location);
+                    } elseif (IssueBuffer::accepts(
+                        new UnnecessaryVarAnnotation(
+                            'The @var annotation for ' . $var_comment->var_id . ' is unnecessary',
+                            $type_location
+                        )
+                    )) {
+                        // fall through
+                    }
+                }
+
                 $context->vars_in_scope[$var_comment->var_id] = $comment_type;
             }
         }
@@ -409,12 +437,22 @@ class ForeachAnalyzer
 
             if ($iterator_atomic_type instanceof Type\Atomic\TArray
                 || $iterator_atomic_type instanceof Type\Atomic\ObjectLike
+                || $iterator_atomic_type instanceof Type\Atomic\TList
             ) {
                 if ($iterator_atomic_type instanceof Type\Atomic\ObjectLike) {
                     if (!$iterator_atomic_type->sealed) {
                         $always_non_empty_array = false;
                     }
                     $iterator_atomic_type = $iterator_atomic_type->getGenericArrayType();
+                } elseif ($iterator_atomic_type instanceof Type\Atomic\TList) {
+                    if (!$iterator_atomic_type instanceof Type\Atomic\TNonEmptyList) {
+                        $always_non_empty_array = false;
+                    }
+
+                    $iterator_atomic_type = new Type\Atomic\TArray([
+                        Type::getInt(),
+                        $iterator_atomic_type->type_param
+                    ]);
                 } elseif (!$iterator_atomic_type instanceof Type\Atomic\TNonEmptyArray) {
                     $always_non_empty_array = false;
                 }
@@ -728,6 +766,7 @@ class ForeachAnalyzer
 
                                     // The collection might be an iterator, in which case
                                     // we want to call the iterator function
+                                    /** @psalm-suppress PossiblyUndefinedArrayOffset */
                                     if (!isset($generic_storage->template_type_extends['Traversable'])
                                         || ($generic_storage
                                                 ->template_type_extends['Traversable']['TKey']->isMixed()

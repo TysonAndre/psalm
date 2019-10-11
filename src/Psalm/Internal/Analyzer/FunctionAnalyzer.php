@@ -120,6 +120,12 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                                             ? new Type\Atomic\TLiteralInt($atomic_types['array']->count)
                                             : new Type\Atomic\TInt
                                     ]);
+                                } elseif ($atomic_types['array'] instanceof Type\Atomic\TNonEmptyList) {
+                                    return new Type\Union([
+                                        $atomic_types['array']->count !== null
+                                            ? new Type\Atomic\TLiteralInt($atomic_types['array']->count)
+                                            : new Type\Atomic\TInt
+                                    ]);
                                 } elseif ($atomic_types['array'] instanceof Type\Atomic\ObjectLike
                                     && $atomic_types['array']->sealed
                                 ) {
@@ -127,7 +133,9 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                                         new Type\Atomic\TLiteralInt(count($atomic_types['array']->properties))
                                     ]);
                                 }
-                            } elseif (isset($atomic_types['callable-array'])) {
+                            } elseif (isset($atomic_types['callable-array'])
+                                || isset($atomic_types['callable-list'])
+                            ) {
                                 return Type::getInt(false, 2);
                             }
                         }
@@ -248,19 +256,13 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                             }
 
                             return new Type\Union([
-                                new Type\Atomic\TNonEmptyArray([
-                                    Type::getInt(),
-                                    Type::getString()
-                                ])
+                                new Type\Atomic\TNonEmptyList(Type::getString())
                             ]);
                         } elseif (isset($call_args[0]->value->inferredType)
                             && $call_args[0]->value->inferredType->hasString()
                         ) {
                             $falsable_array = new Type\Union([
-                                new Type\Atomic\TNonEmptyArray([
-                                    Type::getInt(),
-                                    Type::getString()
-                                ]),
+                                new Type\Atomic\TNonEmptyList(Type::getString()),
                                 new Type\Atomic\TFalse
                             ]);
 
@@ -302,6 +304,7 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                         if (isset($first_arg->inferredType)) {
                             if ($first_arg->inferredType->hasArray()) {
+                                /** @psalm-suppress PossiblyUndefinedArrayOffset */
                                 $array_type = $first_arg->inferredType->getTypes()['array'];
                                 if ($array_type instanceof Type\Atomic\ObjectLike) {
                                     return $array_type->getGenericValueType();
@@ -309,6 +312,10 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                                 if ($array_type instanceof Type\Atomic\TArray) {
                                     return clone $array_type->type_params[1];
+                                }
+
+                                if ($array_type instanceof Type\Atomic\TList) {
+                                    return clone $array_type->type_param;
                                 }
                             } elseif ($first_arg->inferredType->hasScalarType() &&
                                 isset($call_args[1]) &&

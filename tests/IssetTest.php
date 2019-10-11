@@ -353,7 +353,17 @@ class IssetTest extends TestCase
                         echo $_GET["b"];
                     }',
             ],
-            'nestedArrayAccessInLoopAfterIsset' => [
+            'regularArrayAccessInLoopAfterIsset' => [
+                '<?php
+                    $arr = [];
+                    while (rand(0, 1)) {
+                        if (!isset($arr["a"]["b"])) {
+                            $arr["a"]["b"] = "foo";
+                        }
+                        echo $arr["a"]["b"];
+                    }',
+            ],
+            'conditionalArrayAccessInLoopAfterIssetWithAltAssignment' => [
                 '<?php
                     $arr = [];
                     while (rand(0, 1)) {
@@ -570,6 +580,62 @@ class IssetTest extends TestCase
                             // something else
                         }
                     }',
+            ],
+            'issetOnNestedObjectlikeOneLevel' => [
+                '<?php
+                    /**
+                     * @param array{a:array} $array
+                     * @return array{a:array{b:mixed}}
+                     * @throw \LogicException
+                     */
+                    function level3($array) {
+                        if (!isset($array["a"]["b"])) {
+                            throw new \LogicException();
+                        }
+                        return $array;
+                    }'
+            ],
+            'issetOnStringArrayShouldInformArrayness' => [
+                '<?php
+                    /**
+                     * @param string[] $a
+                     * @return array{b: string}
+                     */
+                    function foo(array $a) {
+                        if (isset($a["b"])) {
+                            return $a;
+                        }
+
+                        throw new \Exception("bad");
+                    }'
+            ],
+            'arrayKeyExistsOnStringArrayShouldInformArrayness' => [
+                '<?php
+                    /**
+                     * @param string[] $a
+                     * @return array{b: string}
+                     */
+                    function foo(array $a) {
+                        if (array_key_exists("b", $a)) {
+                            return $a;
+                        }
+
+                        throw new \Exception("bad");
+                    }'
+            ],
+            'issetOnArrayTwice' => [
+                '<?php
+                    function foo(array $options): void {
+                        if (!isset($options["a"])) {
+                            $options["a"] = "hello";
+                        }
+
+                        if (!isset($options["b"])) {
+                            $options["b"] = 1;
+                        }
+
+                        if ($options["b"] === 2) {}
+                    }'
             ],
         ];
     }

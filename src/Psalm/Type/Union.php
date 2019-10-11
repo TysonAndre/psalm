@@ -159,6 +159,11 @@ class Union
      */
     public $external_mutation_free = false;
 
+    /**
+     * @var bool
+     */
+    public $mutation_free = false;
+
     /** @var null|string */
     private $id;
 
@@ -171,6 +176,11 @@ class Union
      * @var ?array<\Psalm\Internal\Taint\Source>
      */
     public $sources;
+
+    /**
+     * @var bool
+     */
+    public $different = false;
 
     /**
      * Constructs an Union instance
@@ -615,7 +625,33 @@ class Union
      */
     public function hasCallableType()
     {
-        return isset($this->types['callable']) || isset($this->types['Closure']);
+        return $this->getCallableTypes() || $this->getClosureTypes();
+    }
+
+    /**
+     * @return array<Atomic\TCallable>
+     */
+    private function getCallableTypes()
+    {
+        return array_filter(
+            $this->types,
+            function ($type) {
+                return $type instanceof Atomic\TCallable;
+            }
+        );
+    }
+
+    /**
+     * @return array<Atomic\TFn>
+     */
+    public function getClosureTypes()
+    {
+        return array_filter(
+            $this->types,
+            function ($type) {
+                return $type instanceof Atomic\TFn;
+            }
+        );
     }
 
     /**
@@ -1049,9 +1085,12 @@ class Union
 
                                     if ($keyed_template instanceof Type\Atomic\ObjectLike
                                         || $keyed_template instanceof Type\Atomic\TArray
+                                        || $keyed_template instanceof Type\Atomic\TList
                                     ) {
                                         if ($keyed_template instanceof Type\Atomic\ObjectLike) {
                                             $key_type = $keyed_template->getGenericKeyType();
+                                        } elseif ($keyed_template instanceof Type\Atomic\TList) {
+                                            $key_type = Type::getInt();
                                         } else {
                                             $key_type = $keyed_template->type_params[0];
                                         }
@@ -1245,9 +1284,12 @@ class Union
 
                             if ($template_type instanceof Type\Atomic\ObjectLike
                                 || $template_type instanceof Type\Atomic\TArray
+                                || $template_type instanceof Type\Atomic\TList
                             ) {
                                 if ($template_type instanceof Type\Atomic\ObjectLike) {
                                     $key_type = $template_type->getGenericKeyType();
+                                } elseif ($template_type instanceof Type\Atomic\TList) {
+                                    $key_type = Type::getInt();
                                 } else {
                                     $key_type = clone $template_type->type_params[0];
                                 }
@@ -1275,13 +1317,26 @@ class Union
                             break;
                         }
 
-                        if ($input_key === 'Closure' && $key === 'callable') {
+                        if ($atomic_input_type instanceof Atomic\TFn && $atomic_type instanceof Atomic\TFn) {
+                            $matching_atomic_type = $atomic_input_type;
+                            break;
+                        }
+
+                        if ($atomic_input_type instanceof Atomic\TCallable
+                            && $atomic_type instanceof Atomic\TCallable
+                        ) {
+                            $matching_atomic_type = $atomic_input_type;
+                            break;
+                        }
+
+                        if ($atomic_input_type instanceof Atomic\TFn && $atomic_type instanceof Atomic\TCallable) {
                             $matching_atomic_type = $atomic_input_type;
                             break;
                         }
 
                         if (($atomic_input_type instanceof Type\Atomic\TArray
-                                || $atomic_input_type instanceof Type\Atomic\ObjectLike)
+                                || $atomic_input_type instanceof Type\Atomic\ObjectLike
+                                || $atomic_input_type instanceof Type\Atomic\TList)
                             && $key === 'iterable'
                         ) {
                             $matching_atomic_type = $atomic_input_type;
@@ -1293,7 +1348,7 @@ class Union
                             break;
                         }
 
-                        if ($key === 'callable') {
+                        if ($atomic_type instanceof Atomic\TCallable) {
                             $matching_atomic_type = TypeAnalyzer::getCallableFromAtomic(
                                 $codebase,
                                 $atomic_input_type
@@ -1325,6 +1380,10 @@ class Union
                                         if (is_string($extends_key)) {
                                             $new_generic_params[] = $value;
                                         }
+                                    }
+
+                                    if (!$new_generic_params) {
+                                        throw new \UnexpectedValueException('$new_generic_params should not be empty');
                                     }
 
                                     $matching_atomic_type = new TGenericObject(
@@ -1534,6 +1593,16 @@ class Union
             unset($this->types[$key]);
         }
 
+        foreach ($new_types as $type) {
+            if ($type instanceof TLiteralString) {
+                $this->literal_string_types[$type->getKey()] = $type;
+            } elseif ($type instanceof TLiteralInt) {
+                $this->literal_int_types[$type->getKey()] = $type;
+            } elseif ($type instanceof TLiteralFloat) {
+                $this->literal_float_types[$type->getKey()] = $type;
+            }
+        }
+
         $this->types = array_merge($this->types, $new_types);
     }
 
@@ -1673,6 +1742,22 @@ class Union
             || $this->literal_float_types
             || isset($this->types['false'])
             || isset($this->types['true']);
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasLiteralString()
+    {
+        return count($this->literal_string_types) > 0;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasLiteralInt()
+    {
+        return count($this->literal_int_types) > 0;
     }
 
     /**
@@ -1833,6 +1918,10 @@ class Union
         }
 
         if (count($this->types) !== count($other_type->types)) {
+            return false;
+        }
+
+        if ($this->different || $other_type->different) {
             return false;
         }
 

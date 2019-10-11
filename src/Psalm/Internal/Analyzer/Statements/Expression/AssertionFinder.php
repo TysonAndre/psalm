@@ -1544,7 +1544,7 @@ class AssertionFinder
      * @param  FileSource                   $source
      * @param  bool                         $negate
      *
-     * @return array<string, array<int, array<int, string>>>
+     * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     public static function processFunctionCall(
         PhpParser\Node\Expr\FuncCall $expr,
@@ -1748,7 +1748,9 @@ class AssertionFinder
                             $atomic_type->type_params[1]->getLiteralFloats()
                         );
 
-                        if (count($atomic_type->type_params[1]->getTypes()) === count($array_literal_types)) {
+                        if ($array_literal_types
+                            && count($atomic_type->type_params[1]->getTypes())
+                        ) {
                             $literal_assertions = [];
 
                             foreach ($array_literal_types as $array_literal_type) {
@@ -1779,7 +1781,7 @@ class AssertionFinder
                 $first_arg = $expr->args[0];
 
                 if ($first_arg->value instanceof PhpParser\Node\Scalar\String_) {
-                    $first_var_name = '"' . $first_arg->value->value . '"';
+                    $first_var_name = '\'' . $first_arg->value->value . '\'';
                 } elseif ($first_arg->value instanceof PhpParser\Node\Scalar\LNumber) {
                     $first_var_name = (string) $first_arg->value->value;
                 }
@@ -1809,7 +1811,7 @@ class AssertionFinder
      * @param  FileSource   $source
      * @param  bool         $negate
      *
-     * @return array<string, array<int, array<int, string>>>
+     * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     protected static function processCustomAssertion(
         $expr,
@@ -1939,7 +1941,7 @@ class AssertionFinder
      * @param  string|null                     $this_class_name
      * @param  FileSource                $source
      *
-     * @return array<int, string>
+     * @return list<string>
      */
     protected static function getInstanceOfTypes(
         PhpParser\Node\Expr\Instanceof_ $stmt,
@@ -2075,17 +2077,21 @@ class AssertionFinder
      */
     protected static function hasGetTypeCheck(PhpParser\Node\Expr\BinaryOp $conditional)
     {
-        if ($conditional->right instanceof PhpParser\Node\Expr\FuncCall &&
-            $conditional->right->name instanceof PhpParser\Node\Name &&
-            strtolower($conditional->right->name->parts[0]) === 'gettype' &&
-            $conditional->left instanceof PhpParser\Node\Scalar\String_) {
+        if ($conditional->right instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->right->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->right->name->parts[0]) === 'gettype'
+            && $conditional->right->args
+            && $conditional->left instanceof PhpParser\Node\Scalar\String_
+        ) {
             return self::ASSIGNMENT_TO_RIGHT;
         }
 
-        if ($conditional->left instanceof PhpParser\Node\Expr\FuncCall &&
-            $conditional->left->name instanceof PhpParser\Node\Name &&
-            strtolower($conditional->left->name->parts[0]) === 'gettype' &&
-            $conditional->right instanceof PhpParser\Node\Scalar\String_) {
+        if ($conditional->left instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->left->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->left->name->parts[0]) === 'gettype'
+            && $conditional->left->args
+            && $conditional->right instanceof PhpParser\Node\Scalar\String_
+        ) {
             return self::ASSIGNMENT_TO_LEFT;
         }
 
@@ -2173,7 +2179,8 @@ class AssertionFinder
     {
         $left_count = $conditional->left instanceof PhpParser\Node\Expr\FuncCall
             && $conditional->left->name instanceof PhpParser\Node\Name
-            && strtolower($conditional->left->name->parts[0]) === 'count';
+            && strtolower($conditional->left->name->parts[0]) === 'count'
+            && $conditional->left->args;
 
         $right_number = $conditional->right instanceof PhpParser\Node\Scalar\LNumber
             && $conditional->right->value >= (
@@ -2191,7 +2198,8 @@ class AssertionFinder
 
         $right_count = $conditional->right instanceof PhpParser\Node\Expr\FuncCall
             && $conditional->right->name instanceof PhpParser\Node\Name
-            && strtolower($conditional->right->name->parts[0]) === 'count';
+            && strtolower($conditional->right->name->parts[0]) === 'count'
+            && $conditional->right->args;
 
         $left_number = $conditional->left instanceof PhpParser\Node\Scalar\LNumber
             && $conditional->left->value >= (

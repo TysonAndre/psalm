@@ -1085,6 +1085,24 @@ Emitted when using `include` or `require` on a file that does not exist
 require("nonexistent.php");
 ```
 
+### MissingImmutableAnnotation
+
+Emitted when a class inheriting from an immutable interface or class does not also have a `@psalm-immutable` declaration
+
+```php
+/** @psalm-immutable */
+interface SomethingImmutable {
+    public function someInteger() : int;
+}
+
+class MutableImplementation implements SomethingImmutable {
+    private int $counter = 0;
+    public function someInteger() : int {
+        return ++$this->counter;
+    }
+}
+```
+
 ### MissingParamType
 
 Emitted when a function parameter has no type information associated with it
@@ -2405,6 +2423,19 @@ class A {
         $this->foo = "foo";
     }
 }
+```
+
+### UnnecessaryVarAnnotation
+
+Emitted when `--find-dead-code` is turned on and you're using a `@var` annotation on an assignment that Psalm has already identified a type for.
+
+```php
+function foo() : string {
+    return "hello";
+}
+
+/** @var string */
+$a = foo();
 ```
 
 ### UnrecognizedExpression

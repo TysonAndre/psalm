@@ -35,8 +35,11 @@ class ErrorBaseline
         foreach ($existingIssues as $existingIssue) {
             $totalIssues += array_reduce(
                 $existingIssue,
+                /**
+                 * @param array{o:int, s:array<int, string>} $existingIssue
+                 */
                 function (int $carry, array $existingIssue): int {
-                    return $carry + (int)$existingIssue['o'];
+                    return $carry + $existingIssue['o'];
                 },
                 0
             );
@@ -94,7 +97,6 @@ class ErrorBaseline
         /** @var \DOMElement $filesElement */
         $filesElement = $filesElement[0];
 
-        /** @var \DOMElement $file */
         foreach ($filesElement->getElementsByTagName('file') as $file) {
             $fileName = $file->getAttribute('src');
 
@@ -112,7 +114,6 @@ class ErrorBaseline
                 ];
                 $codeSamples = $issue->getElementsByTagName('code');
 
-                /** @var \DOMElement $codeSample */
                 foreach ($codeSamples as $codeSample) {
                     $files[$fileName][$issueType]['s'][] = (string) $codeSample->textContent;
                 }

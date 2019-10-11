@@ -43,7 +43,8 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
 
             if (isset($arg_types['array'])
                 && ($arg_types['array'] instanceof Type\Atomic\TArray
-                    || $arg_types['array'] instanceof Type\Atomic\ObjectLike)
+                    || $arg_types['array'] instanceof Type\Atomic\ObjectLike
+                    || $arg_types['array'] instanceof Type\Atomic\TList)
             ) {
                 $array_arg_type = $arg_types['array'];
             }
@@ -55,6 +56,8 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
             if (count($call_args) === 2) {
                 if ($array_arg_type instanceof Type\Atomic\ObjectLike) {
                     $generic_key_type = $array_arg_type->getGenericKeyType();
+                } elseif ($array_arg_type instanceof Type\Atomic\TList) {
+                    $generic_key_type = Type::getInt();
                 } else {
                     $generic_key_type = $array_arg_type ? clone $array_arg_type->type_params[0] : Type::getArrayKey();
                 }
@@ -63,12 +66,9 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
             }
 
             if (isset($function_call_arg->value->inferredType)
-                && ($first_arg_atomic_types = $function_call_arg->value->inferredType->getTypes())
-                && ($closure_atomic_type = isset($first_arg_atomic_types['Closure'])
-                    ? $first_arg_atomic_types['Closure']
-                    : null)
-                && $closure_atomic_type instanceof Type\Atomic\TFn
+                && ($closure_types = $function_call_arg->value->inferredType->getClosureTypes())
             ) {
+                $closure_atomic_type = \reset($closure_types);
                 $closure_return_type = $closure_atomic_type->return_type ?: Type::getMixed();
 
                 if ($closure_return_type->isVoid()) {
@@ -89,6 +89,22 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
                                 },
                                 $array_arg_type->properties
                             )
+                        ),
+                    ]);
+                }
+
+                if ($array_arg_type instanceof Type\Atomic\TList) {
+                    if ($array_arg_type instanceof Type\Atomic\TNonEmptyList) {
+                        return new Type\Union([
+                            new Type\Atomic\TNonEmptyList(
+                                $inner_type
+                            ),
+                        ]);
+                    }
+
+                    return new Type\Union([
+                        new Type\Atomic\TList(
+                            $inner_type
                         ),
                     ]);
                 }
