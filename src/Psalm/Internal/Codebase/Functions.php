@@ -296,6 +296,10 @@ class Functions
 
             // output buffer
             'ob_start', 'ob_end_clean', 'readfile', 'printf', 'var_dump', 'phpinfo',
+            'ob_implicit_flush',
+
+            // mcrypt
+            'mcrypt_generic_init', 'mcrypt_generic_deinit', 'mcrypt_module_close',
 
             // internal optimisation
             'opcache_compile_file', 'clearstatcache',
@@ -325,7 +329,7 @@ class Functions
 
             // well-known functions
             'libxml_use_internal_errors', 'curl_exec',
-            'mt_srand', 'openssl_pkcs7_sign', 'preg_replace_callback',
+            'mt_srand', 'openssl_pkcs7_sign',
             'mt_rand', 'rand',
 
             // php environment
@@ -346,7 +350,7 @@ class Functions
             'ldap_set_option',
 
             // iterators
-            'rewind',
+            'rewind', 'iterator_apply',
 
             // mysqli
             'mysqli_select_db', 'mysqli_dump_debug_info', 'mysqli_kill', 'mysqli_multi_query',
@@ -377,7 +381,10 @@ class Functions
             $args ?: []
         );
 
-        if (!$function_callable->params || ($args !== null && \count($args) === 0)) {
+        if (!$function_callable->params
+            || ($args !== null && \count($args) === 0)
+            || ($function_callable->return_type && $function_callable->return_type->isVoid())
+        ) {
             return false;
         }
 

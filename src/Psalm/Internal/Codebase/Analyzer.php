@@ -4,7 +4,6 @@ namespace Psalm\Internal\Codebase;
 use function array_filter;
 use function array_intersect_key;
 use function array_merge;
-use function array_merge_recursive;
 use function count;
 use function explode;
 use function number_format;
@@ -270,6 +269,13 @@ class Analyzer
             while ($codebase->taint->hasNewSinksAndSources() && ++$i <= 4) {
                 $project_analyzer->progress->write("\n\n" . 'Found tainted inputs, reanalysing' . "\n\n");
 
+                $this->files_to_analyze = $codebase->taint->getFilesToAnalyze(
+                    $codebase->file_reference_provider,
+                    $codebase->file_storage_provider,
+                    $codebase->classlike_storage_provider,
+                    $codebase->config
+                );
+
                 $codebase->taint->clearNewSinksAndSources();
 
                 $this->doAnalysis($project_analyzer, $pool_size, true);
@@ -371,6 +377,29 @@ class Analyzer
             foreach ($this->files_to_analyze as $file_path) {
                 $process_file_paths[$i % $pool_size][] = $file_path;
                 ++$i;
+            }
+
+            foreach ($process_file_paths as $pool_key => $file_paths) {
+                $count = count($file_paths);
+                $middle = \intdiv($count, 4);
+                $remainder = $count % 4;
+
+                $new_file_paths = [];
+
+                for ($i = 0; $i < 4; $i++) {
+                    for ($j = 0; $j < $middle; $j++) {
+                        if ($j * 4 + $i < $count) {
+                            $new_file_paths[] = $file_paths[$j * 4 + $i];
+                        }
+                    }
+
+                    if ($remainder) {
+                        $new_file_paths[] = $file_paths[$middle * 4 + $remainder - 1];
+                        $remainder--;
+                    }
+                }
+
+                $process_file_paths[$pool_key] = $new_file_paths;
             }
 
             // Run analysis one file at a time, splitting the set of
@@ -1007,7 +1036,16 @@ class Analyzer
      */
     public function addMixedMemberNames(array $names)
     {
-        $this->mixed_member_names = array_merge_recursive($this->mixed_member_names, $names);
+        foreach ($names as $key => $name) {
+            if (isset($this->mixed_member_names[$key])) {
+                $this->mixed_member_names[$key] = array_merge(
+                    $this->mixed_member_names[$key],
+                    $name
+                );
+            } else {
+                $this->mixed_member_names[$key] = $name;
+            }
+        }
     }
 
     /**
