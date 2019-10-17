@@ -627,6 +627,83 @@ class RedundantConditionTest extends TestCase
                         if (count($dict)) {}
                     }',
             ],
+            'noRedundantConditionWhenAssertingOnIntersection' => [
+                '<?php
+                    class A {}
+                    interface I {}
+                    class AChild extends A implements I {}
+
+                    function isAChild(A $value): ?AChild {
+                        if (!$value instanceof I) {
+                            return null;
+                        }
+
+                        if (!$value instanceof AChild) {
+                            return null;
+                        }
+
+                        return $value;
+                    }',
+            ],
+            'noRedundantConditionWhenAssertingOnIntersectionFlipped' => [
+                '<?php
+                    class A {}
+                    interface I {}
+                    class AChild extends A implements I {}
+
+                    /** @param I&A $value */
+                    function isAChild(I $value): ?AChild {
+                        if (!$value instanceof AChild) {
+                            return null;
+                        }
+
+                        return $value;
+                    }',
+            ],
+            'noRedundantConditionWhenAssertingOnIntersectionOfInterfaces' => [
+                '<?php
+                    interface A {}
+                    interface I {}
+                    class AChild implements I, A {}
+
+                    function isAChild(A $value): ?AChild {
+                        if (!$value instanceof I) {
+                            return null;
+                        }
+
+                        if (!$value instanceof AChild) {
+                            return null;
+                        }
+
+                        return $value;
+                    }',
+            ],
+            'noRedundantConditionWithUnionOfInterfaces' => [
+                '<?php
+                    interface One {}
+                    interface Two {}
+
+
+                    /**
+                     * @param One|Two $impl
+                     */
+                    function a($impl) : void {
+                        if ($impl instanceof One && $impl instanceof Two) {
+                            throw new \Exception();
+                        } elseif ($impl instanceof One) {}
+                    }
+
+                    /**
+                     * @param One|Two $impl
+                     */
+                    function b($impl) : void {
+                        if ($impl instanceof One && $impl instanceof Two) {
+                            throw new \Exception();
+                        } else {
+                            if ($impl instanceof One) {}
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -1020,6 +1097,21 @@ class RedundantConditionTest extends TestCase
                         if ([] === $a) {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'secondInterfaceAssertionIsRedundant' => [
+                '<?php
+                    interface One {}
+                    interface Two {}
+
+                    /**
+                     * @param One|Two $value
+                     */
+                    function isOne($value): void {
+                        if ($value instanceof One) {
+                            if ($value instanceof One) {}
+                        }
+                    }',
+                'error_message' => 'RedundantConditionGivenDocblockType',
             ],
         ];
     }

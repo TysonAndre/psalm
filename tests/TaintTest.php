@@ -239,7 +239,7 @@ class TaintTest extends TestCase
     public function testTaintedInputFromParam()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
-        $this->expectExceptionMessage('TaintedInput - somefile.php:17:36 - in path $_GET (somefile.php:4) -> a::getuserid (somefile.php:3) out path a::getuserid (somefile.php:8) -> a::getappendeduserid (somefile.php:12) -> a::deleteuser#2 (somefile.php:16) -> pdo::exec#1 (somefile.php:17)');
+        $this->expectExceptionMessage('TaintedInput - somefile.php:17:36 - in path $_GET (somefile.php:4) -> a::getuserid (somefile.php:3) -> a::getappendeduserid (somefile.php:7) out path a::getappendeduserid (somefile.php:12) -> a::deleteuser#2 (somefile.php:16) -> pdo::exec#1 (somefile.php:17)');
 
         $this->project_analyzer->trackTaintedInputs();
 
@@ -376,7 +376,7 @@ class TaintTest extends TestCase
     public function testTaintedInputToParamAlternatePath()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
-        $this->expectExceptionMessage('TaintedInput - somefile.php:23:40 - in path $_GET (somefile.php:7) -> a::getappendeduserid#1 (somefile.php:7) -> a::getappendeduserid (somefile.php:11) -> a::deleteuser#3 (somefile.php:7) out path a::deleteuser#3 (somefile.php:19) -> pdo::exec#1 (somefile.php:23)');
+        $this->expectExceptionMessage('TaintedInput - somefile.php:23:40 - in path $_GET (somefile.php:7) -> a::getappendeduserid#1 (somefile.php:7) -> a::getappendeduserid (somefile.php:11) out path a::getappendeduserid (somefile.php:7) -> a::deleteuser#3 (somefile.php:19) -> pdo::exec#1 (somefile.php:23)');
 
         $this->project_analyzer->trackTaintedInputs();
 
@@ -419,7 +419,7 @@ class TaintTest extends TestCase
     public function testTaintedInParentLoader()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
-        $this->expectExceptionMessage('TaintedInput - somefile.php:16:40 - in path $_GET (somefile.php:28) -> c::foo#1 (somefile.php:28) out path c::foo#1 (somefile.php:23) -> agrandchild::loadfull#1 (somefile.php:6) -> a::loadpartial#1 (somefile.php:16) -> pdo::exec#1 (somefile.php:16)');
+        $this->expectExceptionMessage('TaintedInput - somefile.php:16:40 - in path $_GET (somefile.php:28) -> c::foo#1 (somefile.php:28) -> agrandchild::loadfull#1 (somefile.php:24) out path agrandchild::loadfull#1 (somefile.php:6) -> a::loadpartial#1 (somefile.php:16) -> pdo::exec#1 (somefile.php:16)');
 
         $this->project_analyzer->trackTaintedInputs();
 
@@ -853,6 +853,237 @@ class TaintTest extends TestCase
 
                     public static function bar() {
                         exec(self::foo()[0]);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testTaintOnSubstrCall() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class U {
+                    /** @psalm-pure */
+                    public static function shorten(string $s) : string {
+                        return substr($s, 0, 15);
+                    }
+                }
+
+                class V {}
+
+                class O1 {
+                    public string $s;
+
+                    public function __construct() {
+                        $this->s = (string) $_GET["FOO"];
+                    }
+                }
+
+                class V1 extends V {
+                    public function foo(O1 $o) : void {
+                        echo U::shorten($o->s);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testTaintOnStrReplaceCall() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class U {
+                    /** @psalm-pure */
+                    public static function shorten(string $s) : string {
+                        return str_replace("foo", "bar", $s);
+                    }
+                }
+
+                class V {}
+
+                class O1 {
+                    public string $s;
+
+                    public function __construct() {
+                        $this->s = (string) $_GET["FOO"];
+                    }
+                }
+
+                class V1 extends V {
+                    public function foo(O1 $o) : void {
+                        echo U::shorten($o->s);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testTaintOnStrReplaceCallRemoved() : void
+    {
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class U {
+                    /**
+                     * @psalm-pure
+                     * @psalm-remove-taint
+                     */
+                    public static function shorten(string $s) : string {
+                        return str_replace("foo", "bar", $s);
+                    }
+                }
+
+                class V {}
+
+                class O1 {
+                    public string $s;
+
+                    public function __construct() {
+                        $this->s = (string) $_GET["FOO"];
+                    }
+                }
+
+                class V1 extends V {
+                    public function foo(O1 $o) : void {
+                        echo U::shorten($o->s);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testTaintOnStrReplaceCallRemovedInline() : void
+    {
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class V {}
+
+                class O1 {
+                    public string $s;
+
+                    public function __construct() {
+                        $this->s = (string) $_GET["FOO"];
+                    }
+                }
+
+                class V1 extends V {
+                    public function foo(O1 $o) : void {
+                        /**
+                         * @psalm-remove-taint
+                         */
+                        $a = str_replace("foo", "bar", $o->s);
+                        echo $a;
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testTaintOnPregReplaceCall() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class U {
+                    /** @psalm-pure */
+                    public static function shorten(string $s) : string {
+                        return preg_replace("/foo/", "bar", $s);
+                    }
+                }
+
+                class V {}
+
+                class O1 {
+                    public string $s;
+
+                    public function __construct() {
+                        $this->s = (string) $_GET["FOO"];
+                    }
+                }
+
+                class V1 extends V {
+                    public function foo(O1 $o) : void {
+                        echo U::shorten($o->s);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testNoTaintsOnSimilarPureCall() : void
+    {
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class U {
+                    /** @psalm-pure */
+                    public static function shorten(string $s) : string {
+                        return substr($s, 0, 15);
+                    }
+
+                    /** @psalm-pure */
+                    public static function escape(string $s) : string {
+                        return htmlentities($s);
+                    }
+                }
+
+                class O1 {
+                    public string $s;
+
+                    public function __construct(string $s) {
+                        $this->s = $s;
+                    }
+                }
+
+                class O2 {
+                    public string $t;
+
+                    public function __construct() {
+                        $this->t = (string) $_GET["FOO"];
+                    }
+                }
+
+                class V1 {
+                    public function foo() : void {
+                        $o = new O1((string) $_GET["FOO"]);
+                        echo U::escape(U::shorten($o->s));
+                    }
+                }
+
+                class V2 {
+                    public function foo(O2 $o) : void {
+                        echo U::shorten(U::escape($o->t));
                     }
                 }'
         );
