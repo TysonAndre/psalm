@@ -88,7 +88,6 @@ class TypeAnalyzer
             return false;
         }
 
-        $has_partial_match = false;
         $has_overall_match = true;
 
         foreach ($input_type->getTypes() as $input_type_part) {

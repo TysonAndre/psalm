@@ -1126,28 +1126,12 @@ class Config
         );
 
         $declared_classes = ClassLikeAnalyzer::getClassesForFile($codebase, $path);
-        $declared_plugin_classes = [];
 
         if (!count($declared_classes)) {
             throw new \InvalidArgumentException(
                 'Plugins must have at least one class in the file - ' . $path . ' has ' .
                     count($declared_classes)
             );
-        }
-        if (count($declared_plugin_classes) !== 1) {
-            if (count($declared_classes) === 1) {
-                throw new \InvalidArgumentException(
-                    'This plugin must extend ' . $must_extend . ' - ' . 'class ' . \reset($declared_classes) . ' of ' . $path . ' does not'
-                );
-            }
-
-            throw new \InvalidArgumentException(sprintf(
-                'Plugins must have exactly one class in the file that extends %s - %s has %d plugin classes of %d classes',
-                $must_extend,
-                $path,
-                count($declared_plugin_classes),
-                count($declared_classes)
-            ));
         }
         $fq_class_name = reset($declared_classes);
 
@@ -1161,7 +1145,7 @@ class Config
             );
         }
 
-        return \reset($declared_plugin_classes);;
+        return $fq_class_name;
     }
 
     /**
