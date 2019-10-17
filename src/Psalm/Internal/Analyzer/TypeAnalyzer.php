@@ -1648,6 +1648,8 @@ class TypeAnalyzer
                         $method_storage->params,
                         $converted_return_type
                     );
+                } catch (\InvalidArgumentException $e) {
+                    // do nothing
                 } catch (\UnexpectedValueException $e) {
                     // do nothing
                 }
