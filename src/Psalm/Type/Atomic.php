@@ -163,6 +163,9 @@ abstract class Atomic
             case 'non-empty-array':
                 return new TNonEmptyArray([new Union([new TMixed]), new Union([new TMixed])]);
 
+            case 'callable-array':
+                return new Type\Atomic\TCallableArray([new Union([new TArrayKey]), new Union([new TMixed])]);
+
             case 'list':
                 return new TList(Type::getMixed());
 
@@ -377,7 +380,7 @@ abstract class Atomic
     /**
      * @return bool
      */
-    private function hasArrayAccessInterface(Codebase $codebase)
+    public function hasArrayAccessInterface(Codebase $codebase)
     {
         return $this instanceof TNamedObject
             && (

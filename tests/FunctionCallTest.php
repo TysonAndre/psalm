@@ -240,6 +240,24 @@ class FunctionCallTest extends TestCase
                     '$d' => 'array{0: string, 1: string, 2: string, 3: int, 4: int, 5: int}',
                 ],
             ],
+            'arrayMergeListResult' => [
+                '<?php
+                    /**
+                     * @param list<string> $list
+                     * @return list<string>
+                     */
+                    function foo(array $list) : array {
+                        return array_merge($list, ["test"]);
+                    }
+
+                    /**
+                     * @param array<int, string> $list
+                     * @return list<string>
+                     */
+                    function bar(array $list) : array {
+                        return array_merge($list, ["test"]);
+                    }',
+            ],
             'arrayReverseDontPreserveKey' => [
                 '<?php
                     $d = array_reverse(["a", "b", 1, "d" => 4]);',
@@ -1308,9 +1326,21 @@ class FunctionCallTest extends TestCase
                     $c = array_slice($a, 1, 2, false);
                     $d = array_slice($a, 1, 2);',
                 'assertions' => [
-                    '$b' => 'non-empty-array<string, int>',
-                    '$c' => 'non-empty-array<string, int>',
-                    '$d' => 'non-empty-array<string, int>',
+                    '$b' => 'array<string, int>',
+                    '$c' => 'array<string, int>',
+                    '$d' => 'array<string, int>',
+                ],
+            ],
+            'arraySliceDontPreserveIntKeys' => [
+                '<?php
+                    $a = [1 => "a", 4 => "b", 3 => "c"];
+                    $b = array_slice($a, 1, 2, true);
+                    $c = array_slice($a, 1, 2, false);
+                    $d = array_slice($a, 1, 2);',
+                'assertions' => [
+                    '$b' => 'array<int, string>',
+                    '$c' => 'list<string>',
+                    '$d' => 'list<string>',
                 ],
             ],
             'printrOutput' => [

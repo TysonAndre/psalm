@@ -86,6 +86,7 @@ abstract class Type
         'numeric-string' => true,
         'class-string' => true,
         'callable-string' => true,
+        'callable-array' => true,
         'trait-string' => true,
         'mysql-escaped-string' => true,
         'html-escaped-string' => true,

@@ -451,6 +451,7 @@ class ReturnAnalyzer
 
         $method_sink = new Sink(
             strtolower($cased_method_id),
+            $cased_method_id,
             $storage->location
         );
 
@@ -465,6 +466,7 @@ class ReturnAnalyzer
 
                             $new_sink = new Sink(
                                 $inferred_source->id . '-' . $suffix,
+                                $inferred_source->label,
                                 $inferred_source->code_location
                             );
 
@@ -478,6 +480,7 @@ class ReturnAnalyzer
                         function (Source $inferred_source) use ($previous_sink) {
                             $new_sink = new Sink(
                                 $inferred_source->id,
+                                $inferred_source->label,
                                 $inferred_source->code_location
                             );
 
@@ -507,6 +510,7 @@ class ReturnAnalyzer
 
                             $new_source = new Source(
                                 strtolower($cased_method_id . '-' . $suffix),
+                                $cased_method_id,
                                 $storage->location
                             );
 
@@ -517,6 +521,7 @@ class ReturnAnalyzer
                     } else {
                         $new_source = new Source(
                             strtolower($cased_method_id),
+                            $cased_method_id,
                             $storage->location
                         );
 

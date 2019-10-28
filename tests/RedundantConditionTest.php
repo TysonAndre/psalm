@@ -1113,6 +1113,30 @@ class RedundantConditionTest extends TestCase
                     }',
                 'error_message' => 'RedundantConditionGivenDocblockType',
             ],
+            'errorAfterStatementThatCannotBeConvertedToAssertion' => [
+                '<?php
+                    function a(float $b) : void {
+                        if ($b === 0.0) {
+                            return;
+                        }
+
+                        $a = new stdClass();
+
+                        if ($a) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'SKIPPED-noLongerWarnsAboutRedundancyHere' => [
+                '<?php
+                    function a(bool $a, bool $b) : void {
+                        if ($a || $b) {
+                            if ($a) {
+                            } elseif ($b) {
+                            }
+                        }
+                    }',
+                'error_message' => 'RedundantCondition',
+            ]
         ];
     }
 }
