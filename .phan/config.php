@@ -168,6 +168,9 @@ return [
         'PrintfCheckerPlugin',
         'DuplicateExpressionPlugin',
         'UseReturnValuePlugin',
+        'LoopVariableReusePlugin',
+        'RedundantAssignmentPlugin',
+        'StrictComparisonPlugin',
     ],
 
     'plugin_config' => [
