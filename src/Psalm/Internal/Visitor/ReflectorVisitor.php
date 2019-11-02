@@ -1138,8 +1138,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                             }
                         } else {
                             $storage->template_types[$template_name][$fq_classlike_name] = [Type::getMixed()];
-                            $storage->template_covariants[$i] = $template_map[3];
                         }
+
+                        $storage->template_covariants[$i] = $template_map[3];
                     }
 
                     $this->class_template_types = $storage->template_types;
@@ -2131,9 +2132,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $storage->template_types[$template_name] = [
                         '' => [$template_type],
                     ];
-
-                    $storage->template_covariants[$i] = $template_map[3];
                 }
+
+                $storage->template_covariants[$i] = $template_map[3];
             }
 
             $template_types = array_merge($template_types ?: [], $storage->template_types);

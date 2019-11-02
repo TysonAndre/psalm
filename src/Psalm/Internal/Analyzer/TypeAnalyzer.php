@@ -56,6 +56,7 @@ use function array_keys;
 use function array_reduce;
 use function end;
 use function array_unique;
+use Exception;
 
 /**
  * @internal
@@ -105,6 +106,7 @@ class TypeAnalyzer
 
             $all_type_coerced = null;
             $all_type_coerced_from_mixed = null;
+            $all_type_coerced_from_as_mixed = null;
 
             $some_type_coerced = false;
             $some_type_coerced_from_mixed = false;
@@ -132,9 +134,6 @@ class TypeAnalyzer
 
                 if ($union_comparison_result) {
                     $atomic_comparison_result = new TypeComparisonResult();
-                    $atomic_comparison_result->to_string_cast = false;
-                    $atomic_comparison_result->type_coerced = false;
-                    $atomic_comparison_result->type_coerced_from_mixed = false;
                 } else {
                     $atomic_comparison_result = null;
                 }
@@ -147,6 +146,14 @@ class TypeAnalyzer
                     true,
                     $atomic_comparison_result
                 );
+
+                if ($input_type_part instanceof TMixed
+                    && $input_type->from_template_default
+                    && $atomic_comparison_result
+                    && $atomic_comparison_result->type_coerced_from_mixed
+                ) {
+                    $atomic_comparison_result->type_coerced_from_as_mixed = true;
+                }
 
                 if ($atomic_comparison_result) {
                     if ($atomic_comparison_result->scalar_type_match_found !== null) {
@@ -207,6 +214,14 @@ class TypeAnalyzer
                     } else {
                         $all_type_coerced_from_mixed = true;
                     }
+
+                    if ($atomic_comparison_result->type_coerced_from_as_mixed !== true
+                        || $all_type_coerced_from_as_mixed === false
+                    ) {
+                        $all_type_coerced_from_as_mixed = false;
+                    } else {
+                        $all_type_coerced_from_as_mixed = true;
+                    }
                 }
 
                 if ($is_atomic_contained_by) {
@@ -219,6 +234,7 @@ class TypeAnalyzer
                     }
 
                     $all_type_coerced_from_mixed = false;
+                    $all_type_coerced_from_as_mixed = false;
                     $all_type_coerced = false;
                 }
             }
@@ -239,6 +255,10 @@ class TypeAnalyzer
 
                 if ($all_type_coerced_from_mixed) {
                     $union_comparison_result->type_coerced_from_mixed = true;
+
+                    if ($input_type->from_template_default || $all_type_coerced_from_as_mixed) {
+                        $union_comparison_result->type_coerced_from_as_mixed = true;
+                    }
                 }
             }
 
@@ -250,6 +270,10 @@ class TypeAnalyzer
 
                     if ($some_type_coerced_from_mixed) {
                         $union_comparison_result->type_coerced_from_mixed = true;
+
+                        if ($input_type->from_template_default || $all_type_coerced_from_as_mixed) {
+                            $union_comparison_result->type_coerced_from_as_mixed = true;
+                        }
                     }
 
                     if (!$scalar_type_match_found) {
@@ -1816,6 +1840,8 @@ class TypeAnalyzer
                                         $candidate_param_type = new Type\Union([$et]);
                                     }
 
+                                    $candidate_param_type->from_template_default = true;
+
                                     if (!$new_input_param) {
                                         $new_input_param = $candidate_param_type;
                                     } else {
@@ -1852,16 +1878,44 @@ class TypeAnalyzer
                     continue;
                 }
 
+                $param_comparison_result = new TypeComparisonResult();
+
                 if (!self::isContainedBy(
                     $codebase,
                     $input_param,
                     $container_param,
                     $input_param->ignore_nullable_issues,
                     $input_param->ignore_falsable_issues,
-                    $atomic_comparison_result,
+                    $param_comparison_result,
                     $allow_interface_equality
                 )) {
-                    $all_types_contain = false;
+                    $atomic_comparison_result->type_coerced
+                        = $param_comparison_result->type_coerced === true
+                            && $atomic_comparison_result->type_coerced !== false;
+
+                    $atomic_comparison_result->type_coerced_from_mixed
+                        = $param_comparison_result->type_coerced_from_mixed === true
+                            && $atomic_comparison_result->type_coerced_from_mixed !== false;
+
+                    $atomic_comparison_result->type_coerced_from_as_mixed
+                        = $param_comparison_result->type_coerced_from_as_mixed === true
+                            && $atomic_comparison_result->type_coerced_from_as_mixed !== false;
+
+                    $atomic_comparison_result->to_string_cast
+                        = $param_comparison_result->to_string_cast === true
+                            && $atomic_comparison_result->to_string_cast !== false;
+
+                    $atomic_comparison_result->type_coerced_from_scalar
+                        = $param_comparison_result->type_coerced_from_scalar === true
+                            && $atomic_comparison_result->type_coerced_from_scalar !== false;
+
+                    $atomic_comparison_result->scalar_type_match_found
+                        = $param_comparison_result->scalar_type_match_found === true
+                            && $atomic_comparison_result->scalar_type_match_found !== false;
+
+                    if (!$param_comparison_result->type_coerced_from_as_mixed) {
+                        $all_types_contain = false;
+                    }
                 } elseif (!$input_type_part instanceof TIterable
                     && !$container_param->hasTemplate()
                     && !$input_param->hasTemplate()
@@ -1890,7 +1944,7 @@ class TypeAnalyzer
                                 $input_param,
                                 $container_param->ignore_nullable_issues,
                                 $container_param->ignore_falsable_issues,
-                                $atomic_comparison_result,
+                                $param_comparison_result,
                                 $allow_interface_equality
                             ) || $atomic_comparison_result->type_coerced
                             ) {
@@ -2019,8 +2073,6 @@ class TypeAnalyzer
                 }
             }
 
-            $any_scalar_param_match = false;
-
             foreach ($input_type_part->type_params as $i => $input_param) {
                 if ($i > 1) {
                     break;
@@ -2059,34 +2111,34 @@ class TypeAnalyzer
                         $allow_interface_equality
                     )
                 ) {
-                    if ($param_comparison_result->type_coerced !== null) {
-                        $atomic_comparison_result->type_coerced = $param_comparison_result->type_coerced;
-                    }
+                    $atomic_comparison_result->type_coerced
+                        = $param_comparison_result->type_coerced === true
+                            && $atomic_comparison_result->type_coerced !== false;
 
-                    if ($param_comparison_result->type_coerced_from_mixed !== null) {
-                        $atomic_comparison_result->type_coerced_from_mixed
-                            = $param_comparison_result->type_coerced_from_mixed;
-                    }
+                    $atomic_comparison_result->type_coerced_from_mixed
+                        = $param_comparison_result->type_coerced_from_mixed === true
+                            && $atomic_comparison_result->type_coerced_from_mixed !== false;
 
-                    if ($param_comparison_result->to_string_cast !== null) {
-                        $atomic_comparison_result->to_string_cast = $param_comparison_result->to_string_cast;
-                    }
+                    $atomic_comparison_result->type_coerced_from_as_mixed
+                        = $param_comparison_result->type_coerced_from_as_mixed === true
+                            && $atomic_comparison_result->type_coerced_from_as_mixed !== false;
 
-                    if ($param_comparison_result->type_coerced_from_scalar !== null) {
-                        $atomic_comparison_result->type_coerced_from_scalar
-                            = $param_comparison_result->type_coerced_from_scalar;
-                    }
+                    $atomic_comparison_result->to_string_cast
+                        = $param_comparison_result->to_string_cast === true
+                            && $atomic_comparison_result->to_string_cast !== false;
 
-                    $all_types_contain = false;
+                    $atomic_comparison_result->type_coerced_from_scalar
+                        = $param_comparison_result->type_coerced_from_scalar === true
+                            && $atomic_comparison_result->type_coerced_from_scalar !== false;
 
-                    if ($param_comparison_result->scalar_type_match_found) {
-                        $any_scalar_param_match = true;
+                    $atomic_comparison_result->scalar_type_match_found
+                        = $param_comparison_result->scalar_type_match_found === true
+                            && $atomic_comparison_result->scalar_type_match_found !== false;
+
+                    if (!$param_comparison_result->type_coerced_from_as_mixed) {
+                        $all_types_contain = false;
                     }
                 }
-            }
-
-            if ($any_scalar_param_match) {
-                $atomic_comparison_result->scalar_type_match_found = true;
             }
         }
 

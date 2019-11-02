@@ -1830,6 +1830,94 @@ class ClassTemplateTest extends TestCase
                 [],
                 ['TooManyTemplateParams']
             ],
+            'coerceEmptyArrayToGeneral' => [
+                '<?php
+                    /** @template T */
+                    class Foo
+                    {
+                        /** @param \Closure(string):T $closure */
+                        public function __construct($closure) {}
+                    }
+
+                    class Bar
+                    {
+                      /** @var Foo<array> */
+                      private $FooArray;
+
+                      public function __construct()
+                      {
+                          $this->FooArray = new Foo(function(string $s): array {
+                              /** @psalm-suppress MixedAssignment */
+                              $json = \json_decode($s, true);
+
+                              if (! \is_array($json)) {
+                                  return [];
+                              }
+
+                              return $json;
+                          });
+
+                          takesFooArray($this->FooArray);
+                        }
+                    }
+
+                    /** @param Foo<array> $_ */
+                    function takesFooArray($_): void {}',
+            ],
+            'allowListAcceptance' => [
+                '<?php
+                    /** @template T */
+                    class Collection
+                    {
+                        /** @var list<T> */
+                        public $values;
+
+                        /** @param list<T> $values */
+                        function __construct(array $values)
+                        {
+                            $this->values = $values;
+                        }
+                    }
+
+                    /** @return Collection<string> */
+                    function makeStringCollection()
+                    {
+                        return new Collection(getStringList()); // gets typed as Collection<mixed> for some reason
+                    }
+
+                    /** @return list<string> */
+                    function getStringList(): array
+                    {
+                        return ["foo", "baz"];
+                    }'
+            ],
+            'allowListAcceptanceIntoArray' => [
+                '<?php
+                    /** @template T */
+                    class Collection
+                    {
+                        /** @var array<T> */
+                        public $values;
+
+                        /** @param array<T> $values */
+                        function __construct(array $values)
+                        {
+                            $this->values = $values;
+                        }
+                    }
+
+                    /** @return Collection<string> */
+                    function makeStringCollection()
+                    {
+                        return new Collection(getStringList()); // gets typed as Collection<mixed> for some reason
+                    }
+
+                    /** @return list<string> */
+                    function getStringList(): array
+                    {
+                        return ["foo", "baz"];
+                    }'
+            ],
         ];
     }
 
@@ -2227,41 +2315,6 @@ class ClassTemplateTest extends TestCase
 
                     /** @param Foo<array{foo: string}> $_ */
                     function expectsShape($_): void {}',
-                'error_message' => 'MixedArgumentTypeCoercion'
-            ],
-            'coerceEmptyArrayToGeneral' => [
-                '<?php
-                    /** @template T */
-                    class Foo
-                    {
-                        /** @param \Closure(string):T $closure */
-                        public function __construct($closure) {}
-                    }
-
-                    class Bar
-                    {
-                      /** @var Foo<array> */
-                      private $FooArray;
-
-                      public function __construct()
-                      {
-                          $this->FooArray = new Foo(function(string $s): array {
-                              /** @psalm-suppress MixedAssignment */
-                              $json = \json_decode($s, true);
-
-                              if (! \is_array($json)) {
-                                  return [];
-                              }
-
-                              return $json;
-                          });
-
-                          takesEmpty($this->FooArray);
-                        }
-                    }
-
-                    /** @param Foo<array<empty, empty>> $_ */
-                    function takesEmpty($_): void {}',
                 'error_message' => 'MixedArgumentTypeCoercion'
             ],
         ];
