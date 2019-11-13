@@ -78,8 +78,10 @@ class DoAnalyzer
             }
 
             if (isset($do_context->vars_in_scope[$var])) {
-                if ($do_context->vars_in_scope[$var]->getId() !== $type->getId()) {
+                if (!$do_context->vars_in_scope[$var]->equals($type)) {
+                    $was_possibly_undefined = $do_context->vars_in_scope[$var]->possibly_undefined_from_try;
                     $do_context->vars_in_scope[$var] = Type::combineUnionTypes($do_context->vars_in_scope[$var], $type);
+                    $do_context->vars_in_scope[$var]->possibly_undefined_from_try = $was_possibly_undefined;
                 }
             }
         }
@@ -105,6 +107,8 @@ class DoAnalyzer
                 /** @return bool */
                 function (Clause $c) use ($mixed_var_ids) {
                     $keys = array_keys($c->possibilities);
+
+                    $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
 
                     foreach ($keys as $key) {
                         foreach ($mixed_var_ids as $mixed_var_id) {
@@ -144,7 +148,9 @@ class DoAnalyzer
 
         foreach ($do_context->vars_in_scope as $var_id => $type) {
             if (isset($context->vars_in_scope[$var_id])) {
+                $was_possibly_undefined = $type->possibly_undefined_from_try;
                 $context->vars_in_scope[$var_id] = Type::combineUnionTypes($context->vars_in_scope[$var_id], $type);
+                $context->vars_in_scope[$var_id]->possibly_undefined_from_try = $was_possibly_undefined;
             }
         }
 

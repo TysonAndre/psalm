@@ -6,6 +6,8 @@ use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ArrayFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Context;
+use Psalm\IssueBuffer;
+use Psalm\Issue\InvalidArrayAssignment;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
@@ -277,6 +279,21 @@ class ArrayAssignmentAnalyzer
 
             if ($child_stmt->var->inferredType->hasMixed()) {
                 $full_var_id = false;
+
+                while ($child_stmts) {
+                    $child_stmt = array_shift($child_stmts);
+
+                    if ($child_stmt->dim) {
+                        if (ExpressionAnalyzer::analyze(
+                            $statements_analyzer,
+                            $child_stmt->dim,
+                            $context
+                        ) === false) {
+                            return false;
+                        }
+                    }
+                }
+
                 break;
             }
         }
@@ -318,6 +335,7 @@ class ArrayAssignmentAnalyzer
 
             if ($key_value !== null) {
                 $has_matching_objectlike_property = false;
+                $has_matching_string = false;
 
                 foreach ($child_stmt->inferredType->getTypes() as $type) {
                     if ($type instanceof ObjectLike) {
@@ -327,9 +345,23 @@ class ArrayAssignmentAnalyzer
                             $type->properties[$key_value] = clone $current_type;
                         }
                     }
+
+                    if ($type instanceof Type\Atomic\TString && \is_int($key_value)) {
+                        $has_matching_string = true;
+
+                        if ($type instanceof Type\Atomic\TLiteralString
+                            && $current_type->isSingleStringLiteral()
+                        ) {
+                            $new_char = $current_type->getSingleStringLiteral()->value;
+
+                            if (\strlen($new_char) === 1) {
+                                $type->value[0] = $new_char;
+                            }
+                        }
+                    }
                 }
 
-                if (!$has_matching_objectlike_property) {
+                if (!$has_matching_objectlike_property && !$has_matching_string) {
                     $array_assignment_type = new Type\Union([
                         new ObjectLike([$key_value => $current_type]),
                     ]);
@@ -567,6 +599,24 @@ class ArrayAssignmentAnalyzer
             }
         } elseif ($root_var_id) {
             $context->vars_in_scope[$root_var_id] = $root_type;
+        }
+
+        if ($root_array_expr instanceof PhpParser\Node\Expr\MethodCall
+            || $root_array_expr instanceof PhpParser\Node\Expr\StaticCall
+            || $root_array_expr instanceof PhpParser\Node\Expr\FuncCall
+        ) {
+            if ($root_type->hasArray()) {
+                if (IssueBuffer::accepts(
+                    new InvalidArrayAssignment(
+                        'Assigning to the output of a function has no effect',
+                        new \Psalm\CodeLocation($statements_analyzer->getSource(), $root_array_expr)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )
+                ) {
+                    // do nothing
+                }
+            }
         }
 
         return null;

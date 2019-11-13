@@ -12,6 +12,7 @@ use Psalm\Internal\Analyzer\Statements\Expression\ArrayAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
 use Psalm\Internal\Analyzer\Statements\Expression\AssignmentAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\BinaryOpAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\FunctionCallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\NewAnalyzer;
@@ -46,6 +47,7 @@ use Psalm\Issue\UndefinedVariable;
 use Psalm\Issue\UnnecessaryVarAnnotation;
 use Psalm\Issue\UnrecognizedExpression;
 use Psalm\IssueBuffer;
+use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\Scalar;
@@ -450,7 +452,7 @@ class ExpressionAnalyzer
                         (string)$statements_analyzer->getFQCLN()
                     )
                 ) {
-                    /** @psalm-suppress PossiblyUndefinedArrayOffset */
+                    /** @psalm-suppress PossiblyUndefinedStringArrayOffset */
                     $use_context->vars_in_scope['$this'] = clone $context->vars_in_scope['$this'];
                 } elseif ($context->self) {
                     $use_context->vars_in_scope['$this'] = new Type\Union([new TNamedObject($context->self)]);
@@ -683,7 +685,7 @@ class ExpressionAnalyzer
                 // continue
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Print_) {
-            if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
+            if (self::analyzePrint($statements_analyzer, $stmt, $context) === false) {
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Yield_) {
@@ -1158,7 +1160,13 @@ class ExpressionAnalyzer
                     if (is_string($static_class_type)) {
                         $return_type->value = $static_class_type;
                     } else {
-                        $return_type = clone $static_class_type;
+                        if ($return_type instanceof Type\Atomic\TGenericObject
+                            && $static_class_type instanceof Type\Atomic\TNamedObject
+                        ) {
+                            $return_type->value = $static_class_type->value;
+                        } else {
+                            $return_type = clone $static_class_type;
+                        }
                     }
                 } elseif ($return_type_lc === 'self') {
                     if (!$self_class) {
@@ -1266,6 +1274,14 @@ class ExpressionAnalyzer
                     $parent_class
                 );
             }
+        } elseif ($return_type instanceof Type\Atomic\TList) {
+            $return_type->type_param = self::fleshOutType(
+                $codebase,
+                $return_type->type_param,
+                $self_class,
+                $static_class_type,
+                $parent_class
+            );
         }
 
         if ($return_type instanceof Type\Atomic\TCallable) {
@@ -1411,6 +1427,62 @@ class ExpressionAnalyzer
                 $context->vars_in_scope[$use_var_id] = Type::getMixed();
             }
         }
+
+        return null;
+    }
+
+    /**
+     * @param   StatementsAnalyzer           $statements_analyzer
+     * @param   PhpParser\Node\Expr\Print_  $stmt
+     * @param   Context                     $context
+     *
+     * @return  false|null
+     */
+    protected static function analyzePrint(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Expr\Print_ $stmt,
+        Context $context
+    ) {
+        $codebase = $statements_analyzer->getCodebase();
+
+        if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
+            return false;
+        }
+
+        if (isset($stmt->expr->inferredType)) {
+            if (CallAnalyzer::checkFunctionArgumentType(
+                $statements_analyzer,
+                $stmt->expr->inferredType,
+                Type::getString(),
+                null,
+                'print',
+                0,
+                new CodeLocation($statements_analyzer->getSource(), $stmt->expr),
+                $stmt->expr,
+                $context,
+                new FunctionLikeParameter('var', false),
+                false,
+                false,
+                true,
+                new CodeLocation($statements_analyzer->getSource(), $stmt)
+            ) === false) {
+                return false;
+            }
+        }
+
+        if (isset($codebase->config->forbidden_functions['print'])) {
+            if (IssueBuffer::accepts(
+                new ForbiddenCode(
+                    'You have forbidden the use of print',
+                    new CodeLocation($statements_analyzer->getSource(), $stmt)
+                ),
+                $statements_analyzer->getSuppressedIssues()
+            )) {
+                // continue
+            }
+        }
+
+        $stmt->inferredType = Type::getInt(false, 1);
 
         return null;
     }
@@ -1643,6 +1715,24 @@ class ExpressionAnalyzer
         Context $context
     ) {
         self::analyzeIssetVar($statements_analyzer, $stmt->expr, $context);
+
+        if (isset($stmt->expr->inferredType)
+            && $stmt->expr->inferredType->hasBool()
+            && $stmt->expr->inferredType->isSingle()
+            && !$stmt->expr->inferredType->from_docblock
+        ) {
+            if (IssueBuffer::accepts(
+                new \Psalm\Issue\InvalidArgument(
+                    'Calling empty on a boolean value is almost certainly unintended',
+                    new CodeLocation($statements_analyzer->getSource(), $stmt->expr),
+                    'empty'
+                ),
+                $statements_analyzer->getSuppressedIssues()
+            )) {
+                // fall through
+            }
+        }
+
         $stmt->inferredType = Type::getBool();
     }
 

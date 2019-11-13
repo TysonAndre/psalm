@@ -118,6 +118,8 @@ class IfAnalyzer
                 function (Clause $c) use ($mixed_var_ids) {
                     $keys = array_keys($c->possibilities);
 
+                    $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
+
                     foreach ($keys as $key) {
                         foreach ($mixed_var_ids as $mixed_var_id) {
                             if (preg_match('/^' . preg_quote($mixed_var_id, '/') . '(\[|-)/', $key)) {
@@ -992,6 +994,8 @@ class IfAnalyzer
             function (Clause $c) use ($mixed_var_ids) {
                 $keys = array_keys($c->possibilities);
 
+                $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
+
                 foreach ($keys as $key) {
                     foreach ($mixed_var_ids as $mixed_var_id) {
                         if (preg_match('/^' . preg_quote($mixed_var_id, '/') . '(\[|-)/', $key)) {
@@ -1122,8 +1126,6 @@ class IfAnalyzer
                 $elseif_context->removeReconciledClauses($changed_var_ids);
             }
         }
-
-        $old_elseif_context = clone $elseif_context;
 
         $pre_stmts_assigned_var_ids = $elseif_context->assigned_var_ids;
         $elseif_context->assigned_var_ids = [];
@@ -1304,14 +1306,6 @@ class IfAnalyzer
                     $implied_outer_context,
                     false,
                     array_keys($negated_elseif_types),
-                    $if_scope->updated_vars
-                );
-            } elseif ($entry_clauses && (count($entry_clauses) > 1 || !array_values($entry_clauses)[0]->wedge)) {
-                $outer_context->update(
-                    $old_elseif_context,
-                    $elseif_context,
-                    false,
-                    array_keys(\array_intersect_key($negated_elseif_types, $pre_conditional_context->vars_in_scope)),
                     $if_scope->updated_vars
                 );
             }

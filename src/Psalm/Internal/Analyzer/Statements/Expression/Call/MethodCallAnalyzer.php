@@ -50,6 +50,7 @@ use function array_search;
 use function array_keys;
 use function in_array;
 use Psalm\Internal\Taint\Source;
+use Doctrine\Instantiator\Exception\UnexpectedValueException;
 
 /**
  * @internal
@@ -366,7 +367,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             return self::checkMethodArgs(
                 null,
                 $stmt->args,
-                $found_generic_params,
+                null,
                 $context,
                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                 $statements_analyzer
@@ -755,8 +756,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         return false;
                     }
 
-                    $generic_params = [];
-
                     if (self::checkFunctionLikeArgumentsMatch(
                         $statements_analyzer,
                         $args,
@@ -764,7 +763,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $pseudo_method_storage->params,
                         $pseudo_method_storage,
                         null,
-                        $generic_params,
+                        null,
                         new CodeLocation($source, $stmt),
                         $context
                     ) === false) {
@@ -893,8 +892,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     return false;
                 }
 
-                $generic_params = [];
-
                 if (self::checkFunctionLikeArgumentsMatch(
                     $statements_analyzer,
                     $args,
@@ -902,7 +899,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $pseudo_method_storage->params,
                     $pseudo_method_storage,
                     null,
-                    $generic_params,
+                    null,
                     new CodeLocation($source, $stmt->name),
                     $context
                 ) === false) {
@@ -1030,6 +1027,8 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             }
         }
 
+        $template_result = new \Psalm\Internal\Type\TemplateResult([], $class_template_params ?: []);
+
         if ($codebase->store_node_types
             && !$context->collect_initializations
             && !$context->collect_mutations
@@ -1045,7 +1044,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         if (self::checkMethodArgs(
             $method_id,
             $args,
-            $class_template_params,
+            $template_result,
             $context,
             new CodeLocation($source, $stmt->name),
             $statements_analyzer
@@ -1104,16 +1103,16 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
             if (!$return_type_candidate) {
                 if ($call_map_id && CallMap::inCallMap($call_map_id)) {
-                    if (($class_template_params || $class_storage->stubbed)
+                    if (($template_result->generic_params || $class_storage->stubbed)
                         && isset($class_storage->methods[$method_name_lc])
                         && ($method_storage = $class_storage->methods[$method_name_lc])
                         && $method_storage->return_type
                     ) {
                         $return_type_candidate = clone $method_storage->return_type;
 
-                        if ($class_template_params) {
+                        if ($template_result->generic_params) {
                             $return_type_candidate->replaceTemplateTypesWithArgTypes(
-                                $class_template_params,
+                                $template_result->generic_params,
                                 $codebase
                             );
                         }
@@ -1208,9 +1207,27 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if ($return_type_candidate) {
                         $return_type_candidate = clone $return_type_candidate;
 
-                        if ($class_template_params) {
+                        if ($template_result->template_types) {
+                            $bindable_template_types = $return_type_candidate->getTemplateTypes();
+
+                            foreach ($bindable_template_types as $template_type) {
+                                if ($template_type->defining_class !== $fq_class_name
+                                    && !isset(
+                                        $template_result->generic_params
+                                            [$template_type->param_name]
+                                            [$template_type->defining_class ?: '']
+                                    )
+                                ) {
+                                    $template_result->generic_params[$template_type->param_name] = [
+                                        ($template_type->defining_class ?: '') => [Type::getEmpty(), 0]
+                                    ];
+                                }
+                            }
+                        }
+
+                        if ($template_result->generic_params) {
                             $return_type_candidate->replaceTemplateTypesWithArgTypes(
-                                $class_template_params,
+                                $template_result->generic_params,
                                 $codebase
                             );
                         }
@@ -1352,13 +1369,15 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             }
                         }
 
+                        $class_template_params = $template_result->generic_params;
+
                         if ($method_storage->assertions) {
                             self::applyAssertionsToContext(
                                 $stmt->name,
                                 ExpressionAnalyzer::getArrayVarId($stmt->var, null, $statements_analyzer),
                                 $method_storage->assertions,
                                 $args,
-                                $class_template_params ?: [],
+                                $class_template_params,
                                 $context,
                                 $statements_analyzer
                             );
@@ -1489,6 +1508,8 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
         $template_types = $class_storage->template_types;
 
+        $candidate_class_storages = [$class_storage];
+
         if ($calling_class_storage->template_type_extends
             && $method_name
             && !empty($non_trait_class_storage->overridden_method_ids[$method_name])
@@ -1500,24 +1521,35 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 $overridden_storage = $codebase->methods->getStorage($overridden_method_id);
 
                 if (!$overridden_storage->return_type) {
-                    return null;
+                    continue;
                 }
 
                 if ($overridden_storage->return_type->isNull()) {
-                    return null;
+                    continue;
                 }
 
                 list($fq_overridden_class) = explode('::', $overridden_method_id);
 
                 $overridden_class_storage = $codebase->classlike_storage_provider->get($fq_overridden_class);
 
+                $overridden_template_types = $overridden_class_storage->template_types;
+
                 if (!$template_types) {
-                    $template_types = $overridden_class_storage->template_types;
-                } elseif ($overridden_class_storage->template_types) {
-                    $template_types = array_merge($overridden_class_storage->template_types, $template_types);
+                    $template_types = $overridden_template_types;
+                } elseif ($overridden_template_types) {
+                    foreach ($overridden_template_types as $template_name => $template_map) {
+                        if (isset($template_types[$template_name])) {
+                            $template_types[$template_name] = array_merge(
+                                $template_types[$template_name],
+                                $template_map
+                            );
+                        } else {
+                            $template_types[$template_name] = $template_map;
+                        }
+                    }
                 }
 
-                $class_storage = $overridden_class_storage;
+                $candidate_class_storages[] = $overridden_class_storage;
             }
         }
 
@@ -1529,8 +1561,9 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         $e = $calling_class_storage->template_type_extends;
 
         if ($lhs_type_part instanceof TGenericObject) {
-            if ($calling_class_storage->template_types && $class_storage === $calling_class_storage) {
+            if ($class_storage === $calling_class_storage && $calling_class_storage->template_types) {
                 $i = 0;
+
                 foreach ($calling_class_storage->template_types as $type_name => $_) {
                     if (isset($lhs_type_part->type_params[$i])) {
                         $class_template_params[$type_name][$calling_class_storage->name] = [
@@ -1627,13 +1660,16 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                 $i++;
             }
-        } else {
-            foreach ($template_types as $type_name => $type_map) {
-                foreach ($type_map as list($type)) {
-                    if ($class_storage !== $calling_class_storage
-                        && isset($e[$class_storage->name][$type_name])
+        }
+
+        foreach ($template_types as $type_name => $type_map) {
+            foreach ($type_map as list($type)) {
+                foreach ($candidate_class_storages as $candidate_class_storage) {
+                    if ($candidate_class_storage !== $calling_class_storage
+                        && isset($e[$candidate_class_storage->name][$type_name])
+                        && !isset($class_template_params[$type_name][$candidate_class_storage->name])
                     ) {
-                        $input_type_extends = $e[$class_storage->name][$type_name];
+                        $input_type_extends = $e[$candidate_class_storage->name][$type_name];
 
                         $output_type_extends = null;
 
@@ -1659,15 +1695,15 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             }
                         }
 
-                        $class_template_params[$type_name][$class_storage->name] = [
+                        $class_template_params[$type_name][$candidate_class_storage->name] = [
                             $output_type_extends ?: Type::getMixed()
                         ];
                     }
+                }
 
-                    if ($lhs_var_id !== '$this') {
-                        if (!isset($class_template_params[$type_name])) {
-                            $class_template_params[$type_name][$class_storage->name] = [$type];
-                        }
+                if ($lhs_var_id !== '$this') {
+                    if (!isset($class_template_params[$type_name])) {
+                        $class_template_params[$type_name][$class_storage->name] = [$type];
                     }
                 }
             }

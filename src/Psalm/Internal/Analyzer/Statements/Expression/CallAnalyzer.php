@@ -13,6 +13,8 @@ use Psalm\Internal\Codebase\CallMap;
 use Psalm\Internal\Taint\Sink;
 use Psalm\Internal\Taint\Source;
 use Psalm\Internal\Type\TypeCombination;
+use Psalm\Internal\Type\TemplateResult;
+use Psalm\Internal\Type\UnionTemplateHandler;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\ImplicitToStringCast;
@@ -64,6 +66,7 @@ use function substr;
 use function array_merge;
 use Psalm\Issue\TaintedInput;
 use Doctrine\Instantiator\Exception\UnexpectedValueException;
+use Exception;
 
 /**
  * @internal
@@ -238,7 +241,6 @@ class CallAnalyzer
     /**
      * @param  string|null                      $method_id
      * @param  array<int, PhpParser\Node\Arg>   $args
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>>|null   &$generic_params
      * @param  Context                          $context
      * @param  CodeLocation                     $code_location
      * @param  StatementsAnalyzer                $statements_analyzer
@@ -248,7 +250,7 @@ class CallAnalyzer
     protected static function checkMethodArgs(
         $method_id,
         array $args,
-        &$generic_params,
+        ?TemplateResult $class_template_result,
         Context $context,
         CodeLocation $code_location,
         StatementsAnalyzer $statements_analyzer
@@ -265,7 +267,7 @@ class CallAnalyzer
             $method_params,
             $method_id,
             $context,
-            $generic_params
+            $class_template_result
         ) === false) {
             return false;
         }
@@ -324,7 +326,7 @@ class CallAnalyzer
             $method_params,
             $method_storage,
             $class_storage,
-            $generic_params,
+            $class_template_result,
             $code_location,
             $context
         ) === false) {
@@ -350,7 +352,7 @@ class CallAnalyzer
         ?array $function_params,
         ?string $method_id,
         Context $context,
-        ?array $generic_params = null
+        ?TemplateResult $template_result = null
     ) {
         $last_param = $function_params
             ? $function_params[count($function_params) - 1]
@@ -434,7 +436,8 @@ class CallAnalyzer
                 $codebase = $statements_analyzer->getCodebase();
 
                 if ($arg->value instanceof PhpParser\Node\Expr\Closure
-                    && $generic_params
+                    && $template_result
+                    && $template_result->generic_params
                     && $param
                     && $param->type
                     && !$arg->value->getDocComment()
@@ -464,20 +467,25 @@ class CallAnalyzer
                         $replaced_type = clone $param->type;
                     }
 
-                    $empty_generic_params = [];
+                    $replace_template_result = new \Psalm\Internal\Type\TemplateResult(
+                        $template_result->generic_params,
+                        []
+                    );
 
-                    $replaced_type->replaceTemplateTypesWithStandins(
-                        $generic_params,
-                        $empty_generic_params,
+                    $replaced_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                        $replaced_type,
+                        $replace_template_result,
                         $codebase,
+                        null,
                         null
                     );
 
                     $replaced_type->replaceTemplateTypesWithArgTypes(
-                        $generic_params
+                        $replace_template_result->generic_params,
+                        $codebase
                     );
 
-                    $closure_id = $statements_analyzer->getFilePath()
+                    $closure_id = strtolower($statements_analyzer->getFilePath())
                         . ':' . $arg->value->getLine()
                         . ':' . (int)$arg->value->getAttribute('startFilePos')
                         . ':-:closure';
@@ -545,18 +553,28 @@ class CallAnalyzer
 
                     $template_types = ['ArrayValue' => ['' => [Type::getMixed()]]];
 
-                    if ($generic_params === null) {
-                        $generic_params = [];
-                    }
-
-                    $generic_param_type->replaceTemplateTypesWithStandins(
+                    $replace_template_result = new \Psalm\Internal\Type\TemplateResult(
                         $template_types,
-                        $generic_params,
+                        []
+                    );
+
+                    \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                        $generic_param_type,
+                        $replace_template_result,
                         $codebase,
                         isset($arg->value->inferredType)
                             ? $arg->value->inferredType
-                            : null
+                            : null,
+                        null
                     );
+
+                    if ($replace_template_result->generic_params) {
+                        if (!$template_result) {
+                            $template_result = new TemplateResult([], []);
+                        }
+
+                        $template_result->generic_params += $replace_template_result->generic_params;
+                    }
                 }
 
                 if ($context->collect_references
@@ -747,7 +765,7 @@ class CallAnalyzer
                 && $arg->value->inferredType->hasArray()
             ) {
                 /**
-                 * @psalm-suppress PossiblyUndefinedArrayOffset
+                 * @psalm-suppress PossiblyUndefinedStringArrayOffset
                  * @var TArray|TList|ObjectLike
                  */
                 $array_type = $arg->value->inferredType->getTypes()['array'];
@@ -827,7 +845,7 @@ class CallAnalyzer
 
         if (isset($array_arg->inferredType) && $array_arg->inferredType->hasArray()) {
             /**
-             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var TArray|ObjectLike|TList
              */
             $array_type = $array_arg->inferredType->getTypes()['array'];
@@ -972,7 +990,7 @@ class CallAnalyzer
             && $replacement_arg->inferredType->hasArray()
         ) {
             /**
-             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var TArray|ObjectLike|TList
              */
             $array_type = $array_arg->inferredType->getTypes()['array'];
@@ -982,7 +1000,7 @@ class CallAnalyzer
             }
 
             /**
-             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var TArray|ObjectLike|TList
              */
             $replacement_array_type = $replacement_arg->inferredType->getTypes()['array'];
@@ -1095,7 +1113,6 @@ class CallAnalyzer
      * @param   array<int,FunctionLikeParameter>        $function_params
      * @param   FunctionLikeStorage|null                $function_storage
      * @param   ClassLikeStorage|null                   $class_storage
-     * @param   array<string, array<string, array{Type\Union, 1?:int}>>|null  $generic_params
      * @param   CodeLocation                            $code_location
      * @param   Context                                 $context
      *
@@ -1108,7 +1125,7 @@ class CallAnalyzer
         array $function_params,
         $function_storage,
         $class_storage,
-        &$generic_params,
+        ?TemplateResult $class_template_result,
         CodeLocation $code_location,
         Context $context
     ) {
@@ -1177,7 +1194,11 @@ class CallAnalyzer
             ? $function_params[count($function_params) - 1]
             : null;
 
-        $template_types = null;
+        $template_result = null;
+
+        $class_generic_params = $class_template_result
+            ? $class_template_result->generic_params
+            : [];
 
         if ($function_storage) {
             $template_types = self::getTemplateTypesForFunction(
@@ -1187,6 +1208,14 @@ class CallAnalyzer
             );
 
             if ($template_types) {
+                $template_result = $class_template_result;
+
+                if (!$template_result) {
+                    $template_result = new TemplateResult($template_types, []);
+                } elseif (!$template_result->template_types) {
+                    $template_result->template_types = $template_types;
+                }
+
                 foreach ($args as $argument_offset => $arg) {
                     $function_param = count($function_params) > $argument_offset
                         ? $function_params[$argument_offset]
@@ -1199,24 +1228,25 @@ class CallAnalyzer
                         continue;
                     }
 
-                    $empty_generic_params = [];
-
-                    $function_param->type->replaceTemplateTypesWithStandins(
-                        $template_types,
-                        $empty_generic_params,
+                    UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                        $function_param->type,
+                        $template_result,
                         $codebase,
                         $arg->value->inferredType,
+                        $context->self ?: '',
                         false
                     );
+
+                    if (!$class_template_result) {
+                        $template_result->generic_params = [];
+                    }
                 }
             }
         }
 
-        $existing_generic_params = $generic_params ?: [];
-
-        foreach ($existing_generic_params as $template_name => $type_map) {
+        foreach ($class_generic_params as $template_name => $type_map) {
             foreach ($type_map as $class => $type) {
-                $existing_generic_params[$template_name][$class][0] = clone $type[0];
+                $class_generic_params[$template_name][$class][0] = clone $type[0];
             }
         }
 
@@ -1242,8 +1272,7 @@ class CallAnalyzer
                     $argument_offset,
                     $arg,
                     $context,
-                    $generic_params,
-                    $template_types
+                    $template_result
                 ) === false) {
                     return;
                 }
@@ -1278,9 +1307,8 @@ class CallAnalyzer
                 $argument_offset,
                 $arg,
                 $context,
-                $existing_generic_params,
-                $generic_params,
-                $template_types,
+                $class_generic_params,
+                $template_result,
                 $function_storage ? $function_storage->pure : false,
                 $in_call_map
             ) === false) {
@@ -1383,19 +1411,14 @@ class CallAnalyzer
                     && $param->type
                     && $param->default_type
                     && !$param->is_variadic
-                    && $template_types
+                    && $template_result
                 ) {
-                    if ($generic_params === null) {
-                        $generic_params = [];
-                    }
-
-                    $param_type = clone $param->type;
-
-                    $param_type->replaceTemplateTypesWithStandins(
-                        $template_types,
-                        $generic_params,
+                    UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                        $param->type,
+                        $template_result,
                         $codebase,
                         clone $param->default_type,
+                        null,
                         true
                     );
                 }
@@ -1404,9 +1427,7 @@ class CallAnalyzer
     }
 
     /**
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $existing_generic_params
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
-     * @param  array<string, array<string, array{Type\Union}>> $template_types
+     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $class_generic_params
      * @return false|null
      */
     private static function checkFunctionLikeArgumentMatches(
@@ -1419,9 +1440,8 @@ class CallAnalyzer
         int $argument_offset,
         PhpParser\Node\Arg $arg,
         Context $context,
-        array $existing_generic_params,
-        ?array &$generic_params,
-        ?array $template_types,
+        array $class_generic_params,
+        ?TemplateResult $template_result,
         bool $function_is_pure,
         bool $in_call_map
     ) {
@@ -1446,7 +1466,7 @@ class CallAnalyzer
                     && $param_type->hasArray()
                 ) {
                     /**
-                     * @psalm-suppress PossiblyUndefinedArrayOffset
+                     * @psalm-suppress PossiblyUndefinedStringArrayOffset
                      * @var TList|TArray
                      */
                     $array_type = $param_type->getTypes()['array'];
@@ -1492,9 +1512,8 @@ class CallAnalyzer
             $argument_offset,
             $arg,
             $context,
-            $existing_generic_params,
-            $generic_params,
-            $template_types,
+            $class_generic_params,
+            $template_result,
             $function_is_pure,
             $in_call_map
         ) === false) {
@@ -1507,8 +1526,6 @@ class CallAnalyzer
      * @param  string|null $cased_method_id
      * @param  FunctionLikeParameter|null $last_param
      * @param  array<int, FunctionLikeParameter> $function_params
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
-     * @param  array<string, array<string, array{Type\Union}>> $template_types
      * @param  FunctionLikeStorage|null $function_storage
      * @return false|null
      */
@@ -1523,8 +1540,7 @@ class CallAnalyzer
         int $argument_offset,
         PhpParser\Node\Arg $arg,
         Context $context,
-        array &$generic_params = null,
-        array $template_types = null
+        ?TemplateResult $template_result
     ) {
         if ($arg->value instanceof PhpParser\Node\Scalar
             || $arg->value instanceof PhpParser\Node\Expr\Cast
@@ -1587,27 +1603,24 @@ class CallAnalyzer
                     $check_null_ref = false;
                 }
 
-                if ($template_types && $by_ref_type) {
-                    if ($generic_params === null) {
-                        $generic_params = [];
-                    }
-
+                if ($template_result && $by_ref_type) {
                     $original_by_ref_type = clone $by_ref_type;
 
                     $by_ref_type = clone $by_ref_type;
 
-                    $by_ref_type->replaceTemplateTypesWithStandins(
-                        $template_types,
-                        $generic_params,
+                    $by_ref_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                        $by_ref_type,
+                        $template_result,
                         $codebase,
                         isset($arg->value->inferredType)
                             ? $arg->value->inferredType
-                            : null
+                            : null,
+                        null
                     );
 
-                    if ($generic_params) {
+                    if ($template_result->generic_params) {
                         $original_by_ref_type->replaceTemplateTypesWithArgTypes(
-                            $generic_params
+                            $template_result->generic_params
                         );
 
                         $by_ref_type = $original_by_ref_type;
@@ -1639,7 +1652,7 @@ class CallAnalyzer
     }
 
     /**
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $existing_generic_params
+     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $class_generic_params
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
      * @param  array<string, array<string, array{Type\Union}>> $template_types
      * @return false|null
@@ -1656,9 +1669,8 @@ class CallAnalyzer
         int $argument_offset,
         PhpParser\Node\Arg $arg,
         Context $context,
-        ?array $existing_generic_params,
-        ?array &$generic_params,
-        ?array $template_types,
+        ?array $class_generic_params,
+        ?TemplateResult $template_result,
         bool $function_is_pure,
         bool $in_call_map
     ) {
@@ -1672,35 +1684,35 @@ class CallAnalyzer
             $param_type = clone $function_param->type;
         }
 
-        if ($existing_generic_params) {
+        if ($class_generic_params) {
             $empty_generic_params = [];
 
-            $param_type->replaceTemplateTypesWithStandins(
-                $existing_generic_params,
-                $empty_generic_params,
+            $empty_template_result = new TemplateResult($class_generic_params, $empty_generic_params);
+
+            $param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $param_type,
+                $empty_template_result,
                 $codebase,
-                $arg->value->inferredType
+                $arg->value->inferredType,
+                $context->self ?: ''
             );
 
-            $arg_type->replaceTemplateTypesWithStandins(
-                $existing_generic_params,
-                $empty_generic_params,
+            $arg_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $arg_type,
+                $empty_template_result,
                 $codebase,
-                $arg->value->inferredType
+                $arg->value->inferredType,
+                $context->self ?: ''
             );
         }
 
-        if ($template_types) {
-            if ($generic_params === null) {
-                $generic_params = [];
-            }
-
+        if ($template_result && $template_result->template_types) {
             $arg_type_param = $arg_type;
 
             if ($arg->unpack) {
                 if ($arg_type->hasArray()) {
                     /**
-                     * @psalm-suppress PossiblyUndefinedArrayOffset
+                     * @psalm-suppress PossiblyUndefinedStringArrayOffset
                      * @var Type\Atomic\TArray|Type\Atomic\TList|Type\Atomic\ObjectLike
                      */
                     $array_atomic_type = $arg_type->getTypes()['array'];
@@ -1717,12 +1729,27 @@ class CallAnalyzer
                 }
             }
 
-            $param_type->replaceTemplateTypesWithStandins(
-                $template_types,
-                $generic_params,
+            $bindable_template_params = $param_type->getTemplateTypes();
+
+            $param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $param_type,
+                $template_result,
                 $codebase,
-                $arg_type_param
+                $arg_type_param,
+                $context->self ?: ''
             );
+
+            foreach ($bindable_template_params as $template_type) {
+                if (!isset(
+                    $template_result->generic_params
+                        [$template_type->param_name]
+                        [$template_type->defining_class ?: '']
+                )) {
+                    $template_result->generic_params[$template_type->param_name] = [
+                        ($template_type->defining_class ?: '') => [clone $template_type->as, 0]
+                    ];
+                }
+            }
         }
 
         if (!$context->check_variables) {
@@ -1783,7 +1810,7 @@ class CallAnalyzer
 
             if ($arg_type->hasArray()) {
                 /**
-                 * @psalm-suppress PossiblyUndefinedArrayOffset
+                 * @psalm-suppress PossiblyUndefinedStringArrayOffset
                  * @var Type\Atomic\TArray|Type\Atomic\TList|Type\Atomic\ObjectLike
                  */
                 $array_atomic_type = $arg_type->getTypes()['array'];
@@ -1937,7 +1964,7 @@ class CallAnalyzer
             $array_arg = isset($arg->value) ? $arg->value : null;
 
             /**
-             * @psalm-suppress PossiblyUndefinedArrayOffset
+             * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var ObjectLike|TArray|TList|null
              */
             $array_arg_type = $array_arg
@@ -2420,6 +2447,7 @@ class CallAnalyzer
                 if (!$function_param->by_ref
                     && !($function_param->is_variadic xor $unpack)
                     && $cased_method_id !== 'echo'
+                    && $cased_method_id !== 'print'
                     && (!$in_call_map || $context->strict_types)
                 ) {
                     self::coerceValueAfterGatekeeperArgument(
@@ -2558,6 +2586,7 @@ class CallAnalyzer
             && !$input_type->hasArray()
             && !$param_type->from_docblock
             && $cased_method_id !== 'echo'
+            && $cased_method_id !== 'print'
             && $cased_method_id !== 'sprintf'
         ) {
             $union_comparison_results->scalar_type_match_found = false;
@@ -2596,7 +2625,7 @@ class CallAnalyzer
             }
         }
 
-        if ($union_comparison_results->to_string_cast && $cased_method_id !== 'echo') {
+        if ($union_comparison_results->to_string_cast && $cased_method_id !== 'echo' && $cased_method_id !== 'print') {
             if (IssueBuffer::accepts(
                 new ImplicitToStringCast(
                     'Argument ' . ($argument_offset + 1) . $method_identifier . ' expects ' .
@@ -2619,8 +2648,7 @@ class CallAnalyzer
             );
 
             if ($union_comparison_results->scalar_type_match_found) {
-                if ($cased_method_id !== 'echo') {
-
+                if ($cased_method_id !== 'echo' && $cased_method_id !== 'print') {
                     // TODO: Better check for scalar being part of a compound type that matched.
                     if (stripos((string)$param_type, 'array') !== false) {
                         if (IssueBuffer::accepts(
@@ -2799,7 +2827,7 @@ class CallAnalyzer
             }
         }
 
-        if (!$param_type->isNullable() && $cased_method_id !== 'echo') {
+        if (!$param_type->isNullable() && $cased_method_id !== 'echo' && $cased_method_id !== 'print') {
             if ($input_type->isNull()) {
                 if (IssueBuffer::accepts(
                     new NullArgument(
@@ -2853,6 +2881,7 @@ class CallAnalyzer
             && !$function_param->by_ref
             && !($function_param->is_variadic xor $unpack)
             && $cased_method_id !== 'echo'
+            && $cased_method_id !== 'print'
             && (!$in_call_map || $context->strict_types)
         ) {
             self::coerceValueAfterGatekeeperArgument(

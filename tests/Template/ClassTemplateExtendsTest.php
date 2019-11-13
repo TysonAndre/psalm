@@ -677,9 +677,21 @@ class ClassTemplateExtendsTest extends TestCase
 
                     class Collection3 extends Collection2{}
 
-                    $a = new Collection1(["a" => "b"]);
-                    $a = new Collection2(["a" => "b"]);
-                    $a = new Collection3(["a" => "b"]);',
+                    foreach ((new Collection1(["a" => "b"])) as $a) {}
+
+                    /** @psalm-suppress MixedAssignment */
+                    foreach ((new Collection2(["a" => "b"])) as $a) {}
+
+                    /** @psalm-suppress MixedAssignment */
+                    foreach ((new Collection3(["a" => "b"])) as $a) {}
+
+                    foreach ((new Collection1([])) as $i) {}
+
+                    /** @psalm-suppress MixedAssignment */
+                    foreach ((new Collection2([])) as $i) {}
+
+                    /** @psalm-suppress MixedAssignment */
+                    foreach ((new Collection3([])) as $i) {}',
             ],
             'iterateOverExtendedArrayObjectWithoutParam' => [
                 '<?php
@@ -1598,6 +1610,54 @@ class ClassTemplateExtendsTest extends TestCase
                         use T;
                     }',
             ],
+            'extendWithEnoughArgs' => [
+                '<?php
+                    /**
+                     * @template TKey of array-key
+                     * @template T
+                     * @template-extends IteratorAggregate<TKey, T>
+                     */
+                    interface Collection extends IteratorAggregate
+                    {
+                    }
+
+                    /**
+                     * @template T
+                     * @template TKey of array-key
+                     * @template-implements Collection<TKey, T>
+                     */
+                    class ArrayCollection implements Collection
+                    {
+                        /**
+                         * @psalm-var array<TKey, T>
+                         */
+                        private $elements;
+
+                        /**
+                         * @psalm-param array<TKey, T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        public function getIterator()
+                        {
+                            return new ArrayIterator($this->elements);
+                        }
+
+                        /**
+                         * @psalm-suppress MissingTemplateParam
+                         *
+                         * @psalm-param array<T> $elements
+                         * @psalm-return ArrayCollection<T>
+                         */
+                        protected function createFrom(array $elements)
+                        {
+                            return new static($elements);
+                        }
+                    }',
+            ],
             'extendWithTooFewArgs' => [
                 '<?php
                     /**
@@ -1637,7 +1697,6 @@ class ClassTemplateExtendsTest extends TestCase
 
                         /**
                          * @psalm-suppress MissingTemplateParam
-                         * @psalm-suppress InvalidTemplateParam
                          *
                          * @psalm-param array<T> $elements
                          * @psalm-return ArrayCollection<T>
@@ -1701,7 +1760,7 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }',
             ],
-            'implementsAndExtendsWithTemplate' => [
+            'implementsAndExtendsWithTemplateReturningValid' => [
                 '<?php
                     /**
                      * @template TReal
@@ -2425,6 +2484,41 @@ class ClassTemplateExtendsTest extends TestCase
                         return new Right(new B());
                     }'
             ],
+            'refineGenericWithInstanceof' => [
+                '<?php
+                    /** @template T */
+                    interface Maybe {}
+
+                    /**
+                     * @template T
+                     * @implements Maybe<T>
+                     */
+                    class Some implements Maybe {
+                        /** @var T */
+                        private $value;
+
+                        /** @psalm-param T $value */
+                        public function __construct($value) {
+                            $this->value = $value;
+                        }
+
+                        /** @psalm-return T */
+                        public function extract() { return $this->value; }
+                    }
+
+                    /**
+                     * @psalm-return Maybe<int>
+                     */
+                    function repository(): Maybe {
+                        return new Some(5);
+                    }
+
+                    $maybe = repository();
+
+                    if ($maybe instanceof Some) {
+                        $anInt = $maybe->extract();
+                    }'
+            ],
         ];
     }
 
@@ -3121,7 +3215,7 @@ class ClassTemplateExtendsTest extends TestCase
                     }',
                 'error_message' => 'InvalidReturnType',
             ],
-            'implementsAndExtendsWithTemplate' => [
+            'implementsAndExtendsWithTemplateReturningInvalid' => [
                 '<?php
                     /**
                      * @template TReal
@@ -3269,6 +3363,116 @@ class ClassTemplateExtendsTest extends TestCase
                         return new Left(new B());
                     }',
                 'error_message' => 'InvalidReturnStatement'
+            ],
+            'possiblyNullReferenceOnTraitDefinedMethod' => [
+                '<?php
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     */
+                    trait T1 {
+                        /**
+                         * @var array<TKey, TValue>
+                         */
+                        protected $mocks = [];
+
+                        /**
+                         * @param TKey $offset
+                         * @return TValue|null
+                         * @psalm-suppress LessSpecificImplementedReturnType
+                         * @psalm-suppress ImplementedParamTypeMismatch
+                         */
+                        public function offsetGet($offset) {
+                            return $this->mocks[$offset] ?? null;
+                        }
+                    }
+
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     */
+                    interface Arr {
+                        /**
+                         * @param TKey $offset
+                         * @return TValue|null
+                         */
+                        public function offsetGet($offset);
+                    }
+
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     * @implements Arr<TKey, TValue>
+                     */
+                    class C implements Arr {
+                        /** @use T1<TKey, TValue> */
+                        use T1;
+
+                        /**
+                         * @param TKey $offset
+                         * @psalm-suppress MixedMethodCall
+                         */
+                        public function foo($offset) : void {
+                            $this->offsetGet($offset)->bar();
+                        }
+                    }',
+                'error_message' => 'PossiblyNullReference'
+            ],
+            'possiblyNullReferenceOnTraitDefinedMethodExtended' => [
+                '<?php
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     */
+                    trait T1 {
+                        /**
+                         * @var array<TKey, TValue>
+                         */
+                        protected $mocks = [];
+
+                        /**
+                         * @param TKey $offset
+                         * @return TValue|null
+                         * @psalm-suppress LessSpecificImplementedReturnType
+                         * @psalm-suppress ImplementedParamTypeMismatch
+                         */
+                        public function offsetGet($offset) {
+                            return $this->mocks[$offset] ?? null;
+                        }
+                    }
+
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     */
+                    interface Arr {
+                        /**
+                         * @param TKey $offset
+                         * @return TValue|null
+                         */
+                        public function offsetGet($offset);
+                    }
+
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     * @implements Arr<TKey, TValue>
+                     */
+                    class C implements Arr {
+                        /** @use T1<TKey, TValue> */
+                        use T1;
+                    }
+
+                    class D extends C {
+                        /**
+                         * @param mixed $offset
+                         * @psalm-suppress MixedArgument
+                         */
+                        public function foo($offset) : void {
+                            $this->offsetGet($offset)->bar();
+                        }
+                    }',
+                'error_message' => 'MixedMethodCall'
             ],
         ];
     }

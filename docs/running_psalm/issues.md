@@ -717,6 +717,15 @@ Emitted when a function parameter default clashes with the type Psalm expects th
 function foo(int $i = false) : void {}
 ```
 
+### InvalidParent
+
+Emitted when a function return type is `parent`, but there's no parent class
+```php
+class Foo {
+    public function f(): parent {}
+}
+```
+
 ### InvalidPassByReference
 
 Emitted when passing a non-variable to a function that expects a by-ref variable
@@ -1972,6 +1981,32 @@ if (rand(0, 1)) {
 
 echo $arr["b"];
 
+```
+
+### PossiblyUndefinedIntArrayOffset
+
+Emitted when the config flag `ensureArrayIntOffsetsExist` is set to `true` and an integer-keyed offset is not checked for existence
+
+```php
+/**
+ * @param array<int, string> $arr
+ */
+function foo(array $arr) : void {
+    echo $arr[0];
+}
+```
+
+### PossiblyUndefinedStringArrayOffset
+
+Emitted when the config flag `ensureArrayStringOffsetsExist` is set to `true` and an integer-keyed offset is not checked for existence
+
+```php
+/**
+ * @param array<string, string> $arr
+ */
+function foo(array $arr) : void {
+    echo $arr["hello"];
+}
 ```
 
 ### PossiblyUndefinedGlobalVariable

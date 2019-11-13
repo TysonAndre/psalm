@@ -402,7 +402,7 @@ class FunctionTemplateTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MixedAssignment', 'MissingParamType'],
             ],
-            'bindFirstTemplatedClosureParameter' => [
+            'bindFirstTemplatedClosureParameterValid' => [
                 '<?php
                     /**
                      * @template T
@@ -410,10 +410,7 @@ class FunctionTemplateTest extends TestCase
                      * @param Closure(T):void $t1
                      * @param T $t2
                      */
-                    function apply(Closure $t1, $t2) : void
-                    {
-                        $t1($t2);
-                    }
+                    function apply(Closure $t1, $t2) : void {}
 
                     apply(function(int $_i) : void {}, 5);
                     apply(function(string $_i) : void {}, "hello");
@@ -799,6 +796,29 @@ class FunctionTemplateTest extends TestCase
                         return $m->newInstance();
                     }'
             ],
+            'unboundVariableIsEmpty' => [
+                '<?php
+                    /**
+                     * @template TE
+                     * @template TR
+                     *
+                     * @param TE $elt
+                     * @param TR ...$elts
+                     *
+                     * @return TE|TR
+                     */
+                    function collect($elt, ...$elts) {
+                        $ret = $elt;
+                        foreach ($elts as $item) {
+                            if (rand(0, 1)) {
+                                $ret = $item;
+                            }
+                        }
+                        return $ret;
+                    }
+
+                    echo collect("a");'
+            ],
         ];
     }
 
@@ -952,7 +972,7 @@ class FunctionTemplateTest extends TestCase
                     }',
                 'error_message' => 'MixedMethodCall',
             ],
-            'bindFirstTemplatedClosureParameter' => [
+            'bindFirstTemplatedClosureParameterInvalidScalar' => [
                 '<?php
                     /**
                      * @template T
@@ -1203,8 +1223,36 @@ class FunctionTemplateTest extends TestCase
                         return $callback();
                     }
 
-                    makeResultSet([A::class, "returnsObjectOrNull"]);',
+                    makeResultSet([B::class, "returnsObjectOrNull"]);',
                 'error_message' => 'InvalidArgument',
+            ],
+            'templateInvokeArg' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @param callable(T):void $c
+                     * @param T $param
+                     */
+                    function apply(callable $c, $param):void{
+                        call_user_func($c, $param);
+                    }
+
+                    class A {
+                        public function __toString(){
+                            return "a";
+                        }
+                    }
+
+                    class B {}
+
+                    class Printer{
+                        public function __invoke(A $a) : void {
+                            echo $a;
+                        }
+                    }
+
+                    apply(new Printer(), new B());',
+                'error_message' => 'InvalidArgument'
             ],
         ];
     }

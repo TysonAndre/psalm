@@ -209,6 +209,7 @@
             <xs:element name="InvalidMethodCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidNullableReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidOperand" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="InvalidParent" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidPassByReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidPropertyAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidPropertyAssignmentValue" type="IssueHandlerType" minOccurs="0" />
@@ -313,6 +314,8 @@
             <xs:element name="PossiblyNullPropertyFetch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyNullReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedArrayOffset" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyUndefinedIntArrayOffset" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyUndefinedStringArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedMethod" type="MethodIssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedGlobalVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyUndefinedVariable" type="IssueHandlerType" minOccurs="0" />

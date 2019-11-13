@@ -984,7 +984,9 @@ class UnusedVariableTest extends TestCase
                     } catch (\Exception $e) {
                         throw new \Exception("Something went wrong");
                     } finally {
-                        \fclose($stream);
+                        if ($stream) {
+                            \fclose($stream);
+                        }
                     }',
             ],
             'varUsedInloop' => [
@@ -1132,6 +1134,163 @@ class UnusedVariableTest extends TestCase
                     do {
                       echo $index;
                     } while (($index = $index +  1) < 10);'
+            ],
+            'tryCatchInsaneRepro' => [
+                '<?php
+                    function maybeThrows() : string {
+                        return "hello";
+                    }
+
+                    function b(bool $a): void {
+                        if (!$a) {
+                            return;
+                        }
+
+                        $b = "";
+
+                        try {
+                            $b = maybeThrows();
+                            echo $b;
+                        } catch (\Exception $e) {}
+
+                        echo $b;
+                    }'
+            ],
+            'tryCatchInsaneReproNoFirstBoolCheck' => [
+                '<?php
+                    function maybeThrows() : string {
+                        return "hello";
+                    }
+
+                    function b(): void {
+                        $b = "";
+
+                        try {
+                            $b = maybeThrows();
+                            echo $b;
+                        } catch (\Exception $e) {}
+
+                        echo $b;
+                    }'
+            ],
+            'tryWithWhile' => [
+                '<?php
+                    function foo(): void {
+                        $done = false;
+
+                        while (!$done) {
+                            try {
+                                $done = true;
+                            } catch (\Exception $e) {
+                            }
+                        }
+                    }',
+            ],
+            'tryWithWhileWithoutTry' => [
+                '<?php
+                    function foo(): void {
+                        $done = false;
+
+                        while (!$done) {
+                            $done = true;
+                        }
+                    }',
+            ],
+            'usedInCatchAndTryWithReturnInTry' => [
+                '<?php
+                    function foo() : ?string {
+                        $a = null;
+
+                        try {
+                            $a = "hello";
+                            echo $a;
+                        } catch (Exception $e) {
+                            return $a;
+                        }
+
+                        return $a;
+                    }
+
+                    function dangerous() : string {
+                        if (rand(0, 1)) {
+                            throw new \Exception("bad");
+                        }
+                        return "hello";
+                    }',
+            ],
+            'useTryAndCatchAssignedVariableInsideFinally' => [
+                '<?php
+                    function foo() : void {
+                        try {
+                            // do something dangerous
+                            $a = 5;
+                        } catch (Exception $e) {
+                            $a = 4;
+                            throw new Exception("bad");
+                        } finally {
+                            echo $a;
+                        }
+                    }'
+            ],
+            'usedVarInCatchAndAfter' => [
+                '<?php
+                    function foo() : void {
+                       if (rand(0, 1)) {
+                            throw new \Exception("bad");
+                       }
+                    }
+
+                    $a = null;
+
+                    try {
+                        foo();
+                        $a = "hello";
+                    } catch (\Exception $e) {
+                        echo $a;
+                    }
+
+                    echo $a;'
+            ],
+            'unusedForeach' => [
+                '<?php
+                    /**
+                     * @param array<int, string> $test
+                     */
+                    function foo(array $test) : void {
+                        foreach($test as $key => $_testValue) {
+                            echo $key;
+                        }
+                    }'
+            ],
+            'usedAfterMixedVariableAssignment' => [
+                '<?php
+                    function foo(array $arr): array {
+                        $c = "c";
+                        /** @psalm-suppress MixedArrayAssignment */
+                        $arr["a"]["b"][$c] = 1;
+                        return $arr;
+                    }',
+            ],
+            'binaryOpIncrementInElse' => [
+                '<?php
+                    function foo(int $i, string $alias) : void {
+                        echo $alias ?: $i++;
+                        echo $i;
+                    }'
+            ],
+            'binaryOpIncrementInCond' => [
+                '<?php
+                    function foo(int $i, string $alias) : void {
+                        echo $i++ ?: $alias;
+                        echo $i;
+                    }'
+            ],
+            'binaryOpIncrementInIf' => [
+                '<?php
+                    function foo(int $i, string $alias) : void {
+                        echo rand(0, 1) ? $i++ : $alias;
+                        echo $i;
+                    }'
             ],
         ];
     }

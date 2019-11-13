@@ -1250,6 +1250,14 @@ class ArrayAssignmentTest extends TestCase
                         }
                     }'
             ],
+            'assignStringFirstChar' => [
+                '<?php
+                    /** @param non-empty-list<string> $arr */
+                    function foo(array $arr) : string {
+                        $arr[0][0] = "a";
+                        return $arr[0];
+                    }'
+            ],
         ];
     }
 
@@ -1454,6 +1462,17 @@ class ArrayAssignmentTest extends TestCase
                         return $arr;
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'preventArrayAssignmentOnReturnValue' => [
+                '<?php
+                    class A {
+                        public function foo() : array {
+                            return [1, 2, 3];
+                        }
+                    }
+
+                    (new A)->foo()[3] = 5;',
+                'error_message' => 'InvalidArrayAssignment',
             ],
         ];
     }

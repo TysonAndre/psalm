@@ -417,8 +417,6 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                 return false;
                             }
 
-                            $generic_params = [];
-
                             if (self::checkFunctionLikeArgumentsMatch(
                                 $statements_analyzer,
                                 $args,
@@ -426,7 +424,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                 $pseudo_method_storage->params,
                                 $pseudo_method_storage,
                                 null,
-                                $generic_params,
+                                null,
                                 new CodeLocation($source, $stmt),
                                 $context
                             ) === false) {
@@ -773,10 +771,12 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
                 }
 
+                $template_result = new \Psalm\Internal\Type\TemplateResult([], $found_generic_params ?: []);
+
                 if (self::checkMethodArgs(
                     $method_id,
                     $args,
-                    $found_generic_params,
+                    $template_result,
                     $context,
                     new CodeLocation($statements_analyzer->getSource(), $stmt),
                     $statements_analyzer
@@ -833,9 +833,26 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if ($return_type_candidate) {
                         $return_type_candidate = clone $return_type_candidate;
 
-                        if ($found_generic_params !== null) {
+                        if ($template_result->template_types) {
+                            $bindable_template_types = $return_type_candidate->getTemplateTypes();
+
+                            foreach ($bindable_template_types as $template_type) {
+                                if (!isset(
+                                    $template_result->generic_params
+                                        [$template_type->param_name]
+                                        [$template_type->defining_class ?: '']
+                                )) {
+                                    $template_result->generic_params[$template_type->param_name] = [
+                                        ($template_type->defining_class ?: '') => [Type::getEmpty(), 0]
+                                    ];
+                                }
+                            }
+                        }
+
+                        if ($template_result->generic_params) {
                             $return_type_candidate->replaceTemplateTypesWithArgTypes(
-                                $found_generic_params
+                                $template_result->generic_params,
+                                $codebase
                             );
                         }
 
@@ -906,13 +923,15 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         }
                     }
 
+                    $generic_params = $template_result->generic_params;
+
                     if ($method_storage->assertions) {
                         self::applyAssertionsToContext(
                             $stmt->name,
                             null,
                             $method_storage->assertions,
                             $stmt->args,
-                            $found_generic_params ?: [],
+                            $generic_params,
                             $context,
                             $statements_analyzer
                         );
@@ -920,8 +939,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                     if ($method_storage->if_true_assertions) {
                         $stmt->ifTrueAssertions = array_map(
-                            function (Assertion $assertion) use ($found_generic_params) : Assertion {
-                                return $assertion->getUntemplatedCopy($found_generic_params ?: []);
+                            function (Assertion $assertion) use ($generic_params) : Assertion {
+                                return $assertion->getUntemplatedCopy($generic_params);
                             },
                             $method_storage->if_true_assertions
                         );
@@ -929,8 +948,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                     if ($method_storage->if_false_assertions) {
                         $stmt->ifFalseAssertions = array_map(
-                            function (Assertion $assertion) use ($found_generic_params) : Assertion {
-                                return $assertion->getUntemplatedCopy($found_generic_params ?: []);
+                            function (Assertion $assertion) use ($generic_params) : Assertion {
+                                return $assertion->getUntemplatedCopy($generic_params);
                             },
                             $method_storage->if_false_assertions
                         );
@@ -1097,7 +1116,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             return self::checkMethodArgs(
                 $method_id,
                 $stmt->args,
-                $found_generic_params,
+                null,
                 $context,
                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                 $statements_analyzer

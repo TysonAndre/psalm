@@ -190,10 +190,41 @@ class ClassTemplateTest extends TestCase
                 ],
                 'error_levels' => ['LessSpecificReturnStatement'],
             ],
-            'classTemplateContainer' => [
+            'classTemplateContainerSimpleCall' => [
                 '<?php
                     class A {}
 
+                    /**
+                     * @template T
+                     */
+                    class Foo {
+                        /** @var T */
+                        public $obj;
+
+                        /**
+                         * @param T $obj
+                         */
+                        public function __construct($obj) {
+                            $this->obj = $obj;
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function bar() {
+                            return $this->obj;
+                        }
+                    }
+
+                    $afoo = new Foo(new A());
+                    $afoo_bar = $afoo->bar();',
+                'assertions' => [
+                    '$afoo' => 'Foo<A>',
+                    '$afoo_bar' => 'A',
+                ],
+            ],
+            'classTemplateContainerThisCall' => [
+                '<?php
                     /**
                      * @template T
                      */
@@ -225,14 +256,8 @@ class ClassTemplateTest extends TestCase
                         public function __toString(): string {
                             return "hello " . $this->obj;
                         }
-                    }
-
-                    $afoo = new Foo(new A());
-                    $afoo_bar = $afoo->bar();',
-                'assertions' => [
-                    '$afoo' => 'Foo<A>',
-                    '$afoo_bar' => 'A',
-                ],
+                    }',
+                [],
                 'error_levels' => ['MixedOperand'],
             ],
             'validPsalmTemplatedClassType' => [
@@ -1657,7 +1682,7 @@ class ClassTemplateTest extends TestCase
                     class Child extends Base {}
 
                     /**
-                     * @template T
+                     * @template-covariant T
                      */
                     class Foo
                     {
@@ -1675,7 +1700,7 @@ class ClassTemplateTest extends TestCase
             ],
             'allowMoreSpecificArray' => [
                 '<?php
-                    /** @template T */
+                    /** @template-covariant T */
                     class Foo {
                         /** @param \Closure():T $closure */
                         public function __construct($closure) {}
@@ -1689,6 +1714,33 @@ class ClassTemplateTest extends TestCase
                             $this->FooArray = new Foo(function(): array { return ["foo" => "bar"]; });
                         }
                     }'
+            ],
+            'specializeTypeInPropertyAssignment' => [
+                '<?php
+                    /** @template-covariant T */
+                    class Foo {
+                        /** @var \Closure():T $closure */
+                        private $closure;
+
+                        /** @param \Closure():T $closure */
+                        public function __construct($closure)
+                        {
+                            $this->closure = $closure;
+                        }
+                    }
+
+                    class Bar {
+                        /** @var Foo<array> */
+                        private $FooArray;
+
+                        public function __construct() {
+                            $this->FooArray = new Foo(function(): array { return ["foo" => "bar"]; });
+                            expectsShape($this->FooArray);
+                        }
+                    }
+
+                    /** @param Foo<array{foo: string}> $_ */
+                    function expectsShape($_): void {}',
             ],
             'reflectTemplatedClass' => [
                 '<?php
@@ -1917,6 +1969,169 @@ class ClassTemplateTest extends TestCase
                     {
                         return ["foo", "baz"];
                     }'
+            ],
+            'allowInternalNullCheck' => [
+                '<?php
+                    /**
+                     * @template TP as ?scalar
+                     */
+                    class Entity
+                    {
+                        /**
+                         * @var TP
+                         */
+                        private $parent;
+
+                        /** @param TP $parent */
+                        public function __construct($parent) {
+                            $this->parent = $parent;
+                        }
+
+                        public function hasNoParent() : bool
+                        {
+                            return $this->parent === null; // So TP does contain null
+                        }
+                    }'
+            ],
+            'useMethodWithExistingGenericParam' => [
+                '<?php
+                    class Bar {
+                        public function getFoo(): string {
+                            return "foo";
+                        }
+                    }
+
+                    /**
+                     * @template TKey
+                     * @template T
+                     */
+                    interface Collection {
+                        /**
+                         * @param Closure(T=):bool $p
+                         * @return Collection<TKey, T>
+                         */
+                        public function filter(Closure $p);
+                    }
+
+                    /**
+                     * @param Collection<int, Bar> $c
+                     * @psalm-return Collection<int, Bar>
+                     */
+                    function filter(Collection $c, string $name) {
+                        return $c->filter(
+                            function (Bar $f) use ($name) {
+                                return $f->getFoo() === "foo";
+                            }
+                        );
+                    }'
+            ],
+            'unboundVariableIsEmptyInInstanceMethod' => [
+                '<?php
+                    class A {
+                        /**
+                         * @template TE
+                         * @template TR
+                         *
+                         * @param TE $elt
+                         * @param TR ...$elts
+                         *
+                         * @return TE|TR
+                         */
+                        public function collectInstance($elt, ...$elts) {
+                            $ret = $elt;
+                            foreach ($elts as $item) {
+                                if (rand(0, 1)) {
+                                    $ret = $item;
+                                }
+                            }
+                            return $ret;
+                        }
+                    }
+
+                    echo (new A)->collectInstance("a");'
+            ],
+            'unboundVariableIsEmptyInStaticMethod' => [
+                '<?php
+                    class A {
+                        /**
+                         * @template TE
+                         * @template TR
+                         *
+                         * @param TE $elt
+                         * @param TR ...$elts
+                         *
+                         * @return TE|TR
+                         */
+                        public static function collectStatic($elt, ...$elts) {
+                            $ret = $elt;
+                            foreach ($elts as $item) {
+                                if (rand(0, 1)) {
+                                    $ret = $item;
+                                }
+                            }
+                            return $ret;
+                        }
+                    }
+
+                    echo A::collectStatic("a");'
+            ],
+            'traversableToIterable' => [
+                '<?php
+                    /**
+                     * @template T1 as array-key
+                     * @template T2
+                     *
+                     * @param iterable<T1,T2> $x
+                     *
+                     * @return array<T1,T2>
+                     */
+                    function iterableToArray (iterable $x): array {
+                        if (is_array($x)) {
+                            return $x;
+                        }
+                        else {
+                            return iterator_to_array($x);
+                        }
+                    }
+
+                    /**
+                     * @param Traversable<int, int> $t
+                     * @return array<int, int>
+                     */
+                    function withParams(Traversable $t) : array {
+                        return iterableToArray($t);
+                    }',
+            ],
+            'templateStaticWithParam' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class ArrayCollection {
+                        /** @var list<T> */
+                        private $elements;
+
+                        /**
+                         * @param list<T> $elements
+                         */
+                        public function __construct(array $elements) {
+                            $this->elements = $elements;
+                        }
+
+                        /**
+                         * @template U
+                         * @param callable(T=):U $callback
+                         * @return static<U>
+                         */
+                        public function map(callable $callback) {
+                            return new static(array_values(array_map($callback, $this->elements)));
+                        }
+                    }
+
+                    /** @param ArrayCollection<int> $ints */
+                    function takesInts(ArrayCollection $ints) :void {}
+
+                    takesInts((new ArrayCollection([ "a", "bc" ]))->map("strlen"));'
             ],
         ];
     }
@@ -2289,33 +2504,81 @@ class ClassTemplateTest extends TestCase
                     function takesFooDerived($foo): void {}',
                 'error_message' => 'InvalidReturnStatement'
             ],
-            'specializeTypeInPropertyAssignment' => [
+            'preventUseWithMoreSpecificParamInt' => [
                 '<?php
                     /** @template T */
-                    class Foo {
-                        /** @var \Closure():T $closure */
-                        private $closure;
+                    abstract class Collection {
+                        /** @param T $elem */
+                        public function add($elem): void {}
+                    }
 
-                        /** @param \Closure():T $closure */
-                        public function __construct($closure)
-                        {
-                            $this->closure = $closure;
+                    /**
+                     * @template T
+                     * @param Collection<T> $col
+                     */
+                    function usesCollection(Collection $col): void {
+                        $col->add(456);
+                    }',
+                'error_message' => 'InvalidArgument'
+            ],
+            'preventUseWithMoreSpecificParamEmptyArray' => [
+                '<?php
+                    /** @template T */
+                    abstract class Collection {
+                        /** @param T $elem */
+                        public function add($elem): void {}
+                    }
+
+                    /**
+                     * @template T
+                     * @param Collection<T> $col
+                     */
+                    function usesCollection(Collection $col): void {
+                        $col->add([]);
+                    }',
+                'error_message' => 'InvalidArgument'
+            ],
+            'preventTemplatedCorrectionBeingWrittenTo' => [
+                '<?php
+                    namespace NS;
+
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class ArrayCollection {
+                        /** @var array<TKey,TValue> */
+                        private $data;
+
+                        /** @param array<TKey,TValue> $data */
+                        public function __construct(array $data) {
+                            $this->data = $data;
+                        }
+
+                        /**
+                         * @param TKey $key
+                         * @param TValue $value
+                         */
+                        public function addItem($key, $value) : void {
+                            $this->data[$key] = $value;
                         }
                     }
 
-                    class Bar {
-                        /** @var Foo<array> */
-                        private $FooArray;
+                    class Item {}
+                    class SubItem extends Item {}
+                    class OtherSubItem extends Item {}
 
-                        public function __construct() {
-                            $this->FooArray = new Foo(function(): array { return ["foo" => "bar"]; });
-                            expectsShape($this->FooArray);
-                        }
+                    /**
+                     * @param ArrayCollection<int,Item> $i
+                     */
+                    function takesCollectionOfItems(ArrayCollection $i): void {
+                       $i->addItem(10, new OtherSubItem);
                     }
 
-                    /** @param Foo<array{foo: string}> $_ */
-                    function expectsShape($_): void {}',
-                'error_message' => 'MixedArgumentTypeCoercion'
+                    $subitem_collection = new ArrayCollection([ new SubItem ]);
+
+                    takesCollectionOfItems($subitem_collection);',
+                'error_message' => 'InvalidArgument'
             ],
         ];
     }

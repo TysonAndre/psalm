@@ -775,7 +775,7 @@ class Codebase
      */
     public function getParentInterfaces($fq_interface_name)
     {
-        return $this->classlikes->getParentInterfaces($fq_interface_name);
+        return $this->classlikes->getParentInterfaces($this->classlikes->getUnAliasedName($fq_interface_name));
     }
 
     /**
@@ -863,7 +863,7 @@ class Codebase
      */
     public function getMethodReturnType($method_id, &$self_class, array $call_args = [])
     {
-        return $this->methods->getMethodReturnType($method_id, $self_class);
+        return $this->methods->getMethodReturnType($method_id, $self_class, $call_args);
     }
 
     /**
@@ -1218,8 +1218,6 @@ class Codebase
      */
     public function getSignatureInformation(string $function_symbol) : ?\LanguageServerProtocol\SignatureInformation
     {
-        $params = null;
-
         if (strpos($function_symbol, '::') !== false) {
             $declaring_method_id = $this->methods->getDeclaringMethodId($function_symbol);
 

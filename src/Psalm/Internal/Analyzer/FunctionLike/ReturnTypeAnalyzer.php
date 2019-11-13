@@ -20,6 +20,7 @@ use Psalm\Context;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
 use Psalm\Issue\InvalidFalsableReturnType;
 use Psalm\Issue\InvalidNullableReturnType;
+use Psalm\Issue\InvalidParent;
 use Psalm\Issue\InvalidReturnType;
 use Psalm\Issue\InvalidToString;
 use Psalm\Issue\LessSpecificReturnType;
@@ -671,6 +672,23 @@ class ReturnTypeAnalyzer
         }
 
         if (!$storage->signature_return_type || $storage->signature_return_type === $storage->return_type) {
+            foreach ($storage->return_type->getTypes() as $type) {
+                if ($type instanceof Type\Atomic\TNamedObject
+                    && 'parent' === $type->value
+                    && null === $parent_class
+                ) {
+                    if (IssueBuffer::accepts(
+                        new InvalidParent(
+                            'Cannot use parent as a return type when class has no parent',
+                            $storage->return_type_location
+                        ),
+                        $storage->suppressed_issues
+                    )) {
+                        return false;
+                    }
+                    return null;
+                }
+            }
             $fleshed_out_return_type = ExpressionAnalyzer::fleshOutType(
                 $codebase,
                 $storage->return_type,
@@ -733,11 +751,17 @@ class ReturnTypeAnalyzer
             $class_template_params = $class_template_params ?: $classlike_storage->template_types;
 
             if ($class_template_params) {
-                $generic_params = [];
-                $fleshed_out_return_type->replaceTemplateTypesWithStandins(
+                $template_result = new \Psalm\Internal\Type\TemplateResult(
                     $class_template_params,
-                    $generic_params,
-                    $codebase
+                    []
+                );
+
+                $fleshed_out_return_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                    $fleshed_out_return_type,
+                    $template_result,
+                    $codebase,
+                    null,
+                    null
                 );
             }
         }

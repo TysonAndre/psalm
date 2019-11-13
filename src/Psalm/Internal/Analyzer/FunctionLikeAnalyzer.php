@@ -173,6 +173,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
             $method_id = (string)$this->getMethodId($context->self);
 
+            $fq_class_name = (string)$context->self;
+            $class_storage = $classlike_storage_provider->get($fq_class_name);
+
             if ($add_mutations) {
                 $hash = md5($real_method_id . '::' . $context->getScopeSummary());
 
@@ -181,7 +184,30 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     return null;
                 }
             } elseif ($context->self) {
-                $context->vars_in_scope['$this'] = new Type\Union([new TNamedObject($context->self)]);
+                if ($class_storage->template_types) {
+                    $template_params = [];
+
+                    foreach ($class_storage->template_types as $param_name => $template_map) {
+                        $key = array_keys($template_map)[0];
+
+                        $template_params[] = new Type\Union([
+                            new Type\Atomic\TTemplateParam(
+                                $param_name,
+                                \reset($template_map)[0],
+                                $key
+                            )
+                        ]);
+                    }
+
+                    $this_object_type = new Type\Atomic\TGenericObject(
+                        $context->self,
+                        $template_params
+                    );
+                } else {
+                    $this_object_type = new TNamedObject($context->self);
+                }
+
+                $context->vars_in_scope['$this'] = new Type\Union([$this_object_type]);
 
                 if ($storage->external_mutation_free
                     && !$storage->mutation_free_inferred
@@ -195,10 +221,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
 
                 $context->vars_possibly_in_scope['$this'] = true;
             }
-
-            $fq_class_name = (string)$context->self;
-
-            $class_storage = $classlike_storage_provider->get($fq_class_name);
 
             if ($class_storage->has_visitor_issues) {
                 return null;
@@ -566,7 +588,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 ) {
                     if ($this->function->inferredType) {
                         /**
-                         * @psalm-suppress PossiblyUndefinedArrayOffset
+                         * @psalm-suppress PossiblyUndefinedStringArrayOffset
                          * @var Type\Atomic\TFn
                          */
                         $closure_atomic = \array_values($this->function->inferredType->getTypes())[0];
@@ -1384,7 +1406,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
             return ($namespace ? strtolower($namespace) . '\\' : '') . strtolower($this->function->name->name);
         }
 
-        return $this->getFilePath()
+        return strtolower($this->getFilePath())
             . ':' . $this->function->getLine()
             . ':' . (int)$this->function->getAttribute('startFilePos')
             . ':-:closure';

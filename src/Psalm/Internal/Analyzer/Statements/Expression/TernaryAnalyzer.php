@@ -190,6 +190,8 @@ class TernaryAnalyzer
                 function (\Psalm\Internal\Clause $c) use ($mixed_var_ids) {
                     $keys = array_keys($c->possibilities);
 
+                    $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
+
                     foreach ($keys as $key) {
                         foreach ($mixed_var_ids as $mixed_var_id) {
                             if (preg_match('/^' . preg_quote($mixed_var_id, '/') . '(\[|-)/', $key)) {
@@ -305,6 +307,16 @@ class TernaryAnalyzer
             $context->unreferenced_vars,
             $t_else_context->unreferenced_vars
         );
+
+        foreach ($context->unreferenced_vars as $var_id => $_) {
+            if (isset($t_else_context->unreferenced_vars[$var_id])) {
+                $context->unreferenced_vars[$var_id] += $t_else_context->unreferenced_vars[$var_id];
+            }
+
+            if (isset($t_if_context->unreferenced_vars[$var_id])) {
+                $context->unreferenced_vars[$var_id] += $t_if_context->unreferenced_vars[$var_id];
+            }
+        }
 
         $lhs_type = null;
 

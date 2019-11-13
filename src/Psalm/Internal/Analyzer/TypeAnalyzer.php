@@ -727,11 +727,21 @@ class TypeAnalyzer
             return false;
         }
 
-        if ($input_type_part instanceof TNull && $container_type_part instanceof TNull) {
-            return true;
+        if ($input_type_part instanceof TNull) {
+            if ($container_type_part instanceof TNull) {
+                return true;
+            }
+
+            if ($container_type_part instanceof TTemplateParam
+                && $container_type_part->as->isNullable()
+            ) {
+                return true;
+            }
+
+            return false;
         }
 
-        if ($input_type_part instanceof TNull || $container_type_part instanceof TNull) {
+        if ($container_type_part instanceof TNull) {
             return false;
         }
 
@@ -810,7 +820,10 @@ class TypeAnalyzer
                     $allow_float_int_equality,
                     $atomic_comparison_result
                 )) {
-                    if ($allow_interface_equality || $input_type_part instanceof TArray) {
+                    if ($allow_interface_equality
+                        || ($input_type_part instanceof TArray
+                            && !$input_type_part->type_params[1]->isEmpty())
+                    ) {
                         return true;
                     }
                 }
@@ -1678,6 +1691,21 @@ class TypeAnalyzer
                     // do nothing
                 }
             }
+        } elseif ($input_type_part instanceof TNamedObject
+            && $codebase->classExists($input_type_part->value)
+            && $codebase->methodExists($input_type_part->value . '::__invoke')
+        ) {
+            return new TCallable(
+                'callable',
+                $codebase->getMethodParams(
+                    $input_type_part->value . '::__invoke'
+                ),
+                $codebase->getMethodReturnType(
+                    $input_type_part->value . '::__invoke',
+                    $input_type_part->value,
+                    []
+                )
+            );
         }
 
         return null;
@@ -1720,7 +1748,6 @@ class TypeAnalyzer
             return null;
         }
 
-        $lhs = $input_type_part->properties[0];
         $method_name = $rhs->getSingleStringLiteral()->value;
 
         $class_name = null;
@@ -1733,6 +1760,13 @@ class TypeAnalyzer
                     $class_name = $lhs_atomic_type->value;
                 }
             }
+        }
+
+        if ($class_name === 'self'
+            || $class_name === 'static'
+            || $class_name === 'parent'
+        ) {
+            return null;
         }
 
         if (!$class_name) {
@@ -1920,8 +1954,7 @@ class TypeAnalyzer
                     && !$container_param->hasTemplate()
                     && !$input_param->hasTemplate()
                 ) {
-                    if ($input_param->had_template
-                        || $input_param->hasEmptyArray()
+                    if ($input_param->hasEmptyArray()
                         || $input_param->hasLiteralValue()
                     ) {
                         if (!$atomic_comparison_result->replacement_atomic_type) {
@@ -1946,7 +1979,7 @@ class TypeAnalyzer
                                 $container_param->ignore_falsable_issues,
                                 $param_comparison_result,
                                 $allow_interface_equality
-                            ) || $atomic_comparison_result->type_coerced
+                            ) || $param_comparison_result->type_coerced
                             ) {
                                 if ($container_param->hasMixed() || $container_param->isArrayKey()) {
                                     $atomic_comparison_result->type_coerced_from_mixed = true;

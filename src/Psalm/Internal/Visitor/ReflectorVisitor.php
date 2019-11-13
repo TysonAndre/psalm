@@ -1702,7 +1702,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->visibility = ClassLikeAnalyzer::VISIBILITY_PUBLIC;
             }
         } else {
-            $function_id = $cased_function_id = $this->file_path
+            $function_id = $cased_function_id = strtolower($this->file_path)
                 . ':' . $stmt->getLine()
                 . ':' . (int) $stmt->getAttribute('startFilePos') . ':-:closure';
 
@@ -2866,7 +2866,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             if (!$docblock_param_variadic && $storage_param->is_variadic && $new_param_type->hasArray()) {
                 /**
-                 * @psalm-suppress PossiblyUndefinedArrayOffset
+                 * @psalm-suppress PossiblyUndefinedStringArrayOffset
                  * @var Type\Atomic\TArray|Type\Atomic\ObjectLike|Type\Atomic\TList
                  */
                 $array_type = $new_param_type->getTypes()['array'];
