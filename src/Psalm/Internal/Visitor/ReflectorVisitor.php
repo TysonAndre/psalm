@@ -654,17 +654,25 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             if (!$this->file_storage->has_visitor_issues) {
                 $this->codebase->cacheClassLikeStorage($classlike_storage, $this->file_path);
             }
-        } elseif ($node instanceof PhpParser\Node\Stmt\Function_
-            || $node instanceof PhpParser\Node\Stmt\ClassMethod
-        ) {
-            $this->function_template_types = [];
         } elseif ($node instanceof PhpParser\Node\FunctionLike) {
+            if ($node instanceof PhpParser\Node\Stmt\Function_
+                || $node instanceof PhpParser\Node\Stmt\ClassMethod
+            ) {
+                $this->function_template_types = [];
+            }
+
             if ($this->skip_if_descendants) {
                 return;
             }
 
             if (!$this->functionlike_storages) {
-                throw new \UnexpectedValueException('There should be function storages');
+                if ($this->file_storage->has_visitor_issues) {
+                    return;
+                }
+
+                throw new \UnexpectedValueException(
+                    'There should be function storages for line ' . $this->file_path . ':' . $node->getLine()
+                );
             }
 
             $functionlike_storage = array_pop($this->functionlike_storages);
@@ -1556,7 +1564,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $this->file_storage->functions[$function_id]
                     );
 
-                    return $this->file_storage->functions[$function_id];
+                    $storage = $this->file_storage->functions[$function_id];
+                    $this->functionlike_storages[] = $storage;
+
+                    return $storage;
                 }
             } else {
                 if (isset($this->file_storage->functions[$function_id])) {
@@ -1565,7 +1576,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     if ($duplicate_function_storage->location
                         && $duplicate_function_storage->location->getLineNumber() === $stmt->getLine()
                     ) {
-                        return $this->file_storage->functions[$function_id];
+                        $storage = $this->file_storage->functions[$function_id];
+                        $this->functionlike_storages[] = $storage;
+
+                        return $storage;
                     }
 
                     if (IssueBuffer::accepts(
@@ -1584,8 +1598,13 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                     $duplicate_function_storage->has_visitor_issues = true;
 
-                    return $this->file_storage->functions[$function_id];
-                } elseif (isset($this->config->getPredefinedFunctions()[$function_id])) {
+                    $storage = $this->file_storage->functions[$function_id];
+                    $this->functionlike_storages[] = $storage;
+
+                    return $storage;
+                }
+
+                if (isset($this->config->getPredefinedFunctions()[$function_id])) {
                     /** @psalm-suppress TypeCoercion */
                     $reflection_function = new \ReflectionFunction($function_id);
 

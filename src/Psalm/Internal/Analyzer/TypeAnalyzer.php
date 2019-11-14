@@ -149,6 +149,7 @@ class TypeAnalyzer
 
                 if ($input_type_part instanceof TMixed
                     && $input_type->from_template_default
+                    && $input_type->from_docblock
                     && $atomic_comparison_result
                     && $atomic_comparison_result->type_coerced_from_mixed
                 ) {
@@ -256,7 +257,9 @@ class TypeAnalyzer
                 if ($all_type_coerced_from_mixed) {
                     $union_comparison_result->type_coerced_from_mixed = true;
 
-                    if ($input_type->from_template_default || $all_type_coerced_from_as_mixed) {
+                    if (($input_type->from_template_default && $input_type->from_docblock)
+                        || $all_type_coerced_from_as_mixed
+                    ) {
                         $union_comparison_result->type_coerced_from_as_mixed = true;
                     }
                 }
@@ -271,7 +274,9 @@ class TypeAnalyzer
                     if ($some_type_coerced_from_mixed) {
                         $union_comparison_result->type_coerced_from_mixed = true;
 
-                        if ($input_type->from_template_default || $all_type_coerced_from_as_mixed) {
+                        if (($input_type->from_template_default && $input_type->from_docblock)
+                            || $all_type_coerced_from_as_mixed
+                        ) {
                             $union_comparison_result->type_coerced_from_as_mixed = true;
                         }
                     }
@@ -1663,7 +1668,8 @@ class TypeAnalyzer
                 }
             }
         } elseif ($input_type_part instanceof ObjectLike) {
-            if ($method_id = self::getCallableMethodIdFromObjectLike($input_type_part)) {
+            $method_id = self::getCallableMethodIdFromObjectLike($input_type_part);
+            if ($method_id && $method_id !== 'not-callable') {
                 try {
                     $method_storage = $codebase->methods->getStorage($method_id);
                     list($method_fqcln) = \explode('::', $method_id);
@@ -1840,60 +1846,65 @@ class TypeAnalyzer
             }
 
             $input_type_params = $input_type_part->type_params;
+            $container_type_params_covariant = [];
 
-            if ($input_type_part->value !== $container_type_part->value) {
-                try {
-                    $input_class_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
-                    $template_extends = $input_class_storage->template_type_extends;
+            try {
+                $input_class_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
+                $container_class_storage = $codebase->classlike_storage_provider->get($container_type_part->value);
+                $container_type_params_covariant = $container_class_storage->template_covariants;
+            } catch (\Throwable $e) {
+                $input_class_storage = null;
+                $container_class_storage = null;
+            }
 
-                    if (isset($template_extends[$container_type_part->value])) {
-                        $params = $template_extends[$container_type_part->value];
+            if ($input_type_part->value !== $container_type_part->value && $input_class_storage) {
+                $template_extends = $input_class_storage->template_type_extends;
 
-                        $new_input_params = [];
+                if (isset($template_extends[$container_type_part->value])) {
+                    $params = $template_extends[$container_type_part->value];
 
-                        foreach ($params as $key => $extended_input_param_type) {
-                            if (is_string($key)) {
-                                $new_input_param = null;
+                    $new_input_params = [];
 
-                                foreach ($extended_input_param_type->getTypes() as $et) {
-                                    if ($et instanceof TTemplateParam
-                                        && $et->param_name
-                                        && isset($input_class_storage->template_types[$et->param_name])
-                                    ) {
-                                        $old_params_offset = (int) array_search(
-                                            $et->param_name,
-                                            array_keys($input_class_storage->template_types)
-                                        );
+                    foreach ($params as $key => $extended_input_param_type) {
+                        if (is_string($key)) {
+                            $new_input_param = null;
 
-                                        if (!isset($input_type_params[$old_params_offset])) {
-                                            return false;
-                                        }
+                            foreach ($extended_input_param_type->getTypes() as $et) {
+                                if ($et instanceof TTemplateParam
+                                    && $et->param_name
+                                    && isset($input_class_storage->template_types[$et->param_name])
+                                ) {
+                                    $old_params_offset = (int) array_search(
+                                        $et->param_name,
+                                        array_keys($input_class_storage->template_types)
+                                    );
 
-                                        $candidate_param_type = $input_type_params[$old_params_offset];
-                                    } else {
-                                        $candidate_param_type = new Type\Union([$et]);
+                                    if (!isset($input_type_params[$old_params_offset])) {
+                                        return false;
                                     }
 
-                                    $candidate_param_type->from_template_default = true;
-
-                                    if (!$new_input_param) {
-                                        $new_input_param = $candidate_param_type;
-                                    } else {
-                                        $new_input_param = Type::combineUnionTypes(
-                                            $new_input_param,
-                                            $candidate_param_type
-                                        );
-                                    }
+                                    $candidate_param_type = $input_type_params[$old_params_offset];
+                                } else {
+                                    $candidate_param_type = new Type\Union([$et]);
                                 }
 
-                                $new_input_params[] = $new_input_param ?: Type::getMixed();
-                            }
-                        }
+                                $candidate_param_type->from_template_default = true;
 
-                        $input_type_params = $new_input_params;
+                                if (!$new_input_param) {
+                                    $new_input_param = $candidate_param_type;
+                                } else {
+                                    $new_input_param = Type::combineUnionTypes(
+                                        $new_input_param,
+                                        $candidate_param_type
+                                    );
+                                }
+                            }
+
+                            $new_input_params[] = $new_input_param ?: Type::getMixed();
+                        }
                     }
-                } catch (\Throwable $t) {
-                    // do nothing
+
+                    $input_type_params = $new_input_params;
                 }
             }
 
@@ -1967,9 +1978,7 @@ class TypeAnalyzer
                                 = clone $container_param;
                         }
                     } else {
-                        $input_storage = $codebase->classlike_storage_provider->get($input_type_part->value);
-
-                        if (!($input_storage->template_covariants[$i] ?? false)) {
+                        if (!($container_type_params_covariant[$i] ?? false)) {
                             // Make sure types are basically the same
                             if (!self::isContainedBy(
                                 $codebase,
