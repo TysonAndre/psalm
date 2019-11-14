@@ -193,7 +193,8 @@ class ReturnTypeAnalyzer
                     $cased_method_id . ' is not expected to return any values but it does, '
                         . 'either implicitly or explicitly',
                     $return_type_location
-                )
+                ),
+                $source->getSuppressedIssues()
             )) {
                 return false;
             }
