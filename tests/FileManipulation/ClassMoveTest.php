@@ -205,15 +205,30 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                 '<?php
                     namespace Ns;
 
-                    class A {
+                    class AParent {
+                        public static function foo(A $one, A $two) {
+
+                        }
+                    }
+
+                    class A extends AParent {
                         /**
                          * @param self $one
                          * @param A $two
+                         * @return static
                          */
                         public static function foo(self $one, A $two) : void {
                             A::foo($one, $two);
+                            self::foo($one, $two);
+                            parent::foo($one, $two);
+                            static::foo($one, $two);
+                            return new static();
                         }
                     }
+
+                    $a = A::class;
+
+                    $a::foo(new A(), new A());
 
                     function foo() {
                         A::foo(new A(), A::foo());
@@ -221,15 +236,30 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                 '<?php
                     namespace Ns;
 
-                    class B {
+                    class AParent {
+                        public static function foo(B $one, B $two) {
+
+                        }
+                    }
+
+                    class B extends AParent {
                         /**
                          * @param self $one
                          * @param self $two
+                         * @return static
                          */
                         public static function foo(self $one, self $two) : void {
+                            B::foo($one, $two);
                             self::foo($one, $two);
+                            parent::foo($one, $two);
+                            static::foo($one, $two);
+                            return new static();
                         }
                     }
+
+                    $a = B::class;
+
+                    $a::foo(new B(), new B());
 
                     function foo() {
                         B::foo(new B(), B::foo());
@@ -280,10 +310,17 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                          * @var string
                          */
                         public static $one = "one";
+
+                        /**
+                         * @var array
+                         */
+                        public static $vars = ["one"];
                     }
 
                     echo A::$one;
-                    A::$one = "two";',
+                    A::$one = "two";
+
+                    foreach (A::$vars as $var) {}',
                 '<?php
                     namespace Ns;
 
@@ -292,10 +329,17 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                          * @var string
                          */
                         public static $one = "one";
+
+                        /**
+                         * @var array<array-key, mixed>
+                         */
+                        public static $vars = ["one"];
                     }
 
                     echo B::$one;
-                    B::$one = "two";',
+                    B::$one = "two";
+
+                    foreach (B::$vars as $var) {}',
                 [
                     'Ns\A' => 'Ns\B',
                 ],
@@ -310,6 +354,7 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
 
                         /**
                          * @param ArrayObject<int, A> $a
+                         * @throws RunTimeException
                          */
                         public function foo(ArrayObject $a) : Exception {
                             foreach ($a as $b) {
@@ -324,6 +369,7 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
 
                             echo \A::class;
                             echo __CLASS__;
+                            echo self::class;
 
                             ArrayObject::foo();
 
@@ -343,6 +389,7 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
 
                         /**
                          * @param \ArrayObject<int, self> $a
+                         * @throws \RunTimeException
                          */
                         public function foo(\ArrayObject $a) : Exception {
                             foreach ($a as $b) {
@@ -355,7 +402,8 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
 
                             }
 
-                            echo self::class;
+                            echo B::class;
+                            echo B::class;
                             echo self::class;
 
                             \ArrayObject::foo();
@@ -494,6 +542,90 @@ class ClassMoveTest extends \Psalm\Tests\TestCase
                             /** @var A|B|null */
                             public $z = null;
                         }
+                    }',
+                [
+                    'Foo\A' => 'Bar\Baz\A',
+                    'Foo\B' => 'Bar\Baz\B',
+                ],
+            ],
+            'moveClassesIntoNamespaceWithoutAlias' => [
+                '<?php
+                    namespace Foo {
+                        class A {
+                            /** @var ?B */
+                            public $x = null;
+                            /** @var ?A */
+                            public $y = null;
+                            /** @var A|B|C|null */
+                            public $z = null;
+
+                            public static $vars = [1, 2, 3];
+                        }
+                    }
+
+                    namespace Foo {
+                        class B {
+                            /** @var ?A */
+                            public $x = null;
+                            /** @var ?B */
+                            public $y = null;
+                            /** @var A|B|C|null */
+                            public $z = null;
+                        }
+
+                        foreach (A::$vars[$foo] as $var) {}
+                    }
+
+                    namespace Bar {
+                        class C {
+                            /** @var ?\Foo\A */
+                            public $x = null;
+                            /** @var ?\Foo\B */
+                            public $y = null;
+                            /** @var \Foo\A|\Foo\B|null */
+                            public $z = null;
+                        }
+
+                        foreach (\Foo\A::$vars as $var) {}
+                    }',
+                '<?php
+                    namespace Bar\Baz {
+                        class A {
+                            /** @var B|null */
+                            public $x = null;
+                            /** @var null|self */
+                            public $y = null;
+                            /** @var B|\Foo\C|null|self */
+                            public $z = null;
+
+                            public static $vars = [1, 2, 3];
+                        }
+                    }
+
+                    namespace Bar\Baz {
+                        class B {
+                            /** @var A|null */
+                            public $x = null;
+                            /** @var null|self */
+                            public $y = null;
+                            /** @var A|\Foo\C|null|self */
+                            public $z = null;
+                        }
+
+                        foreach (\Bar\Baz\A::$vars[$foo] as $var) {}
+                    }
+
+                    namespace Bar {
+                        class C {
+                            /** @var Baz\A|null */
+                            public $x = null;
+                            /** @var Baz\B|null */
+                            public $y = null;
+                            /** @var Baz\A|Baz\B|null */
+                            public $z = null;
+                        }
+
+                        foreach (Baz\A::$vars as $var) {}
                     }',
                 [
                     'Foo\A' => 'Bar\Baz\A',

@@ -89,13 +89,17 @@ class ClassConstFetchAnalyzer
 
             $moved_class = false;
 
-            if ($codebase->alter_code) {
+            if ($codebase->alter_code
+                && !\in_array($stmt->class->parts[0], ['parent', 'static'])
+            ) {
                 $moved_class = $codebase->classlikes->handleClassLikeReferenceInMigration(
                     $codebase,
                     $statements_analyzer,
                     $stmt->class,
                     $fq_class_name,
-                    $context->calling_method_id
+                    $context->calling_method_id,
+                    false,
+                    $stmt->class->parts[0] === 'self'
                 );
             }
 

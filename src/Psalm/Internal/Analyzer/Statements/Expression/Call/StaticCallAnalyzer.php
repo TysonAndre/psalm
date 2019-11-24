@@ -974,7 +974,8 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                                     $stmt->class,
                                     $new_fq_class_name,
                                     $context->calling_method_id,
-                                    strtolower($old_declaring_fq_class_name) !== strtolower($new_fq_class_name)
+                                    strtolower($old_declaring_fq_class_name) !== strtolower($new_fq_class_name),
+                                    $stmt->class->parts[0] === 'self'
                                 )) {
                                     $moved_call = true;
                                 }
@@ -1076,13 +1077,20 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 }
             }
 
-            if ($codebase->alter_code && $fq_class_name && !$moved_call) {
+            if ($codebase->alter_code
+                && $fq_class_name
+                && !$moved_call
+                && $stmt->class instanceof PhpParser\Node\Name
+                && !in_array($stmt->class->parts[0], ['parent', 'static'])
+            ) {
                 $codebase->classlikes->handleClassLikeReferenceInMigration(
                     $codebase,
                     $statements_analyzer,
                     $stmt->class,
                     $fq_class_name,
-                    $context->calling_method_id
+                    $context->calling_method_id,
+                    false,
+                    $stmt->class->parts[0] === 'self'
                 );
             }
 
@@ -1125,6 +1133,10 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
         if (!$config->remember_property_assignments_after_call && !$context->collect_initializations) {
             $context->removeAllObjectVars();
+        }
+
+        if (!isset($stmt->inferredType)) {
+            $stmt->inferredType = Type::getMixed();
         }
     }
 }

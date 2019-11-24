@@ -639,6 +639,16 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                             // fall through
                         }
                     }
+
+                    if ($codebase->alter_code) {
+                        $codebase->classlikes->handleDocblockTypeInMigration(
+                            $codebase,
+                            $this,
+                            $input_type,
+                            $storage->throw_locations[$expected_exception],
+                            $context->calling_method_id
+                        );
+                    }
                 }
             }
         }
@@ -1143,7 +1153,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     $this,
                     $param_name_node,
                     $resolved_name,
-                    $context->calling_method_id
+                    $context->calling_method_id,
+                    false,
+                    true
                 );
             }
         }
@@ -1175,7 +1187,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     $this,
                     $return_name_node,
                     $resolved_name,
-                    $context->calling_method_id
+                    $context->calling_method_id,
+                    false,
+                    true
                 );
             }
         }
@@ -1188,7 +1202,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                 $codebase,
                 $storage->return_type,
                 $context->self,
-                $context->self,
+                'static',
                 $this->getParentFQCLN(),
                 false
             );
@@ -1212,7 +1226,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer implements Statements
                     $codebase,
                     $function_param->type,
                     $context->self,
-                    $context->self,
+                    'static',
                     $this->getParentFQCLN(),
                     false
                 );

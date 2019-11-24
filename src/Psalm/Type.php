@@ -112,7 +112,7 @@ abstract class Type
     ];
 
     /**
-     * @var array<string, array<int, array{0: string, 1: int}>>
+     * @var array<string, list<array{0: string, 1: int}>>
      */
     private static $memoized_tokens = [];
 
@@ -137,7 +137,7 @@ abstract class Type
     /**
      * Parses a string type representation
      *
-     * @param  array<int, array{0: string, 1: int}> $type_tokens
+     * @param  list<array{0: string, 1: int}> $type_tokens
      * @param  array{int,int}|null   $php_version
      * @param  array<string, array<string, array{Type\Union}>> $template_type_map
      *
@@ -153,16 +153,21 @@ abstract class Type
 
             // Note: valid identifiers can include class names or $this
             if (!preg_match('@^(\$this|\\\\?[a-zA-Z_\x7f-\xff][\\\\\-0-9a-zA-Z_\x7f-\xff]*)$@', $only_token[0])) {
-                throw new TypeParseTreeException("Invalid type '$only_token[0]'");
+                if (!\is_numeric($only_token[0])
+                    && strpos($only_token[0], '\'') !== false
+                    && strpos($only_token[0], '"') !== false
+                ) {
+                    throw new TypeParseTreeException("Invalid type '$only_token[0]'");
+                }
+            } else {
+                $only_token[0] = self::fixScalarTerms($only_token[0], $php_version);
+
+                $atomic = Atomic::create($only_token[0], $php_version, $template_type_map);
+                $atomic->offset_start = 0;
+                $atomic->offset_end = strlen($only_token[0]);
+
+                return new Union([$atomic]);
             }
-
-            $only_token[0] = self::fixScalarTerms($only_token[0], $php_version);
-
-            $atomic = Atomic::create($only_token[0], $php_version, $template_type_map);
-            $atomic->offset_start = 0;
-            $atomic->offset_end = strlen($only_token[0]);
-
-            return new Union([$atomic]);
         }
 
         try {
@@ -777,7 +782,7 @@ abstract class Type
      * @param  string $string_type
      * @param  bool   $ignore_space
      *
-     * @return array<int, array{0: string, 1: int}>
+     * @return list<array{0: string, 1: int}>
      */
     public static function tokenize($string_type, $ignore_space = true)
     {
@@ -947,6 +952,7 @@ abstract class Type
 
         self::$memoized_tokens[$string_type] = $type_tokens;
 
+        /** @var list<array{0: string, 1: int}> */
         return $type_tokens;
     }
 
@@ -954,7 +960,7 @@ abstract class Type
      * @param  array<string, mixed>|null    $template_type_map
      * @param  array<string, array<int, array{0: string, 1: int}>>|null   $type_aliases
      *
-     * @return array<int, array{0: string, 1: int}>
+     * @return list<array{0: string, 1: int}>
      */
     public static function fixUpLocalType(
         string $string_type,
@@ -1066,6 +1072,7 @@ abstract class Type
             }
         }
 
+        /** @var list<array{0: string, 1: int}> */
         return $type_tokens;
     }
 
@@ -1106,9 +1113,10 @@ abstract class Type
         string $value,
         ?string $namespace,
         array $aliased_classes,
-        ?string $this_class
+        ?string $this_class,
+        bool $allow_self = false
     ) : string {
-        if ($value === $this_class) {
+        if ($allow_self && $value === $this_class) {
             return 'self';
         }
 

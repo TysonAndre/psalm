@@ -8,6 +8,7 @@ use Psalm\Config;
 use Psalm\IssueBuffer;
 use Psalm\Progress\DebugProgress;
 use Psalm\Progress\DefaultProgress;
+use Psalm\Progress\LongProgress;
 use Psalm\Progress\VoidProgress;
 
 // show all errors
@@ -34,6 +35,7 @@ $valid_long_options = [
     'disable-extension:',
     'find-dead-code::',
     'find-unused-code::',
+    'find-unused-variables',
     'find-references-to:',
     'help',
     'ignore-baseline',
@@ -62,6 +64,7 @@ $valid_long_options = [
     'refactor',
     'shepherd::',
     'no-progress',
+    'long-progress',
     'include-php-versions', // used for baseline
     'track-tainted-input',
     'find-unused-psalm-suppress',
@@ -365,6 +368,8 @@ if (isset($options['find-unused-code'])) {
     }
 }
 
+$find_unused_variables = isset($options['find-unused-variables']);
+
 $find_references_to = isset($options['find-references-to']) && is_string($options['find-references-to'])
     ? $options['find-references-to']
     : null;
@@ -412,7 +417,7 @@ if (isset($_SERVER['TRAVIS'])
     || isset($_SERVER['GITLAB_CI'])
     || isset($_SERVER['GITHUB_WORKFLOW'])
 ) {
-    $options['no-progress'] = true;
+    $options['long-progress'] = true;
 }
 
 $debug = array_key_exists('debug', $options) || array_key_exists('debug-by-line', $options);
@@ -423,7 +428,11 @@ if ($debug) {
     $progress = new VoidProgress();
 } else {
     $show_errors = !$config->error_baseline || isset($options['ignore-baseline']);
-    $progress = new DefaultProgress($show_errors, $show_info);
+    if (isset($options['long-progress'])) {
+        $progress = new LongProgress($show_errors, $show_info);
+    } else {
+        $progress = new DefaultProgress($show_errors, $show_info);
+    }
 }
 
 if (isset($options['no-cache'])) {
@@ -513,7 +522,7 @@ if ($find_unused_code) {
     $project_analyzer->getCodebase()->reportUnusedCode($find_unused_code);
 }
 
-if ($config->find_unused_variables) {
+if ($config->find_unused_variables || $find_unused_variables) {
     $project_analyzer->getCodebase()->reportUnusedVariables();
 }
 

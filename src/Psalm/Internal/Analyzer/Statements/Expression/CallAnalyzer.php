@@ -406,6 +406,7 @@ class CallAnalyzer
                         || $arg->value instanceof PhpParser\Node\Expr\FuncCall
                         || $arg->value instanceof PhpParser\Node\Expr\MethodCall
                         || $arg->value instanceof PhpParser\Node\Expr\StaticCall
+                        || $arg->value instanceof PhpParser\Node\Expr\New_
                         || $arg->value instanceof PhpParser\Node\Expr\Assign
                         || $arg->value instanceof PhpParser\Node\Expr\Array_
                     )
@@ -626,6 +627,7 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\FuncCall
             || $arg->value instanceof PhpParser\Node\Expr\MethodCall
             || $arg->value instanceof PhpParser\Node\Expr\StaticCall
+            || $arg->value instanceof PhpParser\Node\Expr\New_
             || $arg->value instanceof PhpParser\Node\Expr\Assign
             || $arg->value instanceof PhpParser\Node\Expr\ArrayDimFetch
             || $arg->value instanceof PhpParser\Node\Expr\PropertyFetch

@@ -380,6 +380,9 @@ Options:
     --no-progress
         Disable the progress indicator
 
+    --long-progress
+        Use a progress indicator suitable for Continuous Integration logs
+
     --alter
         Run Psalter
 
