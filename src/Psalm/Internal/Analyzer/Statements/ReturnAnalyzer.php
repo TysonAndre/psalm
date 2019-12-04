@@ -362,7 +362,7 @@ class ReturnAnalyzer
                         } elseif ($union_comparison_results->has_partial_match) {
                             if (IssueBuffer::accepts(
                                 new PossiblyInvalidReturnStatement(
-                                    'The type \'' . $stmt->inferredType . '\' does not match the declared return '
+                                    'The type \'' . $inferred_type . '\' does not match the declared return '
                                         . 'type \'' . $local_return_type . '\' (but has some compatible types) for ' . $cased_method_id,
                                     new CodeLocation($source, $stmt)
                                 ),

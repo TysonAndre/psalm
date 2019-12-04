@@ -2912,6 +2912,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 continue;
             } catch (\InvalidArgumentException $e) {
                 // FIXME warn
+                continue;
             }
 
             $storage_param->has_docblock_type = true;
