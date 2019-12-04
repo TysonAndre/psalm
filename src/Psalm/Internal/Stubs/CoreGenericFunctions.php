@@ -115,6 +115,32 @@ function key($arr)
 }
 
 /**
+ * @psalm-template TKey as array-key
+ *
+ * @param array<TKey, mixed> $arr
+ *
+ * @return TKey|null
+ * @psalm-ignore-nullable-return
+ * @psalm-pure
+ */
+function array_key_first($arr)
+{
+}
+
+/**
+ * @psalm-template TKey as array-key
+ *
+ * @param array<TKey, mixed> $arr
+ *
+ * @return TKey|null
+ * @psalm-ignore-nullable-return
+ * @psalm-pure
+ */
+function array_key_last($arr)
+{
+}
+
+/**
  * @psalm-template T
  *
  * @param mixed           $needle
@@ -149,18 +175,6 @@ function usort(array &$arr, callable $callback): bool
  * @psalm-pure
  */
 function array_change_key_case(array $arr, int $case = CASE_LOWER)
-{
-}
-
-/**
- * @psalm-template T
- *
- * @param array<array-key, T> $arr
- *
- * @return array<int, array<array-key, T>>
- * @psalm-pure
- */
-function array_chunk(array $arr, int $size, bool $preserve_keys = false)
 {
 }
 

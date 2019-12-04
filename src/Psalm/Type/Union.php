@@ -711,20 +711,6 @@ class Union
     /**
      * @return bool
      */
-    public function hasNamedObject()
-    {
-        foreach ($this->types as $type) {
-            if ($type instanceof TNamedObject) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return bool
-     */
     public function isNullable()
     {
         return isset($this->types['null']);
@@ -1424,22 +1410,6 @@ class Union
         }
 
         return reset($this->literal_int_types);
-    }
-
-    public function hasSingleNamedObject() : bool
-    {
-        return $this->isSingle() && $this->hasNamedObject();
-    }
-
-    public function getSingleNamedObject() : TNamedObject
-    {
-        $first_value = array_values($this->types)[0];
-
-        if (!$first_value instanceof TNamedObject) {
-            throw new \UnexpectedValueException('Bad object');
-        }
-
-        return $first_value;
     }
 
     /**

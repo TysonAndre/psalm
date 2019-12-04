@@ -1380,7 +1380,8 @@ class TypeAnalyzer
 
         if ($container_type_part instanceof TCallable &&
             (
-                $input_type_part instanceof TString
+                $input_type_part instanceof TLiteralString
+                || $input_type_part instanceof TCallableString
                 || $input_type_part instanceof TArray
                 || $input_type_part instanceof ObjectLike
                 || $input_type_part instanceof TList
@@ -1637,13 +1638,17 @@ class TypeAnalyzer
                 if (CallMap::inCallMap($input_type_part->value)) {
                     $args = [];
 
+                    $nodes = new \Psalm\Internal\Provider\NodeDataProvider();
+
                     if ($container_type_part && $container_type_part->params) {
                         foreach ($container_type_part->params as $i => $param) {
                             $arg = new \PhpParser\Node\Arg(
                                 new \PhpParser\Node\Expr\Variable('_' . $i)
                             );
 
-                            $arg->value->inferredType = $param->type;
+                            if ($param->type) {
+                                $nodes->setType($arg->value, $param->type);
+                            }
 
                             $args[] = $arg;
                         }
@@ -1652,7 +1657,8 @@ class TypeAnalyzer
                     $matching_callable = \Psalm\Internal\Codebase\CallMap::getCallableFromCallMapById(
                         $codebase,
                         $input_type_part->value,
-                        $args
+                        $args,
+                        $nodes
                     );
 
                     $must_use = false;
@@ -1918,10 +1924,6 @@ class TypeAnalyzer
 
                 $container_param = $container_type_part->type_params[$i];
 
-                if ($input_type_part->value === 'Generator' && $i === 2) {
-                    continue;
-                }
-
                 if ($input_param->isEmpty()) {
                     continue;
                 }
@@ -1965,6 +1967,7 @@ class TypeAnalyzer
                         $all_types_contain = false;
                     }
                 } elseif (!$input_type_part instanceof TIterable
+                    && !$container_type_part instanceof TIterable
                     && !$container_param->hasTemplate()
                     && !$input_param->hasTemplate()
                 ) {

@@ -70,6 +70,81 @@ class ParamTypeManipulationTest extends FileManipulationTest
                     (new C)->fooFoo("hello");',
                 '<?php
                     class C {
+                        public function fooFoo(string $a): void {}
+                    }
+
+                    (new C)->fooFoo("hello");',
+                '7.1',
+                ['MissingParamType'],
+                true,
+            ],
+            'noStringParamTypeWithVariableCall' => [
+                '<?php
+                    class C {
+                        public function fooFoo($a): void {}
+                    }
+
+                    /** @var mixed */
+                    $c = null;
+                    $c->fooFoo("hello");
+
+                    (new C)->fooFoo("hello");',
+                '<?php
+                    class C {
+                        /**
+                         * @param string $a
+                         */
+                        public function fooFoo($a): void {}
+                    }
+
+                    /** @var mixed */
+                    $c = null;
+                    $c->fooFoo("hello");
+
+                    (new C)->fooFoo("hello");',
+                '7.1',
+                ['MissingParamType'],
+                true,
+            ],
+            'noStringParamTypeWithDocblockCall' => [
+                '<?php
+                    class C {
+                        public function fooFoo($a): void {}
+                    }
+
+                    /**
+                     * @param string $a
+                     */
+                    function callsWithString($a): void {
+                        (new C)->fooFoo($a);
+                    }',
+                '<?php
+                    class C {
+                        /**
+                         * @param string $a
+                         */
+                        public function fooFoo($a): void {}
+                    }
+
+                    /**
+                     * @param string $a
+                     */
+                    function callsWithString($a): void {
+                        (new C)->fooFoo($a);
+                    }',
+                '7.1',
+                ['MissingParamType'],
+                true,
+            ],
+            'noStringParamType56' => [
+                '<?php
+                    class C {
+                        public function fooFoo($a): void {}
+                    }
+
+                    (new C)->fooFoo("hello");',
+                '<?php
+                    class C {
                         /**
                          * @param string $a
                          */
@@ -77,7 +152,7 @@ class ParamTypeManipulationTest extends FileManipulationTest
                     }
 
                     (new C)->fooFoo("hello");',
-                '7.1',
+                '5.6',
                 ['MissingParamType'],
                 true,
             ],
@@ -90,10 +165,7 @@ class ParamTypeManipulationTest extends FileManipulationTest
                     (new C)->fooFoo(false);',
                 '<?php
                     class C {
-                        /**
-                         * @param bool $a
-                         */
-                        public function fooFoo($a = true): void {}
+                        public function fooFoo(bool $a = true): void {}
                     }
 
                     (new C)->fooFoo(false);',
@@ -112,10 +184,7 @@ class ParamTypeManipulationTest extends FileManipulationTest
                     (new D)->fooFoo("hello");',
                 '<?php
                     class C {
-                        /**
-                         * @param string $a
-                         */
-                        public function fooFoo($a): void {}
+                        public function fooFoo(string $a): void {}
                     }
 
                     class D extends C {}

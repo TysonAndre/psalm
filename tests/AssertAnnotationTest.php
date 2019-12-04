@@ -412,9 +412,27 @@ class AssertAnnotationTest extends TestCase
                         if ($t->isFoo()) {
                             $t->bar();
                         }
+                    }'
+            ],
+            'assertThisTypeSwitchTrue' => [
+                '<?php
+                    class Type {
+                        /**
+                         * @psalm-assert-if-true FooType $this
+                         */
+                        public function isFoo() : bool {
+                            return $this instanceof FooType;
+                        }
+                    }
+
+                    class FooType extends Type {
+                        public function bar(): void {}
+                    }
+
+                    function takesType(Type $t) : void {
                         switch (true) {
                             case $t->isFoo():
-                            $t->bar();
+                                $t->bar();
                         }
                     }'
             ],
@@ -647,6 +665,32 @@ class AssertAnnotationTest extends TestCase
                     $q = null;
                     if (rand(0, 1) && f($q)) {}
                     if (!f($q)) {}'
+            ],
+            'assertDifferentTypeOfArray' => [
+                '<?php
+                    /**
+                     * @psalm-assert array{0: string, 1: string} $value
+                     * @param mixed $value
+                     */
+                    function isStringTuple($value): void {
+                        if (!is_array($value)
+                            || !isset($value[0])
+                            || !isset($value[1])
+                            || !is_string($value[0])
+                            || !is_string($value[1])
+                        ) {
+                            throw new \Exception("bad");
+                        }
+                    }
+
+                    $s = "";
+
+                    $parts = explode(":", $s, 2);
+
+                    isStringTuple($parts);
+
+                    echo $parts[0];
+                    echo $parts[1];'
             ],
         ];
     }

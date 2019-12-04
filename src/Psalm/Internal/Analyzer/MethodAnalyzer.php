@@ -520,7 +520,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
         $prevent_method_signature_mismatch = true
     ) {
         $implementer_method_id = $implementer_classlike_storage->name . '::'
-            . strtolower($guide_method_storage->cased_name);
+            . strtolower($guide_method_storage->cased_name ?: '');
 
         $implementer_declaring_method_id = $codebase->methods->getDeclaringMethodId($implementer_method_id);
 
@@ -580,7 +580,17 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                     $implementer_classlike_storage->parent_class
                 ) : null;
 
-            if (!TypeAnalyzer::isContainedByInPhp($implementer_signature_return_type, $guide_signature_return_type)) {
+            $is_contained_by = $codebase->php_major_version >= 7
+                && $codebase->php_minor_version >= 4
+                && $implementer_signature_return_type
+                ? TypeAnalyzer::isContainedBy(
+                    $codebase,
+                    $implementer_signature_return_type,
+                    $guide_signature_return_type
+                )
+                : TypeAnalyzer::isContainedByInPhp($implementer_signature_return_type, $guide_signature_return_type);
+
+            if (!$is_contained_by) {
                 if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait) {
                     if (IssueBuffer::accepts(
                         new MethodSignatureMismatch(
@@ -694,7 +704,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 $template_types = [];
 
                 foreach ($map as $key => $type) {
-                    if (is_string($key)) {
+                    if (is_string($key) && $implementer_method_storage->defining_fqcln) {
                         $template_types[$key][$implementer_method_storage->defining_fqcln] = [
                             $type,
                         ];
@@ -860,10 +870,19 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                     $implementer_classlike_storage->parent_class
                 );
 
-                if (!TypeAnalyzer::isContainedByInPhp(
-                    $guide_param_signature_type,
-                    $implementer_param_signature_type
-                )) {
+                $is_contained_by = $codebase->php_major_version >= 7
+                    && $codebase->php_minor_version >= 4
+                    && $guide_param_signature_type
+                    ? TypeAnalyzer::isContainedBy(
+                        $codebase,
+                        $guide_param_signature_type,
+                        $implementer_param_signature_type
+                    )
+                    : TypeAnalyzer::isContainedByInPhp(
+                        $guide_param_signature_type,
+                        $implementer_param_signature_type
+                    );
+                if (!$is_contained_by) {
                     if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait) {
                         if (IssueBuffer::accepts(
                             new MethodSignatureMismatch(

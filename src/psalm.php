@@ -65,6 +65,7 @@ $valid_long_options = [
     'shepherd::',
     'no-progress',
     'long-progress',
+    'no-suggestions',
     'include-php-versions', // used for baseline
     'track-tainted-input',
     'find-unused-psalm-suppress',
@@ -284,6 +285,7 @@ if ($threads === 1
     && ini_get('pcre.jit') === '1'
     && PHP_OS === 'Darwin'
     && version_compare(PHP_VERSION, '7.3.0') >= 0
+    && version_compare(PHP_VERSION, '7.4.0') < 0
 ) {
     echo(
         'If you want to run Psalm as a language server, or run Psalm with' . PHP_EOL
@@ -462,6 +464,7 @@ if (isset($options['no-cache'])) {
 $stdout_report_options = new \Psalm\Report\ReportOptions();
 $stdout_report_options->use_color = !array_key_exists('m', $options);
 $stdout_report_options->show_info = $show_info;
+$stdout_report_options->show_suggestions = !array_key_exists('no-suggestions', $options);
 /**
  * @psalm-suppress PropertyTypeCoercion
  */

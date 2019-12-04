@@ -486,8 +486,12 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\Const_) {
             foreach ($node->consts as $const) {
-                $const_type = StatementsAnalyzer::getSimpleType($this->codebase, $const->value, $this->aliases)
-                    ?: Type::getMixed();
+                $const_type = StatementsAnalyzer::getSimpleType(
+                    $this->codebase,
+                    new \Psalm\Internal\Provider\NodeDataProvider(),
+                    $const->value,
+                    $this->aliases
+                ) ?: Type::getMixed();
 
                 $fq_const_name = Type::getFQCLNFromString($const->name->name, $this->aliases);
 
@@ -520,6 +524,16 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     )
                 ) {
                     $this->exists_cond_expr = $node->cond;
+                } elseif ($node->cond instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
+                    && $node->cond->left instanceof PhpParser\Node\Expr\FuncCall
+                    && $node->cond->left->name instanceof PhpParser\Node\Name
+                    && (
+                        $node->cond->left->name->parts === ['function_exists']
+                        || $node->cond->left->name->parts === ['class_exists']
+                        || $node->cond->left->name->parts === ['interface_exists']
+                    )
+                ) {
+                    $this->exists_cond_expr = $node->cond->left;
                 }
             }
 
@@ -804,11 +818,18 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $first_arg_value = isset($node->args[0]) ? $node->args[0]->value : null;
             $second_arg_value = isset($node->args[1]) ? $node->args[1]->value : null;
             if ($first_arg_value && $second_arg_value) {
-                $const_name = StatementsAnalyzer::getConstName($first_arg_value, $this->codebase, $this->aliases);
+                $type_provider = new \Psalm\Internal\Provider\NodeDataProvider();
+                $const_name = StatementsAnalyzer::getConstName(
+                    $first_arg_value,
+                    $type_provider,
+                    $this->codebase,
+                    $this->aliases
+                );
 
                 if ($const_name !== null) {
                     $const_type = StatementsAnalyzer::getSimpleType(
                         $this->codebase,
+                        $type_provider,
                         $second_arg_value,
                         $this->aliases
                     ) ?: Type::getMixed();
@@ -1073,6 +1094,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->is_trait = true;
             $this->file_storage->has_trait = true;
             $this->codebase->classlikes->addFullyQualifiedTraitName($fq_classlike_name, $this->file_path);
+
+            // adding this trait information (and scanning the traits in to begin with)
+            // increases the memory usage, but makes Psalm faster.
             $this->codebase->classlikes->addTraitNode(
                 $fq_classlike_name,
                 $node,
@@ -1103,6 +1127,13 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             if ($docblock_info) {
                 if ($docblock_info->templates) {
                     $storage->template_types = [];
+
+                    \usort(
+                        $docblock_info->templates,
+                        function (array $l, array $r) : int {
+                            return $l[4] > $r[4] ? 1 : -1;
+                        }
+                    );
 
                     foreach ($docblock_info->templates as $i => $template_map) {
                         $template_name = $template_map[0];
@@ -1174,7 +1205,11 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         try {
                             $pseudo_property_type = Type::parseTokens($pseudo_property_type_tokens);
                             $pseudo_property_type->setFromDocblock();
-                            $pseudo_property_type->queueClassLikesForScanning($this->codebase, $this->file_storage);
+                            $pseudo_property_type->queueClassLikesForScanning(
+                                $this->codebase,
+                                $this->file_storage,
+                                $storage->template_types ?: []
+                            );
 
                             if ($property['tag'] !== 'property-read') {
                                 $storage->pseudo_property_set_types[$property['name']] = $pseudo_property_type;
@@ -1540,6 +1575,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     private function registerFunctionLike(PhpParser\Node\FunctionLike $stmt, $fake_method = false)
     {
         $class_storage = null;
+        $fq_classlike_name = null;
 
         if ($fake_method && $stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
             $cased_function_id = '@method ' . $stmt->name->name;
@@ -1769,7 +1805,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 continue;
             }
 
-            $param_array = $this->getTranslatedFunctionParam($param, $stmt, $fake_method);
+            $param_array = $this->getTranslatedFunctionParam($param, $stmt, $fake_method, $fq_classlike_name);
 
             if (isset($existing_params['$' . $param_array->name])) {
                 if (IssueBuffer::accepts(
@@ -1833,6 +1869,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     if ($function_stmt instanceof PhpParser\Node\Stmt\If_) {
                         $final_actions = \Psalm\Internal\Analyzer\ScopeAnalyzer::getFinalControlActions(
                             $function_stmt->stmts,
+                            null,
                             $this->config->exit_functions,
                             false,
                             false
@@ -1931,6 +1968,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             if ($parser_return_type instanceof PhpParser\Node\Identifier) {
                 $return_type_string = $parser_return_type->name . $suffix;
+            } elseif ($parser_return_type instanceof PhpParser\Node\UnionType) {
+                // for now unsupported
+                $return_type_string = 'mixed';
             } else {
                 $return_type_fq_classlike_name = ClassLikeAnalyzer::getFQCLNFromNameObject(
                     $parser_return_type,
@@ -2653,7 +2693,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     public function getTranslatedFunctionParam(
         PhpParser\Node\Param $param,
         PhpParser\Node\FunctionLike $stmt,
-        bool $fake_method
+        bool $fake_method,
+        ?string $fq_classlike_name
     ) : FunctionLikeParameter {
         $param_type = null;
 
@@ -2677,6 +2718,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $this->codebase->scanner->queueClassLikeForScanning($param_type_string, $this->file_path);
                 $this->file_storage->referenced_classlikes[strtolower($param_type_string)] = $param_type_string;
+            } elseif ($param_typehint instanceof PhpParser\Node\UnionType) {
+                // not yet supported
+                $param_type_string = 'mixed';
             } else {
                 if ($this->classlike_storages
                     && strtolower($param_typehint->parts[0]) === 'self'
@@ -2737,7 +2781,17 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $is_optional,
             $is_nullable,
             $param->variadic,
-            $param->default ? StatementsAnalyzer::getSimpleType($this->codebase, $param->default, $this->aliases) : null
+            $param->default
+                ? StatementsAnalyzer::getSimpleType(
+                    $this->codebase,
+                    new \Psalm\Internal\Provider\NodeDataProvider(),
+                    $param->default,
+                    $this->aliases,
+                    null,
+                    null,
+                    $fq_classlike_name
+                )
+                : null
         );
     }
 
@@ -3041,6 +3095,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             if ($parser_property_type instanceof PhpParser\Node\Identifier) {
                 $property_type_string = $parser_property_type->name . $suffix;
+            } elseif ($parser_property_type instanceof PhpParser\Node\UnionType) {
+                // not yet supported
+                $property_type_string = 'mixed';
             } else {
                 $property_type_fq_classlike_name = ClassLikeAnalyzer::getFQCLNFromNameObject(
                     $parser_property_type,
@@ -3093,6 +3150,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 if ($property->default) {
                     $property_storage->suggested_type = StatementsAnalyzer::getSimpleType(
                         $this->codebase,
+                        new \Psalm\Internal\Provider\NodeDataProvider(),
                         $property->default,
                         $this->aliases,
                         null,
@@ -3213,6 +3271,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         foreach ($stmt->consts as $const) {
             $const_type = StatementsAnalyzer::getSimpleType(
                 $this->codebase,
+                new \Psalm\Internal\Provider\NodeDataProvider(),
                 $const->value,
                 $this->aliases,
                 null,
@@ -3472,7 +3531,12 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $path_to_file = $config->base_dir . DIRECTORY_SEPARATOR . $path_to_file;
             }
         } else {
-            $path_to_file = IncludeAnalyzer::getPathTo($stmt->expr, $this->file_path, $this->config);
+            $path_to_file = IncludeAnalyzer::getPathTo(
+                $stmt->expr,
+                null,
+                $this->file_path,
+                $this->config
+            );
         }
 
         if ($path_to_file) {

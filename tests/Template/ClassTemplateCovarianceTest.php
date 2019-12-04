@@ -82,7 +82,7 @@ class ClassTemplateCovarianceTest extends TestCase
                     /** @param Foo<array{foo: string}> $_ */
                     function expectsShape($_): void {}',
             ],
-            'allowPassingToCovariantCollection' => [
+            'allowPassingToCovariantCollectionWithoutExtends' => [
                 '<?php
                     abstract class Animal {
                         abstract public function getSound() : string;
@@ -95,21 +95,30 @@ class ClassTemplateCovarianceTest extends TestCase
 
                     /**
                      * @template-covariant TValue
-                     * @template-extends \ArrayObject<int,TValue>
+                     * @implements IteratorAggregate<int, TValue>
                      */
-                    class Collection extends \ArrayObject {
+                    class Collection implements IteratorAggregate {
+                        private $arr;
+
                         /**
-                         * @param array<int,TValue> $kv
+                         * @param array<int,TValue> $arr
                          */
-                        public function __construct(array $kv) {
-                            parent::__construct($kv);
+                        public function __construct(array $arr) {
+                            $this->arr = $arr;
+                        }
+
+                        /** @return Traversable<int, TValue> */
+                        public function getIterator() {
+                            foreach ($this->arr as $k => $v) {
+                                yield $k => $v;
+                            }
                         }
                     }
 
                     /**
                      * @param Collection<Animal> $list
                      */
-                    function getSounds(Traversable $list) : void {
+                    function getSounds(Collection $list) : void {
                         foreach ($list as $l) {
                             $l->getSound();
                         }
@@ -136,9 +145,25 @@ class ClassTemplateCovarianceTest extends TestCase
 
                     /**
                      * @template-covariant TValue
-                     * @template-extends \ArrayObject<int,TValue>
+                     * @implements IteratorAggregate<int, TValue>
                      */
-                    class Collection extends \ArrayObject {}
+                    class Collection implements IteratorAggregate {
+                        private $arr;
+
+                        /**
+                         * @param array<int,TValue> $arr
+                         */
+                        public function __construct(array $arr) {
+                            $this->arr = $arr;
+                        }
+
+                        /** @return Traversable<int, TValue> */
+                        public function getIterator() {
+                            foreach ($this->arr as $k => $v) {
+                                yield $k => $v;
+                            }
+                        }
+                    }
 
                     /** @template-extends Collection<Dog> */
                     class HardwiredDogCollection extends Collection {}
@@ -279,6 +304,117 @@ class ClassTemplateCovarianceTest extends TestCase
                         takesIteratorAggregate($a);
                     }'
             ],
+            'allowImmutableCovariance' => [
+                '<?php
+                    class Animal {}
+                    class Dog extends Animal{}
+                    class Cat extends Animal{}
+
+                    /**
+                      * @psalm-immutable
+                      * @template-covariant T
+                      */
+                    class Collection {
+
+                        /** @var list<T> */
+                        private $arr = [];
+
+                        /**
+                          * @param T ...$a
+                          */
+                        public function __construct(...$a) {
+                            $this->arr = $a;
+                        }
+
+                       /**
+                         * @param T $a
+                         * @return Collection<T>
+                         */
+                        public function add($a) : Collection
+                        {
+                          return new Collection(...$this->arr, $a);
+                        }
+                    }
+
+                    /**
+                      * @template T
+                      * @param Collection<Animal> $c
+                      * @return Collection<Animal>
+                      */
+                    function covariant(Collection $c) : Collection
+                    {
+                      return $c->add(new Cat());
+                    }
+
+                    $dogs = new Collection(new Dog(), new Dog());
+                    $cats = new Collection(new Cat(), new Cat());
+                    $misc = new Collection(new Cat(), new Dog());
+
+                    covariant($dogs);
+                    covariant($cats);
+                    covariant($misc);',
+            ],
+            'allowCovariantReferenceToMapToCovariant' => [
+                '<?php
+                    /** @template-covariant T */
+                    class CovariantReference
+                    {
+                        /** @var T */
+                        private $value;
+
+                        /** @param T $value */
+                        public function __construct($value)
+                        {
+                            $this->value = $value;
+                        }
+
+                        /** @return T */
+                        public function get()
+                        {
+                            return $this->value;
+                        }
+                    }
+
+                    /**
+                     * @template-covariant T
+                     */
+                    class C
+                    {
+                        /** @var CovariantReference<T> */
+                        private $reference;
+
+                        /** @param CovariantReference<T> $reference */
+                        public function __construct($reference)
+                        {
+                            $this->reference = $reference;
+                        }
+
+                        /** @return CovariantReference<T> */
+                        function getReference()
+                        {
+                            return $this->reference;
+                        }
+                    }'
+            ],
+            'allowCovariantReturnOnArrays' => [
+                '<?php
+                    /**
+                     * @template-covariant T
+                     */
+                    class A {
+                        private $arr;
+
+                        /** @psalm-param array<mixed, T> $arr */
+                        public function __construct(array $arr) {
+                            $this->arr = $arr;
+                        }
+
+                        /** @psalm-return array<mixed, T> */
+                        public function foo(): array {
+                            return $this->arr;
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -378,6 +514,86 @@ class ClassTemplateCovarianceTest extends TestCase
                         expectsIteratorAggregateOfA($m);
                     }',
                 'error_message' => 'MixedArgumentTypeCoercion',
+            ],
+            'preventGeneratorVariance' => [
+                '<?php
+                    class Foo {
+                        function a(): void {}
+                    }
+
+                    class Bar extends Foo {
+                      function b(): void {}
+                    }
+
+                    /**
+                     * @return Generator<int,Bar,Bar,mixed>
+                     * @psalm-suppress MixedReturnTypeCoercion
+                     */
+                    function gen() : Generator {
+                      $bar = yield new Bar();
+                      $bar->b();
+                    }
+
+                    /** @param Generator<int,Bar,Foo,mixed> $gen */
+                    function sendFoo(Generator $gen): void {
+                      $gen->send(new Foo());
+                    }
+
+                    $gen = gen();
+                    sendFoo($gen);',
+                'error_message' => 'InvalidArgument',
+            ],
+            'preventCovariantParamMappingToInvariant' => [
+                '<?php
+                    /** @template T */
+                    class InvariantReference
+                    {
+                        /** @var T */
+                        private $value;
+
+                        /** @param T $value */
+                        public function __construct($value)
+                        {
+                            $this->value = $value;
+                        }
+
+                        /** @return T */
+                        public function get()
+                        {
+                            return $this->value;
+                        }
+                    }
+
+                    /**
+                     * @template-covariant T
+                     */
+                    class C
+                    {
+                        /** @var InvariantReference<T> */
+                        private InvariantReference $reference;
+
+                        /** @param InvariantReference<T> $reference */
+                        public function __construct(InvariantReference $reference)
+                        {
+                            $this->reference = $reference;
+                        }
+
+                        /** @return InvariantReference<T> */
+                        public function getReference() : InvariantReference
+                        {
+                            return $this->reference;
+                        }
+                    }',
+                'error_message' => 'InvalidTemplateParam'
+            ],
+            'preventExtendingCoreWithCovariantParam' => [
+                '<?php
+                    /**
+                     * @template-covariant TValue
+                     * @template-extends \ArrayObject<int,TValue>
+                     */
+                    class Collection extends \ArrayObject {}',
+                'error_message' => 'InvalidTemplateParam',
             ],
         ];
     }

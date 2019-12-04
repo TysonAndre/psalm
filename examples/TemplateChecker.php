@@ -168,7 +168,10 @@ class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
             $view_method_analyzer->addSuppressedIssue('UndefinedVariable');
         }
 
-        $statements_source = new StatementsAnalyzer($view_method_analyzer);
+        $statements_source = new StatementsAnalyzer(
+            $view_method_analyzer,
+            new \Psalm\Internal\Provider\NodeDataProvider()
+        );
 
         $statements_source->analyze($pseudo_method_stmts, $context);
     }

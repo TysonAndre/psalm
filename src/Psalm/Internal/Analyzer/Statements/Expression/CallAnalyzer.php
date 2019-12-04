@@ -436,7 +436,8 @@ class CallAnalyzer
 
                 $codebase = $statements_analyzer->getCodebase();
 
-                if ($arg->value instanceof PhpParser\Node\Expr\Closure
+                if (($arg->value instanceof PhpParser\Node\Expr\Closure
+                        || $arg->value instanceof PhpParser\Node\Expr\ArrowFunction)
                     && $template_result
                     && $template_result->generic_params
                     && $param
@@ -563,9 +564,7 @@ class CallAnalyzer
                         $generic_param_type,
                         $replace_template_result,
                         $codebase,
-                        isset($arg->value->inferredType)
-                            ? $arg->value->inferredType
-                            : null,
+                        $statements_analyzer->node_data->getType($arg->value),
                         null
                     );
 
@@ -763,14 +762,14 @@ class CallAnalyzer
                 return;
             }
 
-            if (isset($arg->value->inferredType)
-                && $arg->value->inferredType->hasArray()
+            if (($arg_value_type = $statements_analyzer->node_data->getType($arg->value))
+                && $arg_value_type->hasArray()
             ) {
                 /**
                  * @psalm-suppress PossiblyUndefinedStringArrayOffset
                  * @var TArray|TList|ObjectLike
                  */
-                $array_type = $arg->value->inferredType->getTypes()['array'];
+                $array_type = $arg_value_type->getTypes()['array'];
 
                 if ($array_type instanceof ObjectLike) {
                     $array_type = $array_type->getGenericArrayType();
@@ -845,12 +844,14 @@ class CallAnalyzer
             }
         }
 
-        if (isset($array_arg->inferredType) && $array_arg->inferredType->hasArray()) {
+        if (($array_arg_type = $statements_analyzer->node_data->getType($array_arg))
+            && $array_arg_type->hasArray()
+        ) {
             /**
              * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var TArray|ObjectLike|TList
              */
-            $array_type = $array_arg->inferredType->getTypes()['array'];
+            $array_type = $array_arg_type->getTypes()['array'];
 
             if ($array_type instanceof ObjectLike) {
                 $array_type = $array_type->getGenericArrayType();
@@ -871,7 +872,9 @@ class CallAnalyzer
                     return false;
                 }
 
-                if (!isset($arg->value->inferredType) || $arg->value->inferredType->hasMixed()) {
+                if (!($arg_value_type = $statements_analyzer->node_data->getType($arg->value))
+                    || $arg_value_type->hasMixed()
+                ) {
                     $by_ref_type = Type::combineUnionTypes(
                         $by_ref_type,
                         new Type\Union([new TArray([Type::getInt(), Type::getMixed()])])
@@ -879,7 +882,7 @@ class CallAnalyzer
                 } elseif ($arg->unpack) {
                     $by_ref_type = Type::combineUnionTypes(
                         $by_ref_type,
-                        clone $arg->value->inferredType
+                        clone $arg_value_type
                     );
                 } else {
                     $by_ref_type = Type::combineUnionTypes(
@@ -889,7 +892,7 @@ class CallAnalyzer
                                 new TArray(
                                     [
                                         Type::getInt(),
-                                        clone $arg->value->inferredType
+                                        clone $arg_value_type
                                     ]
                                 ),
                             ]
@@ -976,26 +979,30 @@ class CallAnalyzer
 
         $context->inside_call = false;
 
-        if (isset($replacement_arg->inferredType)
-            && !$replacement_arg->inferredType->hasArray()
-            && $replacement_arg->inferredType->hasString()
-            && $replacement_arg->inferredType->isSingle()
+        $replacement_arg_type = $statements_analyzer->node_data->getType($replacement_arg);
+
+        if ($replacement_arg_type
+            && !$replacement_arg_type->hasArray()
+            && $replacement_arg_type->hasString()
+            && $replacement_arg_type->isSingle()
         ) {
-            $replacement_arg->inferredType = new Type\Union([
-                new Type\Atomic\TArray([Type::getInt(), $replacement_arg->inferredType])
+            $replacement_arg_type = new Type\Union([
+                new Type\Atomic\TArray([Type::getInt(), $replacement_arg_type])
             ]);
+
+            $statements_analyzer->node_data->setType($replacement_arg, $replacement_arg_type);
         }
 
-        if (isset($array_arg->inferredType)
-            && $array_arg->inferredType->hasArray()
-            && isset($replacement_arg->inferredType)
-            && $replacement_arg->inferredType->hasArray()
+        if (($array_arg_type = $statements_analyzer->node_data->getType($array_arg))
+            && $array_arg_type->hasArray()
+            && $replacement_arg_type
+            && $replacement_arg_type->hasArray()
         ) {
             /**
              * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var TArray|ObjectLike|TList
              */
-            $array_type = $array_arg->inferredType->getTypes()['array'];
+            $array_type = $array_arg_type->getTypes()['array'];
 
             if ($array_type instanceof ObjectLike) {
                 $array_type = $array_type->getGenericArrayType();
@@ -1005,7 +1012,7 @@ class CallAnalyzer
              * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var TArray|ObjectLike|TList
              */
-            $replacement_array_type = $replacement_arg->inferredType->getTypes()['array'];
+            $replacement_array_type = $replacement_arg_type->getTypes()['array'];
 
             if ($replacement_array_type instanceof ObjectLike) {
                 $replacement_array_type = $replacement_array_type->getGenericArrayType();
@@ -1225,8 +1232,13 @@ class CallAnalyzer
 
                     if (!$function_param
                         || !$function_param->type
-                        || !isset($arg->value->inferredType)
                     ) {
+                        continue;
+                    }
+
+                    $arg_value_type = $statements_analyzer->node_data->getType($arg->value);
+
+                    if (!$arg_value_type) {
                         continue;
                     }
 
@@ -1234,7 +1246,7 @@ class CallAnalyzer
                         $function_param->type,
                         $template_result,
                         $codebase,
-                        $arg->value->inferredType,
+                        $arg_value_type,
                         $context->self ?: '',
                         false
                     );
@@ -1281,10 +1293,10 @@ class CallAnalyzer
             }
 
             if ($method_id === 'compact'
-                && isset($arg->value->inferredType)
-                && $arg->value->inferredType->isSingleStringLiteral()
+                && ($arg_value_type = $statements_analyzer->node_data->getType($arg->value))
+                && $arg_value_type->isSingleStringLiteral()
             ) {
-                $literal = $arg->value->inferredType->getSingleStringLiteral();
+                $literal = $arg_value_type->getSingleStringLiteral();
 
                 if (!$context->hasVariable('$' . $literal->value, $statements_analyzer)) {
                     if (IssueBuffer::accepts(
@@ -1449,7 +1461,9 @@ class CallAnalyzer
     ) {
         $codebase = $statements_analyzer->getCodebase();
 
-        if (!isset($arg->value->inferredType)) {
+        $arg_value_type = $statements_analyzer->node_data->getType($arg->value);
+
+        if (!$arg_value_type) {
             if ($function_param && !$function_param->by_ref) {
                 if (!$context->collect_initializations
                     && !$context->collect_mutations
@@ -1510,7 +1524,7 @@ class CallAnalyzer
             $static_fq_class_name,
             $function_location,
             $function_param,
-            $arg->value->inferredType,
+            $arg_value_type,
             $argument_offset,
             $arg,
             $context,
@@ -1555,8 +1569,8 @@ class CallAnalyzer
                     || $arg->value instanceof PhpParser\Node\Expr\MethodCall
                     || $arg->value instanceof PhpParser\Node\Expr\StaticCall
                 ) && (
-                    !isset($arg->value->inferredType)
-                    || !$arg->value->inferredType->by_ref
+                    !($arg_value_type = $statements_analyzer->node_data->getType($arg->value))
+                    || !$arg_value_type->by_ref
                 )
             )
         ) {
@@ -1608,15 +1622,11 @@ class CallAnalyzer
                 if ($template_result && $by_ref_type) {
                     $original_by_ref_type = clone $by_ref_type;
 
-                    $by_ref_type = clone $by_ref_type;
-
                     $by_ref_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
-                        $by_ref_type,
+                        clone $by_ref_type,
                         $template_result,
                         $codebase,
-                        isset($arg->value->inferredType)
-                            ? $arg->value->inferredType
-                            : null,
+                        $statements_analyzer->node_data->getType($arg->value),
                         null
                     );
 
@@ -1626,6 +1636,26 @@ class CallAnalyzer
                         );
 
                         $by_ref_type = $original_by_ref_type;
+                    }
+                }
+
+                if ($template_result && $by_ref_out_type) {
+                    $original_by_ref_out_type = clone $by_ref_out_type;
+
+                    $by_ref_out_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                        clone $by_ref_out_type,
+                        $template_result,
+                        $codebase,
+                        $statements_analyzer->node_data->getType($arg->value),
+                        null
+                    );
+
+                    if ($template_result->generic_params) {
+                        $original_by_ref_out_type->replaceTemplateTypesWithArgTypes(
+                            $template_result->generic_params
+                        );
+
+                        $by_ref_out_type = $original_by_ref_out_type;
                     }
                 }
 
@@ -1691,11 +1721,13 @@ class CallAnalyzer
 
             $empty_template_result = new TemplateResult($class_generic_params, $empty_generic_params);
 
+            $arg_value_type = $statements_analyzer->node_data->getType($arg->value);
+
             $param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
                 $param_type,
                 $empty_template_result,
                 $codebase,
-                $arg->value->inferredType,
+                $arg_value_type,
                 $context->self ?: ''
             );
 
@@ -1703,7 +1735,7 @@ class CallAnalyzer
                 $arg_type,
                 $empty_template_result,
                 $codebase,
-                $arg->value->inferredType,
+                $arg_value_type,
                 $context->self ?: ''
             );
         }
@@ -1970,8 +2002,8 @@ class CallAnalyzer
              * @var ObjectLike|TArray|TList|null
              */
             $array_arg_type = $array_arg
-                    && isset($array_arg->inferredType)
-                    && ($types = $array_arg->inferredType->getTypes())
+                    && ($arg_value_type = $statements_analyzer->node_data->getType($array_arg))
+                    && ($types = $arg_value_type->getTypes())
                     && isset($types['array'])
                 ? $types['array']
                 : null;
@@ -1989,9 +2021,11 @@ class CallAnalyzer
 
         $closure_arg = isset($args[$closure_index]) ? $args[$closure_index] : null;
 
-        $closure_arg_type = $closure_arg && isset($closure_arg->value->inferredType)
-                ? $closure_arg->value->inferredType
-                : null;
+        $closure_arg_type = null;
+
+        if ($closure_arg) {
+            $closure_arg_type = $statements_analyzer->node_data->getType($closure_arg->value);
+        }
 
         if ($closure_arg && $closure_arg_type) {
             $min_closure_param_count = $max_closure_param_count = count($array_arg_types);
@@ -3239,13 +3273,18 @@ class CallAnalyzer
             return [$fq_class_name . '::' . $method_name_arg->value];
         }
 
-        if (!isset($class_arg->inferredType) || !$class_arg->inferredType->hasObjectType()) {
+        $class_arg_type = null;
+
+        if (!$file_source instanceof StatementsAnalyzer
+            || !($class_arg_type = $file_source->node_data->getType($class_arg))
+            || !$class_arg_type->hasObjectType()
+        ) {
             return [];
         }
 
         $method_ids = [];
 
-        foreach ($class_arg->inferredType->getTypes() as $type_part) {
+        foreach ($class_arg_type->getTypes() as $type_part) {
             if ($type_part instanceof TNamedObject) {
                 $method_id = $type_part->value . '::' . $method_name_arg->value;
 

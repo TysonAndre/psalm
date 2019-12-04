@@ -70,8 +70,6 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         Context $context,
         bool $real_method_call = true
     ) {
-        $stmt->inferredType = null;
-
         $was_inside_call = $context->inside_call;
 
         $context->inside_call = true;
@@ -119,10 +117,10 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             ? $context->vars_in_scope[$lhs_var_id]
             : null;
 
-        if (isset($stmt->var->inferredType)) {
-            $class_type = $stmt->var->inferredType;
+        if ($stmt_var_type = $statements_analyzer->node_data->getType($stmt->var)) {
+            $class_type = $stmt_var_type;
         } elseif (!$class_type) {
-            $stmt->inferredType = Type::getMixed();
+            $statements_analyzer->node_data->setType($stmt, Type::getMixed());
         }
 
         if (!$context->check_classes) {
@@ -340,25 +338,30 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             return null;
         }
 
-        $stmt->inferredType = $return_type;
+        $stmt_type = $return_type;
+
+        if ($stmt_type) {
+            $statements_analyzer->node_data->setType($stmt, $stmt_type);
+        }
 
         if ($returns_by_ref) {
-            if (!$stmt->inferredType) {
-                $stmt->inferredType = Type::getMixed();
+            if (!$stmt_type) {
+                $stmt_type = Type::getMixed();
+                $statements_analyzer->node_data->setType($stmt, $stmt_type);
             }
 
-            $stmt->inferredType->by_ref = $returns_by_ref;
+            $stmt_type->by_ref = $returns_by_ref;
         }
 
         if ($codebase->store_node_types
             && !$context->collect_initializations
             && !$context->collect_mutations
-            && isset($stmt->inferredType)
+            && $stmt_type
         ) {
             $codebase->analyzer->addNodeType(
                 $statements_analyzer->getFilePath(),
                 $stmt->name,
-                (string) $stmt->inferredType,
+                (string) $stmt_type,
                 $stmt
             );
         }
@@ -706,6 +709,8 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
         $args = $stmt->args;
 
+        $old_node_data = null;
+
         if (!$codebase->methods->methodExists(
             $method_id,
             $context->calling_method_id,
@@ -825,6 +830,9 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     },
                     $args
                 );
+
+                $old_node_data = $statements_analyzer->node_data;
+                $statements_analyzer->node_data = clone $statements_analyzer->node_data;
 
                 $args = [
                     new PhpParser\Node\Arg(new PhpParser\Node\Scalar\String_($method_name_lc)),
@@ -1197,11 +1205,12 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $return_type_candidate = $codebase->methods->getMethodReturnType(
                         $method_id,
                         $self_fq_class_name,
+                        $statements_analyzer,
                         $args
                     );
 
-                    if (isset($stmt->inferredType)) {
-                        $return_type_candidate = $stmt->inferredType;
+                    if ($stmt_type = $statements_analyzer->node_data->getType($stmt)) {
+                        $return_type_candidate = $stmt_type;
                     }
 
                     if ($return_type_candidate) {
@@ -1277,8 +1286,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if ($method_storage) {
                         if (!$context->collect_mutations && !$context->collect_initializations) {
                             $method_pure_compatible = $method_storage->external_mutation_free
-                                && (!empty($stmt->var->inferredType->external_mutation_free)
-                                    || isset($stmt->var->pure));
+                                && $statements_analyzer->node_data->isPureCompatible($stmt->var);
 
                             if ($context->pure
                                 && !$method_storage->mutation_free
@@ -1384,25 +1392,35 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         }
 
                         if ($method_storage->if_true_assertions) {
-                            $stmt->ifTrueAssertions = array_map(
-                                function (Assertion $assertion) use ($class_template_params) : Assertion {
-                                    return $assertion->getUntemplatedCopy($class_template_params ?: []);
-                                },
-                                $method_storage->if_true_assertions
+                            $statements_analyzer->node_data->setIfTrueAssertions(
+                                $stmt,
+                                array_map(
+                                    function (Assertion $assertion) use ($class_template_params) : Assertion {
+                                        return $assertion->getUntemplatedCopy($class_template_params ?: []);
+                                    },
+                                    $method_storage->if_true_assertions
+                                )
                             );
                         }
 
                         if ($method_storage->if_false_assertions) {
-                            $stmt->ifFalseAssertions = array_map(
-                                function (Assertion $assertion) use ($class_template_params) : Assertion {
-                                    return $assertion->getUntemplatedCopy($class_template_params ?: []);
-                                },
-                                $method_storage->if_false_assertions
+                            $statements_analyzer->node_data->setIfFalseAssertions(
+                                $stmt,
+                                array_map(
+                                    function (Assertion $assertion) use ($class_template_params) : Assertion {
+                                        return $assertion->getUntemplatedCopy($class_template_params ?: []);
+                                    },
+                                    $method_storage->if_false_assertions
+                                )
                             );
                         }
                     }
                 }
             }
+        }
+
+        if ($old_node_data) {
+            $statements_analyzer->node_data = $old_node_data;
         }
 
         if (!$args && $lhs_var_id) {
@@ -1779,9 +1797,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                 // If a `@property` annotation is set, the type of the value passed to the
                 // magic setter must match the annotation.
-                $second_arg_type = isset($stmt->args[1]->value->inferredType)
-                    ? $stmt->args[1]->value->inferredType
-                    : null;
+                $second_arg_type = $statements_analyzer->node_data->getType($stmt->args[1]->value);
 
                 if (isset($class_storage->pseudo_property_set_types['$' . $prop_name]) && $second_arg_type) {
                     $pseudo_set_type = ExpressionAnalyzer::fleshOutType(
@@ -1885,7 +1901,10 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 }
 
                 if (isset($class_storage->pseudo_property_get_types['$' . $prop_name])) {
-                    $stmt->inferredType = clone $class_storage->pseudo_property_get_types['$' . $prop_name];
+                    $statements_analyzer->node_data->setType(
+                        $stmt,
+                        clone $class_storage->pseudo_property_get_types['$' . $prop_name]
+                    );
                 }
 
                 break;

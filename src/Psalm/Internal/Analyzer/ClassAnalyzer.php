@@ -647,7 +647,13 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         }
 
         if ($this->leftover_stmts) {
-            (new StatementsAnalyzer($this))->analyze($this->leftover_stmts, $class_context);
+            (new StatementsAnalyzer(
+                $this,
+                new \Psalm\Internal\Provider\NodeDataProvider()
+            ))->analyze(
+                $this->leftover_stmts,
+                $class_context
+            );
         }
 
         if (!$storage->abstract) {
@@ -903,7 +909,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
         }
 
-        $statements_analyzer = new StatementsAnalyzer($this);
+        $statements_analyzer = new StatementsAnalyzer($this, new \Psalm\Internal\Provider\NodeDataProvider());
         $statements_analyzer->analyze($member_stmts, $class_context, $global_context, true);
 
         $config = Config::getInstance();
@@ -1011,7 +1017,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 if ($plugin_fq_class_name::afterStatementAnalysis(
                     $class,
                     $storage,
-                    $this->getSource(),
+                    $this,
                     $codebase,
                     $file_manipulations
                 ) === false) {
@@ -1238,7 +1244,12 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $method_context->vars_in_scope['$this'] = Type::parseString($fq_class_name);
             $method_context->vars_possibly_in_scope['$this'] = true;
 
-            $constructor_analyzer->analyze($method_context, $global_context, true);
+            $constructor_analyzer->analyze(
+                $method_context,
+                new \Psalm\Internal\Provider\NodeDataProvider(),
+                $global_context,
+                true
+            );
 
             foreach ($uninitialized_typed_properties as $property_id => $property_storage) {
                 list(,$property_name) = explode('::$', $property_id);
@@ -1370,7 +1381,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     continue;
                 }
 
-                $trait_storage = $codebase->classlike_storage_provider->get($fq_trait_name);
+                $fq_trait_name_resolved = $codebase->classlikes->getUnAliasedName($fq_trait_name);
+                $trait_storage = $codebase->classlike_storage_provider->get($fq_trait_name_resolved);
 
                 if ($trait_storage->deprecated) {
                     if (IssueBuffer::accepts(
@@ -1384,25 +1396,18 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
-                $trait_file_analyzer = $project_analyzer->getFileAnalyzerForClassLike($fq_trait_name);
-                $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name);
-                $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name);
+                $trait_file_analyzer = $project_analyzer->getFileAnalyzerForClassLike($fq_trait_name_resolved);
+                $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name_resolved);
+                $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name_resolved);
                 $trait_analyzer = new TraitAnalyzer(
                     $trait_node,
                     $trait_file_analyzer,
-                    $fq_trait_name,
+                    $fq_trait_name_resolved,
                     $trait_aliases
                 );
 
                 foreach ($trait_node->stmts as $trait_stmt) {
                     if ($trait_stmt instanceof PhpParser\Node\Stmt\ClassMethod) {
-                        if ($trait_stmt->stmts) {
-                            $traverser = new PhpParser\NodeTraverser;
-
-                            $traverser->addVisitor(new \Psalm\Internal\Visitor\NodeCleanerVisitor());
-                            $traverser->traverse($trait_stmt->stmts);
-                        }
-
                         $trait_method_analyzer = $this->analyzeClassMethod(
                             $trait_stmt,
                             $storage,
@@ -1638,8 +1643,11 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         }
         $method_context->collect_exceptions = $config->check_for_throws_docblock;
 
+        $type_provider = new \Psalm\Internal\Provider\NodeDataProvider();
+
         $method_analyzer->analyze(
             $method_context,
+            $type_provider,
             $global_context ? clone $global_context : null
         );
 
@@ -1651,6 +1659,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $stmt,
                 $method_analyzer,
                 $source,
+                $type_provider,
                 $codebase,
                 $class_storage,
                 $class_context->self,
@@ -1674,6 +1683,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         PhpParser\Node\Stmt\ClassMethod $stmt,
         MethodAnalyzer $method_analyzer,
         SourceAnalyzer $source,
+        \Psalm\Internal\Provider\NodeDataProvider $type_provider,
         Codebase $codebase,
         ClassLikeStorage $class_storage,
         string $fq_classlike_name,
@@ -1778,7 +1788,9 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
                 FunctionLike\ReturnTypeAnalyzer::verifyReturnType(
                     $stmt,
+                    $stmt->getStmts() ?: [],
                     $source,
+                    $type_provider,
                     $method_analyzer,
                     $interface_return_type,
                     $interface_class,
@@ -1790,7 +1802,9 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         FunctionLike\ReturnTypeAnalyzer::verifyReturnType(
             $stmt,
+            $stmt->getStmts() ?: [],
             $source,
+            $type_provider,
             $method_analyzer,
             $return_type,
             $fq_classlike_name,
@@ -1847,7 +1861,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
                         if (isset($parent_storage->template_covariants[$i])
                             && !$parent_storage->template_covariants[$i]
-                            && $parent_storage->user_defined
                         ) {
                             foreach ($extended_type->getTypes() as $t) {
                                 if ($t instanceof Type\Atomic\TTemplateParam
@@ -1856,13 +1869,12 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                     && ($local_offset
                                         = array_search($t->param_name, array_keys($storage->template_types)))
                                         !== false
-                                    && isset($storage->template_covariants[$local_offset])
-                                    && $storage->template_covariants[$local_offset]
+                                    && !empty($storage->template_covariants[$local_offset])
                                 ) {
                                     if (IssueBuffer::accepts(
                                         new InvalidTemplateParam(
                                             'Cannot extend an invariant template param ' . $template_name
-                                                . ' from an invariant context',
+                                                . ' into a covariant context',
                                             $code_location
                                         ),
                                         $storage->suppressed_issues + $this->getSuppressedIssues()

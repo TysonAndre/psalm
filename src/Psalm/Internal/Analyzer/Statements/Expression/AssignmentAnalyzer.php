@@ -177,6 +177,7 @@ class AssignmentAnalyzer
                         && $type_location
                         && isset($context->vars_in_scope[$var_comment->var_id])
                         && $context->vars_in_scope[$var_comment->var_id]->getId() === $var_comment_type->getId()
+                        && !$var_comment_type->isMixed()
                     ) {
                         $project_analyzer = $statements_analyzer->getProjectAnalyzer();
 
@@ -186,9 +187,12 @@ class AssignmentAnalyzer
                             FileManipulationBuffer::addVarAnnotationToRemove($type_location);
                         } elseif (IssueBuffer::accepts(
                             new UnnecessaryVarAnnotation(
-                                'The @var annotation for ' . $var_comment->var_id . ' is unnecessary',
+                                'The @var ' . $var_comment_type . ' annotation for '
+                                    . $var_comment->var_id . ' is unnecessary',
                                 $type_location
-                            )
+                            ),
+                            [],
+                            true
                         )) {
                             // fall through
                         }
@@ -240,12 +244,15 @@ class AssignmentAnalyzer
         }
 
         if ($comment_type && $comment_type_location) {
-            $temp_assign_value_type = $assign_value_type ?: ($assign_value->inferredType ?? null);
+            $temp_assign_value_type = $assign_value_type
+                ? $assign_value_type
+                : ($assign_value ? $statements_analyzer->node_data->getType($assign_value) : null);
 
             if ($codebase->find_unused_variables
                 && $temp_assign_value_type
                 && $array_var_id
                 && $temp_assign_value_type->getId() === $comment_type->getId()
+                && !$comment_type->isMixed()
             ) {
                 if ($codebase->alter_code
                     && isset($statements_analyzer->getProjectAnalyzer()->getIssuesToFix()['UnnecessaryVarAnnotation'])
@@ -253,7 +260,8 @@ class AssignmentAnalyzer
                     FileManipulationBuffer::addVarAnnotationToRemove($comment_type_location);
                 } elseif (IssueBuffer::accepts(
                     new UnnecessaryVarAnnotation(
-                        'The @var annotation for ' . $array_var_id . ' is unnecessary',
+                        'The @var ' . $comment_type . ' annotation for '
+                            . $array_var_id . ' is unnecessary',
                         $comment_type_location
                     )
                 )) {
@@ -263,11 +271,9 @@ class AssignmentAnalyzer
 
             $assign_value_type = $comment_type;
         } elseif (!$assign_value_type) {
-            if (isset($assign_value->inferredType)) {
-                $assign_value_type = $assign_value->inferredType;
-            } else {
-                $assign_value_type = Type::getMixed();
-            }
+            $assign_value_type = $assign_value
+                ? ($statements_analyzer->node_data->getType($assign_value) ?: Type::getMixed())
+                : Type::getMixed();
         }
 
         if ($array_var_id && isset($context->vars_in_scope[$array_var_id])) {
@@ -434,6 +440,8 @@ class AssignmentAnalyzer
                 }
             }
 
+            $can_be_empty = true;
+
             foreach ($assign_var->items as $offset => $assign_var_item) {
                 // $assign_var_item can be null e.g. list($a, ) = ['a', 'b']
                 if (!$assign_var_item) {
@@ -443,7 +451,7 @@ class AssignmentAnalyzer
                 $var = $assign_var_item->value;
 
                 if ($assign_value instanceof PhpParser\Node\Expr\Array_
-                    && isset($assign_var_item->value->inferredType)
+                    && $statements_analyzer->node_data->getType($assign_var_item->value)
                 ) {
                     self::analyze(
                         $statements_analyzer,
@@ -559,8 +567,12 @@ class AssignmentAnalyzer
 
                         if ($assign_value_atomic_type instanceof Type\Atomic\TArray) {
                             $new_assign_type = clone $assign_value_atomic_type->type_params[1];
+
+                            $can_be_empty = !$assign_value_atomic_type instanceof Type\Atomic\TNonEmptyArray;
                         } elseif ($assign_value_atomic_type instanceof Type\Atomic\TList) {
                             $new_assign_type = clone $assign_value_atomic_type->type_param;
+
+                            $can_be_empty = !$assign_value_atomic_type instanceof Type\Atomic\TNonEmptyList;
                         } elseif ($assign_value_atomic_type instanceof Type\Atomic\ObjectLike) {
                             if ($assign_var_item->key
                                 && ($assign_var_item->key instanceof PhpParser\Node\Scalar\String_
@@ -584,6 +596,8 @@ class AssignmentAnalyzer
                                     $new_assign_type->possibly_undefined = false;
                                 }
                             }
+
+                            $can_be_empty = !$assign_value_atomic_type->sealed;
                         } elseif ($assign_value_atomic_type->hasArrayAccessInterface($codebase)) {
                             ForeachAnalyzer::getKeyValueParamsForTraversableObject(
                                 $assign_value_atomic_type,
@@ -642,7 +656,7 @@ class AssignmentAnalyzer
                 if ($list_var_id) {
                     $context->vars_in_scope[$list_var_id] = $new_assign_type ?: Type::getMixed();
 
-                    if ($context->error_suppressing) {
+                    if ($context->error_suppressing && ($offset || $can_be_empty)) {
                         $context->vars_in_scope[$list_var_id]->addType(new Type\Atomic\TNull);
                     }
                 }
@@ -670,10 +684,10 @@ class AssignmentAnalyzer
 
             if ($assign_var->name instanceof PhpParser\Node\Identifier) {
                 $prop_name = $assign_var->name->name;
-            } elseif (isset($assign_var->name->inferredType)
-                && $assign_var->name->inferredType->isSingleStringLiteral()
+            } elseif (($assign_var_name_type = $statements_analyzer->node_data->getType($assign_var->name))
+                && $assign_var_name_type->isSingleStringLiteral()
             ) {
-                $prop_name = $assign_var->name->inferredType->getSingleStringLiteral()->value;
+                $prop_name = $assign_var_name_type->getSingleStringLiteral()->value;
             } else {
                 $prop_name = null;
             }
@@ -692,8 +706,10 @@ class AssignmentAnalyzer
                     return false;
                 }
 
-                if (isset($assign_var->var->inferredType) && !$context->ignore_variable_property) {
-                    $stmt_var_type = $assign_var->var->inferredType;
+                if (($assign_var_type = $statements_analyzer->node_data->getType($assign_var->var))
+                    && !$context->ignore_variable_property
+                ) {
+                    $stmt_var_type = $assign_var_type;
 
                     if ($stmt_var_type->hasObjectType()) {
                         foreach ($stmt_var_type->getTypes() as $type) {
@@ -712,8 +728,7 @@ class AssignmentAnalyzer
                 $context->vars_possibly_in_scope[$var_id] = true;
             }
 
-            $method_pure_compatible = !empty($assign_var->var->inferredType->external_mutation_free)
-                || isset($assign_var->var->pure);
+            $method_pure_compatible = $statements_analyzer->node_data->isPureCompatible($assign_var->var);
 
             if (($context->mutation_free || $context->external_mutation_free)
                 && !$method_pure_compatible
@@ -840,9 +855,9 @@ class AssignmentAnalyzer
         if ($array_var_id
             && $context->mutation_free
             && $stmt->var instanceof PhpParser\Node\Expr\PropertyFetch
-            && isset($stmt->var->var->inferredType)
-            && (!$stmt->var->var->inferredType->external_mutation_free
-                || $stmt->var->var->inferredType->mutation_free)
+            && ($stmt_var_var_type = $statements_analyzer->node_data->getType($stmt->var->var))
+            && (!$stmt_var_var_type->external_mutation_free
+                || $stmt_var_var_type->mutation_free)
         ) {
             if (IssueBuffer::accepts(
                 new ImpurePropertyAssignment(
@@ -866,8 +881,10 @@ class AssignmentAnalyzer
             $context->unreferenced_vars[$array_var_id] = [$location->getHash() => $location];
         }
 
-        $var_type = isset($stmt->var->inferredType) ? clone $stmt->var->inferredType : null;
-        $expr_type = isset($stmt->expr->inferredType) ? $stmt->expr->inferredType : null;
+        $stmt_var_type = $statements_analyzer->node_data->getType($stmt->var);
+        $stmt_var_type = $stmt_var_type ? clone $stmt_var_type: null;
+
+        $stmt_expr_type = $statements_analyzer->node_data->getType($stmt->expr);
 
         if ($stmt instanceof PhpParser\Node\Expr\AssignOp\Plus
             || $stmt instanceof PhpParser\Node\Expr\AssignOp\Minus
@@ -877,6 +894,7 @@ class AssignmentAnalyzer
         ) {
             BinaryOpAnalyzer::analyzeNonDivArithmeticOp(
                 $statements_analyzer,
+                $statements_analyzer->node_data,
                 $stmt->var,
                 $stmt->expr,
                 $stmt,
@@ -894,17 +912,17 @@ class AssignmentAnalyzer
                 );
             } elseif ($result_type && $array_var_id) {
                 $context->vars_in_scope[$array_var_id] = $result_type;
-                $stmt->inferredType = clone $context->vars_in_scope[$array_var_id];
+                $statements_analyzer->node_data->setType($stmt, clone $context->vars_in_scope[$array_var_id]);
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\AssignOp\Div
-            && $var_type
-            && $expr_type
-            && $var_type->hasDefinitelyNumericType()
-            && $expr_type->hasDefinitelyNumericType()
+            && $stmt_var_type
+            && $stmt_expr_type
+            && $stmt_var_type->hasDefinitelyNumericType()
+            && $stmt_expr_type->hasDefinitelyNumericType()
             && $array_var_id
         ) {
             $context->vars_in_scope[$array_var_id] = Type::combineUnionTypes(Type::getFloat(), Type::getInt());
-            $stmt->inferredType = clone $context->vars_in_scope[$array_var_id];
+            $statements_analyzer->node_data->setType($stmt, clone $context->vars_in_scope[$array_var_id]);
         } elseif ($stmt instanceof PhpParser\Node\Expr\AssignOp\Concat) {
             BinaryOpAnalyzer::analyzeConcatOp(
                 $statements_analyzer,
@@ -916,11 +934,11 @@ class AssignmentAnalyzer
 
             if ($result_type && $array_var_id) {
                 $context->vars_in_scope[$array_var_id] = $result_type;
-                $stmt->inferredType = clone $context->vars_in_scope[$array_var_id];
+                $statements_analyzer->node_data->setType($stmt, clone $context->vars_in_scope[$array_var_id]);
             }
-        } elseif (isset($stmt->var->inferredType)
-            && isset($stmt->expr->inferredType)
-            && ($stmt->var->inferredType->hasInt() || $stmt->expr->inferredType->hasInt())
+        } elseif ($stmt_var_type
+            && $stmt_expr_type
+            && ($stmt_var_type->hasInt() || $stmt_expr_type->hasInt())
             && ($stmt instanceof PhpParser\Node\Expr\AssignOp\BitwiseOr
                 || $stmt instanceof PhpParser\Node\Expr\AssignOp\BitwiseXor
                 || $stmt instanceof PhpParser\Node\Expr\AssignOp\BitwiseAnd
@@ -930,6 +948,7 @@ class AssignmentAnalyzer
         ) {
             BinaryOpAnalyzer::analyzeNonDivArithmeticOp(
                 $statements_analyzer,
+                $statements_analyzer->node_data,
                 $stmt->var,
                 $stmt->expr,
                 $stmt,
@@ -939,7 +958,39 @@ class AssignmentAnalyzer
 
             if ($result_type && $array_var_id) {
                 $context->vars_in_scope[$array_var_id] = $result_type;
-                $stmt->inferredType = clone $context->vars_in_scope[$array_var_id];
+                $statements_analyzer->node_data->setType($stmt, clone $context->vars_in_scope[$array_var_id]);
+            }
+        }
+
+        if ($stmt instanceof PhpParser\Node\Expr\AssignOp\Coalesce) {
+            $old_data_provider = $statements_analyzer->node_data;
+
+            $statements_analyzer->node_data = clone $statements_analyzer->node_data;
+
+            $fake_coalesce_expr = new PhpParser\Node\Expr\BinaryOp\Coalesce(
+                $stmt->var,
+                $stmt->expr,
+                $stmt->getAttributes()
+            );
+
+            if (BinaryOpAnalyzer::analyze(
+                $statements_analyzer,
+                $fake_coalesce_expr,
+                $context
+            ) === false) {
+                return false;
+            }
+
+            $fake_coalesce_type = $statements_analyzer->node_data->getType($fake_coalesce_expr);
+
+            $statements_analyzer->node_data = $old_data_provider;
+
+            if ($fake_coalesce_type) {
+                if ($array_var_id) {
+                    $context->vars_in_scope[$array_var_id] = $fake_coalesce_type;
+                }
+
+                $statements_analyzer->node_data->setType($stmt, $fake_coalesce_type);
             }
         }
 

@@ -36,7 +36,7 @@ class ArrayAnalyzer
     ) {
         // if the array is empty, this special type allows us to match any other array type against it
         if (empty($stmt->items)) {
-            $stmt->inferredType = Type::getEmptyArray();
+            $statements_analyzer->node_data->setType($stmt, Type::getEmptyArray());
 
             return null;
         }
@@ -65,6 +65,83 @@ class ArrayAnalyzer
                 continue;
             }
 
+            if (ExpressionAnalyzer::analyze($statements_analyzer, $item->value, $context) === false) {
+                return false;
+            }
+
+            if ($item->unpack) {
+                $unpacked_array_type = $statements_analyzer->node_data->getType($item->value);
+
+                if (!$unpacked_array_type) {
+                    continue;
+                }
+
+                foreach ($unpacked_array_type->getTypes() as $unpacked_atomic_type) {
+                    if ($unpacked_atomic_type instanceof Type\Atomic\ObjectLike) {
+                        $unpacked_array_offset = 0;
+                        foreach ($unpacked_atomic_type->properties as $key => $property_value) {
+                            if (\is_string($key)) {
+                                if (IssueBuffer::accepts(
+                                    new DuplicateArrayKey(
+                                        'String keys are not supported in unpacked arrays',
+                                        new CodeLocation($statements_analyzer->getSource(), $item->value)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+
+                                continue;
+                            }
+
+                            $item_key_atomic_types[] = new Type\Atomic\TLiteralInt($key);
+                            $item_value_atomic_types = array_merge(
+                                $item_value_atomic_types,
+                                array_values($property_value->getTypes())
+                            );
+                            $array_keys[$int_offset + $int_offset_diff + $unpacked_array_offset] = true;
+                            $property_types[$int_offset + $int_offset_diff + $unpacked_array_offset] = $property_value;
+
+                            $unpacked_array_offset++;
+                        }
+
+                        $int_offset_diff += $unpacked_array_offset - 1;
+                    } else {
+                        $can_create_objectlike = false;
+
+                        if ($unpacked_atomic_type instanceof Type\Atomic\TArray) {
+                            if ($unpacked_atomic_type->type_params[0]->hasString()) {
+                                if (IssueBuffer::accepts(
+                                    new DuplicateArrayKey(
+                                        'String keys are not supported in unpacked arrays',
+                                        new CodeLocation($statements_analyzer->getSource(), $item->value)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            } elseif ($unpacked_atomic_type->type_params[0]->hasInt()) {
+                                $item_key_atomic_types[] = new Type\Atomic\TInt();
+                            }
+
+                            $item_value_atomic_types = array_merge(
+                                $item_value_atomic_types,
+                                array_values($unpacked_atomic_type->type_params[1]->getTypes())
+                            );
+                        } elseif ($unpacked_atomic_type instanceof Type\Atomic\TList) {
+                            $item_key_atomic_types[] = new Type\Atomic\TInt();
+
+                            $item_value_atomic_types = array_merge(
+                                $item_value_atomic_types,
+                                array_values($unpacked_atomic_type->type_param->getTypes())
+                            );
+                        }
+                    }
+                }
+
+                continue;
+            }
+
             $item_key_value = null;
 
             if ($item->key) {
@@ -74,8 +151,8 @@ class ArrayAnalyzer
                     return false;
                 }
 
-                if (isset($item->key->inferredType)) {
-                    $key_type = $item->key->inferredType;
+                if ($item_key_type = $statements_analyzer->node_data->getType($item->key)) {
+                    $key_type = $item_key_type;
 
                     if ($key_type->isNull()) {
                         $key_type = Type::getString('');
@@ -125,19 +202,15 @@ class ArrayAnalyzer
                 $array_keys[$item_key_value] = true;
             }
 
-            if (ExpressionAnalyzer::analyze($statements_analyzer, $item->value, $context) === false) {
-                return false;
-            }
-
             if ($codebase->taint) {
-                if (isset($item->value->inferredType)) {
-                    $taint_sources = array_merge($taint_sources, $item->value->inferredType->sources ?: []);
-                    $either_tainted = $either_tainted | $item->value->inferredType->tainted;
+                if ($item_value_type = $statements_analyzer->node_data->getType($item->value)) {
+                    $taint_sources = array_merge($taint_sources, $item_value_type->sources ?: []);
+                    $either_tainted = $either_tainted | $item_value_type->tainted;
                 }
 
-                if (isset($item->key->inferredType)) {
-                    $taint_sources = array_merge($taint_sources, $item->key->inferredType->sources ?: []);
-                    $either_tainted = $either_tainted | $item->key->inferredType->tainted;
+                if ($item->key && ($item_key_type = $statements_analyzer->node_data->getType($item->key))) {
+                    $taint_sources = array_merge($taint_sources, $item_key_type->sources ?: []);
+                    $either_tainted = $either_tainted | $item_key_type->tainted;
                 }
             }
 
@@ -164,16 +237,16 @@ class ArrayAnalyzer
                 continue;
             }
 
-            if (isset($item->value->inferredType)) {
+            if ($item_value_type = $statements_analyzer->node_data->getType($item->value)) {
                 if ($item_key_value !== null && count($property_types) <= 100) {
-                    $property_types[$item_key_value] = $item->value->inferredType;
+                    $property_types[$item_key_value] = $item_value_type;
                 } else {
                     $can_create_objectlike = false;
                 }
 
                 $item_value_atomic_types = array_merge(
                     $item_value_atomic_types,
-                    array_values($item->value->inferredType->getTypes())
+                    array_values($item_value_type->getTypes())
                 );
             } else {
                 $item_value_atomic_types[] = new Type\Atomic\TMixed();
@@ -220,15 +293,17 @@ class ArrayAnalyzer
             $object_like->sealed = true;
             $object_like->is_list = $all_list;
 
-            $stmt->inferredType = new Type\Union([$object_like]);
+            $stmt_type = new Type\Union([$object_like]);
 
             if ($taint_sources) {
-                $stmt->inferredType->sources = $taint_sources;
+                $stmt_type->sources = $taint_sources;
             }
 
             if ($either_tainted) {
-                $stmt->inferredType->tainted = $either_tainted;
+                $stmt_type->tainted = $either_tainted;
             }
+
+            $statements_analyzer->node_data->setType($stmt, $stmt_type);
 
             return null;
         }
@@ -237,17 +312,19 @@ class ArrayAnalyzer
             $array_type = new Type\Atomic\TNonEmptyList($item_value_type ?: Type::getMixed());
             $array_type->count = count($stmt->items);
 
-            $stmt->inferredType = new Type\Union([
+            $stmt_type = new Type\Union([
                 $array_type,
             ]);
 
             if ($taint_sources) {
-                $stmt->inferredType->sources = $taint_sources;
+                $stmt_type->sources = $taint_sources;
             }
 
             if ($either_tainted) {
-                $stmt->inferredType->tainted = $either_tainted;
+                $stmt_type->tainted = $either_tainted;
             }
+
+            $statements_analyzer->node_data->setType($stmt, $stmt_type);
 
             return null;
         }
@@ -259,17 +336,19 @@ class ArrayAnalyzer
 
         $array_type->count = count($stmt->items);
 
-        $stmt->inferredType = new Type\Union([
+        $stmt_type = new Type\Union([
             $array_type,
         ]);
 
         if ($taint_sources) {
-            $stmt->inferredType->sources = $taint_sources;
+            $stmt_type->sources = $taint_sources;
         }
 
         if ($either_tainted) {
-            $stmt->inferredType->tainted = $either_tainted;
+            $stmt_type->tainted = $either_tainted;
         }
+
+        $statements_analyzer->node_data->setType($stmt, $stmt_type);
 
         return null;
     }

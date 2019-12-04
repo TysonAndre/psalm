@@ -382,17 +382,17 @@ class ClassTemplateTest extends TestCase
                     class FooFacade
                     {
                         /**
-                         * @template T
+                         * @template T as object
                          * @param  T $item
                          */
-                        public function add($item): void
+                        public function add(object $item): void
                         {
                             $foo = $this->ensureFoo([$item]);
                             $foo->add($item);
                         }
 
                         /**
-                         * @template T
+                         * @template T as object
                          * @param  array<mixed,T> $items
                          * @return Foo<T>
                          */
@@ -942,7 +942,7 @@ class ClassTemplateTest extends TestCase
                     '$e===' => 'E<string(bar)>',
                 ],
             ],
-            'SKIPPED-templateDefaultClassConstant' => [
+            'SKIPPED-templateDefaultClassMemberConstant' => [
                 '<?php
                     class D {
                         const FOO = "bar";
@@ -966,6 +966,30 @@ class ClassTemplateTest extends TestCase
                     $e = new E();',
                 'assertions' => [
                     '$e===' => 'E<string(bar)>',
+                ],
+            ],
+            'templateDefaultClassConstant' => [
+                '<?php
+                    class D {}
+
+                    /**
+                     * @template T as object
+                     */
+                    class E {
+                        /** @var class-string<T> */
+                        public $t;
+
+                        /**
+                         * @param class-string<T> $t
+                         */
+                        function __construct(string $t = D::class) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    $e = new E();',
+                'assertions' => [
+                    '$e===' => 'E<D>',
                 ],
             ],
             'allowNullablePropertyAssignment' => [
@@ -2067,6 +2091,22 @@ class ClassTemplateTest extends TestCase
 
                     takesInts((new ArrayCollection([ "a", "bc" ]))->map("strlen"));'
             ],
+            'weakReferenceIsTyped' => [
+                '<?php
+                    $e = new Exception;
+                    $r = WeakReference::create($e);
+                    $ex = $r->get();
+                ',
+                [ '$ex' => 'Exception|null' ],
+            ],
+            'weakReferenceIsCovariant' => [
+                '<?php
+                    /** @param WeakReference<Throwable> $_ref */
+                    function acceptsThrowableRef(WeakReference $_ref): void {}
+
+                    acceptsThrowableRef(WeakReference::create(new Exception));
+                '
+            ]
         ];
     }
 

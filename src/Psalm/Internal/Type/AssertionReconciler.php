@@ -120,7 +120,10 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 return Type::getMixed($inside_loop);
             }
 
-            if ($assertion === 'array-key-exists' || $assertion === 'non-empty-countable') {
+            if ($assertion === 'array-key-exists'
+                || $assertion === 'non-empty-countable'
+                || strpos($assertion, 'has-at-least-') === 0
+            ) {
                 return Type::getMixed();
             }
 
@@ -365,7 +368,20 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 $code_location,
                 $suppressed_issues,
                 $failed_reconciliation,
-                $is_equality
+                $is_equality,
+                null
+            );
+        }
+
+        if (substr($assertion, 0, 13) === 'has-at-least-') {
+            return self::reconcileNonEmptyCountable(
+                $existing_var_type,
+                $key,
+                $code_location,
+                $suppressed_issues,
+                $failed_reconciliation,
+                $is_equality,
+                (int) substr($assertion, 13)
             );
         }
 
@@ -790,7 +806,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         ?CodeLocation $code_location,
         array $suppressed_issues,
         int &$failed_reconciliation,
-        bool $is_equality
+        bool $is_equality,
+        ?int $min_count
     ) : Union {
         $old_var_type_string = $existing_var_type->getId();
 
@@ -812,15 +829,21 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                         )
                     );
                 }
-            } elseif ($array_atomic_type instanceof TList
-                && !$array_atomic_type instanceof Type\Atomic\TNonEmptyList
-            ) {
-                $did_remove_type = true;
-                $existing_var_type->addType(
-                    new Type\Atomic\TNonEmptyList(
+            } elseif ($array_atomic_type instanceof TList) {
+                if (!$array_atomic_type instanceof Type\Atomic\TNonEmptyList
+                    || ($array_atomic_type->count < $min_count)
+                ) {
+                    $non_empty_list = new Type\Atomic\TNonEmptyList(
                         $array_atomic_type->type_param
-                    )
-                );
+                    );
+
+                    if ($min_count) {
+                        $non_empty_list->count = $min_count;
+                    }
+
+                    $did_remove_type = true;
+                    $existing_var_type->addType($non_empty_list);
+                }
             } elseif ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
                 foreach ($array_atomic_type->properties as $property_type) {
                     if ($property_type->possibly_undefined) {
@@ -2125,6 +2148,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
     ) : Type\Union {
         $matching_atomic_types = [];
 
+        $has_cloned_type = false;
+
         foreach ($new_type->getTypes() as $new_type_part) {
             $has_local_match = false;
 
@@ -2165,6 +2190,43 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 } elseif ($atomic_comparison_results->type_coerced) {
                     $has_local_match = true;
                     $matching_atomic_types[] = $existing_type_part;
+                }
+
+                if ($new_type_part instanceof Type\Atomic\ObjectLike
+                    && $existing_type_part instanceof Type\Atomic\TList
+                ) {
+                    $new_type_key = $new_type_part->getGenericKeyType();
+                    $new_type_value = $new_type_part->getGenericValueType();
+
+                    if (!$new_type_key->hasString()) {
+                        $has_param_match = false;
+
+                        $new_type_value = self::filterTypeWithAnother(
+                            $codebase,
+                            $existing_type_part->type_param,
+                            $new_type_value,
+                            $template_type_map,
+                            $has_param_match,
+                            $any_scalar_type_match_found
+                        );
+
+                        $hybrid_type_part = new Type\Atomic\ObjectLike($new_type_part->properties);
+                        $hybrid_type_part->previous_key_type = Type::getInt();
+                        $hybrid_type_part->previous_value_type = $new_type_value;
+                        $hybrid_type_part->is_list = true;
+
+                        if (!$has_cloned_type) {
+                            $new_type = clone $new_type;
+                            $has_cloned_type = true;
+                        }
+
+                        $has_local_match = true;
+
+                        $new_type->removeType($key);
+                        $new_type->addType($hybrid_type_part);
+
+                        continue;
+                    }
                 }
 
                 if (($new_type_part instanceof Type\Atomic\TGenericObject
@@ -2232,6 +2294,11 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                             }
                         )
                     ) {
+                        if (!$has_cloned_type) {
+                            $new_type = clone $new_type;
+                            $has_cloned_type = true;
+                        }
+
                         $new_type->removeType($key);
                         $new_type->addType($existing_type_part);
                         $new_type->from_docblock = $existing_type_part->from_docblock;
