@@ -6,6 +6,7 @@
  */
 set_exception_handler(static function (Throwable $throwable) : void {
     fwrite(STDERR, "Uncaught $throwable\n");
-    fprintf(STDERR, "(Psalm %s crashed due to an uncaught Throwable)\n", defined('PSALM_VERSION') ? PSALM_VERSION : '(unknown version)');
+    $version = defined('PSALM_VERSION') ? PSALM_VERSION : '(unknown version)';
+    fwrite(STDERR, "(Psalm $version crashed due to an uncaught Throwable)\n");
     exit(1);
 });
