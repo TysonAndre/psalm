@@ -842,6 +842,20 @@ class FunctionTemplateTest extends TestCase
                         return $array;
                     }',
             ],
+            'narrowTemplateTypeWithIsObject' => [
+                '<?php
+                    function takesObject(object $object): void {}
+
+                    /**
+                     * @template T as mixed
+                     * @param T $value
+                     */
+                    function example($value): void {
+                        if (is_object($value)) {
+                            takesObject($value);
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -1276,6 +1290,12 @@ class FunctionTemplateTest extends TestCase
 
                     apply(new Printer(), new B());',
                 'error_message' => 'InvalidArgument'
+            ],
+            'invalidTemplateDocblock' => [
+                '<?php
+                    /** @template */
+                    function f():void {}',
+                'error_message' => 'MissingDocblockType'
             ],
         ];
     }

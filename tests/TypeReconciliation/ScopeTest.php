@@ -1,12 +1,12 @@
 <?php
-namespace Psalm\Tests;
+namespace Psalm\Tests\TypeReconciliation;
 
 use const DIRECTORY_SEPARATOR;
 
-class ScopeTest extends TestCase
+class ScopeTest extends \Psalm\Tests\TestCase
 {
-    use Traits\InvalidCodeAnalysisTestTrait;
-    use Traits\ValidCodeAnalysisTestTrait;
+    use \Psalm\Tests\Traits\InvalidCodeAnalysisTestTrait;
+    use \Psalm\Tests\Traits\ValidCodeAnalysisTestTrait;
 
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
@@ -133,8 +133,7 @@ class ScopeTest extends TestCase
 
                     if (false) {
 
-                    }
-                    elseif ($a && $a->foo) {
+                    } elseif ($a && $a->foo) {
                         echo $a;
                     }',
             ],

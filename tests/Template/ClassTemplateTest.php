@@ -2106,7 +2106,68 @@ class ClassTemplateTest extends TestCase
 
                     acceptsThrowableRef(WeakReference::create(new Exception));
                 '
-            ]
+            ],
+            'mapTypeParams' => [
+                '<?php
+                    /**
+                     * @template TKey as array-key
+                     * @template TValue
+                     */
+                    class Map {
+                        /** @var array<TKey, TValue> */
+                        public $arr;
+
+                        /** @param array<TKey, TValue> $arr */
+                        function __construct(array $arr) {
+                            $this->arr = $arr;
+                        }
+                    }
+
+                    /**
+                     * @template TInputKey as array-key
+                     * @template TInputValue
+                     * @param Map<TInputKey, TInputValue> $map
+                     * @return Map<TInputKey, TInputValue>
+                     */
+                    function copyMapUsingProperty(Map $map): Map {
+                        return new Map($map->arr);
+                    }',
+            ],
+            'mapStaticClassTemplatedFromClassString' => [
+                '<?php
+                    class Base {
+                        /** @return static */
+                        public static function factory(): self {
+                            return new self();
+                        }
+                    }
+
+                    /**
+                     * @template T of Base
+                     * @param class-string<T> $t
+                     * @return T
+                     */
+                    function f(string $t) {
+                        return $t::factory();
+                    }
+
+                    /** @template T of Base */
+                    class C {
+                        /** @var class-string<T> */
+                        private string $t;
+
+                        /** @param class-string<T> $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+
+                        /** @return T */
+                        public function f(): Base {
+                            $t = $this->t;
+                            return $t::factory();
+                        }
+                    }'
+            ],
         ];
     }
 

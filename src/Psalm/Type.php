@@ -31,6 +31,7 @@ use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\TResource;
+use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TSingleLetter;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTemplateParam;
@@ -1262,6 +1263,16 @@ abstract class Type
     public static function getMixed($from_loop_isset = false)
     {
         $type = new TMixed($from_loop_isset);
+
+        return new Union([$type]);
+    }
+
+    /**
+     * @return Type\Union
+     */
+    public static function getScalar()
+    {
+        $type = new TScalar();
 
         return new Union([$type]);
     }

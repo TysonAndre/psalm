@@ -886,6 +886,8 @@ class ExpressionAnalyzer
                 }
             }
 
+            $context->assigned_var_ids[$var_id] = true;
+
             $context->vars_in_scope[$var_id] = $by_ref_out_type;
 
             if (!($stmt_type = $statements_analyzer->node_data->getType($stmt)) || $stmt_type->isEmpty()) {
@@ -1225,7 +1227,7 @@ class ExpressionAnalyzer
                         $return_type->value = $static_class_type;
                     } else {
                         if ($return_type instanceof Type\Atomic\TGenericObject
-                            && $static_class_type instanceof Type\Atomic\TNamedObject
+                            && $static_class_type instanceof Type\Atomic\TGenericObject
                         ) {
                             $return_type->value = $static_class_type->value;
                         } else {
@@ -1264,11 +1266,15 @@ class ExpressionAnalyzer
                     return new Type\Atomic\TLiteralClassString($return_type->fq_classlike_name);
                 }
 
-                $class_constant = $codebase->classlikes->getConstantForClass(
-                    $return_type->fq_classlike_name,
-                    $return_type->const_name,
-                    \ReflectionProperty::IS_PRIVATE
-                );
+                try {
+                    $class_constant = $codebase->classlikes->getConstantForClass(
+                        $return_type->fq_classlike_name,
+                        $return_type->const_name,
+                        \ReflectionProperty::IS_PRIVATE
+                    );
+                } catch (\Psalm\Exception\CircularReferenceException $e) {
+                    $class_constant = null;
+                }
 
                 if ($class_constant) {
                     if ($class_constant->isSingle()) {
@@ -1290,11 +1296,15 @@ class ExpressionAnalyzer
             }
 
             if ($evaluate && $codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
-                $class_constant_type = $codebase->classlikes->getConstantForClass(
-                    $return_type->fq_classlike_name,
-                    $return_type->const_name,
-                    \ReflectionProperty::IS_PRIVATE
-                );
+                try {
+                    $class_constant_type = $codebase->classlikes->getConstantForClass(
+                        $return_type->fq_classlike_name,
+                        $return_type->const_name,
+                        \ReflectionProperty::IS_PRIVATE
+                    );
+                } catch (\Psalm\Exception\CircularReferenceException $e) {
+                    $class_constant_type = null;
+                }
 
                 if ($class_constant_type) {
                     foreach ($class_constant_type->getTypes() as $const_type_atomic) {

@@ -580,6 +580,14 @@ class NegatedAssertionReconciler extends Reconciler
                 }
             }
 
+            if ($existing_var_type->hasScalar()) {
+                $existing_var_type->removeType('scalar');
+
+                if (!$existing_var_atomic_types['scalar'] instanceof Type\Atomic\TEmptyScalar) {
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyScalar);
+                }
+            }
+
             self::removeFalsyNegatedLiteralTypes(
                 $existing_var_type,
                 $did_remove_type
@@ -644,6 +652,36 @@ class NegatedAssertionReconciler extends Reconciler
             }
 
             if ($existing_var_type->isMixed()) {
+                return $existing_var_type;
+            }
+        }
+
+        if ($existing_var_type->hasScalar()) {
+            if (!$existing_var_atomic_types['scalar'] instanceof Type\Atomic\TNonEmptyScalar) {
+                $did_remove_type = true;
+                $existing_var_type->removeType('scalar');
+
+                if (!$existing_var_atomic_types['scalar'] instanceof Type\Atomic\TEmptyScalar) {
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyScalar);
+                }
+            } elseif ($existing_var_type->isSingle() && !$is_equality) {
+                if ($code_location
+                    && $key
+                    && IssueBuffer::accepts(
+                        new RedundantCondition(
+                            'Found a redundant condition when evaluating ' . $key
+                                . ' of type ' . $existing_var_type->getId()
+                                . ' and trying to reconcile it with a non-' . $assertion . ' assertion',
+                            $code_location
+                        ),
+                        $suppressed_issues
+                    )
+                ) {
+                    // fall through
+                }
+            }
+
+            if ($existing_var_type->isSingle()) {
                 return $existing_var_type;
             }
         }
@@ -831,14 +869,16 @@ class NegatedAssertionReconciler extends Reconciler
             || $existing_var_type->hasScalar();
 
         foreach ($existing_var_type->getTypes() as $type) {
-            if (!$type->isNumericType()) {
-                $non_numeric_types[] = $type;
-            } elseif ($type instanceof TTemplateParam) {
+            if ($type instanceof TTemplateParam) {
                 if (!$type->as->hasNumeric()) {
+                    if ($type->as->hasMixed()) {
+                        $did_remove_type = true;
+                    }
+
                     $non_numeric_types[] = $type;
                 }
-
-                $did_remove_type = true;
+            } elseif (!$type->isNumericType()) {
+                $non_numeric_types[] = $type;
             } else {
                 $did_remove_type = true;
             }
@@ -1033,7 +1073,7 @@ class NegatedAssertionReconciler extends Reconciler
                     $existing_var_type,
                     $old_var_type_string,
                     $key,
-                    $assertion,
+                    '!' . $assertion,
                     !$did_remove_type,
                     $code_location,
                     $suppressed_issues

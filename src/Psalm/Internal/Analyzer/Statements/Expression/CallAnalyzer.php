@@ -2415,6 +2415,7 @@ class CallAnalyzer
             if ($codebase->infer_types_from_usage
                 && !$input_type->hasMixed()
                 && !$param_type->from_docblock
+                && !$param_type->had_template
                 && $cased_method_id
                 && strpos($cased_method_id, '::')
                 && !strpos($cased_method_id, '__')
@@ -3187,6 +3188,10 @@ class CallAnalyzer
                 }
             }
 
+            if ($context->inside_conditional) {
+                $context->assigned_var_ids[$var_id] = true;
+            }
+
             if ($was_cloned) {
                 $context->removeVarFromConflictingClauses($var_id, null, $statements_analyzer);
             }
@@ -3456,21 +3461,32 @@ class CallAnalyzer
                         }
                     }
                 } else {
-                    $type_assertions[$assertion_var_id] = $assertion->rule;
+                    if (isset($type_assertions[$assertion_var_id])) {
+                        $type_assertions[$assertion_var_id] = array_merge(
+                            $type_assertions[$assertion_var_id],
+                            $assertion->rule
+                        );
+                    } else {
+                        $type_assertions[$assertion_var_id] = $assertion->rule;
+                    }
                 }
             } elseif ($arg_value && ($assertion->rule === [['!falsy']] || $assertion->rule === [['true']])) {
                 if ($assertion->rule === [['true']]) {
+                    $conditional = new PhpParser\Node\Expr\BinaryOp\Identical(
+                        $arg_value,
+                        new PhpParser\Node\Expr\ConstFetch(new PhpParser\Node\Name('true'))
+                    );
+
                     $assert_clauses = \Psalm\Type\Algebra::getFormula(
-                        new PhpParser\Node\Expr\BinaryOp\Identical(
-                            $arg_value,
-                            new PhpParser\Node\Expr\ConstFetch(new PhpParser\Node\Name('true'))
-                        ),
+                        \spl_object_id($conditional),
+                        $conditional,
                         $statements_analyzer->getFQCLN(),
                         $statements_analyzer,
                         $statements_analyzer->getCodebase()
                     );
                 } else {
                     $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                        \spl_object_id($arg_value),
                         $arg_value,
                         $statements_analyzer->getFQCLN(),
                         $statements_analyzer,
@@ -3490,7 +3506,7 @@ class CallAnalyzer
             }
         }
 
-        $changed_vars = [];
+        $changed_var_ids = [];
 
         foreach ($type_assertions as $var_id => $_) {
             $asserted_keys[$var_id] = true;
@@ -3501,8 +3517,9 @@ class CallAnalyzer
             // statements of the form if ($x && $x->foo())
             $op_vars_in_scope = \Psalm\Type\Reconciler::reconcileKeyedTypes(
                 $type_assertions,
+                $type_assertions,
                 $context->vars_in_scope,
-                $changed_vars,
+                $changed_var_ids,
                 $asserted_keys,
                 $statements_analyzer,
                 $template_type_map,
@@ -3510,11 +3527,11 @@ class CallAnalyzer
                 new CodeLocation($statements_analyzer->getSource(), $expr)
             );
 
-            foreach ($changed_vars as $changed_var) {
-                if (isset($op_vars_in_scope[$changed_var])) {
-                    $op_vars_in_scope[$changed_var]->from_docblock = true;
+            foreach ($changed_var_ids as $var_id => $_) {
+                if (isset($op_vars_in_scope[$var_id])) {
+                    $op_vars_in_scope[$var_id]->from_docblock = true;
 
-                    foreach ($op_vars_in_scope[$changed_var]->getTypes() as $changed_atomic_type) {
+                    foreach ($op_vars_in_scope[$var_id]->getTypes() as $changed_atomic_type) {
                         $changed_atomic_type->from_docblock = true;
 
                         if ($changed_atomic_type instanceof Type\Atomic\TNamedObject

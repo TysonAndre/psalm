@@ -70,6 +70,7 @@ class LoopAnalyzer
                 $pre_condition_clauses = array_merge(
                     $pre_condition_clauses,
                     Algebra::getFormula(
+                        \spl_object_id($pre_condition),
                         $pre_condition,
                         $loop_scope->loop_context->self,
                         $statements_analyzer,
@@ -309,6 +310,8 @@ class LoopAnalyzer
                     unset($inner_context->vars_in_scope[$var_id]);
                 }
 
+                $inner_context->clauses = $pre_loop_context->clauses;
+
                 $analyzer->setMixedCountsForFile($statements_analyzer->getFilePath(), $original_mixed_counts);
                 IssueBuffer::startRecording();
 
@@ -438,6 +441,7 @@ class LoopAnalyzer
 
                 $vars_in_scope_reconciled = Reconciler::reconcileKeyedTypes(
                     $negated_pre_condition_types,
+                    [],
                     $inner_context->vars_in_scope,
                     $changed_var_ids,
                     [],
@@ -447,7 +451,7 @@ class LoopAnalyzer
                     new CodeLocation($statements_analyzer->getSource(), $pre_conditions[0])
                 );
 
-                foreach ($changed_var_ids as $var_id) {
+                foreach ($changed_var_ids as $var_id => $_) {
                     if (isset($vars_in_scope_reconciled[$var_id])
                         && isset($loop_scope->loop_parent_context->vars_in_scope[$var_id])
                     ) {
@@ -592,8 +596,11 @@ class LoopAnalyzer
             array_merge($outer_context->clauses, $pre_condition_clauses)
         );
 
+        $active_while_types = [];
+
         $reconcilable_while_types = Algebra::getTruthsFromFormula(
             $loop_context->clauses,
+            \spl_object_id($pre_condition),
             $new_referenced_var_ids
         );
 
@@ -602,6 +609,7 @@ class LoopAnalyzer
         if ($reconcilable_while_types) {
             $pre_condition_vars_in_scope_reconciled = Reconciler::reconcileKeyedTypes(
                 $reconcilable_while_types,
+                $active_while_types,
                 $loop_context->vars_in_scope,
                 $changed_var_ids,
                 $new_referenced_var_ids,

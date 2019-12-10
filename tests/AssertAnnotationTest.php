@@ -692,6 +692,21 @@ class AssertAnnotationTest extends TestCase
                     echo $parts[0];
                     echo $parts[1];'
             ],
+            'assertStringOrIntOnString' => [
+                '<?php
+                    /**
+                     * @param mixed $v
+                     * @psalm-assert string|int $v
+                     */
+                    function assertStringOrInt($v) : void {}
+
+                    function gimmeAString(?string $v): string {
+                        /** @psalm-suppress TypeDoesNotContainType */
+                        assertStringOrInt($v);
+
+                        return $v;
+                    }',
+            ],
         ];
     }
 
@@ -861,6 +876,29 @@ class AssertAnnotationTest extends TestCase
                         return $s;
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'assertScalarAndEmpty' => [
+                '<?php
+                    /**
+                     * @param mixed $value
+                     * @psalm-assert scalar $value
+                     * @psalm-assert !empty $value
+                     */
+                    function assertScalarNotEmpty($value) : void {}
+
+                    /** @param scalar $s */
+                    function takesScalar($s) : void {}
+
+                    /**
+                     * @param mixed $bar
+                     */
+                    function foo($bar) : void {
+                        assertScalarNotEmpty($bar);
+                        takesScalar($bar);
+
+                        if ($bar) {}
+                    }',
+                'error_message' => 'RedundantCondition - src/somefile.php:19:29',
             ],
         ];
     }

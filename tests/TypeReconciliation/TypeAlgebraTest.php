@@ -1,10 +1,10 @@
 <?php
-namespace Psalm\Tests;
+namespace Psalm\Tests\TypeReconciliation;
 
-class TypeAlgebraTest extends TestCase
+class TypeAlgebraTest extends \Psalm\Tests\TestCase
 {
-    use Traits\InvalidCodeAnalysisTestTrait;
-    use Traits\ValidCodeAnalysisTestTrait;
+    use \Psalm\Tests\Traits\InvalidCodeAnalysisTestTrait;
+    use \Psalm\Tests\Traits\ValidCodeAnalysisTestTrait;
 
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
@@ -12,7 +12,7 @@ class TypeAlgebraTest extends TestCase
     public function providerValidCodeParse()
     {
         return [
-            'twoVarLogic' => [
+            'twoVarLogicSimple' => [
                 '<?php
                     function takesString(string $s): void {}
 
@@ -46,7 +46,7 @@ class TypeAlgebraTest extends TestCase
                         }
                     }',
             ],
-            'twoVarLogicNotNested' => [
+            'twoVarLogicNotNestedSimple' => [
                 '<?php
                     function foo(?string $a, ?string $b): string {
                         if (!$a && !$b) return "bad";
@@ -139,7 +139,9 @@ class TypeAlgebraTest extends TestCase
                             return new stdClass;
                         }
 
-                        if (!$a && !$b) return $c;
+                        if (!$a && !$b) {
+                            return $c;
+                        }
                         if (!$a) return $b;
                         return $a;
                     }',
@@ -570,7 +572,7 @@ class TypeAlgebraTest extends TestCase
                     }
 
                     if (rand(0, 10) > 5) {
-                    } elseif (($a = new A) && $a->foo) {}',
+                    } elseif (($a = rand(0, 1) ? new A : null) && $a->foo) {}',
             ],
             'noParadoxForGetopt' => [
                 '<?php
@@ -1116,7 +1118,7 @@ class TypeAlgebraTest extends TestCase
             ],
             'repeatedConditionals' => [
                 '<?php
-                    function foo(?string $a): void {
+                    function foo(?object $a): void {
                         if ($a) {
                             // do something
                         } elseif ($a) {
