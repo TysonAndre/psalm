@@ -1202,8 +1202,9 @@ class ClassTemplateExtendsTest extends TestCase
                         }
 
                         /**
-                         * @param T $t
-                         * @return static<T>
+                         * @template U
+                         * @param U $t
+                         * @return static<U>
                          */
                         public static function getContainer($t) {
                             return new static($t);
@@ -1246,8 +1247,9 @@ class ClassTemplateExtendsTest extends TestCase
                         }
 
                         /**
-                         * @param T $t
-                         * @return static<T>
+                         * @template U
+                         * @param U $t
+                         * @return static<U>
                          */
                         public static function getContainer($t) {
                             return new static($t);
@@ -1296,8 +1298,9 @@ class ClassTemplateExtendsTest extends TestCase
                         }
 
                         /**
-                         * @param T $t
-                         * @return static<T>
+                         * @template U
+                         * @param U $t
+                         * @return static<U>
                          */
                         public static function getContainer($t) {
                             return new static($t);
@@ -1721,6 +1724,9 @@ class ClassTemplateExtendsTest extends TestCase
                         public function getIterator(): \Iterator;
                     }
 
+                    /**
+                     * @template-implements Collection<string>
+                     */
                     abstract class Set implements Collection {
                         public function forEach(callable $action): void {
                             $i = $this->getIterator();
@@ -2014,14 +2020,14 @@ class ClassTemplateExtendsTest extends TestCase
                         /**
                          * @return key-of<DATA>
                          */
-                        abstract public static function getIdProperty() : string;
+                        abstract public function getIdProperty() : string;
                     }
 
                     /**
                      * @template-extends Foo<array{id:int, name:string}>
                      */
                     class FooChild extends Foo {
-                        public static function getIdProperty() : string {
+                        public function getIdProperty() : string {
                             return "id";
                         }
                     }',
@@ -2266,11 +2272,11 @@ class ClassTemplateExtendsTest extends TestCase
                         /**
                          * @return T
                          */
-                        public static function getItem();
+                        public function getItem();
                     }
 
                     trait FooTrait {
-                        public static function getItem() {
+                        public function getItem() {
                             return "hello";
                         }
                     }
@@ -2480,6 +2486,237 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }'
             ],
+            'allowExtendingWithTemplatedClass' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    class Foo {
+                        /** @var T1 */
+                        public $t;
+
+                        /** @param T1 $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T2
+                     */
+                    class Bar {
+                        /** @var T2 */
+                        public $t;
+
+                        /** @param T2 $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T3
+                     * @extends Bar<Foo<T3>>
+                     */
+                    class BarOfFoo extends Bar {
+                        /** @param T3 $t */
+                        public function __construct($t) {
+                            parent::__construct(new Foo($t));
+                        }
+                    }
+
+                    /**
+                     * @template T4
+                     * @param T4 $t
+                     * @return Bar<Foo<T4>>
+                     */
+                    function baz($t) {
+                        return new BarOfFoo($t);
+                    }'
+            ],
+            'inheritTemplateParamViaConstructorSameName' => [
+                '<?php
+                    class Dog {}
+
+                    /**
+                     * @template T
+                     */
+                    class Collection {
+                        /** @var array<T> */
+                        protected $arr = [];
+
+                        /**
+                          * @param array<T> $arr
+                          */
+                        public function __construct(array $arr) {
+                            $this->arr = $arr;
+                        }
+                    }
+
+                    /**
+                     * @template T
+                     * @template V
+                     * @extends Collection<V>
+                     */
+                    class CollectionChild extends Collection {
+                    }
+
+                    $dogs = new CollectionChild([new Dog(), new Dog()]);',
+                [
+                    '$dogs' => 'CollectionChild<mixed, Dog>'
+                ]
+            ],
+            'inheritTemplateParamViaConstructorDifferentName' => [
+                '<?php
+                    class Dog {}
+
+                    /**
+                     * @template T
+                     */
+                    class Collection {
+                        /** @var array<T> */
+                        protected $arr = [];
+
+                        /**
+                          * @param array<T> $arr
+                          */
+                        public function __construct(array $arr) {
+                            $this->arr = $arr;
+                        }
+                    }
+
+                    /**
+                     * @template U
+                     * @template V
+                     * @extends Collection<V>
+                     */
+                    class CollectionChild extends Collection {
+                    }
+
+                    $dogs = new CollectionChild([new Dog(), new Dog()]);',
+                [
+                    '$dogs' => 'CollectionChild<mixed, Dog>'
+                ]
+            ],
+            'extendsClassWithClassStringProperty' => [
+                '<?php
+                    class Some {}
+
+                    /** @template T of object */
+                    abstract class Y {
+                        /** @var class-string<T> */
+                        protected $c;
+                    }
+
+                    /**
+                     * @template T of Some
+                     * @extends Y<Some>
+                     */
+                    class Z extends Y {
+                        /** @param class-string<T> $c */
+                        public function __construct(string $c) {
+                            $this->c = $c;
+                        }
+                    }'
+            ],
+            'useTraitReturnTypeForInheritedInterface' => [
+                '<?php
+                    /**
+                     * @template TValue
+                     * @template TNormalizedValue
+                     */
+                    interface Normalizer
+                    {
+                        /**
+                         * @param TValue $v
+                         * @return TNormalizedValue
+                         */
+                        function normalize($v);
+                    }
+
+                    /**
+                     * @template TTraitValue
+                     * @template TTraitNormalizedValue
+                     */
+                    trait NormalizerTrait
+                    {
+                        /**
+                         * @param TTraitValue $v
+                         * @return TTraitNormalizedValue
+                         */
+                        function normalize($v)
+                        {
+                            return $this->doNormalize($v);
+                        }
+
+                        /**
+                         * @param TTraitValue $v
+                         * @return TTraitNormalizedValue
+                         */
+                        abstract protected function doNormalize($v);
+                    }
+
+                    /** @implements Normalizer<string, string> */
+                    class StringNormalizer implements Normalizer
+                    {
+                        /** @use NormalizerTrait<string, string> */
+                        use NormalizerTrait;
+
+                        protected function doNormalize($v): string
+                        {
+                            return trim($v);
+                        }
+                    }'
+            ],
+            'useTraitReturnTypeForInheritedClass' => [
+                '<?php
+                    /**
+                     * @template TValue
+                     * @template TNormalizedValue
+                     */
+                    abstract class Normalizer
+                    {
+                        /**
+                         * @param TValue $v
+                         * @return TNormalizedValue
+                         */
+                        abstract function normalize($v);
+                    }
+
+                    /**
+                     * @template TTraitValue
+                     * @template TTraitNormalizedValue
+                     */
+                    trait NormalizerTrait
+                    {
+                        /**
+                         * @param TTraitValue $v
+                         * @return TTraitNormalizedValue
+                         */
+                        function normalize($v)
+                        {
+                            return $this->doNormalize($v);
+                        }
+
+                        /**
+                         * @param TTraitValue $v
+                         * @return TTraitNormalizedValue
+                         */
+                        abstract protected function doNormalize($v);
+                    }
+
+                    /** @extends Normalizer<string, string> */
+                    class StringNormalizer extends Normalizer
+                    {
+                        /** @use NormalizerTrait<string, string> */
+                        use NormalizerTrait;
+
+                        protected function doNormalize($v): string
+                        {
+                            return trim($v);
+                        }
+                    }'
+            ]
         ];
     }
 
@@ -2525,7 +2762,7 @@ class ClassTemplateExtendsTest extends TestCase
                             return new Foo();
                         }
                     }',
-                'error_message' => 'ImplementedReturnTypeMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:29:36 - The return type \'A\Bar\' for',
+                'error_message' => 'ImplementedReturnTypeMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:29:36 - The inherited return type \'A\Bar\' for',
             ],
             'extendTemplateAndDoesNotOverrideWithWrongArg' => [
                 '<?php
@@ -3250,7 +3487,7 @@ class ClassTemplateExtendsTest extends TestCase
                         /**
                          * @param T $t
                          */
-                        public static function getString($t, object $o = null) : string {
+                        public function getString($t, object $o = null) : string {
                             return "hello";
                         }
                     }
@@ -3261,7 +3498,7 @@ class ClassTemplateExtendsTest extends TestCase
                      * @template-extends Stringer<A>
                      */
                     class AStringer extends Stringer {
-                        public static function getString($t, object $o = null) : string {
+                        public function getString($t, object $o = null) : string {
                             if ($o) {
                                 return parent::getString($o);
                             }
@@ -3414,6 +3651,55 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }',
                 'error_message' => 'MixedMethodCall'
+            ],
+            'preventExtendingWithTemplatedClassWithExplicitTypeGiven' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    class Foo {
+                        /** @var T1 */
+                        public $t;
+
+                        /** @param T1 $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T2
+                     */
+                    class Bar {
+                        /** @var T2 */
+                        public $t;
+
+                        /** @param T2 $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T3
+                     * @extends Bar<Foo<T3>>
+                     */
+                    class BarOfFoo extends Bar {
+                        /** @param T3 $t */
+                        public function __construct($t) {
+                            parent::__construct(new Foo($t));
+                        }
+                    }
+
+                    /**
+                     * @template T4
+                     * @param T4 $t
+                     * @return Bar<Foo<T4>>
+                     */
+                    function baz($t) {
+                        return new BarOfFoo("hello");
+                    }',
+                'error_message' => 'InvalidReturnStatement'
             ],
         ];
     }

@@ -142,13 +142,6 @@ class IfAnalyzer
 
         $entry_clauses = $context->clauses;
 
-        if ($if_scope->if_cond_changed_var_ids) {
-            $entry_clauses = Context::removeOverwrittenClauses(
-                $entry_clauses,
-                $if_scope->if_cond_changed_var_ids
-            );
-        }
-
         // this will see whether any of the clauses in set A conflict with the clauses in set B
         AlgebraAnalyzer::checkForParadox(
             $context->clauses,
@@ -308,7 +301,10 @@ class IfAnalyzer
 
         // we calculate the vars redefined in a hypothetical else statement to determine
         // which vars of the if we can safely change
-        $pre_assignment_else_redefined_vars = $temp_else_context->getRedefinedVars($context->vars_in_scope, true);
+        $pre_assignment_else_redefined_vars = array_intersect_key(
+            $temp_else_context->getRedefinedVars($context->vars_in_scope, true),
+            $changed_var_ids
+        );
 
         // this captures statements in the if conditional
         if ($context->collect_references) {
@@ -564,6 +560,8 @@ class IfAnalyzer
 
         $internally_applied_if_cond_expr = self::getDefinitelyEvaluatedExpressionInsideIf($cond);
 
+        $was_inside_conditional = $outer_context->inside_conditional;
+
         $outer_context->inside_conditional = true;
 
         $pre_condition_vars_in_scope = $outer_context->vars_in_scope;
@@ -602,7 +600,9 @@ class IfAnalyzer
             $first_cond_referenced_var_ids
         );
 
-        $outer_context->inside_conditional = false;
+        if (!$was_inside_conditional) {
+            $outer_context->inside_conditional = false;
+        }
 
         if (!$if_context) {
             $if_context = clone $outer_context;
@@ -620,8 +620,6 @@ class IfAnalyzer
         // to $outer_context don't mess with elseif/else blocks
         $original_context = clone $outer_context;
 
-        $if_conditional_context->inside_conditional = true;
-
         if ($internally_applied_if_cond_expr !== $cond
             || $externally_applied_if_cond_expr !== $cond
         ) {
@@ -631,9 +629,13 @@ class IfAnalyzer
             $referenced_var_ids = $outer_context->referenced_var_ids;
             $if_conditional_context->referenced_var_ids = [];
 
+            $if_conditional_context->inside_conditional = true;
+
             if (ExpressionAnalyzer::analyze($statements_analyzer, $cond, $if_conditional_context) === false) {
                 throw new \Psalm\Exception\ScopeAnalysisException();
             }
+
+            $if_conditional_context->inside_conditional = false;
 
             /** @var array<string, bool> */
             $more_cond_referenced_var_ids = $if_conditional_context->referenced_var_ids;
@@ -684,23 +686,7 @@ class IfAnalyzer
         // get all the var ids that were referened in the conditional, but not assigned in it
         $cond_referenced_var_ids = array_diff_key($cond_referenced_var_ids, $cond_assigned_var_ids);
 
-        // remove all newly-asserted var ids too
-        $cond_referenced_var_ids = array_filter(
-            $cond_referenced_var_ids,
-            /**
-             * @param string $var_id
-             *
-             * @return bool
-             */
-            function ($var_id) use ($pre_condition_vars_in_scope) {
-                return isset($pre_condition_vars_in_scope[$var_id]);
-            },
-            ARRAY_FILTER_USE_KEY
-        );
-
         $cond_referenced_var_ids = array_merge($newish_var_ids, $cond_referenced_var_ids);
-
-        $if_conditional_context->inside_conditional = false;
 
         return new \Psalm\Internal\Scope\IfConditionalScope(
             $if_context,
@@ -1094,13 +1080,6 @@ class IfAnalyzer
             $elseif->cond,
             $cond_assigned_var_ids
         );
-
-        if ($if_scope->if_cond_changed_var_ids) {
-            $entry_clauses = Context::removeOverwrittenClauses(
-                $entry_clauses,
-                $if_scope->if_cond_changed_var_ids
-            );
-        }
 
         $elseif_context_clauses = array_merge($entry_clauses, $elseif_clauses);
 

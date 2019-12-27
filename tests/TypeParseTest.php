@@ -426,7 +426,7 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
-    public function testCallable()
+    public function testSimpleCallable()
     {
         $this->assertSame(
             'callable(int, string):void',
@@ -543,10 +543,12 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
-    public function testCallableWithBadVariadic()
+    public function testCallableWithSpreadBefore()
     {
-        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
-        Type::parseString('callable(int, ...string) : void');
+        $this->assertSame(
+            'callable(int, string...):void',
+            (string)Type::parseString('callable(int, ...string):void')
+        );
     }
 
     /**
@@ -799,6 +801,14 @@ class TypeParseTest extends TestCase
         );
     }
 
+    public function testClassStringMap() : void
+    {
+        $this->assertSame(
+            'class-string-map<T as Foo, T>',
+            (string)Type::parseString('class-string-map<T as Foo, T>')
+        );
+    }
+
     /**
      * @return void
      */
@@ -829,6 +839,39 @@ class TypeParseTest extends TestCase
             new Type\Atomic\TLiteralInt(2),
             new Type\Atomic\TLiteralInt(3),
             new Type\Atomic\TLiteralFloat(4.5),
+        ]);
+
+        $this->assertSame($resolved_type->getId(), $docblock_type->getId());
+    }
+
+    public function testEmptyString() : void
+    {
+        $docblock_type = Type::parseString('""|"admin"|"fun"');
+
+        $resolved_type = new Type\Union([
+            new Type\Atomic\TLiteralString(''),
+            new Type\Atomic\TLiteralString('admin'),
+            new Type\Atomic\TLiteralString('fun'),
+        ]);
+
+        $this->assertSame($resolved_type->getId(), $docblock_type->getId());
+
+        $docblock_type = Type::parseString('"admin"|""|"fun"');
+
+        $resolved_type = new Type\Union([
+            new Type\Atomic\TLiteralString('admin'),
+            new Type\Atomic\TLiteralString(''),
+            new Type\Atomic\TLiteralString('fun'),
+        ]);
+
+        $this->assertSame($resolved_type->getId(), $docblock_type->getId());
+
+        $docblock_type = Type::parseString('"admin"|"fun"|""');
+
+        $resolved_type = new Type\Union([
+            new Type\Atomic\TLiteralString('admin'),
+            new Type\Atomic\TLiteralString('fun'),
+            new Type\Atomic\TLiteralString(''),
         ]);
 
         $this->assertSame($resolved_type->getId(), $docblock_type->getId());

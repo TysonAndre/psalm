@@ -5,6 +5,7 @@ use PhpParser;
 use Psalm\Internal\Analyzer\Statements\Expression\Assignment\ArrayAssignmentAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\IfAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Config;
@@ -66,7 +67,8 @@ class BinaryOpAnalyzer
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr\BinaryOp $stmt,
         Context $context,
-        $nesting = 0
+        int $nesting = 0,
+        bool $from_stmt = false
     ) {
         $codebase = $statements_analyzer->getCodebase();
 
@@ -77,6 +79,26 @@ class BinaryOpAnalyzer
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd ||
             $stmt instanceof PhpParser\Node\Expr\BinaryOp\LogicalAnd
         ) {
+            if ($from_stmt) {
+                $fake_if_stmt = new PhpParser\Node\Stmt\If_(
+                    $stmt->left,
+                    [
+                        'stmts' => [
+                            new PhpParser\Node\Stmt\Expression(
+                                $stmt->right
+                            )
+                        ]
+                    ],
+                    $stmt->getAttributes()
+                );
+
+                if (IfAnalyzer::analyze($statements_analyzer, $fake_if_stmt, $context) === false) {
+                    return false;
+                }
+
+                return null;
+            }
+
             $left_clauses = Algebra::getFormula(
                 \spl_object_id($stmt->left),
                 $stmt->left,
@@ -86,7 +108,6 @@ class BinaryOpAnalyzer
             );
 
             $pre_referenced_var_ids = $context->referenced_var_ids;
-            $original_vars_in_scope = $context->vars_in_scope;
 
             $pre_assigned_var_ids = $context->assigned_var_ids;
 
@@ -115,20 +136,6 @@ class BinaryOpAnalyzer
             $new_assigned_var_ids = array_diff_key($left_context->assigned_var_ids, $pre_assigned_var_ids);
 
             $new_referenced_var_ids = array_diff_key($new_referenced_var_ids, $new_assigned_var_ids);
-
-            // remove all newly-asserted var ids too
-            $new_referenced_var_ids = array_filter(
-                $new_referenced_var_ids,
-                /**
-                 * @param string $var_id
-                 *
-                 * @return bool
-                 */
-                function ($var_id) use ($original_vars_in_scope) {
-                    return isset($original_vars_in_scope[$var_id]);
-                },
-                ARRAY_FILTER_USE_KEY
-            );
 
             $context_clauses = array_merge($left_context->clauses, $left_clauses);
 
@@ -249,6 +256,11 @@ class BinaryOpAnalyzer
                     )
                 );
 
+                $if_context->vars_possibly_in_scope = array_merge(
+                    $context->vars_possibly_in_scope,
+                    $if_context->vars_possibly_in_scope
+                );
+
                 $if_context->updateChecks($context);
             } else {
                 $context->vars_in_scope = $left_context->vars_in_scope;
@@ -256,6 +268,26 @@ class BinaryOpAnalyzer
         } elseif ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr ||
             $stmt instanceof PhpParser\Node\Expr\BinaryOp\LogicalOr
         ) {
+            if ($from_stmt) {
+                $fake_if_stmt = new PhpParser\Node\Stmt\If_(
+                    new PhpParser\Node\Expr\BooleanNot($stmt->left, $stmt->left->getAttributes()),
+                    [
+                        'stmts' => [
+                            new PhpParser\Node\Stmt\Expression(
+                                $stmt->right
+                            )
+                        ]
+                    ],
+                    $stmt->getAttributes()
+                );
+
+                if (IfAnalyzer::analyze($statements_analyzer, $fake_if_stmt, $context) === false) {
+                    return false;
+                }
+
+                return null;
+            }
+
             $pre_referenced_var_ids = $context->referenced_var_ids;
             $context->referenced_var_ids = [];
 
@@ -263,6 +295,7 @@ class BinaryOpAnalyzer
 
             $left_context = clone $context;
             $left_context->parent_context = $context;
+            $left_context->if_context = null;
             $left_context->assigned_var_ids = [];
 
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->left, $left_context) === false) {
@@ -595,7 +628,11 @@ class BinaryOpAnalyzer
                     new CodeLocation($statements_analyzer->getSource(), $stmt->left)
                 );
 
-                $t_if_context->vars_in_scope = $t_if_vars_in_scope_reconciled;
+                foreach ($context->vars_in_scope as $var_id => $_) {
+                    if (isset($t_if_vars_in_scope_reconciled[$var_id])) {
+                        $t_if_context->vars_in_scope[$var_id] = $t_if_vars_in_scope_reconciled[$var_id];
+                    }
+                }
             }
 
             if (!self::hasArrayDimFetch($stmt->left)) {
@@ -982,7 +1019,7 @@ class BinaryOpAnalyzer
             if ($left_type->isFalse()) {
                 if ($statements_source && IssueBuffer::accepts(
                     new FalseOperand(
-                        'Left operand cannot be null',
+                        'Left operand cannot be false',
                         new CodeLocation($statements_source, $left)
                     ),
                     $statements_source->getSuppressedIssues()

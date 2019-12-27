@@ -988,7 +988,7 @@ class ArrayAssignmentTest extends TestCase
                       /**
                        * @psalm-suppress MixedOperand
                        */
-                      $a[$key] += 5;
+                      $a[$key] += rand(0, 10);
                     }
 
                     $a["four"] = true;
@@ -1272,6 +1272,19 @@ class ArrayAssignmentTest extends TestCase
                     '$arr2' => 'array{0: int, 1: int, 2: int}',
                     '$arr3' => 'array{1: int, 2: int, 3: int, 4: int}',
                 ]
+            ],
+            'listPropertyAssignmentAfterIsset' => [
+                '<?php
+                    class Collection {
+                        /** @var list<string> */
+                        private $list = [];
+
+                        public function override(int $offset): void {
+                            if (isset($this->list[$offset])) {
+                                $this->list[$offset] = "a";
+                            }
+                        }
+                    }',
             ],
         ];
     }

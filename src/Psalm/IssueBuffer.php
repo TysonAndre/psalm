@@ -20,6 +20,7 @@ use Psalm\Report\ConsoleReport;
 use Psalm\Report\EmacsReport;
 use Psalm\Report\JsonReport;
 use Psalm\Report\JsonSummaryReport;
+use Psalm\Report\JunitReport;
 use Psalm\Report\PylintReport;
 use Psalm\Report\SonarqubeReport;
 use Psalm\Report\TextReport;
@@ -348,7 +349,7 @@ class IssueBuffer
     /**
      * @param array<int, array{severity: string, line_from: int, line_to: int, type: string, message: string,
      *  file_name: string, file_path: string, snippet: string, from: int, to: int, snippet_from: int,
-     *  snippet_to: int, column_from: int, column_to: int}> $issues_data
+     *  snippet_to: int, column_from: int, column_to: int, selected_text: string}> $issues_data
      *
      * @return void
      */
@@ -627,6 +628,10 @@ class IssueBuffer
 
             case Report::TYPE_XML:
                 $output = new XmlReport(self::$issues_data, self::$fixable_issue_counts, $report_options);
+                break;
+
+            case Report::TYPE_JUNIT:
+                $output = new JUnitReport(self::$issues_data, self::$fixable_issue_counts, $report_options);
                 break;
 
             case Report::TYPE_CONSOLE:

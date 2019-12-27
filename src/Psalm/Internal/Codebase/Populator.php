@@ -275,12 +275,13 @@ class Populator
                         = $this->classlike_storage_provider->get($declaring_class);
 
                     if ($candidate_overridden_ids === null) {
-                        $candidate_overridden_ids = $declaring_class_storage->overridden_method_ids[$method_name]
-                            + [$declaring_method_id => $declaring_method_id];
+                        $candidate_overridden_ids
+                            = ($declaring_class_storage->overridden_method_ids[$method_name] ?? [])
+                                + [$declaring_method_id => $declaring_method_id];
                     } else {
                         $candidate_overridden_ids = \array_intersect_key(
                             $candidate_overridden_ids,
-                            $declaring_class_storage->overridden_method_ids[$method_name]
+                            ($declaring_class_storage->overridden_method_ids[$method_name] ?? [])
                                 + [$declaring_method_id => $declaring_method_id]
                         );
                     }
@@ -489,13 +490,6 @@ class Populator
                         if ($mapped_name) {
                             $storage->template_type_extends[$parent_storage->name][$mapped_name] = $type;
                         }
-
-                        if (is_int($i)
-                            && ($parent_storage->template_covariants[$i] ?? false)
-                            && !$type->hasTemplate()
-                        ) {
-                            $storage->template_covariants[$i] = true;
-                        }
                     }
 
                     if ($parent_storage->template_type_extends) {
@@ -629,13 +623,6 @@ class Populator
                         if ($mapped_name) {
                             $storage->template_type_extends[$parent_interface_storage->name][$mapped_name] = $type;
                         }
-
-                        if (is_int($i)
-                            && ($parent_interface_storage->template_covariants[$i] ?? false)
-                            && !$type->hasTemplate()
-                        ) {
-                            $storage->template_covariants[$i] = true;
-                        }
                     }
 
                     if ($parent_interface_storage->template_type_extends) {
@@ -730,13 +717,6 @@ class Populator
                         if ($mapped_name) {
                             $storage->template_type_extends[$implemented_interface_storage->name][$mapped_name] = $type;
                         }
-
-                        if (is_int($i)
-                            && ($implemented_interface_storage->template_covariants[$i] ?? false)
-                            && !$type->hasTemplate()
-                        ) {
-                            $storage->template_covariants[$i] = true;
-                        }
                     }
 
                     if ($implemented_interface_storage->template_type_extends) {
@@ -826,9 +806,10 @@ class Populator
                         }
                     }
                 }
-                $storage->overridden_method_ids[$method_name][$interface_method_ids[0]] = $interface_method_ids[0];
-            } else {
-                $storage->interface_method_ids[$method_name] = $interface_method_ids;
+            }
+
+            foreach ($interface_method_ids as $interface_method_id) {
+                $storage->overridden_method_ids[$method_name][$interface_method_id] = $interface_method_id;
             }
         }
     }

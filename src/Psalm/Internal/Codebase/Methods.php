@@ -10,6 +10,7 @@ use function preg_replace;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
 use Psalm\Internal\Provider\MethodExistenceProvider;
@@ -394,6 +395,7 @@ class Methods
             }
 
             $overridden_method_id = $class_storage->documenting_method_ids[$appearing_method_name];
+
             $overridden_storage = $this->getStorage($overridden_method_id);
 
             list($overriding_fq_class_name) = explode('::', $overridden_method_id);
@@ -449,9 +451,7 @@ class Methods
         $type = clone $type;
 
         foreach ($type->getTypes() as $key => $atomic_type) {
-            if ($atomic_type instanceof Type\Atomic\TTemplateParam
-                || $atomic_type instanceof Type\Atomic\TTemplateParamClass
-            ) {
+            if ($atomic_type instanceof Type\Atomic\TTemplateParam) {
                 if ($atomic_type->defining_class === $base_fq_class_name) {
                     if (isset($extends[$base_fq_class_name][$atomic_type->param_name])) {
                         $extended_param = $extends[$base_fq_class_name][$atomic_type->param_name];
@@ -462,6 +462,22 @@ class Methods
                             $extended_param,
                             $codebase
                         );
+                    }
+                }
+            }
+
+            if ($atomic_type instanceof Type\Atomic\TTemplateParamClass) {
+                if ($atomic_type->defining_class === $base_fq_class_name) {
+                    if (isset($extends[$base_fq_class_name][$atomic_type->param_name])) {
+                        $extended_param = $extends[$base_fq_class_name][$atomic_type->param_name];
+
+                        $types = \array_values($extended_param->getTypes());
+
+                        if (count($types) === 1 && $types[0] instanceof Type\Atomic\TNamedObject) {
+                            $atomic_type->as_type = $types[0];
+                        } else {
+                            $atomic_type->as_type = null;
+                        }
                     }
                 }
             }
@@ -540,7 +556,7 @@ class Methods
     public function getMethodReturnType(
         $method_id,
         &$self_class,
-        \Psalm\Internal\Analyzer\StatementsAnalyzer $statements_analyzer = null,
+        \Psalm\Internal\Analyzer\SourceAnalyzer $source_analyzer = null,
         array $args = null
     ) {
         list($original_fq_class_name, $original_method_name) = explode('::', $method_id);
@@ -585,8 +601,8 @@ class Methods
         ) {
             if ($appearing_method_id === 'Closure::fromcallable'
                 && isset($args[0])
-                && $statements_analyzer
-                && ($first_arg_type = $statements_analyzer->node_data->getType($args[0]->value))
+                && $source_analyzer
+                && ($first_arg_type = $source_analyzer->getNodeTypeProvider()->getType($args[0]->value))
                 && $first_arg_type->isSingle()
             ) {
                 foreach ($first_arg_type->getTypes() as $atomic_type) {
@@ -645,12 +661,19 @@ class Methods
             return null;
         }
 
+        $candidate_type = null;
+
         foreach ($class_storage->overridden_method_ids[$appearing_method_name] as $overridden_method_id) {
             $overridden_storage = $this->getStorage($overridden_method_id);
 
             if ($overridden_storage->return_type) {
                 if ($overridden_storage->return_type->isNull()) {
-                    return Type::getVoid();
+                    if ($candidate_type && !$candidate_type->isVoid()) {
+                        return null;
+                    }
+
+                    $candidate_type = Type::getVoid();
+                    continue;
                 }
 
                 list($fq_overridden_class) = explode('::', $overridden_method_id);
@@ -662,11 +685,45 @@ class Methods
 
                 $self_class = $overridden_class_storage->name;
 
-                return $overridden_return_type;
+                if ($candidate_type
+                    && $source_analyzer
+                ) {
+                    $old_contained_by_new = TypeAnalyzer::isContainedBy(
+                        $source_analyzer->getCodebase(),
+                        $candidate_type,
+                        $overridden_return_type
+                    );
+
+                    $new_contained_by_old = TypeAnalyzer::isContainedBy(
+                        $source_analyzer->getCodebase(),
+                        $overridden_return_type,
+                        $candidate_type
+                    );
+
+                    if (!$old_contained_by_new && !$new_contained_by_old) {
+                        $attempted_intersection = Type::intersectUnionTypes(
+                            $candidate_type,
+                            $overridden_return_type
+                        );
+
+                        if ($attempted_intersection) {
+                            $candidate_type = $attempted_intersection;
+                            continue;
+                        }
+
+                        return null;
+                    }
+
+                    if ($old_contained_by_new) {
+                        continue;
+                    }
+                }
+
+                $candidate_type = $overridden_return_type;
             }
         }
 
-        return null;
+        return $candidate_type;
     }
 
     /**

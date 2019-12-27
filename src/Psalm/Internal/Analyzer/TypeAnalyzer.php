@@ -12,6 +12,7 @@ use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TClassString;
+use Psalm\Type\Atomic\TClassStringMap;
 use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TEmptyMixed;
@@ -34,6 +35,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNever;
 use Psalm\Type\Atomic\TNonEmptyArray;
 use Psalm\Type\Atomic\TNonEmptyList;
+use Psalm\Type\Atomic\TNonEmptyString;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
@@ -738,7 +740,7 @@ class TypeAnalyzer
             }
 
             if ($container_type_part instanceof TTemplateParam
-                && $container_type_part->as->isNullable()
+                && ($container_type_part->as->isNullable() || $container_type_part->as->isMixed())
             ) {
                 return true;
             }
@@ -1159,6 +1161,7 @@ class TypeAnalyzer
         }
 
         if ((get_class($container_type_part) === TString::class
+                || get_class($container_type_part) === TNonEmptyString::class
                 || get_class($container_type_part) === TSingleLetter::class)
             && $input_type_part instanceof TLiteralString
         ) {
@@ -1183,7 +1186,9 @@ class TypeAnalyzer
             return false;
         }
 
-        if ((get_class($input_type_part) === TString::class || get_class($input_type_part) === TSingleLetter::class)
+        if ((get_class($input_type_part) === TString::class
+                || get_class($input_type_part) === TSingleLetter::class
+                || get_class($input_type_part) === TNonEmptyString::class)
             && $container_type_part instanceof TLiteralString
         ) {
             if ($atomic_comparison_result) {
@@ -1254,7 +1259,10 @@ class TypeAnalyzer
             return true;
         }
 
-        if ($container_type_part instanceof TTraitString && get_class($input_type_part) === TString::class) {
+        if ($container_type_part instanceof TTraitString
+            && (get_class($input_type_part) === TString::class
+                || get_class($input_type_part) === TNonEmptyString::class)
+        ) {
             if ($atomic_comparison_result) {
                 $atomic_comparison_result->type_coerced = true;
             }
@@ -1265,14 +1273,16 @@ class TypeAnalyzer
         if (($input_type_part instanceof TClassString
             || $input_type_part instanceof TLiteralClassString)
             && (get_class($container_type_part) === TString::class
-                || get_class($container_type_part) === TSingleLetter::class)
+                || get_class($container_type_part) === TSingleLetter::class
+                || get_class($container_type_part) === TNonEmptyString::class)
         ) {
             return true;
         }
 
         if ($input_type_part instanceof TCallableString
             && (get_class($container_type_part) === TString::class
-                || get_class($container_type_part) === TSingleLetter::class)
+                || get_class($container_type_part) === TSingleLetter::class
+                || get_class($container_type_part) === TNonEmptyString::class)
         ) {
             return true;
         }
@@ -1867,6 +1877,23 @@ class TypeAnalyzer
             }
 
             if ($input_type_part->value !== $container_type_part->value && $input_class_storage) {
+                $input_template_types = $input_class_storage->template_types;
+                $i = 0;
+
+                $replacement_templates = [];
+
+                if ($input_template_types) {
+                    foreach ($input_template_types as $template_name => $_) {
+                        if (!isset($input_type_params[$i])) {
+                            break;
+                        }
+
+                        $replacement_templates[$template_name][$input_type_part->value] = [$input_type_params[$i]];
+
+                        $i++;
+                    }
+                }
+
                 $template_extends = $input_class_storage->template_type_extends;
 
                 if (isset($template_extends[$container_type_part->value])) {
@@ -1894,7 +1921,7 @@ class TypeAnalyzer
 
                                     $candidate_param_type = $input_type_params[$old_params_offset];
                                 } else {
-                                    $candidate_param_type = new Type\Union([$et]);
+                                    $candidate_param_type = new Type\Union([clone $et]);
                                 }
 
                                 $candidate_param_type->from_template_default = true;
@@ -1907,6 +1934,12 @@ class TypeAnalyzer
                                         $candidate_param_type
                                     );
                                 }
+                            }
+
+                            if ($new_input_param) {
+                                $new_input_param->replaceTemplateTypesWithArgTypes(
+                                    $replacement_templates
+                                );
                             }
 
                             $new_input_params[] = $new_input_param ?: Type::getMixed();
@@ -2030,6 +2063,21 @@ class TypeAnalyzer
             }
         }
 
+        if ($container_type_part instanceof Type\Atomic\TCallable
+            && $input_type_part instanceof Type\Atomic\TCallable
+        ) {
+            if (self::compareCallable(
+                $codebase,
+                $input_type_part,
+                $container_type_part,
+                $atomic_comparison_result,
+                $all_types_contain
+            ) === false
+            ) {
+                return false;
+            }
+        }
+
         if ($container_type_part instanceof TList
             && $input_type_part instanceof ObjectLike
         ) {
@@ -2038,6 +2086,12 @@ class TypeAnalyzer
             } else {
                 return false;
             }
+        }
+
+        if ($container_type_part instanceof TList
+            && $input_type_part instanceof TClassStringMap
+        ) {
+            return false;
         }
 
         if ($container_type_part instanceof TList
@@ -2068,10 +2122,12 @@ class TypeAnalyzer
 
         if (($input_type_part instanceof TArray
                 || $input_type_part instanceof ObjectLike
-                || $input_type_part instanceof TList)
+                || $input_type_part instanceof TList
+                || $input_type_part instanceof TClassStringMap)
             && ($container_type_part instanceof TArray
                 || $container_type_part instanceof ObjectLike
-                || $container_type_part instanceof TList)
+                || $container_type_part instanceof TList
+                || $container_type_part instanceof TClassStringMap)
         ) {
             if ($container_type_part instanceof ObjectLike) {
                 $generic_container_type_part = $container_type_part->getGenericArrayType();
@@ -2089,8 +2145,7 @@ class TypeAnalyzer
                     false
                 );
 
-                if (!$input_type_part instanceof ObjectLike
-                    && !$input_type_part instanceof TList
+                if ($input_type_part instanceof TArray
                     && !$input_type_part->type_params[0]->hasMixed()
                     && !($input_type_part->type_params[1]->isEmpty()
                         && $container_params_can_be_undefined)
@@ -2104,6 +2159,20 @@ class TypeAnalyzer
 
             if ($input_type_part instanceof ObjectLike) {
                 $input_type_part = $input_type_part->getGenericArrayType();
+            }
+
+            if ($input_type_part instanceof TClassStringMap) {
+                $input_type_part = new TArray([
+                    $input_type_part->getStandinKeyParam(),
+                    clone $input_type_part->value_param
+                ]);
+            }
+
+            if ($container_type_part instanceof TClassStringMap) {
+                $container_type_part = new TArray([
+                    $container_type_part->getStandinKeyParam(),
+                    clone $container_type_part->value_param
+                ]);
             }
 
             if ($container_type_part instanceof TList) {

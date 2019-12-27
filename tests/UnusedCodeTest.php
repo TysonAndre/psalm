@@ -620,6 +620,43 @@ class UnusedCodeTest extends TestCase
 
                     array_map(function($i) { echo $i;}, $a);'
             ],
+            'usedAssertFunction' => [
+                '<?php
+                    /**
+                     * @param mixed $v
+                     * @psalm-pure
+                     * @psalm-assert int $v
+                     */
+                    function assertInt($v):void {
+                        if (!is_int($v)) {
+                            throw new \RuntimeException();
+                        }
+                    }
+
+                    /**
+                     * @psalm-pure
+                     * @param mixed $i
+                     */
+                    function takesMixed($i) : int {
+                        assertInt($i);
+                        return $i;
+                    }'
+            ],
+            'usedFunctionCallInsideSwitchWithTernary' => [
+                '<?php
+                    function getArg(string $method) : void {
+                        switch (strtolower($method ?: "")) {
+                            case "post":
+                                break;
+
+                            case "get":
+                                break;
+
+                            default:
+                                break;
+                        }
+                    }'
+            ]
         ];
     }
 
@@ -891,6 +928,18 @@ class UnusedCodeTest extends TestCase
                         $dt->modify("+1 day");
                     }',
                 'error_message' => 'UnusedMethodCall',
+            ],
+            'unusedClassReferencesItself' => [
+                '<?php
+                    class A {}
+
+                    class AChild extends A {
+                        public function __construct() {
+                            self::foo();
+                        }
+                        public static function foo() : void {}
+                    }',
+                'error_message' => 'UnusedClass',
             ],
         ];
     }

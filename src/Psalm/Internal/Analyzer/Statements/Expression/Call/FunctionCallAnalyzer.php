@@ -42,6 +42,7 @@ use function array_map;
 use function extension_loaded;
 use function strpos;
 use Psalm\Internal\Type\TemplateResult;
+use Psalm\Storage\FunctionLikeParameter;
 
 /**
  * @internal
@@ -149,12 +150,14 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
                         $function_exists = true;
                         $has_valid_function_call_type = true;
+                    } elseif ($var_type_part instanceof TTemplateParam && $var_type_part->as->hasCallableType()) {
+                        $has_valid_function_call_type = true;
                     } elseif ($var_type_part instanceof TMixed || $var_type_part instanceof TTemplateParam) {
                         $has_valid_function_call_type = true;
 
                         if (IssueBuffer::accepts(
                             new MixedFunctionCall(
-                                'Cannot call function on mixed',
+                                'Cannot call function on ' . $var_type_part->getId(),
                                 new CodeLocation($statements_analyzer->getSource(), $stmt)
                             ),
                             $statements_analyzer->getSuppressedIssues()
@@ -336,6 +339,16 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         $is_maybe_root_function
                     ) === false
                     ) {
+                        if (self::checkFunctionArguments(
+                            $statements_analyzer,
+                            $stmt->args,
+                            null,
+                            null,
+                            $context
+                        ) === false) {
+                            // fall through
+                        }
+
                         return;
                     }
                 }
@@ -356,20 +369,24 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
                 if ($function_params === null) {
                     if (!$in_call_map || $is_stubbed) {
-                        $function_storage = $codebase_functions->getStorage(
-                            $statements_analyzer,
-                            strtolower($function_id)
-                        );
+                        try {
+                            $function_storage = $codebase_functions->getStorage(
+                                $statements_analyzer,
+                                strtolower($function_id)
+                            );
 
-                        $function_params = $function_storage->params;
+                            $function_params = $function_storage->params;
 
-                        if (!$is_predefined) {
-                            $defined_constants = $function_storage->defined_constants;
-                            $global_variables = $function_storage->global_variables;
+                            if (!$is_predefined) {
+                                $defined_constants = $function_storage->defined_constants;
+                                $global_variables = $function_storage->global_variables;
+                            }
+                        } catch (\UnexpectedValueException $e) {
+                            $function_params = [
+                                new FunctionLikeParameter('args', false, null, null, null, false, false, true)
+                            ];
                         }
-                    }
-
-                    if ($in_call_map && !$is_stubbed) {
+                    } else {
                         $function_callable = \Psalm\Internal\Codebase\CallMap::getCallableFromCallMapById(
                             $codebase,
                             $function_id,
@@ -712,7 +729,10 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     $context->removeAllObjectVars();
                 }
             } elseif ($function_id
-                && (($function_storage && $function_storage->pure && $must_use)
+                && (($function_storage
+                        && $function_storage->pure
+                        && !$function_storage->assertions
+                        && $must_use)
                     || ($callmap_function_pure === true && $must_use))
                 && $codebase->find_unused_variables
                 && !$context->inside_conditional

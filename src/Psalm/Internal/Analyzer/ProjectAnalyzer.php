@@ -244,12 +244,6 @@ class ProjectAnalyzer
             $progress
         );
 
-        if ($stdout_report_options
-            && !in_array($stdout_report_options->format, Report::SUPPORTED_OUTPUT_TYPES, true)
-        ) {
-            throw new \UnexpectedValueException('Unrecognised output format ' . $stdout_report_options->format);
-        }
-
         $this->stdout_report_options = $stdout_report_options;
         $this->generated_report_options = $generated_report_options;
 
@@ -289,6 +283,7 @@ class ProjectAnalyzer
             'checkstyle.xml' => Report::TYPE_CHECKSTYLE,
             'sonarqube.json' => Report::TYPE_SONARQUBE,
             'summary.json' => Report::TYPE_JSON_SUMMARY,
+            'junit.xml' => Report::TYPE_JUNIT,
             '.xml' => Report::TYPE_XML,
             '.json' => Report::TYPE_JSON,
             '.txt' => Report::TYPE_TEXT,
@@ -547,7 +542,7 @@ class ProjectAnalyzer
         $this->codebase->classlikes->consolidateAnalyzedData(
             $this->codebase->methods,
             $this->progress,
-            $this->codebase->collect_references
+            !!$this->codebase->find_unused_code
         );
     }
 
@@ -1192,7 +1187,6 @@ class ProjectAnalyzer
 
     public function setAllIssuesToFix(): void
     {
-        /** @var array<string, true> $keyed_issues */
         $keyed_issues = array_fill_keys(static::getSupportedIssuesToFix(), true);
 
         $this->setIssuesToFix($keyed_issues);

@@ -12,6 +12,7 @@ use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
+use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Type\AssertionReconciler;
 use Psalm\Issue\DocblockTypeContradiction;
@@ -104,6 +105,11 @@ class Reconciler
                     }
 
                     $base_key = array_shift($key_parts);
+
+                    if ($base_key[0] !== '$' && count($key_parts) > 2 && $key_parts[0] === '::$') {
+                        $base_key .= array_shift($key_parts);
+                        $base_key .= array_shift($key_parts);
+                    }
 
                     if (!isset($existing_types[$base_key]) || $existing_types[$base_key]->isNullable()) {
                         if (!isset($new_types[$base_key])) {
@@ -216,6 +222,8 @@ class Reconciler
                 }
             }
 
+            $did_type_exist = isset($existing_types[$key]);
+
             $result_type = isset($existing_types[$key])
                 ? clone $existing_types[$key]
                 : self::getValueForKey(
@@ -223,7 +231,7 @@ class Reconciler
                     $key,
                     $existing_types,
                     $code_location,
-                    $has_isset,
+                    $has_isset || $has_inverted_isset,
                     $has_empty
                 );
 
@@ -273,6 +281,10 @@ class Reconciler
 
             if (!$result_type) {
                 throw new \UnexpectedValueException('$result_type should not be null');
+            }
+
+            if (!$did_type_exist && $result_type->isEmpty()) {
+                continue;
             }
 
             $type_changed = !$before_adjustment || !$result_type->equals($before_adjustment);
@@ -394,6 +406,22 @@ class Reconciler
 
                     continue 2;
 
+                case ':':
+                    if (!$brackets
+                        && $i < $char_count - 2
+                        && $chars[$i + 1] === ':'
+                        && $chars[$i + 2] === '$'
+                    ) {
+                        ++$i;
+                        ++$i;
+
+                        ++$parts_offset;
+                        $parts[$parts_offset] = '::$';
+                        ++$parts_offset;
+                        continue 2;
+                    }
+                    // fall through
+
                 case '-':
                     if (!$brackets
                         && $i < $char_count - 1
@@ -449,6 +477,11 @@ class Reconciler
 
         $base_key = array_shift($key_parts);
 
+        if ($base_key[0] !== '$' && count($key_parts) > 2 && $key_parts[0] === '::$') {
+            $base_key .= array_shift($key_parts);
+            $base_key .= array_shift($key_parts);
+        }
+
         if (!isset($existing_keys[$base_key])) {
             if (strpos($base_key, '::')) {
                 list($fq_class_name, $const_name) = explode('::', $base_key);
@@ -503,6 +536,10 @@ class Reconciler
                             if ($has_isset) {
                                 $new_base_type_candidate->possibly_undefined = true;
                             }
+                        } elseif ($existing_key_type_part instanceof Type\Atomic\TNull) {
+                            $new_base_type_candidate = Type::getNull();
+                        } elseif ($existing_key_type_part instanceof Type\Atomic\TClassStringMap) {
+                            return Type::getMixed();
                         } elseif (!$existing_key_type_part instanceof Type\Atomic\ObjectLike) {
                             return Type::getMixed();
                         } elseif ($array_key[0] === '$' || ($array_key[0] !== '\'' && !\is_numeric($array_key[0]))) {
@@ -543,9 +580,9 @@ class Reconciler
                 }
 
                 $base_key = $new_base_key;
-            } elseif ($divider === '->') {
+            } elseif ($divider === '->' || $divider === '::$') {
                 $property_name = array_shift($key_parts);
-                $new_base_key = $base_key . '->' . $property_name;
+                $new_base_key = $base_key . $divider . $property_name;
 
                 if (!isset($existing_keys[$new_base_key])) {
                     $new_base_type = null;
@@ -575,15 +612,24 @@ class Reconciler
                                     true
                                 );
 
-                                $class_storage = $codebase->classlike_storage_provider->get(
-                                    (string)$declaring_property_class
+                                $class_property_type = $codebase->properties->getPropertyType(
+                                    $property_id,
+                                    false,
+                                    null,
+                                    null
                                 );
 
-                                $class_property_type = $class_storage->properties[$property_name]->type;
-
-                                $class_property_type = $class_property_type
-                                    ? clone $class_property_type
-                                    : Type::getMixed();
+                                if ($class_property_type) {
+                                    $class_property_type = ExpressionAnalyzer::fleshOutType(
+                                        $codebase,
+                                        clone $class_property_type,
+                                        $declaring_property_class,
+                                        $declaring_property_class,
+                                        null
+                                    );
+                                } else {
+                                    $class_property_type = Type::getMixed();
+                                }
                             }
                         } else {
                             $class_property_type = Type::getMixed();
@@ -735,6 +781,7 @@ class Reconciler
                     || ($base_atomic_type instanceof Type\Atomic\TArray
                         && !$base_atomic_type->type_params[1]->isEmpty())
                     || $base_atomic_type instanceof Type\Atomic\TList
+                    || $base_atomic_type instanceof Type\Atomic\TClassStringMap
                 ) {
                     $new_base_type = clone $existing_types[$base_key];
 
@@ -768,6 +815,8 @@ class Reconciler
 
                         $base_atomic_type->previous_key_type = $previous_key_type;
                         $base_atomic_type->previous_value_type = $previous_value_type;
+                    } elseif ($base_atomic_type instanceof Type\Atomic\TClassStringMap) {
+                        // do nothing
                     } else {
                         $base_atomic_type = clone $base_atomic_type;
                         $base_atomic_type->properties[$array_key_offset] = clone $result_type;

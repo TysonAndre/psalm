@@ -621,6 +621,35 @@ class Union
     /**
      * @return bool
      */
+    public function hasList()
+    {
+        return isset($this->types['array']) && $this->types['array'] instanceof Atomic\TList;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasClassStringMap()
+    {
+        return isset($this->types['array']) && $this->types['array'] instanceof Atomic\TClassStringMap;
+    }
+
+    public function isTemplatedClassString() : bool
+    {
+        return $this->isSingle()
+            && count(
+                array_filter(
+                    $this->types,
+                    function ($type) {
+                        return $type instanceof Atomic\TTemplateParamClass;
+                    }
+                )
+            ) === 1;
+    }
+
+    /**
+     * @return bool
+     */
     public function hasEmptyArray()
     {
         return isset($this->types['array'])

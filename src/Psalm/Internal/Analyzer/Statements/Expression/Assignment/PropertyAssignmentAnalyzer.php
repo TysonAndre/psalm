@@ -95,7 +95,7 @@ class PropertyAssignmentAnalyzer
                 $context
             );
 
-            if ($class_property_type && $context->self) {
+            if ($class_property_type) {
                 $class_storage = $codebase->classlike_storage_provider->get($context->self);
 
                 $class_property_type = ExpressionAnalyzer::fleshOutType(
@@ -755,7 +755,6 @@ class PropertyAssignmentAnalyzer
 
             if ($var_id) {
                 if ($context->collect_initializations
-                    && $var_id
                     && $lhs_var_id === '$this'
                 ) {
                     $assignment_value_type->initialized_class = $context->self;
@@ -1290,8 +1289,9 @@ class PropertyAssignmentAnalyzer
             if (TypeAnalyzer::canBeContainedBy($codebase, $assignment_value_type, $class_property_type)) {
                 if (IssueBuffer::accepts(
                     new PossiblyInvalidPropertyAssignmentValue(
-                        $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
-                            $assignment_value_type . '\'',
+                        $var_id . ' with declared type \''
+                            . $class_property_type->getId() . '\' cannot be assigned type \''
+                            . $assignment_value_type->getId() . '\'',
                         new CodeLocation(
                             $statements_analyzer->getSource(),
                             $assignment_value ?: $stmt
@@ -1305,8 +1305,9 @@ class PropertyAssignmentAnalyzer
             } else {
                 if (IssueBuffer::accepts(
                     new InvalidPropertyAssignmentValue(
-                        $var_id . ' with declared type \'' . $class_property_type . '\' cannot be assigned type \'' .
-                            $assignment_value_type . '\'',
+                        $var_id . ' with declared type \'' . $class_property_type->getId()
+                            . '\' cannot be assigned type \''
+                            . $assignment_value_type->getId() . '\'',
                         new CodeLocation(
                             $statements_analyzer->getSource(),
                             $assignment_value ?: $stmt

@@ -727,7 +727,7 @@ class ClassLikes
     /**
      * @return void
      */
-    public function consolidateAnalyzedData(Methods $methods, ?Progress $progress, bool $check_references)
+    public function consolidateAnalyzedData(Methods $methods, ?Progress $progress, bool $find_unused_code)
     {
         if ($progress === null) {
             $progress = new VoidProgress();
@@ -746,7 +746,7 @@ class ClassLikes
                 && $this->config->isInProjectDirs($classlike_storage->location->file_path)
                 && !$classlike_storage->is_trait
             ) {
-                if ($check_references) {
+                if ($find_unused_code) {
                     if (!$this->file_reference_provider->isClassReferenced($fq_class_name_lc)) {
                         if (IssueBuffer::accepts(
                             new UnusedClass(
@@ -1963,6 +1963,10 @@ class ClassLikes
                 && !$project_analyzer->canReportIssues($method_storage->location->file_path)
                 && !$codebase->analyzer->canReportIssues($method_storage->location->file_path)
             ) {
+                continue;
+            }
+
+            if ($declaring_classlike_storage->is_trait) {
                 continue;
             }
 

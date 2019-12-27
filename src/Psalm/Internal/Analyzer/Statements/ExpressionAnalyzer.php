@@ -330,7 +330,9 @@ class ExpressionAnalyzer
             if (BinaryOpAnalyzer::analyze(
                 $statements_analyzer,
                 $stmt,
-                $context
+                $context,
+                0,
+                $from_stmt
             ) === false) {
                 return false;
             }
@@ -1055,7 +1057,7 @@ class ExpressionAnalyzer
                     }
                 }
 
-                return $root_var_id && $offset !== null ? $root_var_id . '[' . $offset . ']' : null;
+                return $offset !== null ? $root_var_id . '[' . $offset . ']' : null;
             }
         }
 
@@ -1099,7 +1101,7 @@ class ExpressionAnalyzer
         ) {
             $config = \Psalm\Config::getInstance();
 
-            if ($config->memoize_method_calls) {
+            if ($config->memoize_method_calls || isset($stmt->pure)) {
                 $lhs_var_name = self::getArrayVarId(
                     $stmt->var,
                     $this_class_name,
@@ -1328,7 +1330,10 @@ class ExpressionAnalyzer
             return $return_type;
         }
 
-        if ($return_type instanceof Type\Atomic\TArray || $return_type instanceof Type\Atomic\TGenericObject) {
+        if ($return_type instanceof Type\Atomic\TArray
+            || $return_type instanceof Type\Atomic\TGenericObject
+            || $return_type instanceof Type\Atomic\TIterable
+        ) {
             foreach ($return_type->type_params as &$type_param) {
                 $type_param = self::fleshOutType(
                     $codebase,

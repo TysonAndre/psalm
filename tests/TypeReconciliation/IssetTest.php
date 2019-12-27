@@ -694,6 +694,30 @@ class IssetTest extends \Psalm\Tests\TestCase
                     class B extends P {}
                     class C extends P {}'
             ],
+            'issetCreateObjectLikeWithType' => [
+                '<?php
+                    function foo(array $options): void {
+                        if (isset($options["a"])) {
+                            $options["b"] = "hello";
+                        }
+
+                        if (\is_array($options["b"])) {}
+                    }'
+            ],
+            'issetOnThing' => [
+                '<?php
+                    function foo() : void {
+                        $p = [false, false];
+                        $i = rand(0, 1);
+                        if (rand(0, 1) && isset($p[$i])) {
+                            $p[$i] = true;
+                        }
+
+                        foreach ($p as $q) {
+                            if ($q) {}
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -743,6 +767,16 @@ class IssetTest extends \Psalm\Tests\TestCase
                         return $port;
                     }',
                 'error_message' => 'NullableReturnStatement',
+            ],
+            'undefinedVarInNullCoalesce' => [
+                '<?php
+                    function bar(): void {
+                        $do_baz = $config["do_it"] ?? false;
+                        if ($do_baz) {
+                            baz();
+                        }
+                    }',
+                'error_message' => 'UndefinedVariable'
             ],
         ];
     }

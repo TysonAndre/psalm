@@ -2310,6 +2310,38 @@ class FunctionCallTest extends TestCase
                     '$result' => 'list<array<array-key, mixed>>',
                 ],
             ],
+            'arrayMapPreserveNonEmptiness' => [
+                '<?php
+                    /**
+                     * @psalm-param non-empty-list<string> $strings
+                     * @psalm-return non-empty-list<int>
+                     */
+                    function foo(array $strings): array {
+                        return array_map("intval", $strings);
+                    }'
+            ],
+            'arrayMapZip' => [
+                '<?php
+                    /**
+                     * @return array{array{string,string|null}}
+                     */
+                    function getCharPairs(string $line) : array {
+                        $chars = str_split($line);
+                        return array_map(
+                            null,
+                            $chars,
+                            array_slice($chars, 1)
+                        );
+                    }'
+            ],
+            'arrayFillKeys' => [
+                '<?php
+                    $keys = [1, 2, 3];
+                    $result = array_fill_keys($keys, true);',
+                'assertions' => [
+                    '$result' => 'array<int, true>',
+                ],
+            ],
         ];
     }
 

@@ -582,6 +582,7 @@ class ReturnTypeAnalyzer
             if (!$ignore_nullable_issues
                 && $inferred_return_type->isNullable()
                 && !$declared_return_type->isNullable()
+                && !$declared_return_type->hasTemplate()
                 && !$declared_return_type->isVoid()
             ) {
                 if ($codebase->alter_code
@@ -761,7 +762,7 @@ class ReturnTypeAnalyzer
             return false;
         }
 
-        if ($classlike_storage && $context->self && $function->name) {
+        if ($classlike_storage && $context->self) {
             $class_template_params = MethodCallAnalyzer::getClassTemplateParams(
                 $codebase,
                 $classlike_storage,

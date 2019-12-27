@@ -885,6 +885,41 @@ class TraitTest extends TestCase
                         }
                     }'
             ],
+            'classAliasedTrait' => [
+                '<?php
+                    trait FeatureV1 {}
+
+                    class_alias(FeatureV1::class, Feature::class);
+
+                    class Application {
+                        use Feature;
+                    }',
+            ],
+            'renameMethodNoCrash' => [
+                '<?php
+
+                    trait HelloTrait {
+                        protected function sayHello() : string {
+                            return "Hello";
+                        }
+                    }
+
+                    class Person {
+                        use HelloTrait {
+                            sayHello as orginalSayHello;
+                        }
+
+                        protected function sayHello() : string {
+                            return $this->orginalSayHello();
+                        }
+                    }
+
+                    class BrokenPerson extends Person {
+                        protected function orginalSayHello() : string {
+                            return "bad";
+                        }
+                    }',
+            ],
         ];
     }
 

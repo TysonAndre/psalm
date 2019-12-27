@@ -329,7 +329,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
-                if ($codebase->store_node_types && $parent_fq_class_name) {
+                if ($codebase->store_node_types) {
                     $codebase->analyzer->addNodeReference(
                         $this->getFilePath(),
                         $class->extends,
@@ -999,7 +999,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         $parent_method_storage,
                         $this->fq_class_name,
                         $pseudo_method_storage->visibility ?: 0,
-                        $pseudo_method_storage->location,
+                        $storage->location ?: $pseudo_method_storage->location,
                         $storage->suppressed_issues,
                         true,
                         false
@@ -1704,7 +1704,11 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         $original_fq_classlike_name = $fq_classlike_name;
 
-        $return_type = $codebase->methods->getMethodReturnType($analyzed_method_id, $fq_classlike_name);
+        $return_type = $codebase->methods->getMethodReturnType(
+            $analyzed_method_id,
+            $fq_classlike_name,
+            $method_analyzer
+        );
 
         if ($return_type && $class_storage->template_type_extends) {
             $declaring_method_id = $codebase->methods->getDeclaringMethodId($analyzed_method_id);
@@ -1770,12 +1774,14 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         if (!$return_type
             && !$class_storage->is_interface
-            && isset($class_storage->interface_method_ids[strtolower($stmt->name->name)])
+            && $overridden_method_ids
         ) {
-            $interface_method_ids = $class_storage->interface_method_ids[strtolower($stmt->name->name)];
-
-            foreach ($interface_method_ids as $interface_method_id) {
+            foreach ($overridden_method_ids as $interface_method_id) {
                 list($interface_class) = explode('::', $interface_method_id);
+
+                if (!$codebase->classlikes->interfaceExists($interface_class)) {
+                    continue;
+                }
 
                 $interface_return_type = $codebase->methods->getMethodReturnType(
                     $interface_method_id,

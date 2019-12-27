@@ -582,7 +582,16 @@ class Algebra
                             $new_clause_possibilities[$var] = [$impossible_type];
                         }
 
-                        $new_clause = new Clause($new_clause_possibilities, false, true, true);
+                        $new_clause = new Clause(
+                            $new_clause_possibilities,
+                            false,
+                            true,
+                            true,
+                            [],
+                            $clause->creating_object_id === $grouped_clause->creating_object_id
+                                ? $clause->creating_object_id
+                                : null
+                        );
 
                         $new_clauses[] = $new_clause;
 
@@ -597,7 +606,14 @@ class Algebra
 
             foreach ($clause->impossibilities as $var => $impossible_types) {
                 foreach ($impossible_types as $impossible_type) {
-                    $new_clause = new Clause([$var => [$impossible_type]]);
+                    $new_clause = new Clause(
+                        [$var => [$impossible_type]],
+                        false,
+                        true,
+                        false,
+                        [],
+                        $clause->creating_object_id
+                    );
 
                     $new_clauses[] = $new_clause;
 
@@ -672,6 +688,16 @@ class Algebra
                 if (count($left_clauses) > 1 || count($right_clauses) > 1) {
                     foreach ($possibilities as $var => $p) {
                         $possibilities[$var] = array_values(array_unique($p));
+                    }
+                }
+
+                foreach ($possibilities as $var_possibilities) {
+                    if (count($var_possibilities) === 2) {
+                        if ($var_possibilities[0] === '!' . $var_possibilities[1]
+                            || $var_possibilities[1] === '!' . $var_possibilities[0]
+                        ) {
+                            continue 2;
+                        }
                     }
                 }
 

@@ -1132,10 +1132,8 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                             return new \ReflectionMethod($callable[0], $callable[1]);
                         } elseif ($callable instanceof \Closure || \is_string($callable)) {
                             return new \ReflectionFunction($callable);
-                        } elseif (\is_object($callable)) {
-                            return new \ReflectionMethod($callable, "__invoke");
                         } else {
-                            throw new \InvalidArgumentException("Bad");
+                            return new \ReflectionMethod($callable, "__invoke");
                         }
                     }',
             ],
@@ -2222,6 +2220,176 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         return $v;
                     }'
             ],
+            'possiblyDefinedVarInAssertion' => [
+                '<?php
+                    class A {
+                        public function test() : bool { return true; }
+                    }
+
+                    function getMaybeA() : ?A { return rand(0, 1) ? new A : null; }
+
+                    function foo() : void {
+                        if (rand(0, 10) && ($a = getMaybeA()) && !$a->test()) {
+                            return;
+                        }
+
+                        echo isset($a);
+                    }'
+            ],
+            'assertOnVarStaticClassKey' => [
+                '<?php
+                    abstract class Obj {
+                        /**
+                         * @param array<class-string, array<string, int>> $arr
+                         * @return array<string, int>
+                         */
+                        public static function getArr(array $arr) : array {
+                            if (!isset($arr[static::class])) {
+                                $arr[static::class] = ["hello" => 5];
+                            }
+
+                            return $arr[static::class];
+                        }
+                    }'
+            ],
+            'assertOnVarVar' => [
+                '<?php
+                    abstract class Obj {
+                        /**
+                         * @param array<class-string, array<string, int>> $arr
+                         * @return array<string, int>
+                         */
+                        function getArr(array $arr, string $s) : array {
+                            if (!isset($arr[$s])) {
+                                $arr[$s] = ["hello" => 5];
+                            }
+
+                            return $arr[$s];
+                        }
+                    }'
+            ],
+            'assertOnPropertyStaticClassKey' => [
+                '<?php
+                    abstract class Obj {
+                        /** @var array<class-string, array<string, int>> */
+                        private static $arr = [];
+
+                        /** @return array<string, int> */
+                        public static function getArr() : array {
+                            $arr = self::$arr;
+                            if (!isset($arr[static::class])) {
+                                $arr[static::class] = ["hello" => 5];
+                            }
+
+                            return $arr[static::class];
+                        }
+                    }'
+            ],
+            'assertOnStaticPropertyOffset' => [
+                '<?php
+                    class C {
+                        /** @var array<string, string>|null */
+                        private static $map = [];
+
+                        public static function foo(string $id) : ?string {
+                            if (isset(self::$map[$id])) {
+                                return self::$map[$id];
+                            }
+
+                            return null;
+                        }
+                    }',
+            ],
+            'issetTwice' => [
+                '<?php
+                    class B {
+                        public function foo() : bool {
+                            return true;
+                        }
+                    }
+
+                    /** @param array<int, B> $p */
+                    function foo(array $p, int $id) : void {
+                        if ((isset($p[$id]) && rand(0, 1))
+                            || (!isset($p[$id]) && rand(0, 1))
+                        ) {
+                            isset($p[$id]) ? $p[$id] : new B;
+                            isset($p[$id]) ? $p[$id]->foo() : "bar";
+                        }
+                    }'
+            ],
+            'reconcileEmptinessBetter' => [
+                '<?php
+                    /**
+                     * @param string|array $valuePath
+                     */
+                    function combine($valuePath) : void {
+                        if (!empty($valuePath) && is_array($valuePath)) {
+
+                        } elseif (!empty($valuePath)) {
+                            echo $valuePath;
+                        }
+                    }',
+            ],
+            'issetAssertionOnStaticProperty' => [
+                '<?php
+                    class C {
+                        protected static array $cache = [];
+
+                        /**
+                         * @psalm-suppress MixedArrayAccess
+                         * @psalm-suppress MixedReturnStatement
+                         * @psalm-suppress MixedInferredReturnType
+                         */
+                        public static function get(string $k1, string $k2) : ?string {
+                            if (!isset(static::$cache[$k1][$k2])) {
+                                return null;
+                            }
+
+                            return static::$cache[$k1][$k2];
+                        }
+                    }'
+            ],
+            'orWithAssignment' => [
+                '<?php
+                    function maybeString(): ?string {
+                        return rand(0, 10) > 4 ? "test" : null;
+                    }
+
+                    function test(): string {
+                        $foo = maybeString();
+                        ($foo !== null) || ($foo = "");
+
+                        return $foo;
+                    }'
+            ],
+            'andWithAssignment' => [
+                '<?php
+                    function maybeString(): ?string {
+                        return rand(0, 10) > 4 ? "test" : null;
+                    }
+
+                    function test(): string {
+                        $foo = maybeString();
+                        ($foo === null) && ($foo = "");
+
+                        return $foo;
+                    }'
+            ],
+            'isNotTraversable' => [
+                '<?php
+                    /**
+                     * @psalm-param iterable<string> $collection
+                     * @psalm-return array<string>
+                     */
+                    function order(iterable $collection): array {
+                        if ($collection instanceof \Traversable) {
+                            $collection = iterator_to_array($collection, false);
+                        }
+
+                        return $collection;
+                    }'
+            ],
         ];
     }
 
@@ -2568,6 +2736,15 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         }
                     }',
                 'error_message' => 'RedundantCondition',
+            ],
+            'catchRedundantConditionOnBinaryOpForwards' => [
+                '<?php
+                    class App {}
+
+                    function test(App $app) : void {
+                        if ($app || rand(0, 1)) {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }
