@@ -109,5 +109,6 @@ return [
         'src/Psalm/Internal/CallMap.php',
         'src/Psalm/Internal/Stubs/CoreGenericFunctions.php',
         'src/Psalm/Internal/Stubs/CoreGenericClasses.php',
+        'src/spl_object_id.php',
     ],
 ];

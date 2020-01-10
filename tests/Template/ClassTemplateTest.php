@@ -2203,6 +2203,78 @@ class ClassTemplateTest extends TestCase
                         }
                     }'
             ],
+            'uasortCallableInMethod' => [
+                '<?php
+                    class C {
+                        /**
+                         * @template T of object
+                         * @psalm-param array<T> $collection
+                         * @psalm-param callable(T, T): int $sorter
+                         * @psalm-return array<T>
+                         */
+                        function order(array $collection, callable $sorter): array {
+                            usort($collection, $sorter);
+
+                            return $collection;
+                        }
+                    }'
+            ],
+            'intersectOnTOfObject' => [
+                '<?php
+                    /**
+                     * @psalm-template InterceptedObjectType of object
+                     */
+                    interface AccessInterceptorInterface
+                    {
+                        /**
+                         * @psalm-param Closure(
+                         *   InterceptedObjectType&AccessInterceptorInterface
+                         * ) : mixed $prefixInterceptor
+                         */
+                        public function setMethodPrefixInterceptor(Closure $prefixInterceptor = null) : void;
+                    }
+
+                    function foo(AccessInterceptorInterface $i) : void {
+                        $i->setMethodPrefixInterceptor(
+                            function(AccessInterceptorInterface $i) : string {
+                                return "hello";
+                            }
+                        );
+                    }'
+            ],
+            'assertionOnTemplatedClassString' => [
+                '<?php
+                    class TEM {
+                        /**
+                         * @template Entity
+                         * @psalm-param class-string<Entity> $type
+                         * @psalm-return EQB<Entity>
+                         */
+                        public function createEQB(string $type) {
+                            if (!class_exists($type)) {
+                                throw new InvalidArgumentException();
+                            }
+                            return new EQB($type);
+                        }
+                    }
+
+                    /**
+                     * @template Entity
+                     */
+                    class EQB {
+                        /**
+                         * @psalm-var class-string<Entity>
+                         */
+                        protected $type;
+
+                        /**
+                         * @psalm-param class-string<Entity> $type
+                         */
+                        public function __construct(string $type) {
+                            $this->type = $type;
+                        }
+                    }'
+            ],
         ];
     }
 

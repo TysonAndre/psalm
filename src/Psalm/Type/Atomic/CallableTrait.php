@@ -118,7 +118,7 @@ trait CallableTrait
         }
 
         if ($this->return_type !== null) {
-            $return_type_multiple = count($this->return_type->getTypes()) > 1;
+            $return_type_multiple = count($this->return_type->getAtomicTypes()) > 1;
 
             $return_type_string = ':' . ($return_type_multiple ? '(' : '') . $this->return_type->toNamespacedString(
                 $namespace,
@@ -181,7 +181,7 @@ trait CallableTrait
         }
 
         if ($this->return_type !== null) {
-            $return_type_multiple = count($this->return_type->getTypes()) > 1;
+            $return_type_multiple = count($this->return_type->getAtomicTypes()) > 1;
             $return_type_string = ':' . ($return_type_multiple ? '(' : '')
                 . $this->return_type->getId() . ($return_type_multiple ? ')' : '');
         }
@@ -199,6 +199,7 @@ trait CallableTrait
         Codebase $codebase = null,
         Atomic $input_type = null,
         ?string $calling_class = null,
+        ?string $calling_function = null,
         bool $replace = true,
         bool $add_upper_bound = false,
         int $depth = 0
@@ -224,7 +225,8 @@ trait CallableTrait
                     $template_result,
                     $codebase,
                     $input_param_type,
-                    null,
+                    $calling_class,
+                    $calling_function,
                     $replace,
                     !$add_upper_bound,
                     $depth
@@ -241,7 +243,8 @@ trait CallableTrait
                 $template_result,
                 $codebase,
                 $input_type->return_type,
-                null,
+                $calling_class,
+                $calling_function,
                 $replace,
                 $add_upper_bound
             );

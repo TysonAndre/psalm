@@ -110,7 +110,7 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                 case 'count':
                     if (($first_arg_type = $statements_analyzer->node_data->getType($call_args[0]->value))) {
-                        $atomic_types = $first_arg_type->getTypes();
+                        $atomic_types = $first_arg_type->getAtomicTypes();
 
                         if (count($atomic_types) === 1) {
                             if (isset($atomic_types['array'])) {
@@ -242,44 +242,6 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                     break;
 
-                case 'explode':
-                    if (count($call_args) >= 2) {
-                        $can_return_empty = isset($call_args[2])
-                            && (
-                                !$call_args[2]->value instanceof PhpParser\Node\Scalar\LNumber
-                                || $call_args[2]->value->value < 0
-                            );
-
-                        if ($call_args[0]->value instanceof PhpParser\Node\Scalar\String_) {
-                            if ($call_args[0]->value->value === '') {
-                                return Type::getFalse();
-                            }
-
-                            return new Type\Union([
-                                $can_return_empty
-                                    ? new Type\Atomic\TList(Type::getString())
-                                    : new Type\Atomic\TNonEmptyList(Type::getString())
-                            ]);
-                        } elseif (($first_arg_type = $statements_analyzer->node_data->getType($call_args[0]->value))
-                            && $first_arg_type->hasString()
-                        ) {
-                            $falsable_array = new Type\Union([
-                                $can_return_empty
-                                    ? new Type\Atomic\TList(Type::getString())
-                                    : new Type\Atomic\TNonEmptyList(Type::getString()),
-                                new Type\Atomic\TFalse
-                            ]);
-
-                            if ($codebase->config->ignore_internal_falsable_issues) {
-                                $falsable_array->ignore_falsable_issues = true;
-                            }
-
-                            return $falsable_array;
-                        }
-                    }
-
-                    break;
-
                 case 'abs':
                     if (isset($call_args[0]->value)) {
                         $first_arg = $call_args[0]->value;
@@ -287,7 +249,7 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                         if ($first_arg_type = $statements_analyzer->node_data->getType($first_arg)) {
                             $numeric_types = [];
 
-                            foreach ($first_arg_type->getTypes() as $inner_type) {
+                            foreach ($first_arg_type->getAtomicTypes() as $inner_type) {
                                 if ($inner_type->isNumericType()) {
                                     $numeric_types[] = $inner_type;
                                 }
@@ -309,7 +271,7 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                         if ($first_arg_type = $statements_analyzer->node_data->getType($first_arg)) {
                             if ($first_arg_type->hasArray()) {
                                 /** @psalm-suppress PossiblyUndefinedStringArrayOffset */
-                                $array_type = $first_arg_type->getTypes()['array'];
+                                $array_type = $first_arg_type->getAtomicTypes()['array'];
                                 if ($array_type instanceof Type\Atomic\ObjectLike) {
                                     return $array_type->getGenericValueType();
                                 }

@@ -154,6 +154,14 @@ class Functions
     }
 
     /**
+     * @return array<string, FunctionLikeStorage>
+     */
+    public function getAllStubbedFunctions()
+    {
+        return self::$stubbed_functions;
+    }
+
+    /**
      * @return bool
      */
     public function functionExists(
@@ -396,7 +404,7 @@ class Functions
 
         foreach ($function_callable->params as $i => $param) {
             if ($param->type && $param->type->hasCallableType() && isset($args[$i])) {
-                foreach ($param->type->getTypes() as $possible_callable) {
+                foreach ($param->type->getAtomicTypes() as $possible_callable) {
                     $possible_callable = \Psalm\Internal\Analyzer\TypeAnalyzer::getCallableFromAtomic(
                         $codebase,
                         $possible_callable

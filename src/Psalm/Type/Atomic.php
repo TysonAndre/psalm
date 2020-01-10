@@ -26,6 +26,7 @@ use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
+use Psalm\Type\Atomic\TAssertionFalsy;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TCallableArray;
@@ -159,6 +160,7 @@ abstract class Atomic
                 return new TCallable();
 
             case 'array':
+            case 'associative-array':
                 return new TArray([new Union([new TArrayKey]), new Union([new TMixed])]);
 
             case 'non-empty-array':
@@ -200,6 +202,9 @@ abstract class Atomic
             case 'mixed':
                 return $php_version !== null ? new TNamedObject($value) : new TMixed();
 
+            case 'callable-object':
+                return new TCallableObject();
+
             case 'class-string':
             case 'interface-string':
                 return new TClassString();
@@ -215,6 +220,9 @@ abstract class Atomic
 
             case 'html-escaped-string':
                 return new THtmlEscapedString();
+
+            case 'false-y':
+                return new TAssertionFalsy();
 
             case '$this':
                 return new TNamedObject('static');
@@ -816,6 +824,7 @@ abstract class Atomic
         Codebase $codebase = null,
         Type\Atomic $input_type = null,
         ?string $calling_class = null,
+        ?string $calling_function = null,
         bool $replace = true,
         bool $add_upper_bound = false,
         int $depth = 0

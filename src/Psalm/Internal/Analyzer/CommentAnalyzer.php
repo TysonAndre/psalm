@@ -774,6 +774,7 @@ class CommentAnalyzer
 
         if (isset($parsed_docblock['specials']['template'])
             || isset($parsed_docblock['specials']['psalm-template'])
+            || isset($parsed_docblock['specials']['phpstan-template'])
         ) {
             $all_templates
                 = (isset($parsed_docblock['specials']['template'])
@@ -903,6 +904,17 @@ class CommentAnalyzer
 
             if (! $info->internal) {
                 throw new DocblockParseException('@psalm-internal annotation used without @internal');
+            }
+        }
+
+        if (isset($parsed_docblock['specials']['mixin'])) {
+            $mixin = trim(reset($parsed_docblock['specials']['mixin']));
+            $mixin = explode(' ', $mixin)[0];
+
+            if ($mixin) {
+                $info->mixin = $mixin;
+            } else {
+                throw new DocblockParseException('@mixin annotation used without specifying class');
             }
         }
 

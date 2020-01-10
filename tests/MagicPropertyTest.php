@@ -40,8 +40,7 @@ class MagicPropertyTest extends TestCase
                     }
 
                     $a = new A();
-                    $a->foo = "hello";
-                    $a->bar = "hello"; // not a property',
+                    $a->foo = "hello";',
             ],
             'propertyOfTypeClassDocblock' => [
                 '<?php
@@ -449,8 +448,7 @@ class MagicPropertyTest extends TestCase
                     }
 
                     $a = new A();
-                    $a->foo = "hello";
-                    $a->bar = "hello"; // not a property',
+                    $a->foo = "hello";',
             ],
             'overridePropertyAnnotations' => [
                 '<?php
@@ -479,8 +477,7 @@ class MagicPropertyTest extends TestCase
                     }
 
                     $a = new A();
-                    $a->foo = "hello";
-                    $a->bar = "hello"; // not a property',
+                    $a->foo = "hello";',
             ],
             'overrideWithReadWritePropertyAnnotations' => [
                 '<?php
@@ -656,7 +653,7 @@ class MagicPropertyTest extends TestCase
 
                     $a = new A();
                     $a->bar = 5;',
-                'error_message' => 'UndefinedPropertyAssignment',
+                'error_message' => 'UndefinedMagicPropertyAssignment',
             ],
             'propertySealedDocblockDefinedPropertyAssignment' => [
                 '<?php
@@ -722,7 +719,7 @@ class MagicPropertyTest extends TestCase
 
                     $a = new A();
                     echo $a->bar;',
-                'error_message' => 'UndefinedPropertyFetch',
+                'error_message' => 'UndefinedMagicPropertyFetch',
             ],
             /**
              * The property $foo is not defined on the object, but accessed with the magic setter.
@@ -852,7 +849,7 @@ class MagicPropertyTest extends TestCase
                     function getBar(GetterSetter $o) : string {
                         return $o->bar;
                     }',
-                'error_message' => 'UndefinedPropertyFetch',
+                'error_message' => 'UndefinedMagicPropertyFetch',
             ],
             'magicInterfaceWrongPropertyWrite' => [
                 '<?php
@@ -871,7 +868,7 @@ class MagicPropertyTest extends TestCase
                     function getFoo(GetterSetter $o) : void {
                         $o->bar = "hello";
                     }',
-                'error_message' => 'UndefinedPropertyAssignment',
+                'error_message' => 'UndefinedMagicPropertyAssignment',
             ],
         ];
     }

@@ -1358,6 +1358,40 @@ class UnusedVariableTest extends TestCase
                         return undefined_function($s);
                     }'
             ],
+            'useVariableVariable' => [
+                '<?php
+                    $variables = ["a" => "b", "c" => "d"];
+
+                    foreach ($variables as $name => $value) {
+                        ${$name} = $value;
+                    }'
+            ],
+            'usedLoopVariable' => [
+                '<?php
+                    $a = 0;
+                    while (rand(0, 1)) {
+                        if ($a < 20) {
+                            $a = $a + 1;
+                            echo "hello";
+                            continue;
+                        }
+                        echo "goodbye";
+                        break;
+                    }'
+            ],
+            'usedForVariable' => [
+                '<?php
+                    $a = 0;
+                    for ($i = 0; $i < 1000; $i++) {
+                        if (rand(0, 1)) {
+                            $a = $a + $i;
+                            continue;
+                        }
+                        break;
+                    }
+
+                    echo $a;'
+            ],
         ];
     }
 

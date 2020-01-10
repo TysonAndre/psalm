@@ -2716,6 +2716,74 @@ class ClassTemplateExtendsTest extends TestCase
                             return trim($v);
                         }
                     }'
+            ],
+            'extendWithArrayTemplate' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface C {
+                        /**
+                         * @psalm-return C<array<int, T1>>
+                         */
+                        public function zip(): C;
+                    }
+
+                    /**
+                     * @template T2
+                     * @extends C<T2>
+                     */
+                    interface AC extends C {
+                        /**
+                         * @psalm-return AC<array<int, T2>>
+                         */
+                        public function zip(): C;
+                    }',
+            ],
+            'implementsParameterisedIterator' => [
+                '<?php
+                    /**
+                     * @implements \IteratorAggregate<int,\stdClass>
+                     */
+                    class SelectEntries implements \IteratorAggregate
+                    {
+                        public function getIterator(): SelectIterator {
+                            return new SelectIterator();
+                        }
+                    }
+
+                    /**
+                     * @implements \Iterator<int,\stdClass>
+                     * @psalm-suppress UnimplementedInterfaceMethod
+                     */
+                    class SelectIterator implements \Iterator
+                    {
+                    }'
+            ],
+            'extendWithExtraParam' => [
+                '<?php
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     */
+                    interface ICollection {
+                        /**
+                         * @psalm-return ICollection<Tk, Tv>
+                         */
+                        public function slice(int $start, int $length): ICollection;
+                    }
+
+                    /**
+                     * @template T
+                     *
+                     * @extends ICollection<int, T>
+                     */
+                    interface IVector extends ICollection {
+                        /**
+                         * @psalm-return IVector<T>
+                         */
+                        public function slice(int $start, int $length): ICollection;
+                    }'
             ]
         ];
     }
@@ -3701,6 +3769,34 @@ class ClassTemplateExtendsTest extends TestCase
                     }',
                 'error_message' => 'InvalidReturnStatement'
             ],
+            'noCrashForTooManyTemplateParams' => [
+                '<?php
+                    interface InterfaceA {}
+
+                    class ImplemX implements InterfaceA {}
+
+                    interface DoStuff {
+                        public function stuff(InterfaceA $object): void;
+                    }
+
+                    /**
+                     * @implements DoStuff<ImplemX>
+                     */
+                    class DoStuffX implements DoStuff {
+                        public function stuff(InterfaceA $object): void {}
+                    }
+
+                    final class Foo {
+                        /**
+                         * @template A of InterfaceA
+                         * @psalm-param DoStuff<A> $stuff
+                         */
+                        public function __construct(DoStuff $stuff) {}
+                    }
+
+                    new Foo(new DoStuffX());',
+                'error_message' => 'InvalidArgument'
+            ]
         ];
     }
 }

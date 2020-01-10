@@ -228,8 +228,18 @@ class Union
 
     /**
      * @return array<string, Atomic>
+     * @deprecated in favour of getAtomicTypes()
+     * @psalm-suppress PossiblyUnusedMethod
      */
     public function getTypes()
+    {
+        return $this->types;
+    }
+
+    /**
+     * @return array<string, Atomic>
+     */
+    public function getAtomicTypes()
     {
         return $this->types;
     }
@@ -1099,8 +1109,8 @@ class Union
             if ($atomic_type instanceof Type\Atomic\TTemplateParam) {
                 $template_type = null;
 
-                if (isset($template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''])) {
-                    $template_type = $template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''][0];
+                if (isset($template_types[$atomic_type->param_name][$atomic_type->defining_class])) {
+                    $template_type = $template_types[$atomic_type->param_name][$atomic_type->defining_class][0];
 
                     if (!$atomic_type->as->isMixed() && $template_type->isMixed()) {
                         $template_type = clone $atomic_type->as;
@@ -1109,7 +1119,7 @@ class Union
                     }
 
                     if ($atomic_type->extra_types) {
-                        foreach ($template_type->getTypes() as $template_type_key => $atomic_template_type) {
+                        foreach ($template_type->getAtomicTypes() as $template_type_key => $atomic_template_type) {
                             if ($atomic_template_type instanceof TNamedObject
                                 || $atomic_template_type instanceof TTemplateParam
                                 || $atomic_template_type instanceof TIterable
@@ -1128,10 +1138,10 @@ class Union
                             }
                         }
                     }
-                } elseif ($codebase && $atomic_type->defining_class) {
+                } elseif ($codebase) {
                     foreach ($template_types as $template_type_map) {
                         foreach ($template_type_map as $template_class => $_) {
-                            if (!$template_class) {
+                            if (substr($template_class, 0, 3) === 'fn-') {
                                 continue;
                             }
 
@@ -1170,8 +1180,8 @@ class Union
                     }
                 }
             } elseif ($atomic_type instanceof Type\Atomic\TTemplateParamClass) {
-                $template_type = isset($template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''])
-                    ? clone $template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''][0]
+                $template_type = isset($template_types[$atomic_type->param_name][$atomic_type->defining_class])
+                    ? clone $template_types[$atomic_type->param_name][$atomic_type->defining_class][0]
                     : Type::getMixed();
 
                 foreach ($template_type->types as $template_type_part) {
@@ -1197,13 +1207,15 @@ class Union
 
                 $template_type = null;
 
-                if (isset($template_types[$atomic_type->array_param_name][$atomic_type->defining_class ?: ''])
-                    && isset($template_types[$atomic_type->offset_param_name][''])
+                if (isset($template_types[$atomic_type->array_param_name][$atomic_type->defining_class])
+                    && !empty($template_types[$atomic_type->offset_param_name])
                 ) {
                     $array_template_type
-                        = $template_types[$atomic_type->array_param_name][$atomic_type->defining_class ?: ''][0];
+                        = $template_types[$atomic_type->array_param_name][$atomic_type->defining_class][0];
                     $offset_template_type
-                        = $template_types[$atomic_type->offset_param_name][''][0];
+                        = array_values(
+                            $template_types[$atomic_type->offset_param_name]
+                        )[0][0];
 
                     if ($array_template_type->isSingle()
                         && $offset_template_type->isSingle()
@@ -1262,7 +1274,7 @@ class Union
         $this->types = TypeCombination::combineTypes(
             array_values(array_merge($this->types, $new_types)),
             $codebase
-        )->getTypes();
+        )->getAtomicTypes();
     }
 
     /**

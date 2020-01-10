@@ -26,7 +26,7 @@ class ArgTest extends TestCase
                 ',
                 'assertions' => [
                     '$a' => 'array{a: int, b: int}',
-                    '$b' => 'array<int, int>',
+                    '$b' => 'list<int>',
                 ],
             ],
             'arrayModificationFunctions' => [
@@ -37,8 +37,8 @@ class ArgTest extends TestCase
                     array_push($b, (bool)rand(0, 1));
                 ',
                 'assertions' => [
-                    '$a' => 'array<int|string, bool|int>',
-                    '$b' => 'array<int|string, bool|int>',
+                    '$a' => 'non-empty-array<int|string, bool|int>',
+                    '$b' => 'non-empty-array<int|string, bool|int>',
                 ],
             ],
             'byRefArgAssignment' => [

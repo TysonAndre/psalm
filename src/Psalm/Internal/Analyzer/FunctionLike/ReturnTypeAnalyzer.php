@@ -174,7 +174,7 @@ class ReturnTypeAnalyzer
                         . $return_type . ' expected',
                     $return_type_location
                 ),
-                $source->getSuppressedIssues()
+                $suppressed_issues
             )) {
                 return false;
             }
@@ -199,7 +199,7 @@ class ReturnTypeAnalyzer
                         . 'either implicitly or explicitly',
                     $return_type_location
                 ),
-                $source->getSuppressedIssues()
+                $suppressed_issues
             )) {
                 return false;
             }
@@ -687,7 +687,7 @@ class ReturnTypeAnalyzer
         }
 
         if (!$storage->signature_return_type || $storage->signature_return_type === $storage->return_type) {
-            foreach ($storage->return_type->getTypes() as $type) {
+            foreach ($storage->return_type->getAtomicTypes() as $type) {
                 if ($type instanceof Type\Atomic\TNamedObject
                     && 'parent' === $type->value
                     && null === $parent_class

@@ -235,7 +235,7 @@ class Reconciler
                     $has_empty
                 );
 
-            if ($result_type && empty($result_type->getTypes())) {
+            if ($result_type && empty($result_type->getAtomicTypes())) {
                 throw new \InvalidArgumentException('Union::$types cannot be empty after get value for ' . $key);
             }
 
@@ -263,7 +263,7 @@ class Reconciler
                         $failed_reconciliation
                     );
 
-                    if (!$result_type_candidate->getTypes()) {
+                    if (!$result_type_candidate->getAtomicTypes()) {
                         $result_type_candidate->addType(new TEmpty);
                     }
 
@@ -515,7 +515,7 @@ class Reconciler
                 if (!isset($existing_keys[$new_base_key])) {
                     $new_base_type = null;
 
-                    foreach ($existing_keys[$base_key]->getTypes() as $existing_key_type_part) {
+                    foreach ($existing_keys[$base_key]->getAtomicTypes() as $existing_key_type_part) {
                         if ($existing_key_type_part instanceof Type\Atomic\TArray) {
                             if ($has_empty) {
                                 return null;
@@ -587,7 +587,7 @@ class Reconciler
                 if (!isset($existing_keys[$new_base_key])) {
                     $new_base_type = null;
 
-                    foreach ($existing_keys[$base_key]->getTypes() as $existing_key_type_part) {
+                    foreach ($existing_keys[$base_key]->getAtomicTypes() as $existing_key_type_part) {
                         if ($existing_key_type_part instanceof TNull) {
                             $class_property_type = Type::getNull();
                         } elseif ($existing_key_type_part instanceof TMixed
@@ -601,34 +601,67 @@ class Reconciler
                             if (!$codebase->classOrInterfaceExists($existing_key_type_part->value)) {
                                 $class_property_type = Type::getMixed();
                             } else {
-                                $property_id = $existing_key_type_part->value . '::$' . $property_name;
+                                if (substr($property_name, -2) === '()') {
+                                    $method_id = $existing_key_type_part->value . '::' . substr($property_name, 0, -2);
 
-                                if (!$codebase->properties->propertyExists($property_id, true)) {
-                                    return null;
-                                }
+                                    if (!$codebase->methods->methodExists($method_id)) {
+                                        return null;
+                                    }
 
-                                $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
-                                    $property_id,
-                                    true
-                                );
+                                    $declaring_method_id = $codebase->methods->getDeclaringMethodId(
+                                        $method_id
+                                    );
 
-                                $class_property_type = $codebase->properties->getPropertyType(
-                                    $property_id,
-                                    false,
-                                    null,
-                                    null
-                                );
+                                    $declaring_class = explode('::', (string) $declaring_method_id)[0];
 
-                                if ($class_property_type) {
-                                    $class_property_type = ExpressionAnalyzer::fleshOutType(
-                                        $codebase,
-                                        clone $class_property_type,
-                                        $declaring_property_class,
-                                        $declaring_property_class,
+                                    $method_return_type = $codebase->methods->getMethodReturnType(
+                                        $method_id,
+                                        $declaring_class,
+                                        null,
                                         null
                                     );
+
+                                    if ($method_return_type) {
+                                        $class_property_type = ExpressionAnalyzer::fleshOutType(
+                                            $codebase,
+                                            clone $method_return_type,
+                                            $declaring_class,
+                                            $declaring_class,
+                                            null
+                                        );
+                                    } else {
+                                        $class_property_type = Type::getMixed();
+                                    }
                                 } else {
-                                    $class_property_type = Type::getMixed();
+                                    $property_id = $existing_key_type_part->value . '::$' . $property_name;
+
+                                    if (!$codebase->properties->propertyExists($property_id, true)) {
+                                        return null;
+                                    }
+
+                                    $declaring_property_class = $codebase->properties->getDeclaringClassForProperty(
+                                        $property_id,
+                                        true
+                                    );
+
+                                    $class_property_type = $codebase->properties->getPropertyType(
+                                        $property_id,
+                                        false,
+                                        null,
+                                        null
+                                    );
+
+                                    if ($class_property_type) {
+                                        $class_property_type = ExpressionAnalyzer::fleshOutType(
+                                            $codebase,
+                                            clone $class_property_type,
+                                            $declaring_property_class,
+                                            $declaring_property_class,
+                                            null
+                                        );
+                                    } else {
+                                        $class_property_type = Type::getMixed();
+                                    }
                                 }
                             }
                         } else {
@@ -691,7 +724,7 @@ class Reconciler
     ) {
         $reconciliation = ' and trying to reconcile type \'' . $old_var_type_string . '\' to ' . $assertion;
 
-        $existing_var_atomic_types = $existing_var_type->getTypes();
+        $existing_var_atomic_types = $existing_var_type->getAtomicTypes();
 
         $from_docblock = $existing_var_type->from_docblock
             || (isset($existing_var_atomic_types[$assertion])
@@ -776,7 +809,7 @@ class Reconciler
         $base_key = implode($key_parts);
 
         if (isset($existing_types[$base_key]) && $array_key_offset !== false) {
-            foreach ($existing_types[$base_key]->getTypes() as $base_atomic_type) {
+            foreach ($existing_types[$base_key]->getAtomicTypes() as $base_atomic_type) {
                 if ($base_atomic_type instanceof Type\Atomic\ObjectLike
                     || ($base_atomic_type instanceof Type\Atomic\TArray
                         && !$base_atomic_type->type_params[1]->isEmpty())

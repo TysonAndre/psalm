@@ -99,7 +99,7 @@ class ClassConstFetchAnalyzer
                     $statements_analyzer,
                     $stmt->class,
                     $fq_class_name,
-                    $context->calling_method_id,
+                    $context->calling_function_id,
                     false,
                     $stmt->class->parts[0] === 'self'
                 );
@@ -257,9 +257,9 @@ class ClassConstFetchAnalyzer
                 return;
             }
 
-            if ($context->calling_method_id) {
+            if ($context->calling_function_id) {
                 $codebase->file_reference_provider->addMethodReferenceToClassMember(
-                    $context->calling_method_id,
+                    $context->calling_function_id,
                     strtolower($fq_class_name) . '::' . $stmt->name->name
                 );
             }
@@ -343,7 +343,7 @@ class ClassConstFetchAnalyzer
             $has_mixed_or_object = false;
 
             if ($lhs_type) {
-                foreach ($lhs_type->getTypes() as $lhs_atomic_type) {
+                foreach ($lhs_type->getAtomicTypes() as $lhs_atomic_type) {
                     if ($lhs_atomic_type instanceof Type\Atomic\TNamedObject) {
                         $class_string_types[] = new Type\Atomic\TClassString(
                             $lhs_atomic_type->value,

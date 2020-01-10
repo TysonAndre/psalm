@@ -86,16 +86,12 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
             $context->inside_call = true;
 
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->name, $context) === false) {
-                if (!$was_in_call) {
-                    $context->inside_call = false;
-                }
+                $context->inside_call = $was_in_call;
 
                 return;
             }
 
-            if (!$was_in_call) {
-                $context->inside_call = false;
-            }
+            $context->inside_call = $was_in_call;
 
             if ($stmt_name_type = $statements_analyzer->node_data->getType($stmt->name)) {
                 if ($stmt_name_type->isNull()) {
@@ -127,7 +123,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 $invalid_function_call_types = [];
                 $has_valid_function_call_type = false;
 
-                foreach ($stmt_name_type->getTypes() as $var_type_part) {
+                foreach ($stmt_name_type->getAtomicTypes() as $var_type_part) {
                     if ($var_type_part instanceof Type\Atomic\TFn || $var_type_part instanceof Type\Atomic\TCallable) {
                         $function_params = $var_type_part->params;
 
@@ -488,7 +484,9 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         if ($function_storage && $function_storage->template_types) {
                             foreach ($function_storage->template_types as $template_name => $_) {
                                 if (!isset($template_result->generic_params[$template_name])) {
-                                    $template_result->generic_params[$template_name] = ['' => [Type::getEmpty(), 0]];
+                                    $template_result->generic_params[$template_name] = [
+                                        'fn-' . $function_id => [Type::getEmpty(), 0]
+                                    ];
                                 }
                             }
                         }
@@ -601,7 +599,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 $assert_clauses = \Psalm\Type\Algebra::getFormula(
                     \spl_object_id($stmt->args[0]->value),
                     $stmt->args[0]->value,
-                    $statements_analyzer->getFQCLN(),
+                    $context->self,
                     $statements_analyzer,
                     $codebase
                 );
@@ -622,7 +620,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         $changed_var_ids,
                         [],
                         $statements_analyzer,
-                        [],
+                        $statements_analyzer->getTemplateTypeMap() ?: [],
                         $context->inside_loop,
                         new CodeLocation($statements_analyzer->getSource(), $stmt)
                     );
@@ -659,7 +657,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 } elseif ($var_type = $statements_analyzer->node_data->getType($var)) {
                     $class_string_types = [];
 
-                    foreach ($var_type->getTypes() as $class_type) {
+                    foreach ($var_type->getAtomicTypes() as $class_type) {
                         if ($class_type instanceof Type\Atomic\TNamedObject) {
                             $class_string_types[] = new Type\Atomic\TClassString($class_type->value, clone $class_type);
                         }
@@ -776,7 +774,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     $stmt,
                     array_map(
                         function (Assertion $assertion) use ($generic_params) : Assertion {
-                            return $assertion->getUntemplatedCopy($generic_params ?: []);
+                            return $assertion->getUntemplatedCopy($generic_params ?: [], null);
                         },
                         $function_storage->if_true_assertions
                     )
@@ -788,7 +786,7 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     $stmt,
                     array_map(
                         function (Assertion $assertion) use ($generic_params) : Assertion {
-                            return $assertion->getUntemplatedCopy($generic_params ?: []);
+                            return $assertion->getUntemplatedCopy($generic_params ?: [], null);
                         },
                         $function_storage->if_false_assertions
                     )
@@ -913,9 +911,10 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
                     if ($fq_const_name !== null) {
                         $second_arg = $stmt->args[1];
+                        $was_in_call = $context->inside_call;
                         $context->inside_call = true;
                         ExpressionAnalyzer::analyze($statements_analyzer, $second_arg->value, $context);
-                        $context->inside_call = false;
+                        $context->inside_call = $was_in_call;
 
                         $statements_analyzer->setConstType(
                             $fq_const_name,

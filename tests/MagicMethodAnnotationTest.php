@@ -187,7 +187,6 @@ class MagicMethodAnnotationTest extends TestCase
                     $b = $child->setString(5);
                     $c = $child->getBool("hello");
                     $d = $child->getArray();
-                    $child->setArray(["boo"]);
                     $e = $child->getCallable();
                     $child->setMixed("hello");
                     $child->setMixed(4);
@@ -545,6 +544,21 @@ class MagicMethodAnnotationTest extends TestCase
                         $child->setInteger(function() : void {});
                     }',
             ],
+            'allowMethodsNamedBooleanAndInteger' => [
+                '<?php
+                    /**
+                     * @method boolean(int $foo) : bool
+                     * @method integer(int $foo) : bool
+                     */
+                    class Child {
+                        public function __call(string $name, array $args) {}
+                    }
+
+                    $child = new Child();
+
+                    $child->boolean(5);
+                    $child->integer(5);'
+            ],
         ];
     }
 
@@ -586,14 +600,13 @@ class MagicMethodAnnotationTest extends TestCase
 
                     /**
                      * @method string getString()
-                     * @psalm-seal-methods
                      */
                     class Child extends ParentClass {}
 
                     $child = new Child();
                     $child->getString();
                     $child->foo();',
-                'error_message' => 'UndefinedMethod - src' . DIRECTORY_SEPARATOR . 'somefile.php:14:29 - Method Child::foo does not exist',
+                'error_message' => 'UndefinedMagicMethod - src' . DIRECTORY_SEPARATOR . 'somefile.php:13:29 - Magic method Child::foo does not exist',
             ],
             'annotationInvalidArg' => [
                 '<?php

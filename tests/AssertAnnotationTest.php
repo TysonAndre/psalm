@@ -32,6 +32,25 @@ class AssertAnnotationTest extends TestCase
                         $a->foo();
                     }',
             ],
+            'implicitAssertEqualsNull' => [
+                '<?php
+                    function takesInt(int $int): void { echo $int; }
+
+                    function getIntOrNull(): ?int {
+                        return rand(0,1) === 0 ? null : 1;
+                    }
+
+                    /** @param mixed $value */
+                    function assertNotNull($value): void {
+                        if (null === $value) {
+                            throw new Exception();
+                        }
+                    }
+
+                    $value = getIntOrNull();
+                    assertNotNull($value);
+                    takesInt($value);',
+            ],
             'dropInReplacementForAssert' => [
                 '<?php
                     namespace Bar;
@@ -729,6 +748,105 @@ class AssertAnnotationTest extends TestCase
 
                         throw new \Exception();
                     }'
+            ],
+            'assertOnNestedProperty' => [
+                '<?php
+                    /** @psalm-immutable */
+                    class B {
+                        public ?array $arr = null;
+
+                        public function __construct(?array $arr) {
+                            $this->arr = $arr;
+                        }
+                    }
+
+                    /** @psalm-immutable */
+                    class A {
+                        public B $b;
+                        public function __construct(B $b) {
+                            $this->b = $b;
+                        }
+
+                        /** @psalm-assert-if-true !null $this->b->arr */
+                        public function hasArray() : bool {
+                            return $this->b->arr !== null;
+                        }
+                    }
+
+                    function foo(A $a) : void {
+                        if ($a->hasArray()) {
+                            echo count($a->b->arr);
+                        }
+                    }'
+            ],
+            'assertOnNestedMethod' => [
+                '<?php
+                    /** @psalm-immutable */
+                    class B {
+                        private ?array $arr = null;
+
+                        public function __construct(?array $arr) {
+                            $this->arr = $arr;
+                        }
+
+                        public function getArray() : ?array {
+                            return $this->arr;
+                        }
+                    }
+
+                    /** @psalm-immutable */
+                    class A {
+                        public B $b;
+                        public function __construct(B $b) {
+                            $this->b = $b;
+                        }
+
+                        /** @psalm-assert-if-true !null $this->b->getarray() */
+                        public function hasArray() : bool {
+                            return $this->b->getArray() !== null;
+                        }
+                    }
+
+                    function foo(A $a) : void {
+                        if ($a->hasArray()) {
+                            echo count($a->b->getArray());
+                        }
+                    }'
+            ],
+            'assertOnThisMethod' => [
+                '<?php
+                    /** @psalm-immutable */
+                    class A {
+                        private ?array $arr = null;
+
+                        public function __construct(?array $arr) {
+                            $this->arr = $arr;
+                        }
+
+                        /** @psalm-assert-if-true !null $this->getarray() */
+                        public function hasArray() : bool {
+                            return $this->arr !== null;
+                        }
+
+                        public function getArray() : ?array {
+                            return $this->arr;
+                        }
+                    }
+
+                    function foo(A $a) : void {
+                        if (!$a->hasArray()) {
+                            return;
+                        }
+
+                        echo count($a->getArray());
+                    }'
+            ],
+            'preventErrorWhenAssertingOnArrayUnion' => [
+                '<?php
+                    /**
+                     * @psalm-assert array<string,string|object> $data
+                     */
+                    function validate(array $data): void {}'
             ],
         ];
     }

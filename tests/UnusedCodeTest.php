@@ -656,7 +656,33 @@ class UnusedCodeTest extends TestCase
                                 break;
                         }
                     }'
-            ]
+            ],
+            'ignoreSerializerSerialize' => [
+                '<?php
+                    class Foo implements Serializable {
+                        public function serialize() : string {
+                            return "";
+                        }
+
+                        public function unserialize($_serialized) : void {}
+                    }
+
+                    new Foo();'
+            ],
+            'useIteratorMethodsWhenCallingForeach' => [
+                '<?php
+                    /** @psalm-suppress UnimplementedInterfaceMethod */
+                    class IterableResult implements \Iterator {
+                        public function current() {
+                            return $this->current;
+                        }
+                    }
+
+                    $items = new IterableResult();
+
+                    /** @psalm-suppress MixedAssignment */
+                    foreach ($items as $_item) {}'
+            ],
         ];
     }
 

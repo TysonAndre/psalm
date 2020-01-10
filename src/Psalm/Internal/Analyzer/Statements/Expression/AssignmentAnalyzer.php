@@ -162,7 +162,7 @@ class AssignmentAnalyzer
                                 $statements_analyzer,
                                 $var_comment_type,
                                 $type_location,
-                                $context->calling_method_id
+                                $context->calling_function_id
                             );
                         }
                     }
@@ -283,7 +283,7 @@ class AssignmentAnalyzer
                 $assign_value_type->by_ref = true;
             }
 
-            // removes dependennt vars from $context
+            // removes dependent vars from $context
             $context->removeDescendents(
                 $array_var_id,
                 $context->vars_in_scope[$array_var_id],
@@ -400,31 +400,39 @@ class AssignmentAnalyzer
             }
         }
 
-        if ($assign_var instanceof PhpParser\Node\Expr\Variable && is_string($assign_var->name) && $var_id) {
-            $context->vars_in_scope[$var_id] = $assign_value_type;
-            $context->vars_possibly_in_scope[$var_id] = true;
+        if ($assign_var instanceof PhpParser\Node\Expr\Variable) {
+            if (is_string($assign_var->name)) {
+                if ($var_id) {
+                    $context->vars_in_scope[$var_id] = $assign_value_type;
+                    $context->vars_possibly_in_scope[$var_id] = true;
 
-            $location = new CodeLocation($statements_analyzer, $assign_var);
+                    $location = new CodeLocation($statements_analyzer, $assign_var);
 
-            if ($context->collect_references) {
-                $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
-            }
+                    if ($context->collect_references) {
+                        $context->unreferenced_vars[$var_id] = [$location->getHash() => $location];
+                    }
 
-            if (!$statements_analyzer->hasVariable($var_id)) {
-                $statements_analyzer->registerVariable(
-                    $var_id,
-                    $location,
-                    $context->branch_point
-                );
+                    if (!$statements_analyzer->hasVariable($var_id)) {
+                        $statements_analyzer->registerVariable(
+                            $var_id,
+                            $location,
+                            $context->branch_point
+                        );
+                    } else {
+                        $statements_analyzer->registerVariableAssignment(
+                            $var_id,
+                            $location
+                        );
+                    }
+
+                    if (isset($context->byref_constraints[$var_id]) || $assign_value_type->by_ref) {
+                        $statements_analyzer->registerVariableUses([$location->getHash() => $location]);
+                    }
+                }
             } else {
-                $statements_analyzer->registerVariableAssignment(
-                    $var_id,
-                    $location
-                );
-            }
-
-            if (isset($context->byref_constraints[$var_id]) || $assign_value_type->by_ref) {
-                $statements_analyzer->registerVariableUses([$location->getHash() => $location]);
+                if (ExpressionAnalyzer::analyze($statements_analyzer, $assign_var->name, $context) === false) {
+                    return false;
+                }
             }
         } elseif ($assign_var instanceof PhpParser\Node\Expr\List_
             || $assign_var instanceof PhpParser\Node\Expr\Array_
@@ -477,7 +485,7 @@ class AssignmentAnalyzer
 
                 $new_assign_type = null;
 
-                foreach ($assign_value_type->getTypes() as $assign_value_atomic_type) {
+                foreach ($assign_value_type->getAtomicTypes() as $assign_value_atomic_type) {
                     if ($assign_value_atomic_type instanceof Type\Atomic\ObjectLike
                         && !$assign_var_item->key
                         && isset($assign_value_atomic_type->properties[$offset]) // if object-like has int offsets
@@ -716,11 +724,11 @@ class AssignmentAnalyzer
                     $stmt_var_type = $assign_var_type;
 
                     if ($stmt_var_type->hasObjectType()) {
-                        foreach ($stmt_var_type->getTypes() as $type) {
+                        foreach ($stmt_var_type->getAtomicTypes() as $type) {
                             if ($type instanceof Type\Atomic\TNamedObject) {
                                 $codebase->analyzer->addMixedMemberName(
                                     strtolower($type->value) . '::$',
-                                    $context->calling_method_id ?: $statements_analyzer->getFileName()
+                                    $context->calling_function_id ?: $statements_analyzer->getFileName()
                                 );
                             }
                         }
@@ -892,6 +900,7 @@ class AssignmentAnalyzer
         $stmt_var_type = $stmt_var_type ? clone $stmt_var_type: null;
 
         $stmt_expr_type = $statements_analyzer->node_data->getType($stmt->expr);
+        $result_type = null;
 
         if ($stmt instanceof PhpParser\Node\Expr\AssignOp\Plus
             || $stmt instanceof PhpParser\Node\Expr\AssignOp\Minus
@@ -967,6 +976,44 @@ class AssignmentAnalyzer
                 $context->vars_in_scope[$array_var_id] = $result_type;
                 $statements_analyzer->node_data->setType($stmt, clone $context->vars_in_scope[$array_var_id]);
             }
+        }
+
+        if ($array_var_id && isset($context->vars_in_scope[$array_var_id])) {
+            if ($result_type && $context->vars_in_scope[$array_var_id]->by_ref) {
+                $result_type->by_ref = true;
+            }
+
+            // removes dependent vars from $context
+            $context->removeDescendents(
+                $array_var_id,
+                $context->vars_in_scope[$array_var_id],
+                $result_type,
+                $statements_analyzer
+            );
+        } else {
+            $root_var_id = ExpressionAnalyzer::getRootVarId(
+                $stmt->var,
+                $statements_analyzer->getFQCLN(),
+                $statements_analyzer
+            );
+
+            if ($root_var_id && isset($context->vars_in_scope[$root_var_id])) {
+                $context->removeVarFromConflictingClauses(
+                    $root_var_id,
+                    $context->vars_in_scope[$root_var_id],
+                    $statements_analyzer
+                );
+            }
+        }
+
+        if ($stmt->var instanceof PhpParser\Node\Expr\ArrayDimFetch) {
+            ArrayAssignmentAnalyzer::analyze(
+                $statements_analyzer,
+                $stmt->var,
+                $context,
+                null,
+                $result_type ?: Type::getEmpty()
+            );
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\AssignOp\Coalesce) {

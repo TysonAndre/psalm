@@ -440,6 +440,8 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                 $loop_scope->unreferenced_vars[$var_id] = $locations;
                             }
                         }
+
+                        $loop_scope->referenced_var_ids += $context->referenced_var_ids;
                     }
                 }
 
@@ -538,6 +540,8 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                 $loop_scope->possibly_unreferenced_vars[$var_id] = $locations;
                             }
                         }
+
+                        $loop_scope->referenced_var_ids += $context->referenced_var_ids;
                     }
                 }
 
@@ -1316,7 +1320,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 if ($root_var_id && isset($context->vars_in_scope[$root_var_id])) {
                     $root_type = clone $context->vars_in_scope[$root_var_id];
 
-                    foreach ($root_type->getTypes() as $atomic_root_type) {
+                    foreach ($root_type->getAtomicTypes() as $atomic_root_type) {
                         if ($atomic_root_type instanceof Type\Atomic\ObjectLike) {
                             if ($var->dim instanceof PhpParser\Node\Scalar\String_
                                 || $var->dim instanceof PhpParser\Node\Scalar\LNumber
@@ -1486,7 +1490,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                 $this,
                                 $var_comment_type,
                                 $type_location,
-                                $context->calling_method_id
+                                $context->calling_function_id
                             );
                         }
 
@@ -1877,7 +1881,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         return null;
                     }
 
-                    $dim_atomic_types = $dim_type->getTypes();
+                    $dim_atomic_types = $dim_type->getAtomicTypes();
 
                     if (count($dim_atomic_types) > 1 || $dim_type->hasMixed() || count($property_types) > 50) {
                         $can_create_objectlike = false;
@@ -1974,7 +1978,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 return null;
             }
 
-            foreach ($type_to_invert->getTypes() as $type_part) {
+            foreach ($type_to_invert->getAtomicTypes() as $type_part) {
                 if ($type_part instanceof Type\Atomic\TLiteralInt
                     && $stmt instanceof PhpParser\Node\Expr\UnaryMinus
                 ) {

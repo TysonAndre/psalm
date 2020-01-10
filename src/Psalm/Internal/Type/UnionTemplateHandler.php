@@ -23,13 +23,14 @@ class UnionTemplateHandler
         ?Codebase $codebase,
         ?Union $input_type,
         ?string $calling_class = null,
+        ?string $calling_function = null,
         bool $replace = true,
         bool $add_upper_bound = false,
         int $depth = 0
     ) : Union {
         $atomic_types = [];
 
-        $original_atomic_types = $union_type->getTypes();
+        $original_atomic_types = $union_type->getAtomicTypes();
 
         $had_template = false;
 
@@ -43,6 +44,7 @@ class UnionTemplateHandler
                     $codebase,
                     $input_type,
                     $calling_class,
+                    $calling_function,
                     $replace,
                     $add_upper_bound,
                     $depth,
@@ -87,6 +89,7 @@ class UnionTemplateHandler
         ?Codebase $codebase,
         ?Union $input_type,
         ?string $calling_class,
+        ?string $calling_function,
         bool $replace,
         bool $add_upper_bound,
         int $depth,
@@ -99,13 +102,15 @@ class UnionTemplateHandler
         }
 
         if ($atomic_type instanceof Atomic\TTemplateParam
-            && isset($template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''])
+            && ($param_name_key = strpos($key, '&') ? $key : $atomic_type->param_name)
+            && isset($template_result->template_types[$param_name_key][$atomic_type->defining_class])
         ) {
             $a = self::handleTemplateParamStandin(
                 $atomic_type,
                 $key,
                 $input_type,
                 $calling_class,
+                $calling_function,
                 $template_result,
                 $codebase,
                 $replace,
@@ -138,21 +143,23 @@ class UnionTemplateHandler
 
                 $include_first = true;
 
-                if (isset($template_result->template_types[$atomic_type->array_param_name][$atomic_type->defining_class ?: ''])
-                    && isset($template_result->generic_params[$atomic_type->offset_param_name][''])
+                if (isset($template_result->template_types[$atomic_type->array_param_name][$atomic_type->defining_class])
+                    && !empty($template_result->generic_params[$atomic_type->offset_param_name])
                 ) {
                     $array_template_type
-                        = $template_result->template_types[$atomic_type->array_param_name][$atomic_type->defining_class ?: ''][0];
+                        = $template_result->template_types[$atomic_type->array_param_name][$atomic_type->defining_class][0];
                     $offset_template_type
-                        = $template_result->generic_params[$atomic_type->offset_param_name][''][0];
+                        = array_values(
+                            $template_result->generic_params[$atomic_type->offset_param_name]
+                        )[0][0];
 
                     if ($array_template_type->isSingle()
                         && $offset_template_type->isSingle()
                         && !$array_template_type->isMixed()
                         && !$offset_template_type->isMixed()
                     ) {
-                        $array_template_type = array_values($array_template_type->getTypes())[0];
-                        $offset_template_type = array_values($offset_template_type->getTypes())[0];
+                        $array_template_type = array_values($array_template_type->getAtomicTypes())[0];
+                        $offset_template_type = array_values($offset_template_type->getAtomicTypes())[0];
 
                         if ($array_template_type instanceof Atomic\ObjectLike
                             && ($offset_template_type instanceof Atomic\TLiteralString
@@ -164,7 +171,7 @@ class UnionTemplateHandler
                             $replacement_type
                                 = clone $array_template_type->properties[$offset_template_type->value];
 
-                            foreach ($replacement_type->getTypes() as $replacement_atomic_type) {
+                            foreach ($replacement_type->getAtomicTypes() as $replacement_atomic_type) {
                                 $atomic_types[] = $replacement_atomic_type;
                             }
                         }
@@ -187,12 +194,12 @@ class UnionTemplateHandler
 
                 $include_first = true;
 
-                if (isset($template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''])) {
+                if (isset($template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class])) {
                     $template_type
-                        = $template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''][0];
+                        = $template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class][0];
 
                     if ($template_type->isSingle()) {
-                        $template_type = array_values($template_type->getTypes())[0];
+                        $template_type = array_values($template_type->getAtomicTypes())[0];
 
                         if ($template_type instanceof Atomic\ObjectLike
                             || $template_type instanceof Atomic\TArray
@@ -208,7 +215,7 @@ class UnionTemplateHandler
 
                             $include_first = false;
 
-                            foreach ($key_type->getTypes() as $key_atomic_type) {
+                            foreach ($key_type->getAtomicTypes() as $key_atomic_type) {
                                 $atomic_types[] = $key_atomic_type;
                             }
                         }
@@ -241,6 +248,7 @@ class UnionTemplateHandler
             $codebase,
             $matching_atomic_type,
             $calling_class,
+            $calling_function,
             $replace,
             $add_upper_bound,
             $depth + 1
@@ -255,7 +263,7 @@ class UnionTemplateHandler
         string $key,
         Codebase $codebase
     ) : ?Atomic {
-        foreach ($input_type->getTypes() as $input_key => $atomic_input_type) {
+        foreach ($input_type->getAtomicTypes() as $input_key => $atomic_input_type) {
             if ($bracket_pos = strpos($input_key, '<')) {
                 $input_key = substr($input_key, 0, $bracket_pos);
             }
@@ -338,7 +346,7 @@ class UnionTemplateHandler
                         }
 
                         if (!$new_generic_params) {
-                            throw new \UnexpectedValueException('$new_generic_params should not be empty');
+                            return new Atomic\TNamedObject($atomic_input_type->value);
                         }
 
                         return new Atomic\TGenericObject(
@@ -363,6 +371,7 @@ class UnionTemplateHandler
         string $key,
         ?Union $input_type,
         ?string $calling_class,
+        ?string $calling_function,
         TemplateResult $template_result,
         ?Codebase $codebase,
         bool $replace,
@@ -373,14 +382,20 @@ class UnionTemplateHandler
     ) : array {
         $template_type = $template_result->template_types
             [$atomic_type->param_name]
-            [$atomic_type->defining_class ?: '']
+            [$atomic_type->defining_class]
             [0];
 
         if ($template_type->getId() === $key) {
-            return array_values($template_type->getTypes());
+            return array_values($template_type->getAtomicTypes());
         }
 
         $replacement_type = $template_type;
+
+        $param_name_key = $atomic_type->param_name;
+
+        if (strpos($key, '&')) {
+            $param_name_key = $key;
+        }
 
         if ($replace) {
             $atomic_types = [];
@@ -388,21 +403,21 @@ class UnionTemplateHandler
             if ($replacement_type->hasMixed()
                 && !$atomic_type->as->hasMixed()
             ) {
-                foreach ($atomic_type->as->getTypes() as $as_atomic_type) {
+                foreach ($atomic_type->as->getAtomicTypes() as $as_atomic_type) {
                     $atomic_types[] = clone $as_atomic_type;
                 }
             } else {
-                foreach ($replacement_type->getTypes() as $replacement_atomic_type) {
+                foreach ($replacement_type->getAtomicTypes() as $replacement_atomic_type) {
                     $replacements_found = false;
 
                     // @codingStandardsIgnoreStart
                     if ($replacement_atomic_type instanceof Atomic\TTemplateKeyOf
-                        && isset($template_result->template_types[$replacement_atomic_type->param_name][$replacement_atomic_type->defining_class ?: ''][0])
+                        && isset($template_result->template_types[$replacement_atomic_type->param_name][$replacement_atomic_type->defining_class][0])
                     ) {
-                        $keyed_template = $template_result->template_types[$replacement_atomic_type->param_name][$replacement_atomic_type->defining_class ?: ''][0];
+                        $keyed_template = $template_result->template_types[$replacement_atomic_type->param_name][$replacement_atomic_type->defining_class][0];
 
                         if ($keyed_template->isSingle()) {
-                            $keyed_template = array_values($keyed_template->getTypes())[0];
+                            $keyed_template = array_values($keyed_template->getAtomicTypes())[0];
                         }
 
                         if ($keyed_template instanceof Atomic\ObjectLike
@@ -419,19 +434,20 @@ class UnionTemplateHandler
 
                             $replacements_found = true;
 
-                            foreach ($key_type->getTypes() as $key_type_atomic) {
+                            foreach ($key_type->getAtomicTypes() as $key_type_atomic) {
                                 $atomic_types[] = clone $key_type_atomic;
                             }
 
-                            $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class ?: ''][0]
+                            $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class][0]
                                 = clone $key_type;
                         }
                     }
 
                     if ($replacement_atomic_type instanceof Atomic\TTemplateParam
                         && $replacement_atomic_type->defining_class !== $calling_class
+                        && $replacement_atomic_type->defining_class !== 'fn-' . $calling_function
                     ) {
-                        foreach ($replacement_atomic_type->as->getTypes() as $nested_type_atomic) {
+                        foreach ($replacement_atomic_type->as->getAtomicTypes() as $nested_type_atomic) {
                             $replacements_found = true;
                             $atomic_types[] = clone $nested_type_atomic;
                         }
@@ -466,11 +482,11 @@ class UnionTemplateHandler
                 $generic_param->setFromDocblock();
 
                 if (isset(
-                    $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class ?: ''][0]
+                    $template_result->generic_params[$param_name_key][$atomic_type->defining_class][0]
                 )) {
                     $existing_depth = $template_result->generic_params
-                        [$atomic_type->param_name]
-                        [$atomic_type->defining_class ?: '']
+                        [$param_name_key]
+                        [$atomic_type->defining_class]
                         [1]
                         ?? -1;
 
@@ -481,8 +497,8 @@ class UnionTemplateHandler
                     if ($existing_depth === $depth) {
                         $generic_param = \Psalm\Type::combineUnionTypes(
                             $template_result->generic_params
-                                [$atomic_type->param_name]
-                                [$atomic_type->defining_class ?: '']
+                                [$param_name_key]
+                                [$atomic_type->defining_class]
                                 [0],
                             $generic_param,
                             $codebase
@@ -490,7 +506,7 @@ class UnionTemplateHandler
                     }
                 }
 
-                $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class ?: ''] = [
+                $template_result->generic_params[$param_name_key][$atomic_type->defining_class] = [
                     $generic_param,
                     $depth,
                 ];
@@ -507,7 +523,7 @@ class UnionTemplateHandler
                     $replacement_type
                 )
             ) {
-                $template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class ?: ''][0]
+                $template_result->template_types[$param_name_key][$atomic_type->defining_class][0]
                     = clone $input_type;
             }
         }
@@ -534,7 +550,7 @@ class UnionTemplateHandler
         if ($input_type) {
             $valid_input_atomic_types = [];
 
-            foreach ($input_type->getTypes() as $input_atomic_type) {
+            foreach ($input_type->getAtomicTypes() as $input_atomic_type) {
                 if ($input_atomic_type instanceof Atomic\TLiteralClassString) {
                     $valid_input_atomic_types[] = new Atomic\TNamedObject(
                         $input_atomic_type->value
@@ -566,12 +582,12 @@ class UnionTemplateHandler
                 $generic_param = new Union($valid_input_atomic_types);
                 $generic_param->setFromDocblock();
 
-                $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class ?: ''] = [
+                $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class] = [
                     $generic_param,
                     $depth,
                 ];
             } elseif ($was_single) {
-                $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class ?: ''] = [
+                $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class] = [
                     \Psalm\Type::getMixed(),
                     $depth,
                 ];

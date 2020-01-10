@@ -171,6 +171,14 @@ class IfAnalyzer
                     }
                 )
             );
+
+            if (count($if_context->clauses) === 1
+                && $if_context->clauses[0]->wedge
+                && !$if_context->clauses[0]->possibilities
+            ) {
+                $if_context->clauses = [];
+                $if_context->reconciled_expression_clauses = [];
+            }
         }
 
         // define this before we alter local claues after reconciliation
@@ -1025,7 +1033,7 @@ class IfAnalyzer
         $elseif_clauses = Algebra::getFormula(
             \spl_object_id($elseif->cond),
             $elseif->cond,
-            $statements_analyzer->getFQCLN(),
+            $else_context->self,
             $statements_analyzer,
             $codebase
         );

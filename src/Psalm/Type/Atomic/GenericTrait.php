@@ -158,6 +158,7 @@ trait GenericTrait
         Codebase $codebase = null,
         Atomic $input_type = null,
         ?string $calling_class = null,
+        ?string $calling_function = null,
         bool $replace = true,
         bool $add_upper_bound = false,
         int $depth = 0
@@ -195,6 +196,7 @@ trait GenericTrait
                 $codebase,
                 $input_type_param,
                 $calling_class,
+                $calling_function,
                 $replace,
                 $add_upper_bound,
                 $depth + 1
@@ -213,6 +215,10 @@ trait GenericTrait
     {
         foreach ($this->type_params as $type_param) {
             $type_param->replaceTemplateTypesWithArgTypes($template_types, $codebase);
+        }
+
+        if ($this instanceof TGenericObject) {
+            $this->remapped_params = true;
         }
 
         if ($this instanceof TGenericObject || $this instanceof TIterable) {
@@ -301,6 +307,7 @@ trait GenericTrait
         }
 
         foreach ($this->type_params as $i => $type_param) {
+            /** @psalm-suppress RedundantCondition */
             if ($type_param->check(
                 $source,
                 $code_location,

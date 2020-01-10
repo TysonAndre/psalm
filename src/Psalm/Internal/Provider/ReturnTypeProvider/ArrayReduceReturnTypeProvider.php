@@ -54,7 +54,7 @@ class ArrayReduceReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
             return Type::getMixed();
         }
 
-        $array_arg_types = $array_arg_type->getTypes();
+        $array_arg_types = $array_arg_type->getAtomicTypes();
 
         $array_arg_atomic_type = null;
 
@@ -222,7 +222,7 @@ class ArrayReduceReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
 
                             if (!$codebase->methods->methodExists(
                                 $mapping_function_id_part,
-                                $context->calling_method_id,
+                                $context->calling_function_id,
                                 $codebase->collect_references
                                     ? new CodeLocation(
                                         $statements_source,

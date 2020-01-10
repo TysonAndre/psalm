@@ -322,9 +322,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
             MethodAnalyzer::checkMethodSignatureMustOmitReturnType($storage, $codeLocation);
 
-            $context->calling_method_id = strtolower($method_id);
+            $context->calling_function_id = strtolower($method_id);
         } elseif ($this->function instanceof Function_) {
             $cased_method_id = $this->function->name->name;
+            $context->calling_function_id = strtolower($cased_method_id);
         } else { // Closure
             if ($storage->return_type) {
                 $closure_return_type = ExpressionAnalyzer::fleshOutType(
@@ -611,7 +612,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                          * @psalm-suppress PossiblyUndefinedStringArrayOffset
                          * @var Type\Atomic\TFn
                          */
-                        $closure_atomic = \array_values($function_type->getTypes())[0];
+                        $closure_atomic = \array_values($function_type->getAtomicTypes())[0];
                         $closure_atomic->return_type = $closure_return_type;
                     }
                 }
@@ -666,7 +667,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                             $this,
                             $input_type,
                             $storage->throw_locations[$expected_exception],
-                            $context->calling_method_id
+                            $context->calling_function_id
                         );
                     }
                 }
@@ -1173,7 +1174,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $this,
                     $param_name_node,
                     $resolved_name,
-                    $context->calling_method_id,
+                    $context->calling_function_id,
                     false,
                     true
                 );
@@ -1207,7 +1208,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $this,
                     $return_name_node,
                     $resolved_name,
-                    $context->calling_method_id,
+                    $context->calling_function_id,
                     false,
                     true
                 );
@@ -1232,7 +1233,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 $this,
                 $replace_type,
                 $storage->return_type_location,
-                $context->calling_method_id
+                $context->calling_function_id
             );
         }
 
@@ -1256,7 +1257,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $this,
                     $replace_type,
                     $function_param->type_location,
-                    $context->calling_method_id
+                    $context->calling_function_id
                 );
             }
         }

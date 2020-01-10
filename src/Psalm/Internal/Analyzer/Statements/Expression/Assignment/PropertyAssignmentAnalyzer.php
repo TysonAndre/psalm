@@ -32,6 +32,7 @@ use Psalm\Issue\PossiblyNullPropertyAssignmentValue;
 use Psalm\Issue\PropertyTypeCoercion;
 use Psalm\Issue\UndefinedClass;
 use Psalm\Issue\UndefinedPropertyAssignment;
+use Psalm\Issue\UndefinedMagicPropertyAssignment;
 use Psalm\Issue\UndefinedThisPropertyAssignment;
 use Psalm\IssueBuffer;
 use Psalm\Type;
@@ -163,7 +164,7 @@ class PropertyAssignmentAnalyzer
                 if ($stmt->name instanceof PhpParser\Node\Identifier) {
                     $codebase->analyzer->addMixedMemberName(
                         '$' . $stmt->name->name,
-                        $context->calling_method_id ?: $statements_analyzer->getFileName()
+                        $context->calling_function_id ?: $statements_analyzer->getFileName()
                     );
                 }
 
@@ -222,14 +223,14 @@ class PropertyAssignmentAnalyzer
 
             $has_valid_assignment_type = false;
 
-            foreach ($lhs_type->getTypes() as $lhs_type_part) {
+            foreach ($lhs_type->getAtomicTypes() as $lhs_type_part) {
                 if ($lhs_type_part instanceof TNull) {
                     continue;
                 }
 
                 if ($lhs_type_part instanceof Type\Atomic\TFalse
                     && $lhs_type->ignore_falsable_issues
-                    && count($lhs_type->getTypes()) > 1
+                    && count($lhs_type->getAtomicTypes()) > 1
                 ) {
                     continue;
                 }
@@ -340,6 +341,8 @@ class PropertyAssignmentAnalyzer
                 $property_id = $fq_class_name . '::$' . $prop_name;
                 $property_ids[] = $property_id;
 
+                $has_magic_setter = false;
+
                 if ($codebase->methodExists($fq_class_name . '::__set')
                     && (!$codebase->properties->propertyExists($property_id, false, $statements_analyzer, $context)
                         || ($lhs_var_id !== '$this'
@@ -354,6 +357,7 @@ class PropertyAssignmentAnalyzer
                             ) !== true)
                     )
                 ) {
+                    $has_magic_setter = true;
                     $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
                     if ($var_id) {
@@ -432,8 +436,8 @@ class PropertyAssignmentAnalyzer
 
                     if (!$class_exists) {
                         if (IssueBuffer::accepts(
-                            new UndefinedPropertyAssignment(
-                                'Instance property ' . $property_id . ' is not defined',
+                            new UndefinedMagicPropertyAssignment(
+                                'Magic instance property ' . $property_id . ' is not defined',
                                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                                 $property_id
                             ),
@@ -494,15 +498,28 @@ class PropertyAssignmentAnalyzer
                             // fall through
                         }
                     } else {
-                        if (IssueBuffer::accepts(
-                            new UndefinedPropertyAssignment(
-                                'Instance property ' . $property_id . ' is not defined',
-                                new CodeLocation($statements_analyzer->getSource(), $stmt),
-                                $property_id
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
+                        if ($has_magic_setter) {
+                            if (IssueBuffer::accepts(
+                                new UndefinedMagicPropertyAssignment(
+                                    'Magic instance property ' . $property_id . ' is not defined',
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                    $property_id
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        } else {
+                            if (IssueBuffer::accepts(
+                                new UndefinedPropertyAssignment(
+                                    'Instance property ' . $property_id . ' is not defined',
+                                    new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                    $property_id
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
                         }
                     }
 
@@ -639,9 +656,9 @@ class PropertyAssignmentAnalyzer
                             && !($context->self
                                 && ($appearing_property_class === $context->self
                                     || $codebase->classExtends($context->self, $appearing_property_class))
-                                && (!$context->calling_method_id
-                                    || \strpos($context->calling_method_id, '::__construct')
-                                    || \strpos($context->calling_method_id, '::unserialize')
+                                && (!$context->calling_function_id
+                                    || \strpos($context->calling_function_id, '::__construct')
+                                    || \strpos($context->calling_function_id, '::unserialize')
                                     || $property_pure_compatible)
                             )
                         ) {
@@ -1087,7 +1104,7 @@ class PropertyAssignmentAnalyzer
             if ($fq_class_name && !$context->ignore_variable_property) {
                 $codebase->analyzer->addMixedMemberName(
                     strtolower($fq_class_name) . '::$',
-                    $context->calling_method_id ?: $statements_analyzer->getFileName()
+                    $context->calling_function_id ?: $statements_analyzer->getFileName()
                 );
             }
 
@@ -1134,7 +1151,7 @@ class PropertyAssignmentAnalyzer
                 $statements_analyzer,
                 $stmt->class,
                 $fq_class_name,
-                $context->calling_method_id
+                $context->calling_function_id
             );
 
             if (!$moved_class) {

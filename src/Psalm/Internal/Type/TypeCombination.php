@@ -22,6 +22,11 @@ use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
+use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TCallableArray;
+use Psalm\Type\Atomic\TCallableObject;
+use Psalm\Type\Atomic\TCallableObjectLikeArray;
+use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TEmptyMixed;
@@ -123,6 +128,9 @@ class TypeCombination
 
     /** @var ?bool */
     private $all_arrays_lists;
+
+    /** @var ?bool */
+    private $all_arrays_callable;
 
     /** @var ?bool */
     private $all_arrays_class_string_maps;
@@ -292,7 +300,7 @@ class TypeCombination
                     && $combination->array_type_params[0]->allStringLiterals()
                     && $combination->array_always_filled
                 ) {
-                    foreach ($combination->array_type_params[0]->getTypes() as $atomic_key_type) {
+                    foreach ($combination->array_type_params[0]->getAtomicTypes() as $atomic_key_type) {
                         if ($atomic_key_type instanceof TLiteralString) {
                             $combination->objectlike_entries[$atomic_key_type->value]
                                 = $combination->array_type_params[1];
@@ -327,7 +335,11 @@ class TypeCombination
                     }
 
                     if ($combination->objectlike_entries) {
-                        $objectlike = new ObjectLike($combination->objectlike_entries);
+                        if ($combination->all_arrays_callable) {
+                            $objectlike = new TCallableObjectLikeArray($combination->objectlike_entries);
+                        } else {
+                            $objectlike = new ObjectLike($combination->objectlike_entries);
+                        }
 
                         if ($combination->objectlike_sealed && !$combination->array_type_params) {
                             $objectlike->sealed = true;
@@ -428,7 +440,9 @@ class TypeCombination
                 }
             }
 
-            if ($combination->array_always_filled
+            if ($combination->all_arrays_callable) {
+                $array_type = new TCallableArray($generic_type_params);
+            } elseif ($combination->array_always_filled
                 || ($combination->array_sometimes_filled && $overwrite_empty_array)
                 || ($combination->objectlike_entries
                     && $combination->objectlike_sealed
@@ -471,7 +485,7 @@ class TypeCombination
             $combination->extra_types = self::combineTypes(
                 array_values($combination->extra_types),
                 $codebase
-            )->getTypes();
+            )->getAtomicTypes();
         }
 
         foreach ($combination->builtin_type_params as $generic_type => $generic_type_params) {
@@ -510,7 +524,7 @@ class TypeCombination
                     $codebase
                 );
 
-                foreach ($object_type->getTypes() as $object_atomic_type) {
+                foreach ($object_type->getAtomicTypes() as $object_atomic_type) {
                     if ($object_atomic_type instanceof TNamedObject) {
                         $new_types[] = new TClassString($object_atomic_type->value, $object_atomic_type);
                     } elseif ($object_atomic_type instanceof TObject) {
@@ -716,6 +730,10 @@ class TypeCombination
         }
 
         if ($type instanceof TArray && $type_key === 'array') {
+            if ($type instanceof TCallableArray && isset($combination->value_types['callable'])) {
+                return;
+            }
+
             foreach ($type->type_params as $i => $type_param) {
                 if (isset($combination->array_type_params[$i])) {
                     $combination->array_type_params[$i] = Type::combineUnionTypes(
@@ -747,7 +765,19 @@ class TypeCombination
                 $combination->all_arrays_lists = false;
                 $combination->all_arrays_class_string_maps = false;
             }
-        } elseif ($type instanceof TList) {
+
+            if ($type instanceof TCallableArray) {
+                if ($combination->all_arrays_callable !== false) {
+                    $combination->all_arrays_callable = true;
+                }
+            } else {
+                $combination->all_arrays_callable = false;
+            }
+
+            return null;
+        }
+
+        if ($type instanceof TList) {
             foreach ([Type::getInt(), $type->type_param] as $i => $type_param) {
                 if (isset($combination->array_type_params[$i])) {
                     $combination->array_type_params[$i] = Type::combineUnionTypes(
@@ -779,8 +809,13 @@ class TypeCombination
                 $combination->all_arrays_lists = true;
             }
 
+            $combination->all_arrays_callable = false;
             $combination->all_arrays_class_string_maps = false;
-        } elseif ($type instanceof Atomic\TClassStringMap) {
+
+            return null;
+        }
+
+        if ($type instanceof Atomic\TClassStringMap) {
             foreach ([$type->getStandinKeyParam(), $type->value_param] as $i => $type_param) {
                 if (isset($combination->array_type_params[$i])) {
                     $combination->array_type_params[$i] = Type::combineUnionTypes(
@@ -801,7 +836,11 @@ class TypeCombination
                 $combination->class_string_map_names[$type->param_name] = true;
                 $combination->class_string_map_as_types[(string) $type->as_type] = $type->as_type;
             }
-        } elseif (($type instanceof TGenericObject && ($type->value === 'Traversable' || $type->value === 'Generator'))
+
+            return null;
+        }
+
+        if (($type instanceof TGenericObject && ($type->value === 'Traversable' || $type->value === 'Generator'))
             || ($type instanceof TIterable && $type->has_docblock_params)
             || ($type instanceof TArray && $type_key === 'iterable')
         ) {
@@ -817,7 +856,11 @@ class TypeCombination
                     $combination->builtin_type_params[$type_key][$i] = $type_param;
                 }
             }
-        } elseif ($type instanceof TGenericObject) {
+
+            return null;
+        }
+
+        if ($type instanceof TGenericObject) {
             foreach ($type->type_params as $i => $type_param) {
                 if (isset($combination->object_type_params[$type_key][$i])) {
                     $combination->object_type_params[$type_key][$i] = Type::combineUnionTypes(
@@ -830,7 +873,15 @@ class TypeCombination
                     $combination->object_type_params[$type_key][$i] = $type_param;
                 }
             }
-        } elseif ($type instanceof ObjectLike) {
+
+            return null;
+        }
+
+        if ($type instanceof ObjectLike) {
+            if ($type instanceof TCallableObjectLikeArray && isset($combination->value_types['callable'])) {
+                return;
+            }
+
             $existing_objectlike_entries = (bool) $combination->objectlike_entries;
             $possibly_undefined_entries = $combination->objectlike_entries;
             $combination->objectlike_sealed = $combination->objectlike_sealed && $type->sealed;
@@ -899,231 +950,273 @@ class TypeCombination
                 $combination->all_arrays_lists = true;
             }
 
+            if ($type instanceof TCallableObjectLikeArray) {
+                if ($combination->all_arrays_callable !== false) {
+                    $combination->all_arrays_callable = true;
+                }
+            } else {
+                $combination->all_arrays_callable = false;
+            }
+
             $combination->all_arrays_class_string_maps = false;
-        } else {
-            if ($type instanceof TObject) {
-                $combination->named_object_types = null;
-                $combination->value_types[$type_key] = $type;
 
+            return null;
+        }
+
+        if ($type instanceof TObject) {
+            if ($type instanceof TCallableObject && isset($combination->value_types['callable'])) {
+                return;
+            }
+
+            $combination->named_object_types = null;
+            $combination->value_types[$type_key] = $type;
+
+            return null;
+        }
+
+        if ($type instanceof TIterable) {
+            $combination->value_types[$type_key] = $type;
+
+            return null;
+        }
+
+        if ($type instanceof TNamedObject) {
+            if ($combination->named_object_types === null) {
                 return null;
             }
 
-            if ($type instanceof TIterable) {
-                $combination->value_types[$type_key] = $type;
-
+            if (isset($combination->named_object_types[$type_key])) {
                 return null;
             }
 
-            if ($type instanceof TNamedObject) {
-                if ($combination->named_object_types === null) {
-                    return null;
-                }
-
-                if (isset($combination->named_object_types[$type_key])) {
-                    return null;
-                }
-
-                if (!$codebase) {
-                    $combination->named_object_types[$type_key] = $type;
-
-                    return null;
-                }
-
-                if (!$codebase->classlikes->classOrInterfaceExists($type_key)) {
-                    // write this to the main list
-                    $combination->value_types[$type_key] = $type;
-
-                    return null;
-                }
-
-                $is_class = $codebase->classExists($type_key);
-
-                foreach ($combination->named_object_types as $key => $_) {
-                    if ($codebase->classExists($key)) {
-                        if ($codebase->classExtendsOrImplements($key, $type_key)) {
-                            unset($combination->named_object_types[$key]);
-                            continue;
-                        }
-
-                        if ($is_class) {
-                            if ($codebase->classExtends($type_key, $key)) {
-                                return null;
-                            }
-                        }
-                    } else {
-                        if ($codebase->interfaceExtends($key, $type_key)) {
-                            unset($combination->named_object_types[$key]);
-                            continue;
-                        }
-
-                        if ($is_class) {
-                            if ($codebase->classImplements($type_key, $key)) {
-                                return null;
-                            }
-                        } else {
-                            if ($codebase->interfaceExtends($type_key, $key)) {
-                                return null;
-                            }
-                        }
-                    }
-                }
-
+            if (!$codebase) {
                 $combination->named_object_types[$type_key] = $type;
 
                 return null;
             }
 
-            if ($type instanceof TScalar) {
-                $combination->strings = null;
-                $combination->ints = null;
-                $combination->floats = null;
-                unset(
-                    $combination->value_types['string'],
-                    $combination->value_types['int'],
-                    $combination->value_types['bool'],
-                    $combination->value_types['true'],
-                    $combination->value_types['false'],
-                    $combination->value_types['float']
-                );
+            if (!$codebase->classlikes->classOrInterfaceExists($type_key)) {
+                // write this to the main list
                 $combination->value_types[$type_key] = $type;
-            } elseif ($type instanceof Scalar) {
-                if (isset($combination->value_types['scalar'])) {
-                    return null;
-                }
 
-                if ($type instanceof TArrayKey) {
-                    $combination->strings = null;
-                    $combination->ints = null;
-                    unset(
-                        $combination->value_types['string'],
-                        $combination->value_types['int']
-                    );
-                    $combination->value_types[$type_key] = $type;
-                } elseif ($type instanceof TString) {
-                    if (isset($combination->value_types['array-key'])) {
-                        return null;
+                return null;
+            }
+
+            $is_class = $codebase->classExists($type_key);
+
+            foreach ($combination->named_object_types as $key => $_) {
+                if ($codebase->classExists($key)) {
+                    if ($codebase->classExtendsOrImplements($key, $type_key)) {
+                        unset($combination->named_object_types[$key]);
+                        continue;
                     }
 
-                    if ($type instanceof Type\Atomic\TTemplateParamClass) {
-                        $combination->value_types[$type_key] = $type;
-                    } elseif ($type instanceof Type\Atomic\TClassString) {
-                        if (!$type->as_type) {
-                            $combination->class_string_types['object'] = new TObject();
-                        } else {
-                            $combination->class_string_types[$type->as] = $type->as_type;
+                    if ($is_class) {
+                        if ($codebase->classExtends($type_key, $key)) {
+                            return null;
                         }
-                    } elseif ($type instanceof TLiteralString) {
-                        if ($combination->strings !== null && count($combination->strings) < $literal_limit) {
-                            $combination->strings[$type_key] = $type;
-                        } else {
-                            $shared_classlikes = $codebase ? $combination->getSharedTypes($codebase) : [];
-
-                            $combination->strings = null;
-
-                            if (isset($combination->value_types['class-string'])
-                                && $type instanceof TLiteralClassString
-                            ) {
-                                // do nothing
-                            } elseif ($type instanceof TLiteralClassString) {
-                                $type_classlikes = $codebase
-                                    ? self::getClassLikes($codebase, $type->value)
-                                    : [];
-
-                                $mutual = array_intersect_key($type_classlikes, $shared_classlikes);
-
-                                if ($mutual) {
-                                    $first_class = array_keys($mutual)[0];
-
-                                    $combination->class_string_types[$first_class] = new TNamedObject($first_class);
-                                } else {
-                                    $combination->class_string_types['object'] = new TObject();
-                                }
-                            } else {
-                                $combination->value_types['string'] = new TString();
-                            }
-                        }
-                    } else {
-                        $type_key = 'string';
-
-                        if (!isset($combination->value_types['string'])) {
-                            if ($combination->strings) {
-                                $has_non_literal_class_string = false;
-
-                                $shared_classlikes = $codebase ? $combination->getSharedTypes($codebase) : [];
-
-                                foreach ($combination->strings as $string_type) {
-                                    if (!$string_type instanceof TLiteralClassString) {
-                                        $has_non_literal_class_string = true;
-                                        break;
-                                    }
-                                }
-
-                                if ($has_non_literal_class_string ||
-                                    !$type instanceof TClassString
-                                ) {
-                                    $combination->value_types[$type_key] = new TString();
-                                } else {
-                                    if (isset($shared_classlikes[$type->as]) && $type->as_type) {
-                                        $combination->class_string_types[$type->as] = $type->as_type;
-                                    } else {
-                                        $combination->class_string_types['object'] = new TObject();
-                                    }
-                                }
-                            } else {
-                                $combination->value_types[$type_key] = $type;
-                            }
-                        } elseif (get_class($combination->value_types['string']) !== TString::class) {
-                            if (get_class($type) === TString::class) {
-                                $combination->value_types['string'] = $type;
-                            } elseif ($combination->value_types['string'] instanceof TTraitString
-                                && $type instanceof TClassString
-                            ) {
-                                $combination->value_types['trait-string'] = $combination->value_types['string'];
-                                $combination->value_types['class-string'] = $type;
-
-                                unset($combination->value_types['string']);
-                            } elseif (get_class($combination->value_types['string']) !== get_class($type)) {
-                                $combination->value_types['string'] = new TString();
-                            }
-                        }
-
-                        $combination->strings = null;
-                    }
-                } elseif ($type instanceof TInt) {
-                    if (isset($combination->value_types['array-key'])) {
-                        return null;
-                    }
-
-                    if ($type instanceof TLiteralInt) {
-                        if ($combination->ints !== null && count($combination->ints) < $literal_limit) {
-                            $combination->ints[$type_key] = $type;
-                        } else {
-                            $combination->ints = null;
-                            $combination->value_types['int'] = new TInt();
-                        }
-                    } else {
-                        $combination->ints = null;
-                        $combination->value_types['int'] = $type;
-                    }
-                } elseif ($type instanceof TFloat) {
-                    if ($type instanceof TLiteralFloat) {
-                        if ($combination->floats !== null && count($combination->floats) < $literal_limit) {
-                            $combination->floats[$type_key] = $type;
-                        } else {
-                            $combination->floats = null;
-                            $combination->value_types['float'] = new TFloat();
-                        }
-                    } else {
-                        $combination->floats = null;
-                        $combination->value_types['float'] = $type;
                     }
                 } else {
-                    $combination->value_types[$type_key] = $type;
+                    if ($codebase->interfaceExtends($key, $type_key)) {
+                        unset($combination->named_object_types[$key]);
+                        continue;
+                    }
+
+                    if ($is_class) {
+                        if ($codebase->classImplements($type_key, $key)) {
+                            return null;
+                        }
+                    } else {
+                        if ($codebase->interfaceExtends($type_key, $key)) {
+                            return null;
+                        }
+                    }
+                }
+            }
+
+            $combination->named_object_types[$type_key] = $type;
+
+            return null;
+        }
+
+        if ($type instanceof TScalar) {
+            $combination->strings = null;
+            $combination->ints = null;
+            $combination->floats = null;
+            unset(
+                $combination->value_types['string'],
+                $combination->value_types['int'],
+                $combination->value_types['bool'],
+                $combination->value_types['true'],
+                $combination->value_types['false'],
+                $combination->value_types['float']
+            );
+            $combination->value_types[$type_key] = $type;
+
+            return null;
+        }
+
+        if ($type instanceof Scalar && isset($combination->value_types['scalar'])) {
+            return null;
+        }
+
+        if ($type instanceof TArrayKey) {
+            $combination->strings = null;
+            $combination->ints = null;
+            unset(
+                $combination->value_types['string'],
+                $combination->value_types['int']
+            );
+            $combination->value_types[$type_key] = $type;
+
+            return null;
+        }
+
+        if ($type instanceof TString) {
+            if ($type instanceof TCallableString && isset($combination->value_types['callable'])) {
+                return;
+            }
+
+            if (isset($combination->value_types['array-key'])) {
+                return null;
+            }
+
+            if ($type instanceof Type\Atomic\TTemplateParamClass) {
+                $combination->value_types[$type_key] = $type;
+            } elseif ($type instanceof Type\Atomic\TClassString) {
+                if (!$type->as_type) {
+                    $combination->class_string_types['object'] = new TObject();
+                } else {
+                    $combination->class_string_types[$type->as] = $type->as_type;
+                }
+            } elseif ($type instanceof TLiteralString) {
+                if ($combination->strings !== null && count($combination->strings) < $literal_limit) {
+                    $combination->strings[$type_key] = $type;
+                } else {
+                    $shared_classlikes = $codebase ? $combination->getSharedTypes($codebase) : [];
+
+                    $combination->strings = null;
+
+                    if (isset($combination->value_types['class-string'])
+                        && $type instanceof TLiteralClassString
+                    ) {
+                        // do nothing
+                    } elseif ($type instanceof TLiteralClassString) {
+                        $type_classlikes = $codebase
+                            ? self::getClassLikes($codebase, $type->value)
+                            : [];
+
+                        $mutual = array_intersect_key($type_classlikes, $shared_classlikes);
+
+                        if ($mutual) {
+                            $first_class = array_keys($mutual)[0];
+
+                            $combination->class_string_types[$first_class] = new TNamedObject($first_class);
+                        } else {
+                            $combination->class_string_types['object'] = new TObject();
+                        }
+                    } else {
+                        $combination->value_types['string'] = new TString();
+                    }
                 }
             } else {
-                $combination->value_types[$type_key] = $type;
+                $type_key = 'string';
+
+                if (!isset($combination->value_types['string'])) {
+                    if ($combination->strings) {
+                        $has_non_literal_class_string = false;
+
+                        $shared_classlikes = $codebase ? $combination->getSharedTypes($codebase) : [];
+
+                        foreach ($combination->strings as $string_type) {
+                            if (!$string_type instanceof TLiteralClassString) {
+                                $has_non_literal_class_string = true;
+                                break;
+                            }
+                        }
+
+                        if ($has_non_literal_class_string ||
+                            !$type instanceof TClassString
+                        ) {
+                            $combination->value_types[$type_key] = new TString();
+                        } else {
+                            if (isset($shared_classlikes[$type->as]) && $type->as_type) {
+                                $combination->class_string_types[$type->as] = $type->as_type;
+                            } else {
+                                $combination->class_string_types['object'] = new TObject();
+                            }
+                        }
+                    } else {
+                        $combination->value_types[$type_key] = $type;
+                    }
+                } elseif (get_class($combination->value_types['string']) !== TString::class) {
+                    if (get_class($type) === TString::class) {
+                        $combination->value_types['string'] = $type;
+                    } elseif ($combination->value_types['string'] instanceof TTraitString
+                        && $type instanceof TClassString
+                    ) {
+                        $combination->value_types['trait-string'] = $combination->value_types['string'];
+                        $combination->value_types['class-string'] = $type;
+
+                        unset($combination->value_types['string']);
+                    } elseif (get_class($combination->value_types['string']) !== get_class($type)) {
+                        $combination->value_types['string'] = new TString();
+                    }
+                }
+
+                $combination->strings = null;
+            }
+
+            return null;
+        }
+
+        if ($type instanceof TInt) {
+            if (isset($combination->value_types['array-key'])) {
+                return null;
+            }
+
+            if ($type instanceof TLiteralInt) {
+                if ($combination->ints !== null && count($combination->ints) < $literal_limit) {
+                    $combination->ints[$type_key] = $type;
+                } else {
+                    $combination->ints = null;
+                    $combination->value_types['int'] = new TInt();
+                }
+            } else {
+                $combination->ints = null;
+                $combination->value_types['int'] = $type;
+            }
+
+            return null;
+        }
+
+        if ($type instanceof TFloat) {
+            if ($type instanceof TLiteralFloat) {
+                if ($combination->floats !== null && count($combination->floats) < $literal_limit) {
+                    $combination->floats[$type_key] = $type;
+                } else {
+                    $combination->floats = null;
+                    $combination->value_types['float'] = new TFloat();
+                }
+            } else {
+                $combination->floats = null;
+                $combination->value_types['float'] = $type;
+            }
+
+            return null;
+        }
+
+        if ($type instanceof TCallable && $type_key === 'callable') {
+            if (($combination->value_types['string'] ?? null) instanceof TCallableString) {
+                unset($combination->value_types['string']);
+            } elseif (!empty($combination->array_type_params) && $combination->all_arrays_callable) {
+                $combination->array_type_params = [];
+            } elseif (isset($combination->value_types['callable-object'])) {
+                unset($combination->value_types['callable-object']);
             }
         }
+
+        $combination->value_types[$type_key] = $type;
     }
 
     /**

@@ -1813,6 +1813,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
             ],
             'avoidOOM' => [
                 '<?php
+                    /** @psalm-suppress MixedInferredReturnType */
                     function gameOver(
                         int $b0,
                         int $b1,
@@ -2390,6 +2391,147 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         return $collection;
                     }'
             ],
+            'memoizeChainedImmutableCallsInside' => [
+                '<?php
+                    class Assessment {
+                        private ?string $root = null;
+
+                        /** @psalm-mutation-free */
+                        public function getRoot(): ?string {
+                            return $this->root;
+                        }
+                    }
+
+                    class Project {
+                        private ?Assessment $assessment = null;
+
+                        /** @psalm-mutation-free */
+                        public function getAssessment(): ?Assessment {
+                            return $this->assessment;
+                        }
+                    }
+
+                    function f(Project $project): int {
+                        if (($project->getAssessment() !== null)
+                            && ($project->getAssessment()->getRoot() !== null)
+                        ) {
+                            return strlen($project->getAssessment()->getRoot());
+                        }
+
+                        throw new RuntimeException();
+                    }',
+            ],
+            'memoizeChainedImmutableCallsOutside' => [
+                '<?php
+                    class Assessment {
+                        private ?string $root = null;
+
+                        /** @psalm-mutation-free */
+                        public function getRoot(): ?string {
+                            return $this->root;
+                        }
+                    }
+
+                    class Project {
+                        private ?Assessment $assessment = null;
+
+                        /** @psalm-mutation-free */
+                        public function getAssessment(): ?Assessment {
+                            return $this->assessment;
+                        }
+                    }
+
+                    function f(Project $project): int {
+                        if (($project->getAssessment() === null)
+                            || ($project->getAssessment()->getRoot() === null)
+                        ) {
+                            throw new RuntimeException();
+                        }
+
+                        return strlen($project->getAssessment()->getRoot());
+                    }',
+            ],
+            'propertyChainedOutside' => [
+                '<?php
+                    class Assessment {
+                        public ?string $root = null;
+                    }
+
+                    class Project {
+                        public ?Assessment $assessment = null;
+                    }
+
+                    function f(Project $project): int {
+                        if (($project->assessment === null)
+                            || ($project->assessment->root === null)
+                        ) {
+                            throw new RuntimeException();
+                        }
+
+                        return strlen($project->assessment->root);
+                    }'
+            ],
+            'castIsType' => [
+                '<?php
+                    /**
+                     * @param string|int $s
+                     */
+                    function foo($s, int $f = 1) : void {
+                        if ($f === 1
+                            && (string) $s === $s
+                            && \strpos($s, "foo") !== false
+                        ) {}
+                    }'
+            ],
+            'assertNotFalseOnSameNamedVar' => [
+                '<?php
+                    function foo(): int {
+                        $a = rand(0, 1) ? 3 : false;
+
+                        if ($a !== false && rand(0, 1)) {
+                            $a = rand(0, 1) ? 3 : false;
+                            if ($a !== false) {
+                                return $a;
+                            }
+                        }
+
+                        return 0;
+                    }',
+            ],
+            'assertHardConditionalWithString' => [
+                '<?php
+                    interface Convertor {
+                        function maybeConvert(string $value): ?SomeObject;
+                    }
+
+                    interface SomeObject {
+                        function isValid(): bool;
+                    }
+
+                    function exampleWithOr(Convertor $convertor, string $value): SomeObject {
+                        if (($value = $convertor->maybeConvert($value)) === null || !$value->isValid()) {
+                            throw new Exception();
+                        }
+
+                        return $value; // $value is SomeObject here and cannot be a string
+                    }'
+            ],
+            'nonEmptyStringFromConcat' => [
+                '<?php
+                    /**
+                     * @psalm-param non-empty-string $name
+                     */
+                    function sayHello(string $name) : void {
+                        echo "Hello " . $name;
+                    }
+
+                    function takeInput() : void {
+                        if (isset($_GET["name"]) && is_string($_GET["name"])) {
+                            $name = trim($_GET["name"]);
+                            sayHello("a" . $name);
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -2745,6 +2887,23 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         if ($app || rand(0, 1)) {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'nonEmptyString' => [
+                '<?php
+                    /**
+                     * @psalm-param non-empty-string $name
+                     */
+                    function sayHello(string $name) : void {
+                        echo "Hello " . $name;
+                    }
+
+                    function takeInput() : void {
+                        if (isset($_GET["name"]) && is_string($_GET["name"])) {
+                            $name = trim($_GET["name"]);
+                            sayHello($name);
+                        }
+                    }',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
         ];
     }
