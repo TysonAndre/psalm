@@ -918,11 +918,15 @@ class CommentAnalyzer
             }
         }
 
-        if (isset($parsed_docblock['specials']['psalm-seal-properties']) || isset($parsed_docblock['specials']['phan-forbid-undeclared-magic-properties'])) {
+        if (isset($parsed_docblock['specials']['psalm-seal-properties']) ||
+            isset($parsed_docblock['specials']['phan-forbid-undeclared-magic-properties']) ||
+            isset($parsed_docblock['specials']['seal-properties'])) {
             $info->sealed_properties = true;
         }
 
-        if (isset($parsed_docblock['specials']['psalm-seal-methods']) || isset($parsed_docblock['specials']['phan-forbid-undeclared-magic-methods'])) {
+        if (isset($parsed_docblock['specials']['psalm-seal-methods']) ||
+            isset($parsed_docblock['specials']['phan-forbid-undeclared-magic-methods']) ||
+            isset($parsed_docblock['specials']['seal-methods'])) {
             $info->sealed_methods = true;
         }
 
