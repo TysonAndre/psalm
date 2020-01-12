@@ -76,6 +76,26 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
                 null,
                 $statements_source->getSuppressedIssues()
             );
+
+            if ($first_arg_array instanceof Type\Atomic\ObjectLike
+                && $first_arg_array->is_list
+                && $key_type->isSingleIntLiteral()
+                && $key_type->getSingleIntLiteral()->value === 0
+            ) {
+                return new Type\Union([
+                    new Type\Atomic\TList(
+                        $inner_type
+                    ),
+                ]);
+            }
+
+            if ($key_type->getLiteralStrings()) {
+                $key_type->addType(new Type\Atomic\TString);
+            }
+
+            if ($key_type->getLiteralInts()) {
+                $key_type->addType(new Type\Atomic\TInt);
+            }
         } elseif (!isset($call_args[2])) {
             $function_call_arg = $call_args[1];
 

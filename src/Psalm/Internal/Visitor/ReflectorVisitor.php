@@ -536,6 +536,16 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     )
                 ) {
                     $this->exists_cond_expr = $node->cond->left;
+                } elseif ($node->cond instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
+                    && $node->cond->right instanceof PhpParser\Node\Expr\FuncCall
+                    && $node->cond->right->name instanceof PhpParser\Node\Name
+                    && (
+                        $node->cond->right->name->parts === ['function_exists']
+                        || $node->cond->right->name->parts === ['class_exists']
+                        || $node->cond->right->name->parts === ['interface_exists']
+                    )
+                ) {
+                    $this->exists_cond_expr = $node->cond->right;
                 }
             }
 
@@ -2372,25 +2382,39 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         foreach ($docblock_info->params_out as $docblock_param_out) {
             $param_name = substr($docblock_param_out['name'], 1);
 
+            try {
+                $out_type = Type::parseTokens(
+                    Type::fixUpLocalType(
+                        $docblock_param_out['type'],
+                        $this->aliases,
+                        $this->function_template_types + $class_template_types,
+                        $this->type_aliases
+                    ),
+                    null,
+                    $this->function_template_types + $class_template_types
+                );
+            } catch (TypeParseTreeException $e) {
+                if (IssueBuffer::accepts(
+                    new InvalidDocblock(
+                        $e->getMessage() . ' in docblock for ' . $cased_function_id,
+                        new CodeLocation($this->file_scanner, $stmt, null, true)
+                    )
+                )) {
+                }
+
+                $storage->has_docblock_issues = true;
+
+                continue;
+            }
+
+            $out_type->queueClassLikesForScanning(
+                $this->codebase,
+                $this->file_storage,
+                $storage->template_types ?: []
+            );
+
             foreach ($storage->params as $i => $param_storage) {
                 if ($param_storage->name === $param_name) {
-                    $out_type = Type::parseTokens(
-                        Type::fixUpLocalType(
-                            $docblock_param_out['type'],
-                            $this->aliases,
-                            $this->function_template_types + $class_template_types,
-                            $this->type_aliases
-                        ),
-                        null,
-                        $this->function_template_types + $class_template_types
-                    );
-
-                    $out_type->queueClassLikesForScanning(
-                        $this->codebase,
-                        $this->file_storage,
-                        $storage->template_types ?: []
-                    );
-
                     $storage->param_out_types[$i] = $out_type;
                 }
             }
