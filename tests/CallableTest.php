@@ -713,6 +713,24 @@ class CallableTest extends TestCase
                         }
                     }'
             ],
+            'destructureCallableArray' => [
+                '<?php
+                    function getCallable(): callable {
+                        return [DateTimeImmutable::class, "createFromFormat"];
+                    }
+
+                    $callable = getCallable();
+
+                    if (!is_array($callable)) {
+                      exit;
+                    }
+
+                    [$classOrObject, $method] = $callable;',
+                [
+                    '$classOrObject' => 'class-string|object',
+                    '$method' => 'string'
+                ]
+            ],
         ];
     }
 
@@ -968,6 +986,15 @@ class CallableTest extends TestCase
                         takesSpecificCallable($c);
                     }',
                 'error_message' => 'MixedArgumentTypeCoercion'
+            ],
+            'undefinedVarInBareCallable' => [
+                '<?php
+                    $fn = function(int $a): void{};
+                    function a(callable $fn): void{
+                      $fn(++$a);
+                    }
+                    a($fn);',
+                'error_message' => 'UndefinedVariable',
             ],
         ];
     }

@@ -235,6 +235,17 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             );
         }
 
+        if ($assertion === 'resource' && !$existing_var_type->hasMixed()) {
+            return self::reconcileResource(
+                $existing_var_type,
+                $key,
+                $code_location,
+                $suppressed_issues,
+                $failed_reconciliation,
+                $is_equality
+            );
+        }
+
         if ($assertion === 'callable' && !$existing_var_type->hasMixed()) {
             return self::reconcileCallable(
                 $codebase,
@@ -1388,6 +1399,57 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
      * @param   string[]  $suppressed_issues
      * @param   0|1|2    $failed_reconciliation
      */
+    private static function reconcileResource(
+        Union $existing_var_type,
+        ?string $key,
+        ?CodeLocation $code_location,
+        array $suppressed_issues,
+        int &$failed_reconciliation,
+        bool $is_equality
+    ) : Union {
+        $old_var_type_string = $existing_var_type->getId();
+        $existing_var_atomic_types = $existing_var_type->getAtomicTypes();
+
+        $resource_types = [];
+        $did_remove_type = false;
+
+        foreach ($existing_var_atomic_types as $type) {
+            if ($type instanceof TResource) {
+                $resource_types[] = $type;
+            } else {
+                $did_remove_type = true;
+            }
+        }
+
+        if ((!$resource_types || !$did_remove_type) && !$is_equality) {
+            if ($key && $code_location) {
+                self::triggerIssueForImpossible(
+                    $existing_var_type,
+                    $old_var_type_string,
+                    $key,
+                    'resource',
+                    !$did_remove_type,
+                    $code_location,
+                    $suppressed_issues
+                );
+            }
+        }
+
+        if ($resource_types) {
+            return new Type\Union($resource_types);
+        }
+
+        $failed_reconciliation = 2;
+
+        return $existing_var_type->from_docblock
+            ? Type::getMixed()
+            : Type::getEmpty();
+    }
+
+    /**
+     * @param   string[]  $suppressed_issues
+     * @param   0|1|2    $failed_reconciliation
+     */
     private static function reconcileCountable(
         Codebase $codebase,
         Union $existing_var_type,
@@ -2005,7 +2067,6 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         $did_remove_type = $existing_var_type->hasDefinitelyNumericType(false)
             || $existing_var_type->hasType('iterable');
 
-
         if ($existing_var_type->hasMixed()) {
             if ($existing_var_type->isMixed()
                 && $existing_var_atomic_types['mixed'] instanceof Type\Atomic\TNonEmptyMixed
@@ -2272,7 +2333,9 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             }
         }
 
-        if (!$did_remove_type || empty($existing_var_type->getAtomicTypes())) {
+        if ((!$did_remove_type || empty($existing_var_type->getAtomicTypes()))
+            && ($assertion !== 'empty' || !$existing_var_type->possibly_undefined)
+        ) {
             if ($key && $code_location) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
@@ -2292,7 +2355,9 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
 
         $failed_reconciliation = 2;
 
-        return Type::getMixed();
+        return $assertion === 'empty' && $existing_var_type->possibly_undefined
+            ? Type::getEmpty()
+            : Type::getMixed();
     }
 
     /**

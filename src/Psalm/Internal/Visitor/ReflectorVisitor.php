@@ -349,6 +349,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $this->registerClassMapFunctionCall($function_id, $node);
             }
         } elseif ($node instanceof PhpParser\Node\Stmt\TraitUse) {
+            if ($this->skip_if_descendants) {
+                return;
+            }
+
             if (!$this->classlike_storages) {
                 throw new \LogicException('$this->classlike_storages should not be empty');
             }
@@ -2742,6 +2746,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         foreach ($namespaced_type->getAtomicTypes() as $namespaced_type_part) {
             if ($namespaced_type_part instanceof Type\Atomic\TAssertionFalsy
                 || ($namespaced_type_part instanceof Type\Atomic\TList
+                    && !$namespaced_type_part instanceof Type\Atomic\TNonEmptyList
                     && $namespaced_type_part->type_param->isMixed())
                 || ($namespaced_type_part instanceof Type\Atomic\TArray
                     && $namespaced_type_part->type_params[0]->isArrayKey()

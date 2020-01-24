@@ -645,6 +645,10 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\Array_
             || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
             || $arg->value instanceof PhpParser\Node\Scalar\Encapsed
+            || $arg->value instanceof PhpParser\Node\Expr\PostInc
+            || $arg->value instanceof PhpParser\Node\Expr\PostDec
+            || $arg->value instanceof PhpParser\Node\Expr\PreInc
+            || $arg->value instanceof PhpParser\Node\Expr\PreDec
         ) {
             $was_inside_call = $context->inside_call;
             $context->inside_call = true;
@@ -1889,7 +1893,11 @@ class CallAnalyzer
                 $array_atomic_type = $arg_type->getAtomicTypes()['array'];
 
                 if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                    $arg_type = $array_atomic_type->getGenericValueType();
+                    if ($array_atomic_type->is_list && isset($array_atomic_type->properties[$argument_offset])) {
+                        $arg_type = clone $array_atomic_type->properties[$argument_offset];
+                    } else {
+                        $arg_type = $array_atomic_type->getGenericValueType();
+                    }
                 } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
                     $arg_type = $array_atomic_type->type_param;
                 } else {
@@ -2033,14 +2041,11 @@ class CallAnalyzer
                 break;
             }
 
-            $array_arg = isset($arg->value) ? $arg->value : null;
-
             /**
              * @psalm-suppress PossiblyUndefinedStringArrayOffset
              * @var ObjectLike|TArray|TList|null
              */
-            $array_arg_type = $array_arg
-                    && ($arg_value_type = $statements_analyzer->node_data->getType($array_arg))
+            $array_arg_type = ($arg_value_type = $statements_analyzer->node_data->getType($arg->value))
                     && ($types = $arg_value_type->getAtomicTypes())
                     && isset($types['array'])
                 ? $types['array']

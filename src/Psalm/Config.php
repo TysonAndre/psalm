@@ -7,6 +7,8 @@ use function array_pop;
 use function array_unique;
 use function class_exists;
 use Composer\Autoload\ClassLoader;
+use DOMDocument;
+
 use function count;
 use const DIRECTORY_SEPARATOR;
 use function dirname;
@@ -18,9 +20,11 @@ use function filetype;
 use function get_class;
 use function get_defined_constants;
 use function get_defined_functions;
+use function glob;
 use function in_array;
 use function intval;
 use function is_dir;
+use function is_file;
 use function json_decode;
 use function libxml_clear_errors;
 use const LIBXML_ERR_ERROR;
@@ -65,6 +69,10 @@ use function sys_get_temp_dir;
 use function trigger_error;
 use function unlink;
 use function version_compare;
+use function getcwd;
+use function chdir;
+use function simplexml_import_dom;
+use const LIBXML_NONET;
 
 class Config
 {
@@ -612,16 +620,31 @@ class Config
             $current_dir = $base_dir;
         }
 
-        self::validateXmlConfig($file_contents);
+        self::validateXmlConfig($base_dir, $file_contents);
 
         return self::fromXmlAndPaths($base_dir, $file_contents, $current_dir);
     }
 
+    private static function loadDomDocument(string $base_dir, string $file_contents): DOMDocument
+    {
+        $dom_document = new DOMDocument();
+
+        // there's no obvious way to set xml:base for a document when loading it from string
+        // so instead we're changing the current directory instead to be able to process XIncludes
+        $oldpwd = getcwd();
+        chdir($base_dir);
+
+        $dom_document->loadXML($file_contents, LIBXML_NONET);
+        $dom_document->xinclude(LIBXML_NONET);
+
+        chdir($oldpwd);
+        return $dom_document;
+    }
 
     /**
      * @throws ConfigException
      */
-    private static function validateXmlConfig(string $file_contents): void
+    private static function validateXmlConfig(string $base_dir, string $file_contents): void
     {
         $schema_path = dirname(dirname(__DIR__)) . '/config.xsd';
 
@@ -629,8 +652,7 @@ class Config
             throw new ConfigException('Cannot locate config schema');
         }
 
-        $dom_document = new \DOMDocument();
-        $dom_document->loadXML($file_contents);
+        $dom_document = self::loadDomDocument($base_dir, $file_contents);
 
         $psalm_nodes = $dom_document->getElementsByTagName('psalm');
 
@@ -647,8 +669,7 @@ class Config
             $psalm_node->setAttribute('xmlns', 'https://getpsalm.org/schema/config');
 
             $old_dom_document = $dom_document;
-            $dom_document = new \DOMDocument();
-            $dom_document->loadXML($old_dom_document->saveXML());
+            $dom_document = self::loadDomDocument($base_dir, $old_dom_document->saveXML());
         }
 
         // Enable user error handling
@@ -681,7 +702,9 @@ class Config
     {
         $config = new static();
 
-        $config_xml = new SimpleXMLElement($file_contents);
+        $dom_document = self::loadDomDocument($base_dir, $file_contents);
+
+        $config_xml = simplexml_import_dom($dom_document);
 
         $booleanAttributes = [
             'useDocblockTypes' => 'use_docblock_types',
@@ -1563,8 +1586,16 @@ class Config
 
         $phpstorm_meta_path = $this->base_dir . DIRECTORY_SEPARATOR . '.phpstorm.meta.php';
 
-        if (file_exists($phpstorm_meta_path)) {
+        if (is_file($phpstorm_meta_path)) {
             $stub_files[] = $phpstorm_meta_path;
+        } elseif (is_dir($phpstorm_meta_path)) {
+            $phpstorm_meta_path = realpath($phpstorm_meta_path);
+
+            foreach (glob($phpstorm_meta_path . '/*.meta.php') as $glob) {
+                if (is_file($glob) && realpath(dirname($glob)) === $phpstorm_meta_path) {
+                    $stub_files[] = $glob;
+                }
+            }
         }
 
         if ($this->load_xdebug_stub) {

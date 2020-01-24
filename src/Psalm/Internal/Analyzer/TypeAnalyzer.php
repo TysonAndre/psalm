@@ -299,13 +299,13 @@ class TypeAnalyzer
     /**
      * Used for comparing signature typehints, uses PHP's light contravariance rules
      *
-     * @param  Type\Union   $input_type
+     * @param  ?Type\Union  $input_type
      * @param  Type\Union   $container_type
      *
      * @return bool
      */
     public static function isContainedByInPhp(
-        Type\Union $input_type = null,
+        ?Type\Union $input_type,
         Type\Union $container_type
     ) {
         if (!$input_type) {
@@ -756,20 +756,19 @@ class TypeAnalyzer
         if ($container_type_part instanceof ObjectLike
             && $input_type_part instanceof TArray
         ) {
-            $all_string_literals = true;
+            $all_string_int_literals = true;
 
             $properties = [];
 
             foreach ($input_type_part->type_params[0]->getAtomicTypes() as $atomic_key_type) {
-                if ($atomic_key_type instanceof TLiteralString) {
+                if ($atomic_key_type instanceof TLiteralString || $atomic_key_type instanceof TLiteralInt) {
                     $properties[$atomic_key_type->value] = $input_type_part->type_params[1];
                 } else {
-                    $all_string_literals = false;
-                    break;
+                    $all_string_int_literals = false;
                 }
             }
 
-            if ($all_string_literals) {
+            if ($all_string_int_literals) {
                 $input_type_part = new ObjectLike($properties);
             }
         }
@@ -2164,6 +2163,8 @@ class TypeAnalyzer
                 || !$container_type_part instanceof TNonEmptyList;
         }
 
+        $prior_input_type_part = $input_type_part;
+
         if (($input_type_part instanceof TArray
                 || $input_type_part instanceof ObjectLike
                 || $input_type_part instanceof TList
@@ -2305,8 +2306,16 @@ class TypeAnalyzer
 
         if ($container_type_part instanceof Type\Atomic\TNonEmptyArray
             && !$input_type_part instanceof Type\Atomic\TNonEmptyArray
-            && !($input_type_part instanceof ObjectLike
-                && ($input_type_part->sealed || $input_type_part->previous_value_type)
+            && !($prior_input_type_part instanceof ObjectLike
+                && ($prior_input_type_part->sealed
+                    || $prior_input_type_part->previous_value_type
+                    || \array_filter(
+                        $prior_input_type_part->properties,
+                        function ($prop_type) {
+                            return !$prop_type->possibly_undefined;
+                        }
+                    )
+                )
             )
         ) {
             if ($all_types_contain) {

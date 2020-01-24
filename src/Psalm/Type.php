@@ -113,6 +113,8 @@ abstract class Type
         'list' => true,
         'non-empty-list' => true,
         'class-string-map' => true,
+        'open-resource' => true,
+        'closed-resource' => true,
     ];
 
     /**

@@ -756,6 +756,23 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                         if (!is_string($value)) {}
                     }'
             ],
+            'checkClosedResource' => [
+                '<?php
+                    $fp = tmpfile();
+
+                    if ($fp) {
+                        echo "foo", "\n";
+                    } else {
+                        echo "bar", "\n";
+                    }
+
+                    echo var_export([$fp, is_resource($fp), !! $fp], true);
+
+                    fclose($fp);',
+                [
+                    '$fp' => 'closed-resource',
+                ]
+            ],
         ];
     }
 
@@ -1222,6 +1239,15 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
 
                     function lag(Request $req) : void  {
                         if ($req->headers) {}
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'checkResourceTwice' => [
+                '<?php
+                    $fp = tmpfile();
+
+                    if ($fp && is_resource($fp)) {
+                        if (is_resource($fp)) {}
                     }',
                 'error_message' => 'RedundantCondition',
             ],

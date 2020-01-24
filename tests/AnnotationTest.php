@@ -1053,6 +1053,31 @@ class AnnotationTest extends TestCase
                         return json_decode($json, true);
                     }'
             ],
+            'allowDocblockDefinedObjectLikeArrayIntoNonEmpty' => [
+                '<?php
+                    /** @param non-empty-array $_bar */
+                    function foo(array $_bar) : void { }
+
+                    /** @var array{0:list<string>, 1:list<int>} */
+                    $bar = [[], []];
+
+                    foo($bar);'
+            ],
+            'allowResourceInList' => [
+                '<?php
+                    /** @param list<scalar|array|object|resource|null> $_s */
+                    function foo(array $_s) : void { }'
+            ],
+            'possiblyUndefinedObjectProperty' => [
+                '<?php
+                    function consume(string $value): void {
+                      echo $value;
+                    }
+
+                    /** @var object{value?: string} $data */
+                    $data = json_decode("{}", false);
+                    consume($data->value ?? "");'
+            ],
         ];
     }
 

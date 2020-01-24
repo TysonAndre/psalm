@@ -2429,6 +2429,63 @@ class FunctionCallTest extends TestCase
                         return array_filter([$ofThisInteger]);
                     }'
             ],
+            'arrayMapWithEmptyArrayReturn' => [
+                '<?php
+                    /**
+                     * @param array<array<string>> $elements
+                     * @return list<string>
+                     */
+                    function resolvePossibleFilePaths($elements) : array
+                    {
+                        return array_values(
+                            array_filter(
+                                array_merge(
+                                    ...array_map(
+                                        function (array $element) : array {
+                                            if (rand(0,1) == 1) {
+                                                return [];
+                                            }
+                                            return $element;
+                                        },
+                                        $elements
+                                    )
+                                )
+                            )
+                        );
+                    }'
+            ],
+            'arrayFilterArrowFunction' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    $a = \array_filter(
+                        [new A(), new B()],
+                        function($x) {
+                            return $x instanceof B;
+                        }
+                    );
+
+                    $b = \array_filter(
+                        [new A(), new B()],
+                        fn($x) => $x instanceof B
+                    );',
+                'assertions' => [
+                    '$a' => 'array<int, B>',
+                    '$b' => 'array<int, B>',
+                ],
+            ],
+            'arrayMergeTwoExplicitLists' => [
+                '<?php
+                    /**
+                     * @param list<int> $foo
+                     */
+                    function foo(array $foo) : void {}
+
+                    $foo1 = [1, 2, 3];
+                    $foo2 = [1, 4, 5];
+                    foo(array_merge($foo1, $foo2));'
+            ],
         ];
     }
 

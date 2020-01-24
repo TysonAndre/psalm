@@ -674,12 +674,15 @@ class BinaryOpAnalyzer
                 $naive_type = $statements_analyzer->node_data->getType($stmt->left);
 
                 if ($naive_type
+                    && !$naive_type->possibly_undefined
                     && !$naive_type->hasMixed()
                     && !$naive_type->isNullable()
                 ) {
                     $var_id = ExpressionAnalyzer::getVarId($stmt->left, $context->self);
 
-                    if (!$var_id || !isset($changed_var_ids[$var_id])) {
+                    if (!$var_id
+                        || ($var_id !== '$_SESSION' && $var_id !== '$_SERVER' && !isset($changed_var_ids[$var_id]))
+                    ) {
                         if ($naive_type->from_docblock) {
                             if (IssueBuffer::accepts(
                                 new \Psalm\Issue\DocblockTypeContradiction(
@@ -775,8 +778,8 @@ class BinaryOpAnalyzer
 
             if ($stmt_left_type = $statements_analyzer->node_data->getType($stmt->left)) {
                 $if_return_type_reconciled = AssertionReconciler::reconcile(
-                    '!null',
-                    $stmt_left_type,
+                    'isset',
+                    clone $stmt_left_type,
                     '',
                     $statements_analyzer,
                     $context->inside_loop,
@@ -785,7 +788,7 @@ class BinaryOpAnalyzer
                     $statements_analyzer->getSuppressedIssues()
                 );
 
-                $lhs_type = $if_return_type_reconciled;
+                $lhs_type = clone $if_return_type_reconciled;
             }
 
             $stmt_right_type = null;

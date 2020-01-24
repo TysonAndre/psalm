@@ -596,7 +596,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             );
 
             if ($closure_return_types) {
-                $closure_return_type = new Type\Union($closure_return_types);
+                $closure_return_type = \Psalm\Internal\Type\TypeCombination::combineTypes(
+                    $closure_return_types,
+                    $codebase
+                );
 
                 if (($storage->return_type === $storage->signature_return_type)
                     && (!$storage->return_type
@@ -980,6 +983,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 $context->unreferenced_vars['$' . $function_param->name] = [
                     $function_param->location->getHash() => $function_param->location
                 ];
+            }
+
+            if ($function_param->by_ref) {
+                $context->vars_in_scope['$' . $function_param->name]->by_ref = true;
             }
 
             $parser_param = $this->function->getParams()[$offset];

@@ -525,6 +525,10 @@ class IssetTest extends \Psalm\Tests\TestCase
                 '<?php
                     $a = $_SESSION ?? [];',
             ],
+            'sessionIssetNull' => [
+                '<?php
+                    $a = isset($_SESSION) ? $_SESSION : [];',
+            ],
             'issetSeparateNegated' => [
                 '<?php
                     function foo(?string $a, ?string $b): string {
@@ -718,6 +722,80 @@ class IssetTest extends \Psalm\Tests\TestCase
                         }
                     }',
             ],
+            'issetOnNullableObjectWithNullCoalesce' => [
+                '<?php
+                    class A {
+                        public bool $s = true;
+                    }
+                    function foo(?A $a) : string {
+                        if (rand(0, 1) && !($a->s ?? false)) {
+                            return "foo";
+                        }
+                        return "bar";
+                    }',
+            ],
+            'issetOnNullableObjectWithIsset' => [
+                '<?php
+                    class A {
+                        public bool $s = true;
+                    }
+                    function foo(?A $a) : string {
+                        if (rand(0, 1) && !(isset($a->s) ? $a->s : false)) {
+                            return "foo";
+                        }
+                        return "bar";
+                    }',
+            ],
+            'issetOnMethodCallInsideFunctionCall' => [
+                '<?php
+                    class C {
+                        public function foo() : ?string {
+                            return null;
+                        }
+                    }
+
+                    function foo(C $c) : void {
+                        strlen($c->foo() ?? "");
+                    }'
+            ],
+            'issetOnMethodCallInsideMethodCall' => [
+                '<?php
+                    class C {
+                        public function foo() : ?string {
+                            return null;
+                        }
+                    }
+
+                    function foo(C $c) : void {
+                        new DateTime($c->foo() ?? "");
+                    }',
+            ],
+            'methodCallAfterIsset' => [
+                '<?php
+                    class B {
+                        public function bar() : void {}
+                    }
+
+                    /** @psalm-suppress MissingConstructor */
+                    class A {
+                        /** @var B */
+                        public $foo;
+
+                        public function init() : void {
+                            if (isset($this->foo)) {
+                                return;
+                            }
+
+                            if (rand(0, 1)) {
+                                $this->foo = new B;
+                            } else {
+                                $this->foo = new B;
+                            }
+
+                            $this->foo->bar();
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -786,6 +864,16 @@ class IssetTest extends \Psalm\Tests\TestCase
                         }
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'stringIsAlwaysSet' => [
+                '<?php
+                    function foo(string $s) : string {
+                        if (!isset($s)) {
+                            return "foo";
+                        }
+                        return "bar";
+                    }',
+                'error_message' => 'TypeDoesNotContainType'
             ],
         ];
     }

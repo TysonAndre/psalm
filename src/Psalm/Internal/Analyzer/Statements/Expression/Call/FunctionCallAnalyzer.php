@@ -707,7 +707,8 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 ? $codebase->functions->isCallMapFunctionPure($codebase, $function_id, $stmt->args, $must_use)
                 : null;
 
-            if (($function_storage
+            if ((!$in_call_map
+                    && $function_storage
                     && !$function_storage->pure)
                 || ($callmap_function_pure === false)
             ) {
@@ -921,6 +922,29 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                             $statements_analyzer->node_data->getType($second_arg->value) ?: Type::getMixed(),
                             $context
                         );
+                    }
+                } else {
+                    $context->check_consts = false;
+                }
+            } elseif ($function->parts === ['constant']) {
+                if ($first_arg) {
+                    $fq_const_name = StatementsAnalyzer::getConstName(
+                        $first_arg->value,
+                        $statements_analyzer->node_data,
+                        $codebase,
+                        $statements_analyzer->getAliases()
+                    );
+
+                    if ($fq_const_name !== null) {
+                        $const_type = $statements_analyzer->getConstType(
+                            $fq_const_name,
+                            true,
+                            $context
+                        );
+
+                        if ($const_type) {
+                            $statements_analyzer->node_data->setType($stmt, $const_type);
+                        }
                     }
                 } else {
                     $context->check_consts = false;

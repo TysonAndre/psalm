@@ -532,17 +532,34 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
         $cased_guide_method_id = $guide_classlike_storage->name . '::' . $guide_method_storage->cased_name;
 
         if ($implementer_visibility > $guide_method_storage->visibility) {
+            if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
+                || !in_array($guide_classlike_storage->name, $implementer_classlike_storage->used_traits)
+                || $implementer_method_storage->defining_fqcln !== $implementer_classlike_storage->name
+                || (!$implementer_method_storage->abstract
+                    && !$guide_method_storage->abstract)
+            ) {
+                if (IssueBuffer::accepts(
+                    new OverriddenMethodAccess(
+                        'Method ' . $cased_implementer_method_id . ' has different access level than '
+                            . $cased_guide_method_id,
+                        $code_location
+                    )
+                )) {
+                    // fall through
+                }
+
+                return null;
+            }
+
             if (IssueBuffer::accepts(
-                new OverriddenMethodAccess(
+                new TraitMethodSignatureMismatch(
                     'Method ' . $cased_implementer_method_id . ' has different access level than '
                         . $cased_guide_method_id,
                     $code_location
                 )
             )) {
-                return false;
+                // fall through
             }
-
-            return null;
         }
 
         if ($prevent_abstract_override
@@ -568,9 +585,15 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
             $guide_signature_return_type = ExpressionAnalyzer::fleshOutType(
                 $codebase,
                 $guide_method_storage->signature_return_type,
-                $guide_classlike_storage->name,
-                $guide_classlike_storage->name,
-                $guide_classlike_storage->parent_class
+                $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                    ? $implementer_classlike_storage->name
+                    : $guide_classlike_storage->name,
+                $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                    ? $implementer_classlike_storage->name
+                    : $guide_classlike_storage->name,
+                $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                    ? $implementer_classlike_storage->parent_class
+                    : $guide_classlike_storage->parent_class
             );
 
             $implementer_signature_return_type = $implementer_method_storage->signature_return_type
@@ -594,6 +617,8 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
 
             if (!$is_contained_by) {
                 if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
+                    || !in_array($guide_classlike_storage->name, $implementer_classlike_storage->used_traits)
+                    || $implementer_method_storage->defining_fqcln !== $implementer_classlike_storage->name
                     || (!$implementer_method_storage->abstract
                         && !$guide_method_storage->abstract)
                 ) {
@@ -644,6 +669,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
 
         if ($guide_method_storage->return_type
             && $implementer_method_storage->return_type
+            && !$implementer_method_storage->inherited_return_type
             && ($guide_method_storage->signature_return_type !== $guide_method_storage->return_type
                 || $implementer_method_storage->signature_return_type !== $implementer_method_storage->return_type)
             && $implementer_classlike_storage->user_defined
@@ -884,9 +910,15 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                     ? ExpressionAnalyzer::fleshOutType(
                         $codebase,
                         $guide_param->signature_type,
-                        $guide_classlike_storage->name,
-                        $guide_classlike_storage->name,
-                        $guide_classlike_storage->parent_class
+                        $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                            ? $implementer_classlike_storage->name
+                            : $guide_classlike_storage->name,
+                        $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                            ? $implementer_classlike_storage->name
+                            : $guide_classlike_storage->name,
+                        $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                            ? $implementer_classlike_storage->parent_class
+                            : $guide_classlike_storage->parent_class
                     )
                     : null;
 
@@ -912,6 +944,8 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                     );
                 if (!$is_contained_by) {
                     if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
+                        || !in_array($guide_classlike_storage->name, $implementer_classlike_storage->used_traits)
+                        || $implementer_method_storage->defining_fqcln !== $implementer_classlike_storage->name
                         || (!$implementer_method_storage->abstract
                             && !$guide_method_storage->abstract)
                     ) {
@@ -970,9 +1004,15 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
                 $guide_method_storage_param_type = ExpressionAnalyzer::fleshOutType(
                     $codebase,
                     $guide_param->type,
-                    $guide_classlike_storage->name,
-                    $guide_classlike_storage->name,
-                    $guide_classlike_storage->parent_class
+                    $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                        ? $implementer_classlike_storage->name
+                        : $guide_classlike_storage->name,
+                    $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                        ? $implementer_classlike_storage->name
+                        : $guide_classlike_storage->name,
+                    $guide_classlike_storage->is_trait && $guide_method_storage->abstract
+                        ? $implementer_classlike_storage->parent_class
+                        : $guide_classlike_storage->parent_class
                 );
 
                 $guide_class_name = $guide_classlike_storage->name;
