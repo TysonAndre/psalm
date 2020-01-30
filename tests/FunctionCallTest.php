@@ -1399,8 +1399,9 @@ class FunctionCallTest extends TestCase
             ],
             'versionCompare' => [
                 '<?php
+                    /** @return "="|"==" */
                     function getString() : string {
-                        return rand(0, 1) ? "===" : "==";
+                        return rand(0, 1) ? "==" : "=";
                     }
 
                     $a = version_compare("5.0.0", "7.0.0");
@@ -1410,7 +1411,7 @@ class FunctionCallTest extends TestCase
                 'assertions' => [
                     '$a' => 'int',
                     '$b' => 'bool',
-                    '$c' => 'bool|null',
+                    '$c' => 'bool',
                 ],
             ],
             'getTimeOfDay' => [
@@ -2485,6 +2486,16 @@ class FunctionCallTest extends TestCase
                     $foo1 = [1, 2, 3];
                     $foo2 = [1, 4, 5];
                     foo(array_merge($foo1, $foo2));'
+            ],
+            'arrayMergeTwoPossiblyFalse' => [
+                '<?php
+                    $a = array_merge(
+                        glob(__DIR__ . \'/stubs/*.php\'),
+                        glob(__DIR__ . \'/stubs/DBAL/*.php\'),
+                    );',
+                [
+                    '$a' => 'list<string>'
+                ],
             ],
             'callUserFunc' => [
                 '<?php

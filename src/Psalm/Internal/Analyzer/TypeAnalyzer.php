@@ -768,7 +768,7 @@ class TypeAnalyzer
                 }
             }
 
-            if ($all_string_int_literals) {
+            if ($all_string_int_literals && $properties) {
                 $input_type_part = new ObjectLike($properties);
             }
         }
@@ -1435,7 +1435,7 @@ class TypeAnalyzer
                 || $input_type_part instanceof TList
                 || (
                     $input_type_part instanceof TNamedObject &&
-                    $codebase->classExists($input_type_part->value) &&
+                    $codebase->classOrInterfaceExists($input_type_part->value) &&
                     $codebase->methodExists($input_type_part->value . '::__invoke')
                 )
             )
@@ -1978,14 +1978,12 @@ class TypeAnalyzer
                                 }
                             }
 
-                            if ($new_input_param) {
-                                $new_input_param = clone $new_input_param;
-                                $new_input_param->replaceTemplateTypesWithArgTypes(
-                                    $replacement_templates
-                                );
-                            }
+                            $new_input_param = clone $new_input_param;
+                            $new_input_param->replaceTemplateTypesWithArgTypes(
+                                $replacement_templates
+                            );
 
-                            $new_input_params[] = $new_input_param ?: Type::getMixed();
+                            $new_input_params[] = $new_input_param;
                         }
                     }
 
@@ -2532,7 +2530,7 @@ class TypeAnalyzer
             }
         }
 
-        if (count($unique_types) === 0) {
+        if (!$unique_types) {
             throw new \UnexpectedValueException('There must be more than one unique type');
         }
 

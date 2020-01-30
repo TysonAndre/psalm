@@ -1392,6 +1392,37 @@ class UnusedVariableTest extends TestCase
 
                     echo $a;'
             ],
+            'breakInForeachInsideSwitch' => [
+                '<?php
+                    function foo(string $b) : void {
+                        switch ($b){
+                            case "foo":
+                                $a = null;
+                                foreach ([1,2,3] as $f){
+                                    if ($f == 2) {
+                                        $a = $f;
+                                        break;
+                                    }
+                                }
+                                echo $a;
+                        }
+                    }'
+            ],
+            'passedByRefArrayOffset' => [
+                '<?php
+                    $a = [
+                        "a" => [1],
+                        "b" => [2]
+                    ];
+
+                    foreach (["a"] as $e){
+                        takes_ref($a[$e]);
+                    }
+
+                    function takes_ref(array &$p): void {
+                        echo implode(",", $p);
+                    }'
+            ],
         ];
     }
 

@@ -90,7 +90,7 @@ class TryAnalyzer
             $stmt->stmts,
             $statements_analyzer->node_data,
             $codebase->config->exit_functions,
-            $context->inside_case
+            $context->break_types
         );
 
         /** @var array<string, bool> */
@@ -196,6 +196,10 @@ class TryAnalyzer
 
             if (!is_string($catch_var_name)) {
                 throw new \UnexpectedValueException('Catch var name must be a string');
+            }
+
+            if (!$catch->types) {
+                throw new \UnexpectedValueException('Very bad');
             }
 
             foreach ($catch->types as $catch_type) {
@@ -355,7 +359,7 @@ class TryAnalyzer
                 $catch->stmts,
                 $statements_analyzer->node_data,
                 $codebase->config->exit_functions,
-                $context->inside_case
+                $context->break_types
             );
 
             foreach ($issues_to_suppress as $issue_to_suppress) {

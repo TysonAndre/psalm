@@ -942,8 +942,36 @@ class DOMNodeList implements Traversable, Countable {
     /**
      * @param int $index
      * @return TNode|null
+     * @psalm-ignore-nullable-return
      */
     public function item($index) {}
+}
+
+/**
+ * @template-covariant TNode as DOMNode
+ * @template-implements Traversable<string, TNode>
+ */
+class DOMNamedNodeMap implements Traversable, Countable {
+    /**
+     * @var int
+     */
+    public $length;
+
+    /**
+     * @return TNode|null
+     */
+    public function getNamedItem(string $name): ?DOMNode {}
+
+    /**
+     * @return TNode|null
+     */
+    public function getNamedItemNS(string $namespaceURI, string $localName): ?DOMNode {}
+
+    /**
+     * @return TNode|null
+     * @psalm-ignore-nullable-return
+     */
+    public function item(int $index): ?DOMNode {}
 }
 
 /**

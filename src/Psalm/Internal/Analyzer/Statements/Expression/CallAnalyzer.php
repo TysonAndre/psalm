@@ -431,7 +431,9 @@ class CallAnalyzer
                         return false;
                     }
 
-                    continue;
+                    if ($arg->value instanceof PhpParser\Node\Expr\Variable) {
+                        continue;
+                    }
                 }
 
                 $toggled_class_exists = false;
@@ -1995,7 +1997,7 @@ class CallAnalyzer
                                 }
                             }
 
-                            $template_types[$template_name][$class_storage->name] = [$output_type ?: Type::getMixed()];
+                            $template_types[$template_name][$class_storage->name] = [$output_type];
                         }
                     }
                 }

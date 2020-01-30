@@ -24,7 +24,7 @@ use Psalm\Type\Union;
 class ObjectLike extends \Psalm\Type\Atomic
 {
     /**
-     * @var array<string|int, Union>
+     * @var non-empty-array<string|int, Union>
      */
     public $properties;
 
@@ -62,7 +62,7 @@ class ObjectLike extends \Psalm\Type\Atomic
     /**
      * Constructs a new instance of a generic type
      *
-     * @param array<string|int, Union> $properties
+     * @param non-empty-array<string|int, Union> $properties
      * @param array<string, bool> $class_strings
      */
     public function __construct(array $properties, array $class_strings = null)
@@ -229,10 +229,6 @@ class ObjectLike extends \Psalm\Type\Atomic
             } else {
                 $value_type = Type::combineUnionTypes($property, $value_type);
             }
-        }
-
-        if (!$value_type) {
-            throw new \UnexpectedValueException('$value_type should not be null here');
         }
 
         if ($this->previous_value_type) {

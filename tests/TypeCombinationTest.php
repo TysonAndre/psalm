@@ -13,7 +13,7 @@ class TypeCombinationTest extends TestCase
      * @dataProvider providerTestValidTypeCombination
      *
      * @param string $expected
-     * @param list<string> $types
+     * @param non-empty-list<string> $types
      *
      * @return void
      */
@@ -60,7 +60,7 @@ class TypeCombinationTest extends TestCase
     }
 
     /**
-     * @return array<string,array{string,list<string>}>
+     * @return array<string,array{string,non-empty-list<string>}>
      */
     public function providerTestValidTypeCombination()
     {
