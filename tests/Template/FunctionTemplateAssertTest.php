@@ -589,6 +589,94 @@ class FunctionTemplateAssertTest extends TestCase
                         }
                     }'
             ],
+            'noCrashWhenAsserting' => [
+                '<?php
+                    /**
+                     * @psalm-template ExpectedClassType of object
+                     * @psalm-param class-string<ExpectedClassType> $expectedType
+                     * @psalm-assert class-string<ExpectedClassType> $actualType
+                     */
+                    function assertIsA(string $expectedType, string $actualType): void {
+                        \assert(\is_a($actualType, $expectedType, true));
+                    }
+
+                    class Foo {
+                        /**
+                         * @psalm-template OriginalClass of object
+                         * @psalm-param class-string<OriginalClass> $originalClass
+                         * @psalm-return class-string<OriginalClass>|null
+                         */
+                        private function generateProxy(string $originalClass) : ?string {
+                            $generatedClassName = self::class . \'\\\\\' . $originalClass;
+
+                            if (class_exists($generatedClassName)) {
+                                assertIsA($originalClass, $generatedClassName);
+
+                                return $generatedClassName;
+                            }
+
+                            return null;
+                        }
+                    }',
+            ],
+            'castClassStringWithIsA' => [
+                '<?php
+                    /**
+                     * @psalm-template RequestedClass of object
+                     * @psalm-param class-string<RequestedClass> $expectedType
+                     * @psalm-return class-string<RequestedClass>
+                     */
+                    function castStringToClassString(string $expectedType, string $anyString): string {
+                        \assert(\is_a($anyString, $expectedType, true));
+                        return $anyString;
+                    }'
+            ],
+            'classTemplateAssert' => [
+                '<?php
+                    /**
+                     * @template ActualFieldType
+                     */
+                    final class FieldValue
+                    {
+                        /** @var ActualFieldType */
+                        public $value;
+
+                        /** @param ActualFieldType $value */
+                        public function __construct($value) {
+                            $this->value = $value;
+                        }
+                    }
+
+                    /**
+                     * @template FieldDefinitionType
+                     *
+                     * @param string|bool|int|null $value
+                     * @param FieldDefinition<FieldDefinitionType> $definition
+                     *
+                     * @return FieldValue<FieldDefinitionType>
+                     */
+                    function fromScalarAndDefinition($value, FieldDefinition $definition) : FieldValue
+                    {
+                        $definition->assertAppliesToValue($value);
+
+                        return new FieldValue($value);
+                    }
+
+                    /**
+                     * @template ExpectedFieldType
+                     */
+                    final class FieldDefinition
+                    {
+                        /**
+                         * @param mixed $value
+                         * @psalm-assert ExpectedFieldType $value
+                         */
+                        public function assertAppliesToValue($value): void
+                        {
+                          throw new \Exception("bad");
+                        }
+                    }'
+            ],
         ];
     }
 

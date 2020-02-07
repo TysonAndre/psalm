@@ -215,7 +215,7 @@ class FunctionClassStringTemplateTest extends TestCase
                         $d->faa();
                     }',
             ],
-            'templateArrayIntersection' => [
+            'templateFilterArrayWithIntersection' => [
                 '<?php
                     /**
                      * @template T as object
@@ -242,6 +242,34 @@ class FunctionClassStringTemplateTest extends TestCase
                     $y = filter($x, B::class);',
                 [
                     '$y' => 'array<array-key, A&B>',
+                ],
+            ],
+            'templateFilterWithIntersection' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     * @template S as object
+                     * @param T $item
+                     * @param class-string<S> $type
+                     * @return T&S
+                     */
+                    function filter($item, string $type) {
+                        if (is_a($item, $type)) {
+                            return $item;
+                        };
+
+                        throw new \UnexpectedValueException("bad");
+                    }
+
+                    interface A {}
+                    interface B {}
+
+                    /** @var A */
+                    $x = null;
+
+                    $y = filter($x, B::class);',
+                [
+                    '$y' => 'A&B',
                 ],
             ],
             'unionTOrClassStringTPassedClassString' => [
@@ -584,6 +612,30 @@ class FunctionClassStringTemplateTest extends TestCase
 
                         throw new \Exception();
                     }',
+            ],
+            'templateFromDifferentClassStrings' => [
+                '<?php
+                    class A {}
+
+                    class B extends A {}
+                    class C extends A {}
+
+                    /**
+                     * @template T of A
+                     * @param class-string<T> $a1
+                     * @param class-string<T> $a2
+                     * @return T
+                     */
+                    function test(string $a1, string $a2) {
+                        if (rand(0, 1)) return new $a1();
+
+                        return new $a2();
+                    }
+
+                    $b_or_c = test(B::class, C::class);',
+                [
+                    '$b_or_c' => 'B|C',
+                ]
             ],
         ];
     }

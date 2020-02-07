@@ -1736,6 +1736,36 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }',
             ],
+            'concreteGetIterator' => [
+                '<?php
+                    /**
+                     * @template E
+                     * @template-extends \IteratorAggregate<int, E>
+                     */
+                    interface Collection extends \IteratorAggregate
+                    {
+                        /**
+                         * @return \Iterator<int,E>
+                         */
+                        public function getIterator();
+                    }
+
+                    /**
+                     * @template-implements Collection<string>
+                     */
+                    class Set implements Collection {
+                        public function forEach(callable $action): void {
+                            $i = $this->getIterator();
+                            foreach ($this as $bar) {
+                                $action($bar);
+                            }
+                        }
+
+                        public function getIterator() {
+                            return new ArrayIterator(["hello"]);
+                        }
+                    }',
+            ],
             'paramInsideTemplatedFunctionShouldKnowRestriction' => [
                 '<?php
                     /**
@@ -2717,29 +2747,6 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }'
             ],
-            'extendWithArrayTemplate' => [
-                '<?php
-                    /**
-                     * @template T1
-                     */
-                    interface C {
-                        /**
-                         * @psalm-return C<array<int, T1>>
-                         */
-                        public function zip(): C;
-                    }
-
-                    /**
-                     * @template T2
-                     * @extends C<T2>
-                     */
-                    interface AC extends C {
-                        /**
-                         * @psalm-return AC<array<int, T2>>
-                         */
-                        public function zip(): C;
-                    }',
-            ],
             'implementsParameterisedIterator' => [
                 '<?php
                     /**
@@ -2854,6 +2861,99 @@ class ClassTemplateExtendsTest extends TestCase
                     class ConcreteViewerCreator extends AbstractViewCreator {
                         protected function doView() {
                             return new ConcreteView;
+                        }
+                    }'
+            ],
+            'allowStaticMethodClassTemplates' => [
+                '<?php
+                    namespace A;
+
+                    class DeliveryTimeAggregated {}
+
+                    /**
+                     * @template T of object
+                     */
+                    interface ReplayMessageInterface
+                    {
+                        /**
+                         * @return class-string<T>
+                         */
+                        public static function messageName(): string;
+                    }
+
+                    /**
+                     * @template-implements ReplayMessageInterface<DeliveryTimeAggregated>
+                     */
+                    class ReplayDeliveryTimeAggregated implements ReplayMessageInterface
+                    {
+                        /**
+                         * @return class-string<DeliveryTimeAggregated>
+                         */
+                        public static function messageName(): string
+                        {
+                            return DeliveryTimeAggregated::class;
+                        }
+                    }'
+            ],
+            'allowExplicitMethodClassTemplateReturn' => [
+                '<?php
+                    /**
+                     * @template T of object
+                     */
+                    interface I
+                    {
+                        /**
+                         * @return class-string<T>
+                         */
+                        public function m(): string;
+                    }
+
+                    /**
+                     * @template T2 of object
+                     * @template-implements I<T2>
+                     */
+                    class C implements I
+                    {
+                        /** @var T2 */
+                        private object $o;
+
+                        /** @param T2 $o */
+                        public function __construct(object $o) {
+                            $this->o = $o;
+                        }
+
+                        /**
+                         * @return class-string<T2>
+                         */
+                        public function m(): string {
+                            return get_class($this->o);
+                        }
+                    }',
+            ],
+            'templateInheritanceWithParentTemplateTypes' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    class A {
+                        /**
+                         * @template T2
+                         * @param class-string<T2> $t
+                         * @return ?T2
+                         */
+                        public function get($t) {
+                            return new $t;
+                        }
+                    }
+
+                    class AChild extends A {
+                        /**
+                         * @template T3
+                         * @param class-string<T3> $t
+                         * @return ?T3
+                         */
+                        public function get($t) {
+                            return new $t;
                         }
                     }'
             ],
@@ -3906,6 +4006,75 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidReturnType'
+            ],
+            'preventExplicitMethodClassTemplateReturn' => [
+                '<?php
+                    /**
+                     * @template T of object
+                     */
+                    interface I
+                    {
+                        /**
+                         * @return class-string<T>
+                         */
+                        public function m(): string;
+                    }
+
+                    /**
+                     * @template T2 of object
+                     * @template-implements I<T2>
+                     */
+                    class C implements I
+                    {
+                        /** @var T2 */
+                        private object $o;
+
+                        /** @param T2 $o */
+                        public function __construct(object $o) {
+                            $this->o = $o;
+                        }
+
+                        /**
+                         * @return class-string<T2>
+                         */
+                        public function m(): string {
+                            return static::class;
+                        }
+                    }',
+                'error_message' => 'LessSpecificReturnStatement'
+            ],
+            'preventImplicitMethodClassTemplateReturn' => [
+                '<?php
+                    /**
+                     * @template T of object
+                     */
+                    interface I
+                    {
+                        /**
+                         * @return class-string<T>
+                         */
+                        public function m(): string;
+                    }
+
+                    /**
+                     * @template T2 of object
+                     * @template-implements I<T2>
+                     */
+                    class C implements I
+                    {
+                        /** @var T2 */
+                        private object $o;
+
+                        /** @param T2 $o */
+                        public function __construct(object $o) {
+                            $this->o = $o;
+                        }
+
+                        public function m(): string {
+                            return static::class;
+                        }
+                    }',
+                'error_message' => 'LessSpecificReturnStatement'
             ],
         ];
     }

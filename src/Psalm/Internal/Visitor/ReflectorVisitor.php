@@ -1630,6 +1630,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage = new MethodStorage();
             $storage->defining_fqcln = '';
             $storage->is_static = $stmt->isStatic();
+            $class_storage = $this->classlike_storages[count($this->classlike_storages) - 1];
         } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
             $cased_function_id =
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $stmt->name->name;
@@ -2379,9 +2380,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             );
         }
 
-        $class_template_types = !$stmt instanceof PhpParser\Node\Stmt\ClassMethod || !$stmt->isStatic()
-            ? $this->class_template_types
-            : [];
+        $class_template_types = $this->class_template_types;
 
         foreach ($docblock_info->params_out as $docblock_param_out) {
             $param_name = substr($docblock_param_out['name'], 1);
@@ -3217,6 +3216,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $property_storage->internal = $var_comment ? $var_comment->internal : false;
             $property_storage->psalm_internal = $var_comment ? $var_comment->psalm_internal : null;
             $property_storage->readonly = $var_comment ? $var_comment->readonly : false;
+            $property_storage->allow_private_mutation = $var_comment ? $var_comment->allow_private_mutation : false;
 
             if (!$signature_type && !$doc_var_group_type) {
                 if ($property->default) {

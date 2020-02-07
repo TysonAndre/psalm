@@ -603,7 +603,25 @@ class TypeAnalyzer
                     if ($intersection_container_type instanceof TTemplateParam
                         && $intersection_input_type instanceof TTemplateParam
                     ) {
-                        if ($intersection_container_type->param_name !== $intersection_input_type->param_name) {
+                        if ($intersection_container_type->param_name !== $intersection_input_type->param_name
+                            || ((string)$intersection_container_type->defining_class
+                                !== (string)$intersection_input_type->defining_class
+                                && \substr($intersection_input_type->defining_class, 0, 3) !== 'fn-'
+                                && \substr($intersection_container_type->defining_class, 0, 3) !== 'fn-')
+                        ) {
+                            if (\substr($intersection_input_type->defining_class, 0, 3) !== 'fn-') {
+                                $input_class_storage = $codebase->classlike_storage_provider->get(
+                                    $intersection_input_type->defining_class
+                                );
+
+                                if (isset($input_class_storage->template_type_extends
+                                        [$intersection_container_type->defining_class]
+                                        [$intersection_container_type->param_name])
+                                ) {
+                                    continue;
+                                }
+                            }
+
                             return false;
                         }
                     }
@@ -674,28 +692,12 @@ class TypeAnalyzer
         ?TypeComparisonResult $atomic_comparison_result = null
     ) : bool {
         if ($container_type_part instanceof TTemplateParam && $input_type_part instanceof TTemplateParam) {
-            if ($container_type_part->param_name !== $input_type_part->param_name
-                || ((string)$container_type_part->defining_class !== (string)$input_type_part->defining_class
-                    && \substr($input_type_part->defining_class, 0, 3) !== 'fn-'
-                    && \substr($container_type_part->defining_class, 0, 3) !== 'fn-')
-            ) {
-                if (\substr($input_type_part->defining_class, 0, 3) !== 'fn-') {
-                    $input_class_storage = $codebase->classlike_storage_provider->get(
-                        $input_type_part->defining_class
-                    );
-
-                    if (isset($input_class_storage->template_type_extends
-                            [$container_type_part->defining_class]
-                            [$container_type_part->param_name])
-                    ) {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            return true;
+            return self::isObjectContainedByObject(
+                $codebase,
+                $container_type_part,
+                $input_type_part,
+                true
+            );
         }
 
         if ($container_type_part instanceof TMixed
@@ -1022,6 +1024,27 @@ class TypeAnalyzer
                 || $input_type_part instanceof TString
                 || $input_type_part instanceof Type\Atomic\TTemplateKeyOf)
         ) {
+            return true;
+        }
+
+        if ($input_type_part instanceof Type\Atomic\TTemplateKeyOf) {
+            foreach ($input_type_part->as->getAtomicTypes() as $atomic_type) {
+                if ($atomic_type instanceof TArray) {
+                    foreach ($atomic_type->type_params[0]->getAtomicTypes() as $array_key_atomic) {
+                        if (!self::isAtomicContainedBy(
+                            $codebase,
+                            $array_key_atomic,
+                            $container_type_part,
+                            $allow_interface_equality,
+                            $allow_float_int_equality,
+                            $atomic_comparison_result
+                        )) {
+                            return false;
+                        }
+                    }
+                }
+            }
+
             return true;
         }
 

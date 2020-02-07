@@ -1,23 +1,7 @@
 dist: xenial
 language: php
 
-stages:
-  - Code style analysis
-  - test
-  - Phar build
-  # - Code coverage analysis
-
-php:
-  - 7.1.3
-  - 7.2
-  - 7.3
-  - 7.4
-  - nightly
-
 env:
-  matrix:
-    - DEPS="high"
-    - DEPS="low"
   global:
     - DEFAULT_COMPOSER_FLAGS="--no-interaction --no-suggest --prefer-source"
     - XDEBUG="false"
@@ -49,30 +33,38 @@ script:
   - tests/integration/run_all_tests.sh
   - ./psalm
 
-# Base test matrix (php/env)
-matrix:
-  fast_finish: true
-  allow_failures:
-    - php: nightly
-
 # Additional stages
 jobs:
+  fast_finish: true
   include:
-    - stage: Code style analysis
-      php: 7.3
+    - php: 7.1.3
+      env: DEPS="low"
+
+    - php: 7.1.3
+      env: DEPS="high"
+
+    - php: 7.4
+      env: DEPS="low"
+
+    - php: 7.4
+      env: DEPS="high"
+
+    - php: nightly
+      env: DEPS="high"
+      allow_failures: true
+
+    - php: 7.3
       env: DEPS="high"
       script:
         - vendor/bin/phpcs
 
-    - stage: Ensure no transient used dependencies
-      php: 7.3
+    - php: 7.3
       env: DEPS="high"
       script:
         - composer require --dev maglnet/composer-require-checker:^2.0.0
         - ./vendor/bin/composer-require-checker check --config-file=bin/composer-require-checker-config.json ./composer.json
 
-    - stage: Phar build
-      php: 7.3
+    - php: 7.3
       env: DEPS="high"
       script: bin/build-phar.sh
       deploy:

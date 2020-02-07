@@ -684,6 +684,30 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             }
         }
 
+        if ($new_type_part instanceof Type\Atomic\TTemplateParam
+            && $new_type_part->as->isSingle()
+        ) {
+            $new_as_atomic = \array_values($new_type_part->as->getAtomicTypes())[0];
+            $acceptable_atomic_types = [];
+
+            foreach ($existing_var_type->getAtomicTypes() as $existing_var_type_part) {
+                if (TypeAnalyzer::isAtomicContainedBy(
+                    $codebase,
+                    $existing_var_type_part,
+                    $new_as_atomic
+                )) {
+                    $acceptable_atomic_types[] = clone $existing_var_type_part;
+                    continue;
+                }
+            }
+
+            if ($acceptable_atomic_types) {
+                $new_type_part->as = new Type\Union($acceptable_atomic_types);
+
+                return new Type\Union([$new_type_part]);
+            }
+        }
+
         if ($new_type_part instanceof TNamedObject
             && ((
                 $new_type_has_interface
@@ -840,7 +864,6 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         $old_var_type_string = $existing_var_type->getId();
 
         if ($existing_var_type->hasType('array')) {
-            /** @psalm-suppress PossiblyUndefinedStringArrayOffset */
             $array_atomic_type = $existing_var_type->getAtomicTypes()['array'];
             $did_remove_type = false;
 
@@ -981,7 +1004,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             }
         }
 
-        if (!$object_types) {
+        if (!$object_types || !$did_remove_type) {
             if ($key && $code_location) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
@@ -2454,6 +2477,19 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                     }
                 }
 
+                if ($new_type_part instanceof Type\Atomic\TTemplateParam
+                    && $existing_type_part instanceof Type\Atomic\TTemplateParam
+                    && $new_type_part->param_name !== $existing_type_part->param_name
+                    && $new_type_part->as->hasObject()
+                    && $existing_type_part->as->hasObject()
+                ) {
+                    $new_type_part->extra_types[$existing_type_part->getKey()] = $existing_type_part;
+                    $matching_atomic_types[] = $new_type_part;
+                    $has_local_match = true;
+
+                    continue;
+                }
+
                 if (($new_type_part instanceof Type\Atomic\TGenericObject
                         || $new_type_part instanceof Type\Atomic\TArray
                         || $new_type_part instanceof Type\Atomic\TIterable)
@@ -2488,7 +2524,6 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                         if ($has_param_match
                             && $existing_type_part->type_params[$i]->getId() !== $new_param->getId()
                         ) {
-                            /** @psalm-suppress PropertyTypeCoercion */
                             $existing_type_part->type_params[$i] = $new_param;
 
                             if (!$has_local_match) {

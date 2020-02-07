@@ -618,6 +618,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         }
                     }
 
+                    if ($storage->abstract && $implementer_method_storage === $interface_method_storage) {
+                        continue;
+                    }
+
                     MethodAnalyzer::compareMethods(
                         $codebase,
                         $implementer_classlike_storage ?: $storage,
@@ -743,9 +747,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 )
                 : $property_type;
 
-            /**
-             * @psalm-suppress ReferenceConstraintViolation
-             */
             $class_template_params = MethodCallAnalyzer::getClassTemplateParams(
                 $codebase,
                 $property_class_storage,
@@ -973,7 +974,9 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
         }
 
-        foreach ($storage->pseudo_methods as $pseudo_method_name => $pseudo_method_storage) {
+        $pseudo_methods = $storage->pseudo_methods + $storage->pseudo_static_methods;
+
+        foreach ($pseudo_methods as $pseudo_method_name => $pseudo_method_storage) {
             $pseudo_method_id = $this->fq_class_name . '::' . $pseudo_method_name;
 
             $overridden_method_ids = $codebase->methods->getOverriddenMethodIds($pseudo_method_id);
@@ -1119,6 +1122,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     IssueBuffer::addIssues([$this->getFilePath() => $existing_issues]);
                     continue;
                 }
+            }
+
+            if ($property->location) {
+                $codebase->analyzer->removeExistingDataForFile(
+                    $this->getFilePath(),
+                    $property->location->raw_file_start,
+                    $property->location->raw_file_end,
+                    'PropertyNotSetInConstructor'
+                );
             }
 
             $codebase->file_reference_provider->addMethodReferenceToMissingClassMember(
@@ -1297,7 +1309,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
-                        continue;
+                        // do nothing
                     }
                 }
             }
