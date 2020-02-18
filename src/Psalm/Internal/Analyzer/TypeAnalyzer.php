@@ -460,21 +460,27 @@ class TypeAnalyzer
                 $first_comparison_result = new TypeComparisonResult();
                 $second_comparison_result = new TypeComparisonResult();
 
-                $either_contains = self::isAtomicContainedBy(
+                $either_contains = (self::isAtomicContainedBy(
                     $codebase,
                     $type1_part,
                     $type2_part,
                     true,
                     false,
                     $first_comparison_result
-                ) || self::isAtomicContainedBy(
+                )
+                    && !$first_comparison_result->to_string_cast
+                ) || (self::isAtomicContainedBy(
                     $codebase,
                     $type2_part,
                     $type1_part,
                     true,
                     false,
                     $second_comparison_result
-                ) || ($first_comparison_result->type_coerced && $second_comparison_result->type_coerced);
+                )
+                    && !$second_comparison_result->to_string_cast
+                ) || ($first_comparison_result->type_coerced
+                    && $second_comparison_result->type_coerced
+                );
 
                 if ($either_contains) {
                     return true;
@@ -557,7 +563,7 @@ class TypeAnalyzer
             } else {
                 $intersection_container_type_lower = strtolower(
                     $codebase->classlikes->getUnAliasedName(
-                        strtolower($intersection_container_type->value)
+                        $intersection_container_type->value
                     )
                 );
             }
@@ -592,7 +598,7 @@ class TypeAnalyzer
                 } else {
                     $intersection_input_type_lower = strtolower(
                         $codebase->classlikes->getUnAliasedName(
-                            strtolower($intersection_input_type->value)
+                            $intersection_input_type->value
                         )
                     );
                 }
@@ -720,7 +726,7 @@ class TypeAnalyzer
             return true;
         }
 
-        if ($input_type_part instanceof TNever) {
+        if ($input_type_part instanceof TNever || $input_type_part instanceof Type\Atomic\TEmpty) {
             return true;
         }
 
@@ -778,6 +784,38 @@ class TypeAnalyzer
         if ($container_type_part instanceof TNonEmptyString
             && get_class($input_type_part) === TString::class
         ) {
+            if ($atomic_comparison_result) {
+                $atomic_comparison_result->type_coerced = true;
+            }
+
+            return false;
+        }
+
+        if ($input_type_part instanceof Type\Atomic\TLowercaseString
+            && get_class($container_type_part) === TString::class
+        ) {
+            return true;
+        }
+
+        if ($container_type_part instanceof Type\Atomic\TLowercaseString
+            && $input_type_part instanceof TString
+        ) {
+            if ($input_type_part instanceof Type\Atomic\TLowercaseString) {
+                return true;
+            }
+
+            if ($input_type_part instanceof TLiteralString) {
+                if (strtolower($input_type_part->value) === $input_type_part->value) {
+                    return true;
+                }
+
+                return false;
+            }
+
+            if ($input_type_part instanceof TClassString) {
+                return false;
+            }
+
             if ($atomic_comparison_result) {
                 $atomic_comparison_result->type_coerced = true;
             }
@@ -1250,6 +1288,18 @@ class TypeAnalyzer
             return false;
         }
 
+        if ($input_type_part instanceof Type\Atomic\TLowercaseString
+            && $container_type_part instanceof TLiteralString
+            && strtolower($container_type_part->value) === $container_type_part->value
+        ) {
+            if ($atomic_comparison_result) {
+                $atomic_comparison_result->type_coerced = true;
+                $atomic_comparison_result->type_coerced_from_scalar = true;
+            }
+
+            return false;
+        }
+
         if (($container_type_part instanceof TClassString || $container_type_part instanceof TLiteralClassString)
             && ($input_type_part instanceof TClassString || $input_type_part instanceof TLiteralClassString)
         ) {
@@ -1411,7 +1461,12 @@ class TypeAnalyzer
         ) {
             // check whether the object has a __toString method
             if ($codebase->classOrInterfaceExists($input_type_part->value)
-                && $codebase->methodExists($input_type_part->value . '::__toString')
+                && $codebase->methods->methodExists(
+                    new \Psalm\Internal\MethodIdentifier(
+                        $input_type_part->value,
+                        '__tostring'
+                    )
+                )
             ) {
                 if ($atomic_comparison_result) {
                     $atomic_comparison_result->to_string_cast = true;
@@ -1749,7 +1804,7 @@ class TypeAnalyzer
             if ($method_id && $method_id !== 'not-callable') {
                 try {
                     $method_storage = $codebase->methods->getStorage($method_id);
-                    list($method_fqcln) = \explode('::', $method_id);
+                    $method_fqcln = $method_id->fq_class_name;
 
                     $converted_return_type = null;
 
@@ -1776,25 +1831,28 @@ class TypeAnalyzer
             }
         } elseif ($input_type_part instanceof TNamedObject
             && $codebase->classExists($input_type_part->value)
-            && $codebase->methodExists($input_type_part->value . '::__invoke')
         ) {
-            return new TCallable(
-                'callable',
-                $codebase->getMethodParams(
-                    $input_type_part->value . '::__invoke'
-                ),
-                $codebase->getMethodReturnType(
-                    $input_type_part->value . '::__invoke',
-                    $input_type_part->value,
-                    []
-                )
+            $invoke_id = new \Psalm\Internal\MethodIdentifier(
+                $input_type_part->value,
+                '__invoke'
             );
+
+            if ($codebase->methods->methodExists($invoke_id)) {
+                return new TCallable(
+                    'callable',
+                    $codebase->methods->getMethodParams($invoke_id),
+                    $codebase->methods->getMethodReturnType(
+                        $invoke_id,
+                        $input_type_part->value
+                    )
+                );
+            }
         }
 
         return null;
     }
 
-    /** @return ?string */
+    /** @return null|'not-callable'|\Psalm\Internal\MethodIdentifier */
     public static function getCallableMethodIdFromObjectLike(
         ObjectLike $input_type_part,
         Codebase $codebase = null,
@@ -1866,7 +1924,10 @@ class TypeAnalyzer
             return null;
         }
 
-        return $class_name . '::' . $method_name;
+        return new \Psalm\Internal\MethodIdentifier(
+            $class_name,
+            strtolower($method_name)
+        );
     }
 
     private static function isMatchingTypeContainedBy(
@@ -2022,6 +2083,16 @@ class TypeAnalyzer
                 $container_param = $container_type_part->type_params[$i];
 
                 if ($input_param->isEmpty()) {
+                    if (!$atomic_comparison_result->replacement_atomic_type) {
+                        $atomic_comparison_result->replacement_atomic_type = clone $input_type_part;
+                    }
+
+                    if ($atomic_comparison_result->replacement_atomic_type instanceof TGenericObject) {
+                        /** @psalm-suppress PropertyTypeCoercion */
+                        $atomic_comparison_result->replacement_atomic_type->type_params[$i]
+                            = clone $container_param;
+                    }
+
                     continue;
                 }
 

@@ -7,4 +7,5 @@ namespace Psalm\Issue;
  */
 class TypeCoercion extends ArgumentIssue
 {
+    const ERROR_LEVEL = 3;
 }

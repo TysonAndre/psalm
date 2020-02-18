@@ -54,13 +54,13 @@ class JsonOutputTest extends TestCase
         $this->analyzeFile('somefile.php', new Context());
         $issue_data = IssueBuffer::getIssuesData()['somefile.php'][0];
 
-        $this->assertSame('somefile.php', $issue_data['file_path']);
-        $this->assertSame('error', $issue_data['severity']);
-        $this->assertSame($message, $issue_data['message']);
-        $this->assertSame($line_number, $issue_data['line_from']);
+        $this->assertSame('somefile.php', $issue_data->file_path);
+        $this->assertSame('error', $issue_data->severity);
+        $this->assertSame($message, $issue_data->message);
+        $this->assertSame($line_number, $issue_data->line_from);
         $this->assertSame(
             $error,
-            substr($code, $issue_data['from'], $issue_data['to'] - $issue_data['from'])
+            substr($code, $issue_data->from, $issue_data->to - $issue_data->from)
         );
     }
 
@@ -114,6 +114,7 @@ echo $a;';
                     'snippet_to' => 83,
                     'column_from' => 10,
                     'column_to' => 17,
+                    'error_level' => -1,
                 ],
                 [
                     'severity' => 'error',
@@ -131,6 +132,7 @@ echo $a;';
                     'snippet_to' => 56,
                     'column_from' => 29,
                     'column_to' => 39,
+                    'error_level' => -2,
                 ],
                 [
                     'severity' => 'error',
@@ -148,6 +150,7 @@ echo $a;';
                     'snippet_to' => 56,
                     'column_from' => 42,
                     'column_to' => 49,
+                    'error_level' => 1,
                 ],
                 [
                     'severity' => 'error',
@@ -165,6 +168,7 @@ echo $a;';
                     'snippet_to' => 135,
                     'column_from' => 6,
                     'column_to' => 15,
+                    'error_level' => -1,
                 ],
                 [
                     'severity' => 'error',
@@ -182,9 +186,15 @@ echo $a;';
                     'snippet_to' => 203,
                     'column_from' => 6,
                     'column_to' => 8,
+                    'error_level' => 3,
                 ],
             ],
-            $issue_data
+            \array_map(
+                function ($d) {
+                    return (array) $d;
+                },
+                $issue_data
+            )
         );
     }
 
@@ -241,6 +251,15 @@ echo $a;';
                 'message' => "The type 'string(hello)' does not match the declared return type 'int' for fooFoo",
                 'line' => 6,
                 'error' => '"hello"',
+            ],
+            'assertCancelsMixedAssignment' => [
+                '<?php
+                    $a = $_GET["hello"];
+                    assert(is_int($a));
+                    if (is_int($a)) {}',
+                'message' => "Found a redundant condition when evaluating docblock-defined type \$a and trying to reconcile type 'int' to int",
+                'line' => 4,
+                'error' => 'is_int($a)',
             ],
         ];
     }

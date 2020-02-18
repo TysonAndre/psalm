@@ -155,6 +155,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 $is_strict_equality,
                 $is_loose_equality,
                 $existing_var_type,
+                $template_type_map,
                 $old_var_type_string,
                 $key,
                 $code_location,
@@ -2435,7 +2436,14 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                             $existing_type_part->type_params
                         );
                     }
-                } elseif ($atomic_comparison_results->type_coerced) {
+                } elseif (TypeAnalyzer::isAtomicContainedBy(
+                    $codebase,
+                    $existing_type_part,
+                    $new_type_part,
+                    true,
+                    false,
+                    null
+                )) {
                     $has_local_match = true;
                     $matching_atomic_types[] = $existing_type_part;
                 }
@@ -2586,7 +2594,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
     }
 
     /**
-* @param  string[]   $suppressed_issues
+     * @param  string[]   $suppressed_issues
      */
     private static function handleLiteralEquality(
         string $assertion,

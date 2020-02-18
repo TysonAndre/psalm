@@ -331,7 +331,7 @@ class ClassTemplateTest extends TestCase
                          * @return ArrayCollection<TKey,T>
                          */
                         public function map(Closure $func) {
-                          return new static(array_map($func, $this->data));
+                            return new static(array_map($func, $this->data));
                         }
                     }
 
@@ -428,13 +428,13 @@ class ClassTemplateTest extends TestCase
                     $c = new Collection;
 
                     $c->filter(
-                      /** @param Collection<mixed,I> $elt */
-                      function(Collection $elt): bool { return (bool) rand(0,1); }
+                        /** @param Collection<mixed,I> $elt */
+                        function(Collection $elt): bool { return (bool) rand(0,1); }
                     );
 
                     $c->filter(
-                      /** @param Collection<mixed,I> $elt */
-                      function(Collection $elt): bool { return true; }
+                        /** @param Collection<mixed,I> $elt */
+                        function(Collection $elt): bool { return true; }
                     );',
             ],
             'templatedInterfaceIteration' => [
@@ -618,7 +618,6 @@ class ClassTemplateTest extends TestCase
                          */
                         public function bar(Foo $object) : void
                         {
-                            /** @psalm-suppress RedundantConditionGivenDocblockType */
                             if ($this->getType() !== get_class($object)) {
                                 return;
                             }
@@ -1128,8 +1127,8 @@ class ClassTemplateTest extends TestCase
                         public $records;
 
                         /**
-                          * @param array<I, V> $records
-                          */
+                         * @param array<I, V> $records
+                         */
                         public function __construct(array $records) {
                             $this->records = $records;
                         }
@@ -1146,7 +1145,7 @@ class ClassTemplateTest extends TestCase
                             $arr = [];
                             foreach ($this->records as $key => $obj) {
                                 if (rand(0, 1)) {
-                                  $obj = $obj2;
+                                    $obj = $obj2;
                                 }
                                 $arr[$key] = $obj;
                             }
@@ -1211,7 +1210,7 @@ class ClassTemplateTest extends TestCase
                             $arr = [];
                             foreach ($this->records as $key => $obj) {
                                 if (rand(0, 1)) {
-                                  $obj = new $obj2;
+                                    $obj = new $obj2;
                                 }
                                 $arr[$key] = $obj;
                             }
@@ -1852,23 +1851,22 @@ class ClassTemplateTest extends TestCase
 
                     class Bar
                     {
-                      /** @var Foo<array> */
-                      private $FooArray;
+                        /** @var Foo<array> */
+                        private $FooArray;
 
-                      public function __construct()
-                      {
-                          $this->FooArray = new Foo(function(string $s): array {
-                              /** @psalm-suppress MixedAssignment */
-                              $json = \json_decode($s, true);
+                        public function __construct() {
+                            $this->FooArray = new Foo(function(string $s): array {
+                                /** @psalm-suppress MixedAssignment */
+                                $json = \json_decode($s, true);
 
-                              if (! \is_array($json)) {
-                                  return [];
-                              }
+                                if (! \is_array($json)) {
+                                    return [];
+                                }
 
-                              return $json;
-                          });
+                                return $json;
+                            });
 
-                          takesFooArray($this->FooArray);
+                            takesFooArray($this->FooArray);
                         }
                     }
 
@@ -2272,6 +2270,167 @@ class ClassTemplateTest extends TestCase
                          */
                         public function __construct(string $type) {
                             $this->type = $type;
+                        }
+                    }'
+            ],
+            'createEmptyArrayCollection' => [
+                '<?php
+                    $a = new ArrayCollection([]);
+
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     */
+                    class ArrayCollection
+                    {
+                        /**
+                         * An array containing the entries of this collection.
+                         *
+                         * @psalm-var array<TKey,T>
+                         * @var array
+                         */
+                        private $elements = [];
+
+                        /**
+                         * Initializes a new ArrayCollection.
+                         *
+                         * @param array $elements
+                         *
+                         * @psalm-param array<TKey,T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        /**
+                         * @param TKey $key
+                         * @param T $t
+                         */
+                        public function add($key, $t) : void {
+                            $this->elements[$key] = $t;
+                        }
+                    }',
+                [
+                    '$a' => 'ArrayCollection<empty, empty>'
+                ]
+            ],
+            'newGenericBecomesPropertyTypeValidArg' => [
+                '<?php
+                    class B {}
+
+                    class A {
+                        /** @var ArrayCollection<int, B> */
+                        public ArrayCollection $b_collection;
+
+                        public function __construct() {
+                            $this->b_collection = new ArrayCollection([]);
+                            $this->b_collection->add(5, new B());
+                        }
+                    }
+
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     */
+                    class ArrayCollection
+                    {
+                        /**
+                         * An array containing the entries of this collection.
+                         *
+                         * @psalm-var array<TKey,T>
+                         * @var array
+                         */
+                        private $elements = [];
+
+                        /**
+                         * Initializes a new ArrayCollection.
+                         *
+                         * @param array $elements
+                         *
+                         * @psalm-param array<TKey,T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        /**
+                         * @param TKey $key
+                         * @param T $t
+                         */
+                        public function add($key, $t) : void {
+                            $this->elements[$key] = $t;
+                        }
+                    }'
+            ],
+            'allowPropertyCoercion' => [
+                '<?php
+                    class Test
+                    {
+                        /**
+                         * @var ArrayCollection<int, DateTime>
+                         */
+                        private $c;
+
+                        public function __construct()
+                        {
+                            $this->c = new ArrayCollection();
+                            $this->c->filter(function (DateTime $dt): bool {
+                                return $dt === $dt;
+                            });
+                        }
+                    }
+
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     */
+                    interface Collection
+                    {
+                        /**
+                         * @param Closure $p
+                         *
+                         * @return Collection A
+                         *
+                         * @psalm-param Closure(T=):bool $p
+                         * @psalm-return Collection<TKey, T>
+                         */
+                        public function filter(Closure $p);
+                    }
+
+
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     * @template-implements Collection<TKey,T>
+                     */
+                    class ArrayCollection implements Collection
+                    {
+                        /**
+                         * @psalm-var array<TKey,T>
+                         * @var array
+                         */
+                        private $elements;
+
+                        /**
+                         * @param array $elements
+                         *
+                         * @psalm-param array<TKey,T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         *
+                         * @return static
+                         */
+                        public function filter(Closure $p)
+                        {
+                            return $this;
                         }
                     }'
             ],
@@ -2721,6 +2880,57 @@ class ClassTemplateTest extends TestCase
                         public static function foo($t) : void {}
                     }',
                 'error_message' => 'UndefinedDocblockClass'
+            ],
+            'newGenericBecomesPropertyTypeInvalidArg' => [
+                '<?php
+                    class B {}
+                    class C {}
+
+                    class A {
+                        /** @var ArrayCollection<int, B> */
+                        public ArrayCollection $b_collection;
+
+                        public function __construct() {
+                            $this->b_collection = new ArrayCollection([]);
+                            $this->b_collection->add(5, new C());
+                        }
+                    }
+
+                    /**
+                     * @psalm-template TKey
+                     * @psalm-template T
+                     */
+                    class ArrayCollection
+                    {
+                        /**
+                         * An array containing the entries of this collection.
+                         *
+                         * @psalm-var array<TKey,T>
+                         * @var array
+                         */
+                        private $elements = [];
+
+                        /**
+                         * Initializes a new ArrayCollection.
+                         *
+                         * @param array $elements
+                         *
+                         * @psalm-param array<TKey,T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        /**
+                         * @param TKey $key
+                         * @param T $t
+                         */
+                        public function add($key, $t) : void {
+                            $this->elements[$key] = $t;
+                        }
+                    }',
+                'error_message' => 'InvalidArgument'
             ],
         ];
     }

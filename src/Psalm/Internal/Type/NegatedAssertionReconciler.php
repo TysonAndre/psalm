@@ -47,6 +47,7 @@ class NegatedAssertionReconciler extends Reconciler
      * @param  string     $assertion
      * @param  bool       $is_strict_equality
      * @param  bool       $is_loose_equality
+     * @param   array<string, array<string, array{Type\Union}>> $template_type_map
      * @param  string     $old_var_type_string
      * @param  string|null $key
      * @param  CodeLocation|null $code_location
@@ -61,6 +62,7 @@ class NegatedAssertionReconciler extends Reconciler
         $is_strict_equality,
         $is_loose_equality,
         Type\Union $existing_var_type,
+        array $template_type_map,
         $old_var_type_string,
         $key,
         $code_location,
@@ -359,7 +361,7 @@ class NegatedAssertionReconciler extends Reconciler
             && ($key !== '$this'
                 || !($statements_analyzer->getSource()->getSource() instanceof TraitAnalyzer))
         ) {
-            $assertion = Type::parseString($assertion);
+            $assertion = Type::parseString($assertion, null, $template_type_map);
 
             if ($key
                 && $code_location
@@ -764,9 +766,11 @@ class NegatedAssertionReconciler extends Reconciler
         if (isset($existing_var_atomic_types['string'])) {
             if (!$existing_var_atomic_types['string'] instanceof Type\Atomic\TNonEmptyString) {
                 $did_remove_type = true;
-                $existing_var_type->removeType('string');
+                if (!$existing_var_atomic_types['string'] instanceof Type\Atomic\TLowercaseString) {
+                    $existing_var_type->removeType('string');
 
-                $existing_var_type->addType(new Type\Atomic\TNonEmptyString);
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyString);
+                }
             } elseif ($existing_var_type->isSingle() && !$is_equality) {
                 if ($code_location
                     && $key

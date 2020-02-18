@@ -337,6 +337,7 @@ class ReturnAnalyzer
                                         $statements_analyzer,
                                         $stmt->expr->value,
                                         new CodeLocation($source, $stmt->expr),
+                                        $context->self,
                                         $statements_analyzer->getSuppressedIssues()
                                     ) === false
                                     ) {
@@ -355,6 +356,7 @@ class ReturnAnalyzer
                                                         $statements_analyzer,
                                                         $item->value->value,
                                                         new CodeLocation($source, $item->value),
+                                                        $context->self,
                                                         $statements_analyzer->getSuppressedIssues()
                                                     ) === false
                                                     ) {

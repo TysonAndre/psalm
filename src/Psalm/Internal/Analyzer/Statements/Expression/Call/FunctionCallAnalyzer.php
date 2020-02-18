@@ -44,6 +44,7 @@ use function extension_loaded;
 use function strpos;
 use Psalm\Internal\Type\TemplateResult;
 use Psalm\Storage\FunctionLikeParameter;
+use function explode;
 
 /**
  * @internal
@@ -215,11 +216,14 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                             if ($potential_method_id === 'not-callable') {
                                 $potential_method_id = null;
                             }
-                        } elseif ($var_type_part instanceof Type\Atomic\TLiteralString) {
-                            $potential_method_id = $var_type_part->value;
+                        } elseif ($var_type_part instanceof Type\Atomic\TLiteralString
+                            && strpos($var_type_part->value, '::')
+                        ) {
+                            $parts = explode('::', strtolower($var_type_part->value));
+                            $potential_method_id = new \Psalm\Internal\MethodIdentifier($parts[0], $parts[1]);
                         }
 
-                        if ($potential_method_id && strpos($potential_method_id, '::')) {
+                        if ($potential_method_id) {
                             $codebase->methods->methodExists(
                                 $potential_method_id,
                                 $context->calling_function_id,
@@ -235,7 +239,12 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         // handled above
                     } elseif (!$var_type_part instanceof TNamedObject
                         || !$codebase->classlikes->classOrInterfaceExists($var_type_part->value)
-                        || !$codebase->methods->methodExists($var_type_part->value . '::__invoke')
+                        || !$codebase->methods->methodExists(
+                            new \Psalm\Internal\MethodIdentifier(
+                                $var_type_part->value,
+                                '__invoke'
+                            )
+                        )
                     ) {
                         $invalid_function_call_types[] = (string)$var_type_part;
                     } else {
@@ -635,6 +644,18 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                 if ($stmt_type) {
                     $statements_analyzer->node_data->setType($real_stmt, $stmt_type);
                 }
+
+                if ($config->after_every_function_checks) {
+                    foreach ($config->after_every_function_checks as $plugin_fq_class_name) {
+                        $plugin_fq_class_name::afterEveryFunctionCallAnalysis(
+                            $stmt,
+                            $function_id,
+                            $context,
+                            $statements_analyzer->getSource(),
+                            $codebase
+                        );
+                    }
+                }
             }
 
             foreach ($defined_constants as $const_name => $const_type) {
@@ -660,6 +681,16 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     $codebase
                 );
 
+                $cond_assigned_var_ids = [];
+
+                \Psalm\Internal\Analyzer\AlgebraAnalyzer::checkForParadox(
+                    $context->clauses,
+                    $assert_clauses,
+                    $statements_analyzer,
+                    $stmt,
+                    $cond_assigned_var_ids
+                );
+
                 $simplified_clauses = Algebra::simplifyCNF(array_merge($context->clauses, $assert_clauses));
 
                 $assert_type_assertions = Algebra::getTruthsFromFormula($simplified_clauses);
@@ -674,7 +705,12 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         $assert_type_assertions,
                         $context->vars_in_scope,
                         $changed_var_ids,
-                        [],
+                        array_map(
+                            function ($v) {
+                                return true;
+                            },
+                            $assert_type_assertions
+                        ),
                         $statements_analyzer,
                         $statements_analyzer->getTemplateTypeMap() ?: [],
                         $context->inside_loop,
@@ -682,6 +718,14 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                     );
 
                     foreach ($changed_var_ids as $var_id => $_) {
+                        if ($first_appearance = $statements_analyzer->getFirstAppearance($var_id)) {
+                            IssueBuffer::remove(
+                                $statements_analyzer->getFilePath(),
+                                'MixedAssignment',
+                                $first_appearance->raw_file_start
+                            );
+                        }
+
                         if (isset($op_vars_in_scope[$var_id])) {
                             $op_vars_in_scope[$var_id]->from_docblock = true;
                         }
@@ -705,7 +749,12 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
 
                     if (isset($context->vars_in_scope[$var_id])) {
                         $atomic_type = $stmt->name->parts === ['get_class']
-                            ? new Type\Atomic\GetClassT($var_id, $context->vars_in_scope[$var_id])
+                            ? new Type\Atomic\GetClassT(
+                                $var_id,
+                                $context->vars_in_scope[$var_id]->hasMixed()
+                                    ? Type::getObject()
+                                    : $context->vars_in_scope[$var_id]
+                            )
                             : new Type\Atomic\GetTypeT($var_id);
 
                         $statements_analyzer->node_data->setType($real_stmt, new Type\Union([$atomic_type]));
@@ -1064,6 +1113,38 @@ class FunctionCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expressio
                         $context->inside_loop,
                         new CodeLocation($statements_analyzer->getSource(), $stmt)
                     );
+                }
+            } elseif ($first_arg && $function_id === 'strtolower') {
+                $first_arg_type = $statements_analyzer->node_data->getType($first_arg->value);
+
+                if ($first_arg_type
+                    && TypeAnalyzer::isContainedBy(
+                        $codebase,
+                        $first_arg_type,
+                        new Type\Union([new Type\Atomic\TLowercaseString()])
+                    )
+                ) {
+                    if ($first_arg_type->from_docblock) {
+                        if (IssueBuffer::accepts(
+                            new \Psalm\Issue\RedundantConditionGivenDocblockType(
+                                'The call to strtolower is unnecessary given the docblock type',
+                                new CodeLocation($statements_analyzer, $stmt->name)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new \Psalm\Issue\RedundantCondition(
+                                'The call to strtolower is unnecessary',
+                                new CodeLocation($statements_analyzer, $stmt->name)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
                 }
             }
         }

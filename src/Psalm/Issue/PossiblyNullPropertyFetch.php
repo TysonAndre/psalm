@@ -7,4 +7,5 @@ namespace Psalm\Issue;
  */
 class PossiblyNullPropertyFetch extends CodeIssue
 {
+    const ERROR_LEVEL = 3;
 }

@@ -93,6 +93,7 @@ abstract class Type
         'trait-string' => true,
         'mysql-escaped-string' => true,
         'html-escaped-string' => true,
+        'lowercase-string' => true,
         'boolean' => true,
         'integer' => true,
         'double' => true,
@@ -212,7 +213,6 @@ abstract class Type
             case 'iterable':
             case 'array':
             case 'object':
-            case 'numeric':
             case 'true':
             case 'false':
             case 'null':

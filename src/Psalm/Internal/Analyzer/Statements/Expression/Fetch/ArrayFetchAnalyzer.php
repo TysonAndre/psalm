@@ -924,7 +924,14 @@ class ArrayFetchAnalyzer
                         );
 
                         if ($context->inside_isset && !$is_contained) {
-                            $is_contained = TypeAnalyzer::canBeContainedBy(
+                            $is_contained = TypeAnalyzer::isContainedBy(
+                                $codebase,
+                                $key_type,
+                                $offset_type,
+                                true,
+                                $offset_type->ignore_falsable_issues
+                            )
+                            || TypeAnalyzer::canBeContainedBy(
                                 $codebase,
                                 $offset_type,
                                 $key_type,
@@ -994,7 +1001,7 @@ class ArrayFetchAnalyzer
                             if (!$context->inside_isset
                                 || ($type->sealed && !$union_comparison_results->type_coerced)
                             ) {
-                                $expected_offset_types[] = (string)$generic_key_type->getId();
+                                $expected_offset_types[] = $generic_key_type->getId();
                             }
 
                             $array_access_type = Type::getMixed();
@@ -1104,7 +1111,7 @@ class ArrayFetchAnalyzer
 
             if ($type instanceof TNamedObject) {
                 if (strtolower($type->value) === 'simplexmlelement') {
-                    $array_access_type = Type::getMixed();
+                    $array_access_type = new Type\Union([new TNamedObject('SimpleXMLElement')]);
                 } elseif (strtolower($type->value) === 'domnodelist' && $stmt->dim) {
                     $old_data_provider = $statements_analyzer->node_data;
 

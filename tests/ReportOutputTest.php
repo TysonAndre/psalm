@@ -1,17 +1,21 @@
 <?php
+
 namespace Psalm\Tests;
+
+use Psalm\Context;
+use Psalm\Internal\Analyzer\FileAnalyzer;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\IssueBuffer;
+use Psalm\Report;
+use Psalm\Report\JsonReport;
+use Psalm\Tests\Internal\Provider;
 
 use function file_get_contents;
 use function json_decode;
 use function ob_end_clean;
 use function ob_start;
 use function preg_replace;
-use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
-use Psalm\Internal\Analyzer\ProjectAnalyzer;
-use Psalm\IssueBuffer;
-use Psalm\Report;
-use Psalm\Tests\Internal\Provider;
+use function array_values;
 use function unlink;
 
 class ReportOutputTest extends TestCase
@@ -119,6 +123,7 @@ echo $a;';
                 'snippet_to' => 83,
                 'column_from' => 10,
                 'column_to' => 17,
+                'error_level' => -1,
             ],
             [
                 'severity' => 'error',
@@ -136,6 +141,7 @@ echo $a;';
                 'snippet_to' => 56,
                 'column_from' => 42,
                 'column_to' => 49,
+                'error_level' => 1,
             ],
             [
                 'severity' => 'error',
@@ -153,6 +159,7 @@ echo $a;';
                 'snippet_to' => 135,
                 'column_from' => 6,
                 'column_to' => 15,
+                'error_level' => -1,
             ],
             [
                 'severity' => 'info',
@@ -170,15 +177,49 @@ echo $a;';
                 'snippet_to' => 203,
                 'column_from' => 6,
                 'column_to' => 8,
+                'error_level' => 3,
             ],
         ];
 
         $json_report_options = ProjectAnalyzer::getFileReportOptions([__DIR__ . '/test-report.json'])[0];
 
         $this->assertSame(
-            $issue_data,
+            array_values($issue_data),
             json_decode(IssueBuffer::getOutput($json_report_options), true)
         );
+    }
+
+    public function testFilteredJsonReportIsStillArray(): void
+    {
+        $issues_data = [
+            22 => new \Psalm\Internal\Analyzer\IssueData(
+                'info',
+                15,
+                15,
+                'PossiblyUndefinedGlobalVariable',
+                'Possibly undefined global variable $a, first seen on line 10',
+                'somefile.php',
+                'somefile.php',
+                'echo $a',
+                '$a',
+                201,
+                203,
+                196,
+                203,
+                6,
+                8
+            ),
+        ];
+
+        $report_options = ProjectAnalyzer::getFileReportOptions([__DIR__ . '/test-report.json'])[0];
+        $fixable_issue_counts = ['MixedInferredReturnType' => 1];
+
+        $report = new JsonReport(
+            $issues_data,
+            $fixable_issue_counts,
+            $report_options
+        );
+        $this->assertIsArray(json_decode($report->create()));
     }
 
     /**

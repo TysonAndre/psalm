@@ -557,6 +557,7 @@ class ForeachAnalyzer
                         $statements_analyzer,
                         $iterator_atomic_type->value,
                         new CodeLocation($statements_analyzer->getSource(), $stmt->expr),
+                        $context->self,
                         $statements_analyzer->getSuppressedIssues()
                     ) === false) {
                         return false;
@@ -937,9 +938,15 @@ class ForeachAnalyzer
         }
 
         if ($iterator_atomic_type instanceof Type\Atomic\TNamedObject
-            && $codebase->classImplements(
-                $iterator_atomic_type->value,
-                'Traversable'
+            && (
+                $codebase->classImplements(
+                    $iterator_atomic_type->value,
+                    'Traversable'
+                )
+                || $codebase->interfaceExtends(
+                    $iterator_atomic_type->value,
+                    'Traversable'
+                )
             )
         ) {
             $generic_storage = $codebase->classlike_storage_provider->get(

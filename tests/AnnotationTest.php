@@ -1080,6 +1080,8 @@ class AnnotationTest extends TestCase
             ],
             'throwSelf' => [
                 '<?php
+                    namespace Foo;
+
                     class MyException extends \Exception {
                         /**
                          * @throws self
@@ -1088,6 +1090,18 @@ class AnnotationTest extends TestCase
                         {
                           throw new self();
                         }
+                    }'
+            ],
+            'parseTrailingCommaInReturn' => [
+                '<?php
+                    /**
+                     * @psalm-return array{
+                     *     a: int,
+                     *     b: string,
+                     * }
+                     */
+                    function foo(): array {
+                        return ["a" => 1, "b" => "two"];
                     }'
             ],
         ];

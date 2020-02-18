@@ -151,6 +151,23 @@ class ConstantTest extends TestCase
                         }
                     }',
             ],
+            'stringArrayOffset' => [
+                '<?php
+                    class A {
+                        const C = [
+                            "a" => 1,
+                            "b" => 2,
+                        ];
+                    }
+
+                    function foo(string $s) : void {
+                        if (!isset(A::C[$s])) {
+                            return;
+                        }
+
+                        if ($s === "Hello") {}
+                    }',
+            ],
             'noExceptionsOnMixedArrayKey' => [
                 '<?php
                     function finder(string $id) : ?object {
@@ -569,7 +586,7 @@ class ConstantTest extends TestCase
                         }
                     }'
             ],
-                        'keyOf' => [
+            'keyOf' => [
                 '<?php
                     class A {
                         const C = [
@@ -657,6 +674,70 @@ class ConstantTest extends TestCase
                     A::foo(2);
                     A::foo(3);
                     A::foo(A::D_4);',
+            ],
+            'wildcardVarAndReturn' => [
+                '<?php
+                    class Numbers {
+                        public const ONE = 1;
+                        public const TWO = 2;
+                    }
+
+                    class Number {
+                        /**
+                         * @var Numbers::*
+                         */
+                        private $number;
+
+                        /**
+                         * @param Numbers::* $number
+                         */
+                        public function __construct($number) {
+                            $this->number = $number;
+                        }
+
+                        /**
+                         * @return Numbers::*
+                         */
+                        public function get(): int {
+                            return $this->number;
+                        }
+                    }'
+            ],
+            'lowercaseStringAccessClassConstant' => [
+                '<?php
+                    class A {
+                        const C = [
+                            "a" => 1,
+                            "b" => 2,
+                            "c" => 3
+                        ];
+                    }
+
+                    /**
+                     * @param lowercase-string $s
+                     */
+                    function foo(string $s, string $t) : void {
+                        echo A::C[$t];
+                        echo A::C[$s];
+                    }'
+            ],
+            'arrayKeyExistsWithClassConst' => [
+                '<?php
+                    class C {}
+                    class D {}
+
+                    class A {
+                        const FLAGS = [
+                            0 => [C::class => "foo"],
+                            1 => [D::class => "bar"],
+                        ];
+
+                        private function foo(int $i) : void {
+                            if (array_key_exists(C::class, self::FLAGS[$i])) {
+                                echo self::FLAGS[$i][C::class];
+                            }
+                        }
+                    }'
             ],
         ];
     }

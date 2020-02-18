@@ -194,7 +194,7 @@ class ExpressionAnalyzer
             ) {
                 $source = $statements_analyzer->getSource();
                 if ($source instanceof FunctionLikeAnalyzer) {
-                    $statements_analyzer->node_data->setType($stmt, Type::getString($source->getMethodId()));
+                    $statements_analyzer->node_data->setType($stmt, Type::getString($source->getId()));
                 } else {
                     $statements_analyzer->node_data->setType($stmt, new Type\Union([new Type\Atomic\TCallableString]));
                 }
@@ -699,6 +699,7 @@ class ExpressionAnalyzer
                         $statements_analyzer,
                         $fq_class_name,
                         new CodeLocation($statements_analyzer->getSource(), $stmt->class),
+                        $context->self,
                         $statements_analyzer->getSuppressedIssues(),
                         false
                     ) === false) {
@@ -1801,7 +1802,13 @@ class ExpressionAnalyzer
         PhpParser\Node\Expr\YieldFrom $stmt,
         Context $context
     ) {
+        $was_inside_call = $context->inside_call;
+
+        $context->inside_call = true;
+
         if (self::analyze($statements_analyzer, $stmt->expr, $context) === false) {
+            $context->inside_call = $was_inside_call;
+
             return false;
         }
 
@@ -1828,6 +1835,8 @@ class ExpressionAnalyzer
             // this should be whatever the generator above returns, but *not* the return type
             $statements_analyzer->node_data->setType($stmt, $yield_from_type ?: Type::getMixed());
         }
+
+        $context->inside_call = $was_inside_call;
 
         return null;
     }
@@ -1949,10 +1958,18 @@ class ExpressionAnalyzer
             }
 
             if ($atomic_type instanceof TNamedObject
-                && $codebase->methods->methodExists($atomic_type->value . '::__tostring')
+                && $codebase->methods->methodExists(
+                    new \Psalm\Internal\MethodIdentifier(
+                        $atomic_type->value,
+                        '__tostring'
+                    )
+                )
             ) {
                 $return_type = $codebase->methods->getMethodReturnType(
-                    $atomic_type->value . '::__tostring',
+                    new \Psalm\Internal\MethodIdentifier(
+                        $atomic_type->value,
+                        '__tostring'
+                    ),
                     $self_class
                 );
 

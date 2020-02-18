@@ -895,6 +895,12 @@ class ArrayAccessTest extends TestCase
                         }
                     }'
             ],
+            'simpleXmlArrayFetch' => [
+                '<?php
+                    function foo(SimpleXMLElement $s) : SimpleXMLElement {
+                        return $s["a"];
+                    }',
+            ],
         ];
     }
 
@@ -1128,6 +1134,15 @@ class ArrayAccessTest extends TestCase
                         return $arr;
                     }',
                 'error_message' => 'LessSpecificReturnStatement',
+            ],
+            'simpleXmlArrayFetchResultCannotEqualString' => [
+                '<?php
+                    function foo(SimpleXMLElement $s) : void {
+                        $b = $s["a"];
+
+                        if ($b === "hello" || $b === "1") {}
+                    }',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

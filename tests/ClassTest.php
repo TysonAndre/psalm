@@ -466,6 +466,53 @@ class ClassTest extends TestCase
                     action(new OldA());
                     action(new OldAChild());'
             ],
+            'resourceAndNumericSoftlyReserved' => [
+                '<?php
+                    namespace Foo {
+                        class Resource {}
+                        class Numeric {}
+                    }
+
+                    namespace Bar {
+                        use \Foo\Resource;
+                        use \Foo\Numeric;
+
+                        new \Foo\Resource();
+                        new \Foo\Numeric();
+
+                        new Resource();
+                        new Numeric();
+
+                        /**
+                         * @param  Resource $r
+                         * @param  Numeric  $n
+                         * @return void
+                         */
+                        function foo(Resource $r, Numeric $n) : void {}
+                    }'
+            ],
+            'inheritInterfaceFromParent' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+
+                    interface IParent {
+                        public function get(): A;
+                    }
+
+                    interface IChild extends IParent {
+                        /**
+                         * @psalm-return AChild
+                         */
+                        public function get(): A;
+                    }
+
+                    class Concrete implements IChild {
+                        public function get(): A {
+                            return new AChild;
+                        }
+                    }',
+            ],
         ];
     }
 

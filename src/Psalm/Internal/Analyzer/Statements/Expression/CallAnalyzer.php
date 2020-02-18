@@ -6,6 +6,7 @@ use Psalm\Codebase;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\MethodAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
@@ -100,11 +101,14 @@ class CallAnalyzer
                 )
             )
         ) {
-            $method_id = $fq_class_name . '::' . strtolower($method_name);
+            $method_id = new \Psalm\Internal\MethodIdentifier(
+                $fq_class_name,
+                strtolower($method_name)
+            );
 
-            if ($method_id !== $source->getMethodId()) {
+            if ((string) $method_id !== $source->getId()) {
                 if ($context->collect_initializations) {
-                    if (isset($context->initialized_methods[$method_id])) {
+                    if (isset($context->initialized_methods[(string) $method_id])) {
                         return;
                     }
 
@@ -112,7 +116,7 @@ class CallAnalyzer
                         $context->initialized_methods = [];
                     }
 
-                    $context->initialized_methods[$method_id] = true;
+                    $context->initialized_methods[(string) $method_id] = true;
                 }
 
                 $project_analyzer->getMethodMutations(
@@ -133,7 +137,7 @@ class CallAnalyzer
             ) &&
             $source->getMethodName() !== $method_name
         ) {
-            $method_id = $fq_class_name . '::' . strtolower($method_name);
+            $method_id = new \Psalm\Internal\MethodIdentifier($fq_class_name, strtolower($method_name));
 
             $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
@@ -145,7 +149,10 @@ class CallAnalyzer
                         } else {
                             $fq_class_name = $atomic_type->value;
 
-                            $method_id = $fq_class_name . '::' . strtolower($method_name);
+                            $method_id = new \Psalm\Internal\MethodIdentifier(
+                                $fq_class_name,
+                                strtolower($method_name)
+                            );
 
                             $alt_declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
                         }
@@ -162,7 +169,10 @@ class CallAnalyzer
                         foreach ($atomic_type->extra_types as $intersection_type) {
                             if ($intersection_type instanceof TNamedObject) {
                                 $fq_class_name = $intersection_type->value;
-                                $method_id = $fq_class_name . '::' . strtolower($method_name);
+                                $method_id = new \Psalm\Internal\MethodIdentifier(
+                                    $fq_class_name,
+                                    strtolower($method_name)
+                                );
 
                                 $alt_declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
@@ -181,7 +191,7 @@ class CallAnalyzer
                 return;
             }
 
-            if (isset($context->initialized_methods[$declaring_method_id])) {
+            if (isset($context->initialized_methods[(string) $declaring_method_id])) {
                 return;
             }
 
@@ -189,7 +199,7 @@ class CallAnalyzer
                 $context->initialized_methods = [];
             }
 
-            $context->initialized_methods[$declaring_method_id] = true;
+            $context->initialized_methods[(string) $declaring_method_id] = true;
 
             $method_storage = $codebase->methods->getStorage($declaring_method_id);
 
@@ -216,7 +226,7 @@ class CallAnalyzer
                 if ($fq_class_name === $source->getFQCLN()) {
                     $class_analyzer->getMethodMutations(strtolower($method_name), $context);
                 } else {
-                    list($declaring_fq_class_name) = explode('::', $declaring_method_id);
+                    $declaring_fq_class_name = $declaring_method_id->fq_class_name;
 
                     $old_self = $context->self;
                     $context->self = $declaring_fq_class_name;
@@ -243,16 +253,15 @@ class CallAnalyzer
     }
 
     /**
-     * @param  string|null                      $method_id
      * @param  array<int, PhpParser\Node\Arg>   $args
      * @param  Context                          $context
      * @param  CodeLocation                     $code_location
-     * @param  StatementsAnalyzer                $statements_analyzer
+     * @param  StatementsAnalyzer               $statements_analyzer
      *
      * @return false|null
      */
     protected static function checkMethodArgs(
-        $method_id,
+        ?\Psalm\Internal\MethodIdentifier $method_id,
         array $args,
         ?TemplateResult $class_template_result,
         Context $context,
@@ -269,7 +278,7 @@ class CallAnalyzer
             $statements_analyzer,
             $args,
             $method_params,
-            $method_id,
+            (string) $method_id,
             $context,
             $class_template_result
         ) === false) {
@@ -280,18 +289,20 @@ class CallAnalyzer
             return;
         }
 
-        list($fq_class_name, $method_name) = explode('::', $method_id);
+        $fq_class_name = $method_id->fq_class_name;
+        $method_name = $method_id->method_name;
 
-        $fq_class_name = $codebase->classlikes->getUnAliasedName($fq_class_name);
+        $fq_class_name = strtolower($codebase->classlikes->getUnAliasedName($fq_class_name));
 
         $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
         $method_storage = null;
 
-        if (isset($class_storage->declaring_method_ids[strtolower($method_name)])) {
-            $declaring_method_id = $class_storage->declaring_method_ids[strtolower($method_name)];
+        if (isset($class_storage->declaring_method_ids[$method_name])) {
+            $declaring_method_id = $class_storage->declaring_method_ids[$method_name];
 
-            list($declaring_fq_class_name, $declaring_method_name) = explode('::', $declaring_method_id);
+            $declaring_fq_class_name = $declaring_method_id->fq_class_name;
+            $declaring_method_name = $declaring_method_id->method_name;
 
             if ($declaring_fq_class_name !== $fq_class_name) {
                 $declaring_class_storage = $codebase->classlike_storage_provider->get($declaring_fq_class_name);
@@ -299,11 +310,11 @@ class CallAnalyzer
                 $declaring_class_storage = $class_storage;
             }
 
-            if (!isset($declaring_class_storage->methods[strtolower($declaring_method_name)])) {
+            if (!isset($declaring_class_storage->methods[$declaring_method_name])) {
                 throw new \UnexpectedValueException('Storage should not be empty here');
             }
 
-            $method_storage = $declaring_class_storage->methods[strtolower($declaring_method_name)];
+            $method_storage = $declaring_class_storage->methods[$declaring_method_name];
 
             if ($declaring_class_storage->user_defined
                 && !$method_storage->has_docblock_param_types
@@ -390,7 +401,7 @@ class CallAnalyzer
             return;
         }
 
-        if ($method_id === 'array_map' && count($args) === 2) {
+        if ($method_id === 'array_map') {
             $args = array_reverse($args, true);
         }
 
@@ -454,26 +465,29 @@ class CallAnalyzer
                     && $param->type
                     && !$arg->value->getDocComment()
                 ) {
-                    if (count($args) === 2
-                        && (($argument_offset === 1 && $method_id === 'array_filter')
-                            || ($argument_offset === 0 && $method_id === 'array_map'))
+                    if (($argument_offset === 1 && $method_id === 'array_filter' && count($args) === 2)
+                        || ($argument_offset === 0 && $method_id === 'array_map' && count($args) >= 2)
                     ) {
+                        $function_like_params = [];
+
+                        foreach ($template_result->generic_params as $template_name => $_) {
+                            $function_like_params[] = new \Psalm\Storage\FunctionLikeParameter(
+                                'function',
+                                false,
+                                new Type\Union([
+                                    new Type\Atomic\TTemplateParam(
+                                        $template_name,
+                                        Type::getMixed(),
+                                        $method_id
+                                    )
+                                ])
+                            );
+                        }
+
                         $replaced_type = new Type\Union([
                             new Type\Atomic\TCallable(
                                 'callable',
-                                [
-                                    new \Psalm\Storage\FunctionLikeParameter(
-                                        'function',
-                                        false,
-                                        new Type\Union([
-                                            new Type\Atomic\TTemplateParam(
-                                                'ArrayValue',
-                                                Type::getMixed(),
-                                                $method_id
-                                            )
-                                        ])
-                                    )
-                                ]
+                                array_reverse($function_like_params)
                             )
                         ]);
                     } else {
@@ -503,7 +517,14 @@ class CallAnalyzer
                         . ':' . (int)$arg->value->getAttribute('startFilePos')
                         . ':-:closure';
 
-                    $closure_storage = $codebase->getClosureStorage($statements_analyzer->getFilePath(), $closure_id);
+                    try {
+                        $closure_storage = $codebase->getClosureStorage(
+                            $statements_analyzer->getFilePath(),
+                            $closure_id
+                        );
+                    } catch (\UnexpectedValueException $e) {
+                        continue;
+                    }
 
                     foreach ($replaced_type->getAtomicTypes() as $replaced_type_part) {
                         if ($replaced_type_part instanceof Type\Atomic\TCallable
@@ -548,16 +569,15 @@ class CallAnalyzer
                     $context->inside_call = false;
                 }
 
-                if (count($args) === 2
-                    && (($argument_offset === 0 && $method_id === 'array_filter')
-                        || ($argument_offset === 1 && $method_id === 'array_map'))
+                if (($argument_offset === 0 && $method_id === 'array_filter' && count($args) === 2)
+                    || ($argument_offset > 0 && $method_id === 'array_map' && count($args) >= 2)
                 ) {
                     $generic_param_type = new Type\Union([
                         new Type\Atomic\TArray([
                             Type::getArrayKey(),
                             new Type\Union([
                                 new Type\Atomic\TTemplateParam(
-                                    'ArrayValue',
+                                    'ArrayValue' . $argument_offset,
                                     Type::getMixed(),
                                     $method_id
                                 )
@@ -565,7 +585,7 @@ class CallAnalyzer
                         ])
                     ]);
 
-                    $template_types = ['ArrayValue' => [$method_id => [Type::getMixed()]]];
+                    $template_types = ['ArrayValue' . $argument_offset => [$method_id => [Type::getMixed()]]];
 
                     $replace_template_result = new \Psalm\Internal\Type\TemplateResult(
                         $template_types,
@@ -1160,7 +1180,7 @@ class CallAnalyzer
     /**
      * @param   StatementsAnalyzer                       $statements_analyzer
      * @param   array<int, PhpParser\Node\Arg>          $args
-     * @param   string|null                             $method_id
+     * @param   string|\Psalm\Internal\MethodIdentifier|null  $method_id
      * @param   array<int,FunctionLikeParameter>        $function_params
      * @param   FunctionLikeStorage|null                $function_storage
      * @param   ClassLikeStorage|null                   $class_storage
@@ -1180,9 +1200,9 @@ class CallAnalyzer
         CodeLocation $code_location,
         Context $context
     ) {
-        $in_call_map = $method_id ? CallMap::inCallMap($method_id) : false;
+        $in_call_map = $method_id ? CallMap::inCallMap((string) $method_id) : false;
 
-        $cased_method_id = $method_id;
+        $cased_method_id = (string) $method_id;
 
         $is_variadic = false;
 
@@ -1191,13 +1211,13 @@ class CallAnalyzer
         $codebase = $statements_analyzer->getCodebase();
 
         if ($method_id) {
-            if (!$in_call_map && strpos($method_id, '::')) {
-                $fq_class_name = explode('::', $method_id)[0];
+            if (!$in_call_map && $method_id instanceof \Psalm\Internal\MethodIdentifier) {
+                $fq_class_name = $method_id->fq_class_name;
             }
 
             if ($function_storage) {
                 $is_variadic = $function_storage->variadic;
-            } elseif ($fq_class_name === null) {
+            } elseif (is_string($method_id)) {
                 $is_variadic = $codebase->functions->isVariadic(
                     $codebase,
                     strtolower($method_id),
@@ -1208,7 +1228,7 @@ class CallAnalyzer
             }
         }
 
-        if ($method_id && strpos($method_id, '::')) {
+        if ($method_id instanceof \Psalm\Internal\MethodIdentifier) {
             $cased_method_id = $codebase->methods->getCasedMethodId($method_id);
         } elseif ($function_storage) {
             $cased_method_id = $function_storage->cased_name;
@@ -1219,18 +1239,18 @@ class CallAnalyzer
         $static_fq_class_name = $fq_class_name;
         $self_fq_class_name = $fq_class_name;
 
-        if ($method_id && strpos($method_id, '::')) {
+        if ($method_id instanceof \Psalm\Internal\MethodIdentifier) {
             $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
-            if ($declaring_method_id && $declaring_method_id !== $method_id) {
-                list($self_fq_class_name) = explode('::', $declaring_method_id);
+            if ($declaring_method_id && (string)$declaring_method_id !== (string)$method_id) {
+                $self_fq_class_name = $declaring_method_id->fq_class_name;
                 $class_storage = $codebase->classlike_storage_provider->get($self_fq_class_name);
             }
 
             $appearing_method_id = $codebase->methods->getAppearingMethodId($method_id);
 
             if ($appearing_method_id && $declaring_method_id !== $appearing_method_id) {
-                list($self_fq_class_name) = explode('::', $appearing_method_id);
+                $self_fq_class_name = $appearing_method_id->fq_class_name;
             }
         }
 
@@ -1326,7 +1346,7 @@ class CallAnalyzer
                 if (self::handlePossiblyMatchingByRefParam(
                     $statements_analyzer,
                     $codebase,
-                    $method_id,
+                    (string) $method_id,
                     $cased_method_id,
                     $last_param,
                     $function_params,
@@ -1426,7 +1446,7 @@ class CallAnalyzer
                     'Too many arguments for method ' . ($cased_method_id ?: $method_id)
                         . ' - expecting ' . count($function_params) . ' but saw ' . count($args),
                     $code_location,
-                    $method_id ?: ''
+                    (string) $method_id
                 ),
                 $statements_analyzer->getSuppressedIssues()
             )) {
@@ -1460,7 +1480,7 @@ class CallAnalyzer
                             'Too few arguments for method ' . $cased_method_id
                                 . ' - expecting ' . $expected_param_count . ' but saw ' . count($args),
                             $code_location,
-                            $method_id ?: ''
+                            (string) $method_id
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -1491,6 +1511,8 @@ class CallAnalyzer
     }
 
     /**
+     * @param  ?string $self_fq_class_name
+     * @param  ?string $static_fq_class_name
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $class_generic_params
      * @return false|null
      */
@@ -1733,6 +1755,8 @@ class CallAnalyzer
     }
 
     /**
+     * @param  ?string $self_fq_class_name
+     * @param  ?string $static_fq_class_name
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $class_generic_params
      * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
      * @param  array<string, array<string, array{Type\Union}>> $template_types
@@ -1793,21 +1817,33 @@ class CallAnalyzer
             $arg_type_param = $arg_type;
 
             if ($arg->unpack) {
-                if ($arg_type->hasArray()) {
-                    /**
-                     * @psalm-suppress PossiblyUndefinedStringArrayOffset
-                     * @var Type\Atomic\TArray|Type\Atomic\TList|Type\Atomic\ObjectLike
-                     */
-                    $array_atomic_type = $arg_type->getAtomicTypes()['array'];
+                $arg_type_param = null;
 
-                    if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                        $arg_type_param = $array_atomic_type->getGenericValueType();
-                    } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
-                        $arg_type_param = $array_atomic_type->type_param;
-                    } else {
-                        $arg_type_param = $array_atomic_type->type_params[1];
+                foreach ($arg_type->getAtomicTypes() as $arg_atomic_type) {
+                    if ($arg_atomic_type instanceof Type\Atomic\TArray
+                        || $arg_atomic_type instanceof Type\Atomic\TList
+                        || $arg_atomic_type instanceof Type\Atomic\ObjectLike
+                    ) {
+                        if ($arg_atomic_type instanceof Type\Atomic\ObjectLike) {
+                            $arg_type_param = $arg_atomic_type->getGenericValueType();
+                        } elseif ($arg_atomic_type instanceof Type\Atomic\TList) {
+                            $arg_type_param = $arg_atomic_type->type_param;
+                        } else {
+                            $arg_type_param = $arg_atomic_type->type_params[1];
+                        }
+                    } elseif ($arg_atomic_type instanceof Type\Atomic\TIterable) {
+                        $arg_type_param = $arg_atomic_type->type_params[1];
+                    } elseif ($arg_atomic_type instanceof Type\Atomic\TNamedObject) {
+                        ForeachAnalyzer::getKeyValueParamsForTraversableObject(
+                            $arg_atomic_type,
+                            $codebase,
+                            $key_type,
+                            $arg_type_param
+                        );
                     }
-                } else {
+                }
+
+                if (!$arg_type_param) {
                     $arg_type_param = Type::getMixed();
                 }
             }
@@ -1842,16 +1878,24 @@ class CallAnalyzer
 
         $parent_class = null;
 
+        $classlike_storage = null;
+        $static_classlike_storage = null;
+
         if ($self_fq_class_name) {
             $classlike_storage = $codebase->classlike_storage_provider->get($self_fq_class_name);
             $parent_class = $classlike_storage->parent_class;
+            $static_classlike_storage = $classlike_storage;
+
+            if ($static_fq_class_name && $static_fq_class_name !== $self_fq_class_name) {
+                $static_classlike_storage = $codebase->classlike_storage_provider->get($static_fq_class_name);
+            }
         }
 
         $fleshed_out_type = ExpressionAnalyzer::fleshOutType(
             $codebase,
             $param_type,
-            $self_fq_class_name,
-            $static_fq_class_name,
+            $classlike_storage ? $classlike_storage->name : null,
+            $static_classlike_storage ? $static_classlike_storage->name : null,
             $parent_class
         );
 
@@ -1859,8 +1903,8 @@ class CallAnalyzer
             ? ExpressionAnalyzer::fleshOutType(
                 $codebase,
                 $function_param->signature_type,
-                $self_fq_class_name,
-                $static_fq_class_name,
+                $classlike_storage ? $classlike_storage->name : null,
+                $static_classlike_storage ? $static_classlike_storage->name : null,
                 $parent_class
             )
             : null;
@@ -2167,7 +2211,10 @@ class CallAnalyzer
                             return;
                         }
 
-                        $function_id_part = $callable_fq_class_name . '::' . $method_name;
+                        $function_id_part = new \Psalm\Internal\MethodIdentifier(
+                            $callable_fq_class_name,
+                            $method_name
+                        );
 
                         try {
                             $method_storage = $codebase->methods->getStorage($function_id_part);
@@ -2501,11 +2548,13 @@ class CallAnalyzer
                 && strpos($cased_method_id, '::')
                 && !strpos($cased_method_id, '__')
             ) {
-                $declaring_method_id = $codebase->methods->getDeclaringMethodId($cased_method_id);
+                $method_parts = explode('::', $cased_method_id);
+
+                $method_id = new \Psalm\Internal\MethodIdentifier($method_parts[0], strtolower($method_parts[1]));
+                $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
                 if ($declaring_method_id) {
-                    $id_lc = strtolower($declaring_method_id);
-
+                    $id_lc = strtolower((string) $declaring_method_id);
                     if (!isset($codebase->analyzer->possible_method_param_types[$id_lc][$argument_offset])) {
                         $codebase->analyzer->possible_method_param_types[$id_lc][$argument_offset]
                             = clone $input_type;
@@ -2682,21 +2731,25 @@ class CallAnalyzer
                     if ($potential_method_id && $potential_method_id !== 'not-callable') {
                         $potential_method_ids[] = $potential_method_id;
                     }
-                } elseif ($input_type_part instanceof Type\Atomic\TLiteralString) {
-                    $potential_method_ids[] = $input_type_part->value;
+                } elseif ($input_type_part instanceof Type\Atomic\TLiteralString
+                    && strpos($input_type_part->value, '::')
+                ) {
+                    $parts = explode('::', $input_type_part->value);
+                    $potential_method_ids[] = new \Psalm\Internal\MethodIdentifier(
+                        $parts[0],
+                        strtolower($parts[1])
+                    );
                 }
             }
 
             foreach ($potential_method_ids as $potential_method_id) {
-                if (strpos($potential_method_id, '::')) {
-                    $codebase->methods->methodExists(
-                        $potential_method_id,
-                        $context->calling_function_id,
-                        null,
-                        $statements_analyzer,
-                        $statements_analyzer->getFilePath()
-                    );
-                }
+                $codebase->methods->methodExists(
+                    $potential_method_id,
+                    $context->calling_function_id,
+                    null,
+                    $statements_analyzer,
+                    $statements_analyzer->getFilePath()
+                );
             }
         }
 
@@ -2835,6 +2888,7 @@ class CallAnalyzer
                         $statements_analyzer,
                         $input_expr->value,
                         $code_location,
+                        $context->self,
                         $statements_analyzer->getSuppressedIssues()
                     ) === false
                     ) {
@@ -2851,6 +2905,7 @@ class CallAnalyzer
                                         $statements_analyzer,
                                         $item->value->value,
                                         $code_location,
+                                        $context->self,
                                         $statements_analyzer->getSuppressedIssues()
                                     ) === false
                                     ) {
@@ -2893,24 +2948,33 @@ class CallAnalyzer
                                         $callable_fq_class_name = $container_class;
                                 }
 
-                                $function_id_part = $callable_fq_class_name . '::' . $method_name;
-
                                 if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
                                     $statements_analyzer,
                                     $callable_fq_class_name,
                                     $code_location,
+                                    $context->self,
                                     $statements_analyzer->getSuppressedIssues()
                                 ) === false
                                 ) {
                                     return;
                                 }
 
+                                $function_id_part = new \Psalm\Internal\MethodIdentifier(
+                                    $callable_fq_class_name,
+                                    strtolower($method_name)
+                                );
+
+                                $call_method_id = new \Psalm\Internal\MethodIdentifier(
+                                    $callable_fq_class_name,
+                                    '__call'
+                                );
+
                                 if (!$codebase->classOrInterfaceExists($callable_fq_class_name)) {
                                     return;
                                 }
 
-                                if (!$codebase->methodExists($function_id_part)
-                                    && !$codebase->methodExists($callable_fq_class_name . '::__call')
+                                if (!$codebase->methods->methodExists($function_id_part)
+                                    && !$codebase->methods->methodExists($call_method_id)
                                 ) {
                                     $non_existent_method_ids[] = $function_id_part;
                                 } else {
@@ -3074,10 +3138,12 @@ class CallAnalyzer
 
                     $class_storage = $codebase->classlike_storage_provider->get($fq_classlike_name);
 
-                    foreach ($class_storage->dependent_classlikes as $dependent_classlike => $_) {
-                        $dependent_classlike_storage = $codebase->classlike_storage_provider->get($dependent_classlike);
+                    foreach ($class_storage->dependent_classlikes as $dependent_classlike_lc => $_) {
+                        $dependent_classlike_storage = $codebase->classlike_storage_provider->get(
+                            $dependent_classlike_lc
+                        );
                         $new_sink = Sink::getForMethodArgument(
-                            $dependent_classlike . '::' . $method_name,
+                            $dependent_classlike_lc . '::' . $method_name,
                             $dependent_classlike_storage->name . '::' . $cased_method_name,
                             (int) $method_name_parts[1] - 1,
                             $code_location,
@@ -3094,8 +3160,8 @@ class CallAnalyzer
                     if (isset($class_storage->overridden_method_ids[$method_name])) {
                         foreach ($class_storage->overridden_method_ids[$method_name] as $parent_method_id) {
                             $new_sink = Sink::getForMethodArgument(
-                                $parent_method_id,
-                                $codebase->getCasedMethodId($parent_method_id),
+                                (string) $parent_method_id,
+                                $codebase->methods->getCasedMethodId($parent_method_id),
                                 (int) $method_name_parts[1] - 1,
                                 $code_location,
                                 null
@@ -3610,6 +3676,14 @@ class CallAnalyzer
 
             foreach ($changed_var_ids as $var_id => $_) {
                 if (isset($op_vars_in_scope[$var_id])) {
+                    if ($first_appearance = $statements_analyzer->getFirstAppearance($var_id)) {
+                        IssueBuffer::remove(
+                            $statements_analyzer->getFilePath(),
+                            'MixedAssignment',
+                            $first_appearance->raw_file_start
+                        );
+                    }
+
                     $op_vars_in_scope[$var_id]->from_docblock = true;
 
                     foreach ($op_vars_in_scope[$var_id]->getAtomicTypes() as $changed_atomic_type) {
