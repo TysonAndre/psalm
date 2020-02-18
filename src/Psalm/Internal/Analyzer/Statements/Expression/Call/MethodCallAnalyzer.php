@@ -168,7 +168,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             }
             if ($should_check && IssueBuffer::accepts(
                 new PossiblyNullReference(
-                    'Cannot call method ' . $stmt->name->name . ' on possibly null variable ',
+                    'Cannot call method ' . $stmt->name->name . ' on possibly null value',
                     new CodeLocation($statements_analyzer->getSource(), $stmt->name)
                 ),
                 $statements_analyzer->getSuppressedIssues()
