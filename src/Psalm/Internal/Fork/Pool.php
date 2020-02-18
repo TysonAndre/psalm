@@ -205,7 +205,7 @@ class Pool
             $process_done_message = new ForkProcessDoneMessage($results ?: []);
         } catch (\Throwable $t) {
             /** @psalm-suppress MixedArgument on Windows, for some reason */
-            $process_done_message = new ForkProcessErrorMessage($t->getMessage());
+            $process_done_message = new ForkProcessErrorMessage($t->getMessage() . "\nStack trace in the forked worker:\n" . $t->getTraceAsString());
         }
 
         $serialized_message = $task_done_buffer . base64_encode(serialize($process_done_message)) . "\n";
