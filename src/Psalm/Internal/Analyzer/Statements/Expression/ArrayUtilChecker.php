@@ -1,5 +1,5 @@
 <?php
-namespace Psalm\Checker\Statements\Expression;
+namespace Psalm\Internal\Analyzer\Statements\Expression;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
@@ -207,7 +207,7 @@ class ArrayUtilChecker
             }
         }
 
-        foreach ($array_type->getTypes() as &$type) {
+        foreach ($array_type->getAtomicTypes() as &$type) {
             if ($type instanceof TNull) {
                 if ($array_type->ignore_nullable_issues) {
                     continue;
