@@ -2,16 +2,19 @@
 namespace Psalm\Internal\Analyzer\Statements;
 
 use PhpParser;
+use Psalm\Codebase;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\ClosureAnalyzer;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
+use Psalm\Internal\Analyzer\TypeComparisonResult;
 use Psalm\Internal\Taint\Sink;
 use Psalm\Internal\Taint\Source;
 use Psalm\Issue\FalsableReturnStatement;
@@ -23,12 +26,12 @@ use Psalm\Issue\MixedReturnTypeCoercion;
 use Psalm\Issue\NoValue;
 use Psalm\Issue\NullableReturnStatement;
 use Psalm\Issue\PossiblyInvalidReturnStatement;
-use Psalm\Issue\TaintedInput;
 use Psalm\IssueBuffer;
+use Psalm\Storage\FunctionLikeParameter;
+use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Type;
 use function explode;
 use function strtolower;
-use UnexpectedValueException;
 
 /**
  * @internal
@@ -110,7 +113,7 @@ class ReturnAnalyzer
                         $statements_analyzer,
                         $comment_type,
                         $type_location,
-                        $context->calling_function_id
+                        $context->calling_method_id
                     );
                 }
 
@@ -125,6 +128,14 @@ class ReturnAnalyzer
 
         if ($stmt->expr) {
             $context->inside_call = true;
+
+            if ($stmt->expr instanceof PhpParser\Node\Expr\Closure) {
+                self::potentiallyInferTypesOnClosureFromParentReturnType(
+                    $statements_analyzer,
+                    $stmt->expr,
+                    $context
+                );
+            }
 
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->expr, $context) === false) {
                 return false;
@@ -198,15 +209,31 @@ class ReturnAnalyzer
                     $storage
                 );
 
-                if ($storage->return_type && !$storage->return_type->hasMixed()) {
-                    $local_return_type = $source->getLocalReturnType($storage->return_type);
+                if ($storage instanceof \Psalm\Storage\MethodStorage && $context->self) {
+                    $self_class = $context->self;
+
+                    $declared_return_type = $codebase->methods->getMethodReturnType(
+                        \Psalm\Internal\MethodIdentifier::wrap($cased_method_id),
+                        $self_class,
+                        $statements_analyzer,
+                        null
+                    );
+                } else {
+                    $declared_return_type = $storage->return_type;
+                }
+
+                if ($declared_return_type && !$declared_return_type->hasMixed()) {
+                    $local_return_type = $source->getLocalReturnType(
+                        $declared_return_type,
+                        $storage instanceof \Psalm\Storage\MethodStorage && $storage->final
+                    );
 
                     if ($storage instanceof \Psalm\Storage\MethodStorage) {
                         list($fq_class_name, $method_name) = explode('::', $cased_method_id);
 
                         $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
-                        $found_generic_params = MethodCallAnalyzer::getClassTemplateParams(
+                        $found_generic_params = ClassTemplateParamCollector::collect(
                             $codebase,
                             $class_storage,
                             $fq_class_name,
@@ -338,6 +365,7 @@ class ReturnAnalyzer
                                         $stmt->expr->value,
                                         new CodeLocation($source, $stmt->expr),
                                         $context->self,
+                                        $context->calling_method_id,
                                         $statements_analyzer->getSuppressedIssues()
                                     ) === false
                                     ) {
@@ -357,6 +385,7 @@ class ReturnAnalyzer
                                                         $item->value->value,
                                                         new CodeLocation($source, $item->value),
                                                         $context->self,
+                                                        $context->calling_method_id,
                                                         $statements_analyzer->getSuppressedIssues()
                                                     ) === false
                                                     ) {
@@ -382,7 +411,7 @@ class ReturnAnalyzer
                         } else {
                             if (IssueBuffer::accepts(
                                 new InvalidReturnStatement(
-                                    'The type \'' . $stmt_type->getId()
+                                    'The inferred type \'' . $stmt_type->getId()
                                         . '\' does not match the declared return '
                                         . 'type \'' . $local_return_type->getId() . '\' for ' . $cased_method_id,
                                     new CodeLocation($source, $stmt->expr)
@@ -415,7 +444,7 @@ class ReturnAnalyzer
                     if (!$stmt_type->ignore_falsable_issues
                         && $inferred_type->isFalsable()
                         && !$local_return_type->isFalsable()
-                        && !$local_return_type->hasBool()
+                        && (!$local_return_type->hasBool() || $local_return_type->isTrue())
                         && !$local_return_type->hasScalar()
                     ) {
                         if (IssueBuffer::accepts(
@@ -559,5 +588,89 @@ class ReturnAnalyzer
                     . $stmt->getLine()
             );
         }
+    }
+
+    /**
+     * If a function returns a closure, we try to infer the param/return types of
+     * the inner closure.
+     * @see \Psalm\Tests\ReturnTypeTest:756
+     */
+    private static function potentiallyInferTypesOnClosureFromParentReturnType(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Expr\Closure $expr,
+        Context $context
+    ): void {
+        // if not returning from inside of a function, return
+        if (!$context->calling_method_id && !$context->calling_function_id) {
+            return;
+        }
+
+        $closure_id = (new ClosureAnalyzer($expr, $statements_analyzer))->getId();
+        $closure_storage = $statements_analyzer
+            ->getCodebase()
+            ->getFunctionLikeStorage($statements_analyzer, $closure_id);
+
+        $parent_fn_storage = $statements_analyzer
+            ->getCodebase()
+            ->getFunctionLikeStorage(
+                $statements_analyzer,
+                $context->calling_function_id ?: $context->calling_method_id
+            );
+
+        if ($parent_fn_storage->return_type === null) {
+            return;
+        }
+
+        // can't infer returned closure if the parent doesn't have a callable return type
+        if (!$parent_fn_storage->return_type->hasCallableType()) {
+            return;
+        }
+
+        // cannot infer if we have union/intersection types
+        if (!$parent_fn_storage->return_type->isSingle()) {
+            return;
+        }
+
+        /** @var Type\Atomic\TFn|Type\Atomic\TCallable $parent_callable_return_type */
+        $parent_callable_return_type = \current($parent_fn_storage->return_type->getAtomicTypes());
+
+        if ($parent_callable_return_type->params === null && $parent_callable_return_type->return_type === null) {
+            return;
+        }
+
+        foreach ($closure_storage->params as $key => $param) {
+            $parent_param = $parent_callable_return_type->params[$key] ?? null;
+            $param->type = self::inferInnerClosureTypeFromParent(
+                $statements_analyzer->getCodebase(),
+                $param->type,
+                $parent_param ? $parent_param->type : null
+            );
+        }
+
+        $closure_storage->return_type = self::inferInnerClosureTypeFromParent(
+            $statements_analyzer->getCodebase(),
+            $closure_storage->return_type,
+            $parent_callable_return_type->return_type
+        );
+    }
+
+    /**
+     * - If non parent type, do nothing
+     * - If no return type, infer from parent
+     * - If parent return type is more specific, infer from parent
+     * - else, do nothing
+     */
+    private static function inferInnerClosureTypeFromParent(
+        Codebase $codebase,
+        ?Type\Union $return_type,
+        ?Type\Union $parent_return_type
+    ): ?Type\Union {
+        if (!$parent_return_type) {
+            return $return_type;
+        }
+        if (!$return_type || TypeAnalyzer::isContainedBy($codebase, $parent_return_type, $return_type)) {
+            return $parent_return_type;
+        }
+        return $return_type;
     }
 }

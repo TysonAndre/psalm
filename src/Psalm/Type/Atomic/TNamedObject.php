@@ -21,6 +21,11 @@ class TNamedObject extends Atomic
     public $value;
 
     /**
+     * @var bool
+     */
+    public $was_static = false;
+
+    /**
      * @param string $value the name of the object
      */
     public function __construct($value)
@@ -40,9 +45,9 @@ class TNamedObject extends Atomic
     /**
      * @return string
      */
-    public function getKey()
+    public function getKey(bool $include_extra = true)
     {
-        if ($this->extra_types) {
+        if ($include_extra && $this->extra_types) {
             return $this->value . '&' . implode('&', $this->extra_types);
         }
 
@@ -63,7 +68,7 @@ class TNamedObject extends Atomic
             );
         }
 
-        return $this->value;
+        return $this->was_static ? $this->value . '&static' : $this->value;
     }
 
     /**
@@ -133,107 +138,8 @@ class TNamedObject extends Atomic
         $this->replaceIntersectionTemplateTypesWithArgTypes($template_types, $codebase);
     }
 
-    /**
-     * @return list<Type\Atomic\TTemplateParam>
-     */
-    public function getTemplateTypes() : array
+    public function getChildNodes() : array
     {
-        return $this->getIntersectionTemplateTypes();
-    }
-
-    /**
-     * @param  StatementsSource $source
-     * @param  CodeLocation     $code_location
-     * @param  array<string>    $suppressed_issues
-     * @param  array<string, bool> $phantom_classes
-     * @param  bool             $inferred
-     *
-     * @return false|null
-     */
-    public function check(
-        StatementsSource $source,
-        CodeLocation $code_location,
-        array $suppressed_issues,
-        array $phantom_classes = [],
-        bool $inferred = true,
-        bool $prevent_template_covariance = false
-    ) {
-        if ($this->checked) {
-            return;
-        }
-
-        $codebase = $source->getCodebase();
-
-        if ($code_location instanceof CodeLocation\DocblockTypeLocation
-            && $codebase->store_node_types
-            && $this->offset_start !== null
-            && $this->offset_end !== null
-        ) {
-            $codebase->analyzer->addOffsetReference(
-                $source->getFilePath(),
-                $code_location->raw_file_start + $this->offset_start,
-                $code_location->raw_file_start + $this->offset_end,
-                $this->value
-            );
-        }
-
-        if (!isset($phantom_classes[\strtolower($this->value)]) &&
-            \Psalm\Internal\Analyzer\ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
-                $source,
-                $this->value,
-                $code_location,
-                null,
-                $suppressed_issues,
-                $inferred,
-                false,
-                true,
-                $this->from_docblock
-            ) === false
-        ) {
-            return false;
-        }
-
-        $fq_class_name_lc = strtolower($this->value);
-
-        if ($codebase->classlike_storage_provider->has($fq_class_name_lc)
-            && $source->getFQCLN() !== $this->value
-        ) {
-            $class_storage = $codebase->classlike_storage_provider->get($fq_class_name_lc);
-
-            if ($class_storage->deprecated) {
-                if (\Psalm\IssueBuffer::accepts(
-                    new \Psalm\Issue\DeprecatedClass(
-                        'Class ' . $this->value . ' is marked as deprecated',
-                        $code_location,
-                        $this->value
-                    ),
-                    $source->getSuppressedIssues()
-                )) {
-                    // fall through
-                }
-            }
-        }
-
-        $this->checkIntersectionTypes(
-            $source,
-            $code_location,
-            $suppressed_issues,
-            $phantom_classes,
-            $inferred,
-            $prevent_template_covariance
-        );
-
-        if ($this instanceof TGenericObject) {
-            $this->checkGenericParams(
-                $source,
-                $code_location,
-                $suppressed_issues,
-                $phantom_classes,
-                $inferred,
-                $prevent_template_covariance
-            );
-        }
-
-        $this->checked = true;
+        return $this->extra_types !== null ? $this->extra_types : [];
     }
 }

@@ -23,7 +23,7 @@ class TypeCombinationTest extends TestCase
 
         foreach ($types as $type) {
             $converted_type = self::getAtomic($type);
-            $converted_type->setFromDocblock();
+            $converted_type->from_docblock = true;
             $converted_types[] = $converted_type;
         }
 
@@ -188,7 +188,7 @@ class TypeCombinationTest extends TestCase
                 ],
             ],
             'arrayMixedOrStringKeys' => [
-                'array<int|mixed|string, string>',
+                'array<array-key, string>',
                 [
                     'array<int|string,string>',
                     'array<mixed,string>',
@@ -541,6 +541,13 @@ class TypeCombinationTest extends TestCase
                 [
                     'callable-array',
                     'callable'
+                ],
+            ],
+            'combineCallableArrayAndArray' => [
+                'array<array-key, mixed>',
+                [
+                    'callable-array{class-string, string}',
+                    'array',
                 ],
             ],
         ];

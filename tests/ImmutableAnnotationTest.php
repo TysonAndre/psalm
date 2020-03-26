@@ -297,6 +297,117 @@ class ImmutableAnnotationTest extends TestCase
                         private function test(): void {}
                     }'
             ],
+            'canPassImmutableIntoImmutable' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Item {
+                        private int $i;
+
+                        public function __construct(int $i) {
+                            $this->i = $i;
+                        }
+
+                        /** @psalm-mutation-free */
+                        public function get(): int {
+                            return $this->i;
+                        }
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Immutable {
+                        private $item;
+
+                        public function __construct(Item $item) {
+                            $this->item = $item;
+                        }
+
+                        public function get(): int {
+                            return $this->item->get();
+                        }
+                    }
+
+                    $item = new Item(5);
+                    new Immutable($item);',
+            ],
+            'preventNonImmutableTraitInImmutableClass' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    trait ImmutableTrait {
+                        public int $i = 0;
+
+                        public function __construct(int $i) {
+                            $this->i = $i;
+                        }
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    final class NotReallyImmutableClass {
+                        use ImmutableTrait;
+                    }',
+            ],
+            'preventImmutableClassInheritingMutableParent' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class ImmutableParent {
+                        public int $i = 0;
+
+                        public function __construct(int $i) {
+                            $this->i = $i;
+                        }
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    final class ImmutableClass extends ImmutableParent {}',
+            ],
+            'passDateTimeZone' => [
+                '<?php
+                    echo (new DateTimeImmutable("now", new DateTimeZone("UTC")))->format("Y-m-d");'
+            ],
+            'allowPassingCloneOfMutableIntoImmutable' => [
+                '<?php
+                    class Item {
+                        private int $i = 0;
+
+                        public function mutate(): void {
+                            $this->i++;
+                        }
+
+                        /** @psalm-mutation-free */
+                        public function get(): int {
+                            return $this->i;
+                        }
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Immutable {
+                        private Item $item;
+
+                        public function __construct(Item $item) {
+                            $this->item = clone $item;
+                        }
+
+                        public function get(): int {
+                            return $this->item->get();
+                        }
+                    }
+
+                    $item = new Item();
+                    new Immutable($item);',
+            ],
         ];
     }
 
@@ -404,31 +515,6 @@ class ImmutableAnnotationTest extends TestCase
                     }',
                 'error_message' => 'ImpureMethodCall',
             ],
-            'cloneMutatingClass' => [
-                '<?php
-                    /**
-                     * @psalm-immutable
-                     */
-                    class Foo {
-                        protected string $bar;
-
-                        public function __construct(string $bar) {
-                            $this->bar = $bar;
-                        }
-
-                        public function withBar(Bar $b): Bar {
-                            $new = clone $b;
-                            $b->a = $this->bar;
-
-                            return $new;
-                        }
-                    }
-
-                    class Bar {
-                        public string $a = "hello";
-                    }',
-                'error_message' => 'ImpurePropertyAssignment',
-            ],
             'mustBeImmutableLikeInterfaces' => [
                 '<?php
                     /** @psalm-immutable */
@@ -458,6 +544,94 @@ class ImmutableAnnotationTest extends TestCase
                         }
                     }',
                 'error_message' => 'MissingImmutableAnnotation',
+            ],
+            'preventPassingMutableIntoImmutable' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Immutable {
+                        private $item;
+
+                        public function __construct(Item $item) {
+                            $this->item = $item;
+                        }
+
+                        public function get(): int {
+                            return $this->item->get();
+                        }
+                    }
+
+                    class Item {
+                        private int $i = 0;
+
+                        public function mutate(): void {
+                            $this->i++;
+                        }
+
+                        /** @psalm-mutation-free */
+                        public function get(): int {
+                            return $this->i;
+                        }
+                    }',
+                'error_message' => 'ImpurePropertyAssignment',
+            ],
+            'preventNonImmutableTraitInImmutableClass' => [
+                '<?php
+                    trait MutableTrait {
+                        public int $i = 0;
+
+                        public function increment() : void {
+                            $this->i++;
+                        }
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    final class NotReallyImmutableClass {
+                        use MutableTrait;
+                    }',
+                'error_message' => 'MutableDependency'
+            ],
+            'preventImmutableClassInheritingMutableParent' => [
+                '<?php
+                    class MutableParent {
+                        public int $i = 0;
+
+                        public function increment() : void {
+                            $this->i++;
+                        }
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    final class NotReallyImmutableClass extends MutableParent {}',
+                'error_message' => 'MutableDependency'
+            ],
+            'preventAssigningArrayToImmutableProperty' => [
+                '<?php
+                    class Item {}
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    class Immutable {
+                        /**
+                         * @var Item[]
+                         */
+                        private $items;
+
+                        /**
+                         * @param Item[] $items
+                         */
+                        public function __construct(array $items)
+                        {
+                            $this->items = $items;
+                        }
+                    }',
+                'error_message' => 'ImpurePropertyAssignment',
             ],
         ];
     }

@@ -83,19 +83,15 @@ class Methods
 
     /**
      * Whether or not a given method exists
-     *
-     * @param  ?string      $calling_function_id
-     * @param  CodeLocation|null $code_location
-     *
-     * @return bool
+     * @param lowercase-string|null $calling_method_id
      */
     public function methodExists(
         \Psalm\Internal\MethodIdentifier $method_id,
-        $calling_function_id = null,
+        ?string $calling_method_id = null,
         CodeLocation $code_location = null,
         StatementsSource $source = null,
-        string $file_path = null
-    ) {
+        string $source_file_path = null
+    ) : bool {
         $fq_class_name = $method_id->fq_class_name;
         $method_name = $method_id->method_name;
 
@@ -112,10 +108,6 @@ class Methods
             }
         }
 
-        if ($calling_function_id) {
-            $calling_function_id = strtolower($calling_function_id);
-        }
-
         $old_method_id = null;
 
         $fq_class_name = strtolower($this->classlikes->getUnAliasedName($fq_class_name));
@@ -129,8 +121,24 @@ class Methods
         if (isset($class_storage->declaring_method_ids[$method_name])) {
             $declaring_method_id = $class_storage->declaring_method_ids[$method_name];
 
-            if ((string) $calling_function_id === strtolower((string) $declaring_method_id)) {
+            if ($calling_method_id === strtolower((string) $declaring_method_id)) {
                 return true;
+            }
+
+            $declaring_fq_class_name = strtolower($declaring_method_id->fq_class_name);
+
+            if ($source && $declaring_fq_class_name !== strtolower((string) $source->getFQCLN())) {
+                if ($calling_method_id) {
+                    $this->file_reference_provider->addMethodReferenceToClass(
+                        $calling_method_id,
+                        $declaring_fq_class_name
+                    );
+                } else {
+                    $this->file_reference_provider->addFileReferenceToClass(
+                        $source->getFilePath(),
+                        $declaring_fq_class_name
+                    );
+                }
             }
 
             if ((string) $method_id !== (string) $declaring_method_id
@@ -138,27 +146,27 @@ class Methods
                 && isset($class_storage->potential_declaring_method_ids[$method_name])
             ) {
                 foreach ($class_storage->potential_declaring_method_ids[$method_name] as $potential_id => $_) {
-                    if ($calling_function_id) {
+                    if ($calling_method_id) {
                         $this->file_reference_provider->addMethodReferenceToClassMember(
-                            $calling_function_id,
+                            $calling_method_id,
                             $potential_id
                         );
-                    } elseif ($file_path) {
+                    } elseif ($source_file_path) {
                         $this->file_reference_provider->addFileReferenceToClassMember(
-                            $file_path,
+                            $source_file_path,
                             $potential_id
                         );
                     }
                 }
             } else {
-                if ($calling_function_id) {
+                if ($calling_method_id) {
                     $this->file_reference_provider->addMethodReferenceToClassMember(
-                        $calling_function_id,
+                        $calling_method_id,
                         strtolower((string) $declaring_method_id)
                     );
-                } elseif ($file_path) {
+                } elseif ($source_file_path) {
                     $this->file_reference_provider->addFileReferenceToClassMember(
-                        $file_path,
+                        $source_file_path,
                         strtolower((string) $declaring_method_id)
                     );
                 }
@@ -181,14 +189,14 @@ class Methods
                     );
                 }
 
-                if ($calling_function_id) {
+                if ($calling_method_id) {
                     $this->file_reference_provider->addMethodReferenceToClassMember(
-                        $calling_function_id,
+                        $calling_method_id,
                         $interface_method_id_lc
                     );
-                } elseif ($file_path) {
+                } elseif ($source_file_path) {
                     $this->file_reference_provider->addFileReferenceToClassMember(
-                        $file_path,
+                        $source_file_path,
                         $interface_method_id_lc
                     );
                 }
@@ -210,15 +218,15 @@ class Methods
                         );
                     }
 
-                    if ($calling_function_id) {
+                    if ($calling_method_id) {
                         // also store failures in case the method is added later
                         $this->file_reference_provider->addMethodReferenceToClassMember(
-                            $calling_function_id,
+                            $calling_method_id,
                             strtolower((string) $overridden_method_id)
                         );
-                    } elseif ($file_path) {
+                    } elseif ($source_file_path) {
                         $this->file_reference_provider->addFileReferenceToClassMember(
-                            $file_path,
+                            $source_file_path,
                             strtolower((string) $overridden_method_id)
                         );
                     }
@@ -226,6 +234,20 @@ class Methods
             }
 
             return true;
+        }
+
+        if ($source && $fq_class_name !== strtolower((string) $source->getFQCLN())) {
+            if ($calling_method_id) {
+                $this->file_reference_provider->addMethodReferenceToClass(
+                    $calling_method_id,
+                    $fq_class_name
+                );
+            } else {
+                $this->file_reference_provider->addFileReferenceToClass(
+                    $source->getFilePath(),
+                    $fq_class_name
+                );
+            }
         }
 
         if ($class_storage->abstract && isset($class_storage->overridden_method_ids[$method_name])) {
@@ -248,29 +270,29 @@ class Methods
         foreach ($class_storage->parent_classes + $class_storage->used_traits as $potential_future_declaring_fqcln) {
             $potential_id = strtolower($potential_future_declaring_fqcln) . '::' . $method_name;
 
-            if ($calling_function_id) {
+            if ($calling_method_id) {
                 // also store failures in case the method is added later
                 $this->file_reference_provider->addMethodReferenceToMissingClassMember(
-                    $calling_function_id,
+                    $calling_method_id,
                     $potential_id
                 );
-            } elseif ($file_path) {
+            } elseif ($source_file_path) {
                 $this->file_reference_provider->addFileReferenceToMissingClassMember(
-                    $file_path,
+                    $source_file_path,
                     $potential_id
                 );
             }
         }
 
-        if ($calling_function_id) {
+        if ($calling_method_id) {
             // also store failures in case the method is added later
             $this->file_reference_provider->addMethodReferenceToMissingClassMember(
-                $calling_function_id,
+                $calling_method_id,
                 strtolower((string) $method_id)
             );
-        } elseif ($file_path) {
+        } elseif ($source_file_path) {
             $this->file_reference_provider->addFileReferenceToMissingClassMember(
-                $file_path,
+                $source_file_path,
                 strtolower((string) $method_id)
             );
         }
@@ -445,17 +467,19 @@ class Methods
         $type = clone $type;
 
         foreach ($type->getAtomicTypes() as $key => $atomic_type) {
-            if ($atomic_type instanceof Type\Atomic\TTemplateParam) {
-                if ($atomic_type->defining_class === $base_fq_class_name) {
-                    if (isset($extends[$base_fq_class_name][$atomic_type->param_name])) {
-                        $extended_param = $extends[$base_fq_class_name][$atomic_type->param_name];
+            if ($atomic_type instanceof Type\Atomic\TTemplateParam
+                && $atomic_type->defining_class === $base_fq_class_name
+            ) {
+                $types_to_add = self::getExtendedTemplatedTypes(
+                    $atomic_type,
+                    $extends
+                );
 
-                        $type->removeType($key);
-                        $type = Type::combineUnionTypes(
-                            $type,
-                            $extended_param,
-                            $codebase
-                        );
+                if ($types_to_add) {
+                    $type->removeType($key);
+
+                    foreach ($types_to_add as $extra_added_type) {
+                        $type->addType($extra_added_type);
                     }
                 }
             }
@@ -490,6 +514,15 @@ class Methods
                 }
             }
 
+            if ($atomic_type instanceof Type\Atomic\TList) {
+                $atomic_type->type_param = self::localizeType(
+                    $codebase,
+                    $atomic_type->type_param,
+                    $appearing_fq_class_name,
+                    $base_fq_class_name
+                );
+            }
+
             if ($atomic_type instanceof Type\Atomic\TCallable
                 || $atomic_type instanceof Type\Atomic\TFn
             ) {
@@ -518,6 +551,39 @@ class Methods
         }
 
         return $type;
+    }
+
+    /**
+     * @param array<string, array<int|string, Type\Union>> $extends
+     * @return list<Type\Atomic>
+     */
+    private static function getExtendedTemplatedTypes(
+        Type\Atomic\TTemplateParam $atomic_type,
+        array $extends
+    ) : array {
+        $extra_added_types = [];
+
+        if (isset($extends[$atomic_type->defining_class][$atomic_type->param_name])) {
+            $extended_param = clone $extends[$atomic_type->defining_class][$atomic_type->param_name];
+
+            foreach ($extended_param->getAtomicTypes() as $extended_atomic_type) {
+                if ($extended_atomic_type instanceof Type\Atomic\TTemplateParam) {
+                    $extra_added_types = \array_merge(
+                        $extra_added_types,
+                        self::getExtendedTemplatedTypes(
+                            $extended_atomic_type,
+                            $extends
+                        )
+                    );
+                } else {
+                    $extra_added_types[] = $extended_atomic_type;
+                }
+            }
+        } else {
+            $extra_added_types[] = $atomic_type;
+        }
+
+        return $extra_added_types;
     }
 
     /**

@@ -773,6 +773,32 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                     '$fp' => 'closed-resource',
                 ]
             ],
+            'allowCheckOnReturnTypeUnion' => [
+                '<?php
+                    /** @return int|string */
+                    function returnsInt() {
+                        return rand(0, 1) ? 1 : "hello";
+                    }
+
+                    if (is_int(returnsInt())) {}
+                    if (!is_int(returnsInt())) {}',
+            ],
+            'noRedundantConditionInClosureForProperty' => [
+                '<?php
+                    class Queue {
+                        private bool $closed = false;
+
+                        public function enqueue(string $value): Closure {
+                            if ($this->closed) {
+                                return function() : void {
+                                    if ($this->closed) {}
+                                };
+                            }
+
+                            return function() : void {};
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -1250,6 +1276,36 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                         if (is_resource($fp)) {}
                     }',
                 'error_message' => 'RedundantCondition',
+            ],
+            'preventAlwaysReturningInt' => [
+                '<?php
+                    function returnsInt(): int {
+                        return 3;
+                    }
+
+                    if (is_int(returnsInt())) {}',
+                'error_message' => 'RedundantCondition',
+            ],
+            'preventAlwaysReturningSpecificInt' => [
+                '<?php
+                    /**
+                     * @return 3|4
+                     */
+                    function returnsInt(): int {
+                        return rand(0, 1) ? 3 : 4;
+                    }
+
+                    if (is_int(returnsInt())) {}',
+                'error_message' => 'RedundantConditionGivenDocblockType',
+            ],
+            'preventNotAlwaysReturningInt' => [
+                '<?php
+                    function returnsInt(): int {
+                        return 3;
+                    }
+
+                    if (!is_int(returnsInt())) {}',
+                'error_message' => 'TypeDoesNotContainType',
             ],
         ];
     }

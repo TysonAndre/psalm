@@ -12,12 +12,9 @@ use Psalm\StatementsSource;
 use Psalm\Type;
 use function implode;
 use function strtolower;
-use function explode;
 use function strpos;
 use function array_keys;
 use function count;
-use function array_merge;
-use function array_diff;
 
 /**
  * @internal
@@ -350,7 +347,7 @@ class FileAnalyzer extends SourceAnalyzer implements StatementsSource
         $call_context->collect_initializations = $this_context->collect_initializations;
         $call_context->initialized_methods = $this_context->initialized_methods;
         $call_context->include_location = $this_context->include_location;
-        $call_context->calling_function_id = $this_context->calling_function_id;
+        $call_context->calling_method_id = $this_context->calling_method_id;
 
         foreach ($this_context->vars_possibly_in_scope as $var => $_) {
             if (strpos($var, '$this->') === 0) {

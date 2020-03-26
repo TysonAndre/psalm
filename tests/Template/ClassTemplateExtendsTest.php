@@ -1147,8 +1147,9 @@ class ClassTemplateExtendsTest extends TestCase
                     }
                     /**
                      * @template T
+                     * @implements Functor<T>
                      */
-                    class Box implements Functor
+                    final class Box implements Functor
                     {
                         /**
                          * @var T
@@ -1695,6 +1696,9 @@ class ClassTemplateExtendsTest extends TestCase
 
                         public function getIterator()
                         {
+                            /**
+                             * @psalm-suppress InvalidReturnStatement
+                             */
                             return new ArrayIterator($this->elements);
                         }
 
@@ -3021,6 +3025,461 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }'
             ],
+            'extendsTemplatedInterface' => [
+                '<?php
+                    class Animal {}
+
+                    /**
+                     * @template DC1 of Animal
+                     */
+                    interface IStroker {
+                        /**
+                         * @psalm-param DC1 $animal
+                         */
+                        public function stroke(Animal $animal): void;
+                    }
+
+                    /**
+                     * @template DC2 of Animal
+                     * @template-extends IStroker<DC2>
+                     */
+                    interface IStroker2 extends IStroker {}
+
+                    class Dog extends Animal {}
+
+                    /**
+                     * @implements IStroker2<Dog>
+                     */
+                    class DogStroker implements IStroker2 {
+                        public function stroke(Animal $animal): void {
+                            $this->doDeletePerson($animal);
+                        }
+
+                        private function doDeletePerson(Dog $animal): void {}
+                    }'
+            ],
+            'extendsTemplatedClass' => [
+                '<?php
+                    class Animal {}
+
+                    /**
+                     * @template DC1 of Animal
+                     */
+                    class IStroker {
+                        /**
+                         * @psalm-param DC1 $animal
+                         */
+                        public function stroke(Animal $animal): void {}
+                    }
+
+                    /**
+                     * @template DC2 of Animal
+                     * @template-extends IStroker<DC2>
+                     */
+                    class IStroker2 extends IStroker {}
+
+                    class Dog extends Animal {}
+
+                    /**
+                     * @extends IStroker2<Dog>
+                     */
+                    class DogStroker extends IStroker2 {
+                        public function stroke(Animal $animal): void {
+                            $this->doDeletePerson($animal);
+                        }
+
+                        private function doDeletePerson(Dog $animal): void {}
+                    }'
+            ],
+            'sameNameTemplateFromParent' => [
+                '<?php
+                    /**
+                     * @psalm-template T
+                     */
+                    interface C {
+                        /**
+                         * @psalm-param T $p
+                         * @psalm-return C<T>
+                         */
+                        public function filter($p) : self;
+                    }
+
+                    /**
+                     * @psalm-template T
+                     * @template-implements C<T>
+                     */
+                    abstract class AC implements C {
+                        /**
+                         * @psalm-var C<T>
+                         */
+                        protected $c;
+
+                        /**
+                         * @param T $p
+                         */
+                        public function filter($p) : C {
+                            return $this->c->filter($p);
+                        }
+                    }'
+            ],
+            'implementsTemplatedTwice' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface A {
+                        /** @return T1 */
+                        public function get();
+                    }
+
+                    /**
+                     * @template T2
+                     * @extends A<T2>
+                     */
+                    interface B extends A {}
+
+                    /**
+                     * @template T3
+                     * @implements B<T3>
+                     */
+                    class C implements B {
+                        /** @var T3 */
+                        private $val;
+
+                        /**
+                         * @psalm-param T3 $val
+                         */
+                        public function __construct($val) {
+                            $this->val = $val;
+                        }
+
+                        public function get() {
+                            return $this->val;
+                        }
+                    }
+
+                    $foo = (new C("foo"))->get();',
+                [
+                    '$foo' => 'string',
+                ]
+            ],
+            'extendsWithJustParentConstructor' => [
+                '<?php
+                    class Subject{}
+
+                    /**
+                     * @template U of Subject
+                     * @template-extends EventAbstract<U>
+                     */
+                    class EventInstance extends EventAbstract
+                    {
+                        /**
+                         * @template S of Subject
+                         * @param S $subject
+                         * @return self<S>
+                         */
+                        public static function createInstance(Subject $subject) : self
+                        {
+                            return new self($subject);
+                        }
+                    }
+
+                    /**
+                     * @template T of Subject
+                     */
+                    abstract class EventAbstract
+                    {
+                        /** @var T */
+                        protected $subject;
+
+                        /**
+                         * @param T $subject
+                         */
+                        public function __construct(Subject $subject)
+                        {
+                            $this->subject = $subject;
+                        }
+                    }'
+            ],
+            'annotationDefinedInInheritedInterface' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface X {
+                        /**
+                         * @param T1 $x
+                         * @return T1
+                         */
+                        public function boo($x);
+                    }
+
+                    /**
+                     * @template T2
+                     * @extends X<T2>
+                     */
+                    interface Y extends X {}
+
+                    /**
+                     * @template T3
+                     * @implements Y<T3>
+                     */
+                    class A implements Y {
+                        public function boo($x) {
+                            return $x;
+                        }
+                    }
+
+                    function foo(A $a) : void {
+                        $a->boo("boo");
+                    }'
+            ],
+            'allowPropertyCoercionExtendedParam' => [
+                '<?php
+                    class Test
+                    {
+                        /**
+                         * @var ArrayCollection<int, DateTime>
+                         */
+                        private $c;
+
+                        public function __construct()
+                        {
+                            $this->c = new ArrayCollection();
+                            $this->c->filter(function (DateTime $dt): bool {
+                                return $dt === $dt;
+                            });
+                        }
+                    }
+
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     */
+                    interface Collection
+                    {
+                        /**
+                         * @param Closure $p
+                         *
+                         * @return Collection A
+                         *
+                         * @psalm-param Closure(T=):bool $p
+                         * @psalm-return Collection<TKey, T>
+                         */
+                        public function filter(Closure $p);
+                    }
+
+                    /**
+                     * @psalm-template TKey of array-key
+                     * @psalm-template T
+                     * @template-implements Collection<TKey,T>
+                     */
+                    class ArrayCollection implements Collection
+                    {
+                        /**
+                         * @psalm-var array<TKey,T>
+                         * @var array
+                         */
+                        private $elements;
+
+                        /**
+                         * @param array $elements
+                         *
+                         * @psalm-param array<TKey,T> $elements
+                         */
+                        public function __construct(array $elements = [])
+                        {
+                            $this->elements = $elements;
+                        }
+
+                        /**
+                         * {@inheritDoc}
+                         *
+                         * @return static
+                         */
+                        public function filter(Closure $p)
+                        {
+                            return $this;
+                        }
+                    }'
+            ],
+            'listTemplating' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface X {
+                        /**
+                         * @param list<T> $x
+                         * @return T
+                         */
+                        public function boo($x);
+                    }
+
+                    /**
+                     * @template T
+                     * @implements X<T>
+                     */
+                    class A implements X {
+                        /**
+                         * @return T
+                         */
+                        public function boo($x) {
+                            return $x[0];
+                        }
+                    }'
+            ],
+            'sameNamedTemplateDefinedInParentFunction' => [
+                '<?php
+                    /**
+                     * @template T2
+                     */
+                    class Query {
+                        /** @var T2 **/
+                        private $value;
+
+                        /**
+                         * @param T2 $value
+                         */
+                        public function __construct($value) {
+                            $this->value = $value;
+                        }
+                    }
+
+                    interface Temporal {
+                        /**
+                         * @template T
+                         * @param Query<T> $query
+                         */
+                        public function execute(Query $query) : void;
+                    }
+
+                    /**
+                     * @template T
+                     */
+                    class Result implements Temporal {
+                        /** @var T **/
+                        private $value;
+
+                        /**
+                         * @param T $value
+                         */
+                        public function __construct($value) {
+                            $this->value = $value;
+                        }
+
+                        public function execute(Query $query) : void {}
+                    }
+
+                    /**
+                     * @param  Result<string> $result
+                     * @param  Query<string> $query
+                     */
+                    function takesArgs(Result $result, Query $query) : void {
+                        $result->execute($query);
+                    }'
+            ],
+            'respectExtendsAnnotationWhenVerifyingFinalChildReturnType' => [
+                '<?php
+                    /**
+                     * @template T of Enum
+                     */
+                    class EnumSet
+                    {
+                        /**
+                         * @var class-string<T>
+                         */
+                        private $type;
+
+                        /**
+                         * @param class-string<T> $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            $this->type = $type;
+                        }
+                    }
+
+                    abstract class Enum {
+                        /**
+                         * @return EnumSet<static>
+                         */
+                        public static function all()
+                        {
+                            return new EnumSet(static::class);
+                        }
+                    }
+
+                    /**
+                     * @extends EnumSet<CustomEnum>
+                     */
+                    final class CustomEnumSet extends EnumSet {
+                        public function __construct()
+                        {
+                            parent::__construct(CustomEnum::class);
+                        }
+                    }
+
+                    final class CustomEnum extends Enum
+                    {
+                        /**
+                         * @return CustomEnumSet
+                         */
+                        public static function all()
+                        {
+                            return new CustomEnumSet();
+                        }
+                    }'
+            ],
+            'allowValidChildReturnType' => [
+                '<?php
+                    /**
+                     * @template T of Enum
+                     */
+                    class EnumSet
+                    {
+                        /**
+                         * @var class-string<T>
+                         */
+                        private $type;
+
+                        /**
+                         * @param class-string<T> $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            $this->type = $type;
+                        }
+                    }
+
+                    abstract class Enum {
+                        /**
+                         * @return EnumSet<static>
+                         */
+                        public static function all()
+                        {
+                            return new EnumSet(static::class);
+                        }
+                    }
+
+                    /**
+                     * @extends EnumSet<CustomEnum>
+                     */
+                    final class CustomEnumSet extends EnumSet {
+                        public function __construct()
+                        {
+                            parent::__construct(CustomEnum::class);
+                        }
+                    }
+
+                    class CustomEnum extends Enum
+                    {
+                        public static function all()
+                        {
+                            return new EnumSet(static::class);
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -3715,7 +4174,7 @@ class ClassTemplateExtendsTest extends TestCase
                             return ["foo"];
                         }
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'InvalidReturnStatement',
             ],
             'implementsAndExtendsWithTemplateReturningInvalid' => [
                 '<?php
@@ -3745,7 +4204,7 @@ class ClassTemplateExtendsTest extends TestCase
                             return ["foo"];
                         }
                     }',
-                'error_message' => 'InvalidReturnType',
+                'error_message' => 'InvalidReturnStatement',
             ],
             'implementsChildClassWithNonExtendedTemplate' => [
                 '<?php
@@ -4069,7 +4528,7 @@ class ClassTemplateExtendsTest extends TestCase
                             return new OtherConcreteView;
                         }
                     }',
-                'error_message' => 'InvalidReturnType'
+                'error_message' => 'InvalidReturnStatement'
             ],
             'preventExplicitMethodClassTemplateReturn' => [
                 '<?php
@@ -4136,6 +4595,112 @@ class ClassTemplateExtendsTest extends TestCase
 
                         public function m(): string {
                             return static::class;
+                        }
+                    }',
+                'error_message' => 'LessSpecificReturnStatement'
+            ],
+            'preventBadOverrideWhenVerifyingNonFinalChildReturnType' => [
+                '<?php
+                    /**
+                     * @template T of Enum
+                     */
+                    class EnumSet
+                    {
+                        /**
+                         * @var class-string<T>
+                         */
+                        private $type;
+
+                        /**
+                         * @param class-string<T> $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            $this->type = $type;
+                        }
+                    }
+
+                    abstract class Enum {
+                        /**
+                         * @return EnumSet<static>
+                         */
+                        public static function all()
+                        {
+                            return new EnumSet(static::class);
+                        }
+                    }
+
+                    /**
+                     * @extends EnumSet<CustomEnum>
+                     */
+                    final class CustomEnumSet extends EnumSet {
+                        public function __construct()
+                        {
+                            parent::__construct(CustomEnum::class);
+                        }
+                    }
+
+                    class CustomEnum extends Enum
+                    {
+                        /**
+                         * @return CustomEnumSet
+                         */
+                        public static function all()
+                        {
+                            return new CustomEnumSet();
+                        }
+                    }',
+                'error_message' => 'LessSpecificImplementedReturnType'
+            ],
+            'preventBadLocallyDefinedDocblockWhenVerifyingChildReturnType' => [
+                '<?php
+                    /**
+                     * @template T of Enum
+                     */
+                    class EnumSet
+                    {
+                        /**
+                         * @var class-string<T>
+                         */
+                        private $type;
+
+                        /**
+                         * @param class-string<T> $type
+                         */
+                        public function __construct(string $type)
+                        {
+                            $this->type = $type;
+                        }
+                    }
+
+                    abstract class Enum {
+                        /**
+                         * @return EnumSet<static>
+                         */
+                        public static function all()
+                        {
+                            return new EnumSet(static::class);
+                        }
+                    }
+
+                    /**
+                     * @extends EnumSet<CustomEnum>
+                     */
+                    final class CustomEnumSet extends EnumSet {
+                        public function __construct()
+                        {
+                            parent::__construct(CustomEnum::class);
+                        }
+                    }
+
+                    class CustomEnum extends Enum
+                    {
+                        /**
+                         * @return EnumSet<static>
+                         */
+                        public static function all()
+                        {
+                            return new CustomEnumSet();
                         }
                     }',
                 'error_message' => 'LessSpecificReturnStatement'

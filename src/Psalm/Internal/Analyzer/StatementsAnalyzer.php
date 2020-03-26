@@ -17,8 +17,7 @@ use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ConstFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ReturnAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ThrowAnalyzer;
-use Psalm\Internal\Provider\FileProvider;
-use Psalm\Internal\Visitor\CheckTrivialExprVisitor;
+use Psalm\Internal\PhpVisitor\CheckTrivialExprVisitor;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
@@ -30,6 +29,7 @@ use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Issue\ContinueOutsideLoop;
 use Psalm\Issue\ForbiddenCode;
 use Psalm\Issue\ForbiddenEcho;
+use Psalm\Issue\ImpureFunctionCall;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidGlobal;
 use Psalm\Issue\UnevaluatedCode;
@@ -44,7 +44,6 @@ use const STDERR;
 use function array_filter;
 use function array_map;
 use function preg_split;
-use function array_diff;
 use function is_string;
 use function get_class;
 use function in_array;
@@ -59,7 +58,6 @@ use function array_pop;
 use function implode;
 use function array_change_key_case;
 use function token_get_all;
-use function token_name;
 use function array_slice;
 use function array_reverse;
 use function is_array;
@@ -171,8 +169,6 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
         Context $global_context = null,
         $root_scope = false
     ) {
-        $has_returned = false;
-
         // hoist functions to the top
         foreach ($stmts as $stmt) {
             if ($stmt instanceof PhpParser\Node\Stmt\Function_) {
@@ -241,8 +237,11 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             $ignore_variable_property = false;
             $ignore_variable_method = false;
 
-            if ($has_returned && !($stmt instanceof PhpParser\Node\Stmt\Nop) &&
-                !($stmt instanceof PhpParser\Node\Stmt\InlineHTML)
+            if ($context->has_returned
+                && !$context->collect_initializations
+                && !$context->collect_mutations
+                && !($stmt instanceof PhpParser\Node\Stmt\Nop)
+                && !($stmt instanceof PhpParser\Node\Stmt\InlineHTML)
             ) {
                 if ($context->collect_references) {
                     if (IssueBuffer::accepts(
@@ -382,11 +381,11 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Unset_) {
                 $this->analyzeUnset($stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Return_) {
-                $has_returned = true;
                 ReturnAnalyzer::analyze($this, $stmt, $context);
+                $context->has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Throw_) {
-                $has_returned = true;
                 ThrowAnalyzer::analyze($this, $stmt, $context);
+                $context->has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Switch_) {
                 SwitchAnalyzer::analyze($this, $stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Break_) {
@@ -485,7 +484,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     }
                 }
 
-                $has_returned = true;
+                $context->has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Continue_) {
                 $loop_scope = $context->loop_scope;
 
@@ -577,7 +576,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     }
                 }
 
-                $has_returned = true;
+                $context->has_returned = true;
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Static_) {
                 $this->analyzeStatic($stmt, $context);
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Echo_) {
@@ -608,6 +607,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                             $context,
                             $echo_param,
                             false,
+                            null,
                             false,
                             true,
                             new CodeLocation($this->source, $stmt)
@@ -636,6 +636,22 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                         $this->source->getSuppressedIssues()
                     )) {
                         // continue
+                    }
+                }
+
+                if (!$context->collect_initializations
+                    && !$context->collect_mutations
+                    && ($context->mutation_free
+                        || $context->external_mutation_free)
+                ) {
+                    if (IssueBuffer::accepts(
+                        new ImpureFunctionCall(
+                            'Cannot call echo from a mutation-free context',
+                            new CodeLocation($this, $stmt)
+                        ),
+                        $this->getSuppressedIssues()
+                    )) {
+                        // fall through
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\Function_) {
@@ -851,7 +867,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                     }
                 }
             } elseif ($stmt instanceof PhpParser\Node\Stmt\HaltCompiler) {
-                $has_returned = true;
+                $context->has_returned = true;
             } else {
                 if (IssueBuffer::accepts(
                     new UnrecognizedStatement(
@@ -868,7 +884,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 && $context->loop_scope->final_actions
                 && !in_array(ScopeAnalyzer::ACTION_NONE, $context->loop_scope->final_actions, true)
             ) {
-                //$has_returned = true;
+                //$context->has_returned = true;
             }
 
             if ($plugin_classes) {
@@ -1511,7 +1527,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                 $this,
                                 $var_comment_type,
                                 $type_location,
-                                $context->calling_function_id
+                                $context->calling_method_id
                             );
                         }
 
@@ -2022,6 +2038,52 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             return $type_to_invert;
         }
 
+        if ($stmt instanceof PhpParser\Node\Expr\ArrayDimFetch) {
+            if ($stmt->var instanceof PhpParser\Node\Expr\ClassConstFetch
+                && $stmt->dim
+            ) {
+                $array_type = self::getSimpleType(
+                    $codebase,
+                    $nodes,
+                    $stmt->var,
+                    $aliases,
+                    $file_source,
+                    $existing_class_constants,
+                    $fq_classlike_name
+                );
+
+                $dim_type = self::getSimpleType(
+                    $codebase,
+                    $nodes,
+                    $stmt->dim,
+                    $aliases,
+                    $file_source,
+                    $existing_class_constants,
+                    $fq_classlike_name
+                );
+
+                if ($array_type !== null && $dim_type !== null) {
+                    if ($dim_type->isSingleStringLiteral()) {
+                        $dim_value = $dim_type->getSingleStringLiteral()->value;
+                    } elseif ($dim_type->isSingleIntLiteral()) {
+                        $dim_value = $dim_type->getSingleIntLiteral()->value;
+                    } else {
+                        return null;
+                    }
+
+                    foreach ($array_type->getAtomicTypes() as $array_atomic_type) {
+                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                            if (isset($array_atomic_type->properties[$dim_value])) {
+                                return clone $array_atomic_type->properties[$dim_value];
+                            }
+
+                            return null;
+                        }
+                    }
+                }
+            }
+        }
+
         return null;
     }
 
@@ -2180,7 +2242,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
      */
     public function getUnusedVarLocations()
     {
-        return $this->unused_var_locations;
+        return \array_diff_key($this->unused_var_locations, $this->used_var_locations);
     }
 
     /**

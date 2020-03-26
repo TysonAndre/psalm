@@ -12,6 +12,7 @@ use Psalm\Config;
 use Psalm\Context;
 use Psalm\Issue\FalseOperand;
 use Psalm\Issue\ImplicitToStringCast;
+use Psalm\Issue\ImpureMethodCall;
 use Psalm\Issue\InvalidOperand;
 use Psalm\Issue\MixedOperand;
 use Psalm\Issue\NullOperand;
@@ -40,7 +41,6 @@ use Psalm\Internal\Type\TypeCombination;
 use function array_merge;
 use function array_diff_key;
 use function array_filter;
-use const ARRAY_FILTER_USE_KEY;
 use function array_intersect_key;
 use function array_values;
 use function array_map;
@@ -925,6 +925,70 @@ class BinaryOpAnalyzer
             $statements_analyzer->node_data->setType($stmt, Type::getBool());
         }
 
+        if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Equal
+            && $stmt_left_type
+            && $stmt_right_type
+            && $context->mutation_free
+        ) {
+            if ($stmt_left_type->hasString() && $stmt_right_type->hasObjectType()) {
+                foreach ($stmt_right_type->getAtomicTypes() as $atomic_type) {
+                    if ($atomic_type instanceof TNamedObject) {
+                        try {
+                            $storage = $codebase->methods->getStorage(
+                                new \Psalm\Internal\MethodIdentifier(
+                                    $atomic_type->value,
+                                    '__tostring'
+                                )
+                            );
+                        } catch (\UnexpectedValueException $e) {
+                            continue;
+                        }
+
+                        if (!$storage->mutation_free) {
+                            if (IssueBuffer::accepts(
+                                new ImpureMethodCall(
+                                    'Cannot call a possibly-mutating method '
+                                        . $atomic_type->value . '::__toString from a pure context',
+                                    new CodeLocation($statements_analyzer, $stmt)
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+                    }
+                }
+            } elseif ($stmt_right_type->hasString() && $stmt_left_type->hasObjectType()) {
+                foreach ($stmt_left_type->getAtomicTypes() as $atomic_type) {
+                    if ($atomic_type instanceof TNamedObject) {
+                        try {
+                            $storage = $codebase->methods->getStorage(
+                                new \Psalm\Internal\MethodIdentifier(
+                                    $atomic_type->value,
+                                    '__tostring'
+                                )
+                            );
+                        } catch (\UnexpectedValueException $e) {
+                            continue;
+                        }
+
+                        if (!$storage->mutation_free) {
+                            if (IssueBuffer::accepts(
+                                new ImpureMethodCall(
+                                    'Cannot call a possibly-mutating method '
+                                        . $atomic_type->value . '::__toString from a pure context',
+                                    new CodeLocation($statements_analyzer, $stmt)
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Spaceship) {
             $statements_analyzer->node_data->setType($stmt, Type::getInt());
         }
@@ -1766,6 +1830,36 @@ class BinaryOpAnalyzer
                         // fall through
                     }
                 }
+
+                if ($context->mutation_free) {
+                    foreach ($left_type->getAtomicTypes() as $atomic_type) {
+                        if ($atomic_type instanceof TNamedObject) {
+                            try {
+                                $storage = $codebase->methods->getStorage(
+                                    new \Psalm\Internal\MethodIdentifier(
+                                        $atomic_type->value,
+                                        '__tostring'
+                                    )
+                                );
+                            } catch (\UnexpectedValueException $e) {
+                                continue;
+                            }
+
+                            if (!$storage->mutation_free) {
+                                if (IssueBuffer::accepts(
+                                    new ImpureMethodCall(
+                                        'Cannot call a possibly-mutating method '
+                                            . $atomic_type->value . '::__toString from a pure context',
+                                        new CodeLocation($statements_analyzer, $left)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             foreach ($right_type->getAtomicTypes() as $right_type_part) {
@@ -1810,6 +1904,36 @@ class BinaryOpAnalyzer
                         $statements_analyzer->getSuppressedIssues()
                     )) {
                         // fall through
+                    }
+                }
+
+                if ($context->mutation_free) {
+                    foreach ($right_type->getAtomicTypes() as $atomic_type) {
+                        if ($atomic_type instanceof TNamedObject) {
+                            try {
+                                $storage = $codebase->methods->getStorage(
+                                    new \Psalm\Internal\MethodIdentifier(
+                                        $atomic_type->value,
+                                        '__tostring'
+                                    )
+                                );
+                            } catch (\UnexpectedValueException $e) {
+                                continue;
+                            }
+
+                            if (!$storage->mutation_free) {
+                                if (IssueBuffer::accepts(
+                                    new ImpureMethodCall(
+                                        'Cannot call a possibly-mutating method '
+                                            . $atomic_type->value . '::__toString from a pure context',
+                                        new CodeLocation($statements_analyzer, $right)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            }
+                        }
                     }
                 }
             }

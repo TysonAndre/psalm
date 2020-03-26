@@ -1866,6 +1866,68 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
             ],
+            'someConditionalCallToParentConstructor' => [
+                '<?php
+                    class GrandParentClassDoesNotDefine {
+                        public function __construct() {}
+                    }
+
+                    class ParentClassDefinesVar extends GrandParentClassDoesNotDefine {
+                        protected string $val;
+
+                        public function __construct() {
+                            $this->val = "hello";
+                            if (rand(0, 1)) {
+                                parent::__construct();
+                            }
+                        }
+                    }
+
+                    class ChildClass extends ParentClassDefinesVar {
+                        public function __construct() {
+                            parent::__construct();
+                        }
+                    }'
+            ],
+            'noConditionalCallToParentConstructor' => [
+                '<?php
+                    class GrandParentClassDoesNotDefine {
+                        public function __construct() {}
+                    }
+
+                    class ParentClassDefinesVar extends GrandParentClassDoesNotDefine {
+                        protected string $val;
+
+                        public function __construct() {
+                            $this->val = "hello";
+                            parent::__construct();
+                        }
+                    }
+
+                    class ChildClass extends ParentClassDefinesVar {
+                        public function __construct() {
+                            parent::__construct();
+                        }
+                    }'
+            ],
+            'allowByReferenceAssignmentToUninitializedNullableProperty' => [
+                '<?php
+                    class C {
+                        private ?\Closure $onCancel;
+
+                        public function __construct() {
+                            $this->foo($this->onCancel);
+                        }
+
+                        /**
+                         * @param mixed $onCancel
+                         * @param-out \Closure $onCancel
+                         */
+                        public function foo(&$onCancel) : void {
+                            $onCancel = function (): void {};
+                        }
+                    }'
+            ],
         ];
     }
 

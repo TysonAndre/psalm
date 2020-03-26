@@ -4,7 +4,6 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Call;
 use PhpParser;
 use Psalm\Internal\Analyzer\ClassAnalyzer;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
-use Psalm\Internal\Analyzer\MethodAnalyzer;
 use Psalm\Internal\Analyzer\NamespaceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
@@ -25,7 +24,6 @@ use Psalm\Type\Atomic\TNamedObject;
 use function in_array;
 use function strtolower;
 use function implode;
-use function explode;
 use function array_values;
 use function is_string;
 
@@ -53,15 +51,17 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
 
         $can_extend = false;
 
+        $from_static = false;
+
         if ($stmt->class instanceof PhpParser\Node\Name) {
             if (!in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)) {
                 $aliases = $statements_analyzer->getAliases();
 
-                if ($context->calling_function_id
+                if ($context->calling_method_id
                     && !$stmt->class instanceof PhpParser\Node\Name\FullyQualified
                 ) {
                     $codebase->file_reference_provider->addMethodReferenceToClassMember(
-                        $context->calling_function_id,
+                        $context->calling_method_id,
                         'use:' . $stmt->class->parts[0] . ':' . \md5($statements_analyzer->getFilePath())
                     );
                 }
@@ -88,6 +88,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         $class_storage = $codebase->classlike_storage_provider->get($context->self);
                         $fq_class_name = $class_storage->name;
                         $can_extend = true;
+                        $from_static = true;
                         break;
                 }
             }
@@ -152,6 +153,20 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                             }
                         }
 
+                        if ($lhs_type_part->as_type) {
+                            $codebase->methods->methodExists(
+                                new \Psalm\Internal\MethodIdentifier(
+                                    $lhs_type_part->as_type->value,
+                                    '__construct'
+                                ),
+                                $context->calling_method_id,
+                                $context->collect_references
+                                    ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null,
+                                $statements_analyzer,
+                                $statements_analyzer->getFilePath()
+                            );
+                        }
+
                         continue;
                     }
 
@@ -161,28 +176,34 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     ) {
                         if (!$statements_analyzer->node_data->getType($stmt)) {
                             if ($lhs_type_part instanceof Type\Atomic\TClassString) {
-                                $class_name = $lhs_type_part->as;
+                                $generated_type = $lhs_type_part->as_type
+                                    ? clone $lhs_type_part->as_type
+                                    : new Type\Atomic\TObject();
                             } elseif ($lhs_type_part instanceof Type\Atomic\GetClassT) {
-                                $class_name = 'object';
+                                $generated_type = new Type\Atomic\TObject();
 
                                 if ($lhs_type_part->as_type->hasObjectType()
                                     && $lhs_type_part->as_type->isSingle()
                                 ) {
                                     foreach ($lhs_type_part->as_type->getAtomicTypes() as $typeof_type_atomic) {
                                         if ($typeof_type_atomic instanceof Type\Atomic\TNamedObject) {
-                                            $class_name = $typeof_type_atomic->value;
+                                            $generated_type = new Type\Atomic\TNamedObject(
+                                                $typeof_type_atomic->value
+                                            );
                                         }
                                     }
                                 }
                             } else {
-                                $class_name = $lhs_type_part->value;
+                                $generated_type =  new Type\Atomic\TNamedObject(
+                                    $lhs_type_part->value
+                                );
                             }
 
                             if ($lhs_type_part instanceof Type\Atomic\TClassString) {
                                 $can_extend = true;
                             }
 
-                            if ($class_name === 'object') {
+                            if ($generated_type instanceof Type\Atomic\TObject) {
                                 if (IssueBuffer::accepts(
                                     new MixedMethodCall(
                                         'Cannot call constructor on an unknown class',
@@ -197,10 +218,10 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                             if ($new_type) {
                                 $new_type = Type::combineUnionTypes(
                                     $new_type,
-                                    Type::parseString($class_name)
+                                    new Type\Union([$generated_type])
                                 );
                             } else {
-                                $new_type = Type::parseString($class_name);
+                                $new_type = new Type\Union([$generated_type]);
                             }
                         }
 
@@ -284,7 +305,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $statements_analyzer,
                     $stmt->class,
                     $fq_class_name,
-                    $context->calling_function_id
+                    $context->calling_method_id
                 );
             }
 
@@ -298,6 +319,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $fq_class_name,
                     new CodeLocation($statements_analyzer->getSource(), $stmt->class),
                     $context->self,
+                    $context->calling_method_id,
                     $statements_analyzer->getSuppressedIssues(),
                     false
                 ) === false) {
@@ -318,13 +340,16 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                 }
             }
 
+            if ($stmt->class instanceof PhpParser\Node\Stmt\Class_) {
+                $result_atomic_type = new Type\Atomic\TAnonymousClassInstance($fq_class_name);
+            } else {
+                $result_atomic_type = new TNamedObject($fq_class_name);
+                $result_atomic_type->was_static = $from_static;
+            }
+
             $statements_analyzer->node_data->setType(
                 $stmt,
-                new Type\Union([
-                    $stmt->class instanceof PhpParser\Node\Stmt\Class_
-                        ? new Type\Atomic\TAnonymousClassInstance($fq_class_name)
-                        : new TNamedObject($fq_class_name)
-                ])
+                new Type\Union([$result_atomic_type])
             );
 
             if (strtolower($fq_class_name) !== 'stdclass' &&
@@ -393,9 +418,9 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
 
                 if ($codebase->methods->methodExists(
                     $method_id,
-                    $context->calling_function_id,
+                    $context->calling_method_id,
                     $context->collect_references ? new CodeLocation($statements_analyzer->getSource(), $stmt) : null,
-                    null,
+                    $statements_analyzer,
                     $statements_analyzer->getFilePath()
                 )) {
                     if ($codebase->store_node_types
@@ -423,7 +448,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         return false;
                     }
 
-                    if (MethodAnalyzer::checkMethodVisibility(
+                    if (MethodVisibilityAnalyzer::analyze(
                         $method_id,
                         $context,
                         $statements_analyzer->getSource(),
@@ -439,7 +464,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         if ($declaring_method_id) {
                             $method_storage = $codebase->methods->getStorage($declaring_method_id);
 
-                            if (!$method_storage->external_mutation_free) {
+                            if (!$method_storage->external_mutation_free && !$context->inside_throw) {
                                 if (IssueBuffer::accepts(
                                     new ImpureMethodCall(
                                         'Cannot call an impure constructor from a pure context',
@@ -484,14 +509,16 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     }
 
                     if ($generic_param_types) {
+                        $result_atomic_type = new Type\Atomic\TGenericObject(
+                            $fq_class_name,
+                            $generic_param_types
+                        );
+
+                        $result_atomic_type->was_static = $from_static;
+
                         $statements_analyzer->node_data->setType(
                             $stmt,
-                            new Type\Union([
-                                new Type\Atomic\TGenericObject(
-                                    $fq_class_name,
-                                    $generic_param_types
-                                ),
-                            ])
+                            new Type\Union([$result_atomic_type])
                         );
                     }
                 } elseif ($stmt->args) {
@@ -513,7 +540,7 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $stmt_type = $statements_analyzer->node_data->getType($stmt);
 
                     if ($stmt_type) {
-                        $stmt_type->external_mutation_free = true;
+                        $stmt_type->reference_free = true;
                     }
                 }
             }

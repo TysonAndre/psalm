@@ -536,7 +536,9 @@ class ArrayFetchAnalyzer
                     // if we're assigning to an empty array with a key offset, refashion that array
                     if ($in_assignment) {
                         if ($type->type_params[0]->isEmpty()) {
-                            $type->type_params[0] = $offset_type;
+                            $type->type_params[0] = $offset_type->isMixed()
+                                ? Type::getArrayKey()
+                                : $offset_type;
                         }
                     } elseif (!$type->type_params[0]->isEmpty()) {
                         $expected_offset_type = $type->type_params[0]->hasMixed()
@@ -891,7 +893,7 @@ class ArrayFetchAnalyzer
 
                             $array_access_type = clone $type->previous_value_type;
                         } else {
-                            if ($type->sealed) {
+                            if ($type->sealed || !$context->inside_isset) {
                                 $object_like_keys = array_keys($type->properties);
 
                                 if (count($object_like_keys) === 1) {
@@ -954,7 +956,7 @@ class ArrayFetchAnalyzer
 
                                 $new_key_type = Type::combineUnionTypes(
                                     $generic_key_type,
-                                    $offset_type
+                                    $offset_type->isMixed() ? Type::getArrayKey() : $offset_type
                                 );
 
                                 $property_count = $type->sealed ? count($type->properties) : null;

@@ -182,6 +182,34 @@ class PureAnnotationTest extends TestCase
                         return $ar[0] ?? 0;
                     }',
             ],
+            'allowPureToString' => [
+                '<?php
+                    class A {
+                        /** @psalm-pure */
+                        public function __toString() {
+                            return "bar";
+                        }
+                    }
+
+                    /**
+                     * @psalm-pure
+                     */
+                    function foo(string $s, A $a) : string {
+                        if ($a == $s) {}
+                        return $s;
+                    }',
+            ],
+            'exceptionGetMessage' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getMessage(Throwable $e): string {
+                        return $e->getMessage();
+                    }
+
+                    echo getMessage(new Exception("test"));'
+            ],
         ];
     }
 
@@ -382,6 +410,41 @@ class PureAnnotationTest extends TestCase
                         }
                     }',
                 'error_message' => 'ImpureStaticProperty',
+            ],
+            'preventImpureToStringViaComparison' => [
+                '<?php
+                    class A {
+                        public function __toString() {
+                            echo "hi";
+                            return "bar";
+                        }
+                    }
+
+                    /**
+                     * @psalm-pure
+                     */
+                    function foo(string $s, A $a) : string {
+                        if ($a == $s) {}
+                        return $s;
+                    }',
+                'error_message' => 'ImpureMethodCall'
+            ],
+            'preventImpureToStringViaConcatenation' => [
+                '<?php
+                    class A {
+                        public function __toString() {
+                            echo "hi";
+                            return "bar";
+                        }
+                    }
+
+                    /**
+                     * @psalm-pure
+                     */
+                    function foo(string $s, A $a) : string {
+                        return $a . $s;
+                    }',
+                'error_message' => 'ImpureMethodCall'
             ],
         ];
     }

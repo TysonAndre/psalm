@@ -1,6 +1,7 @@
 <?php
 namespace Psalm;
 
+use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use function array_combine;
 use function array_merge;
 use function count;
@@ -250,7 +251,7 @@ class Codebase
     public $class_constant_transforms = [];
 
     /**
-     * @var array<string, string>
+     * @var array<lowercase-string, string>
      */
     public $class_transforms = [];
 
@@ -318,6 +319,7 @@ class Codebase
             $this->config,
             $providers->classlike_storage_provider,
             $providers->file_reference_provider,
+            $providers->statements_provider,
             $this->scanner
         );
 
@@ -463,7 +465,7 @@ class Codebase
     public function addFilesToAnalyze(array $files_to_analyze)
     {
         $this->scanner->addFilesToDeepScan($files_to_analyze);
-        $this->analyzer->addFiles($files_to_analyze);
+        $this->analyzer->addFilesToAnalyze($files_to_analyze);
     }
 
     /**
@@ -698,9 +700,12 @@ class Codebase
      *
      * @return bool
      */
-    public function classOrInterfaceExists($fq_class_name, CodeLocation $code_location = null)
-    {
-        return $this->classlikes->classOrInterfaceExists($fq_class_name, $code_location);
+    public function classOrInterfaceExists(
+        $fq_class_name,
+        CodeLocation $code_location = null,
+        ?string $calling_method_id = null
+    ) {
+        return $this->classlikes->classOrInterfaceExists($fq_class_name, $code_location, $calling_method_id);
     }
 
     /**
@@ -761,9 +766,11 @@ class Codebase
      *
      * @return bool
      */
-    public function interfaceExists($fq_interface_name)
-    {
-        return $this->classlikes->interfaceExists($fq_interface_name);
+    public function interfaceExists(
+        $fq_interface_name,
+        ?string $calling_method_id = null
+    ) {
+        return $this->classlikes->interfaceExists($fq_interface_name, null, null, $calling_method_id);
     }
 
     /**
@@ -822,30 +829,49 @@ class Codebase
     }
 
     /**
+     * Given a function id, return the function like storage for
+     * a method, closure, or function.
+     */
+    public function getFunctionLikeStorage(
+        StatementsAnalyzer $statements_analyzer,
+        string $function_id
+    ): FunctionLikeStorage {
+        $doesMethodExist =
+            \Psalm\Internal\MethodIdentifier::isValidMethodIdReference($function_id)
+            && $this->methodExists($function_id);
+
+        if ($doesMethodExist) {
+            $method_id = \Psalm\Internal\MethodIdentifier::wrap($function_id);
+
+            $declaring_method_id = $this->methods->getDeclaringMethodId($method_id);
+
+            if (!$declaring_method_id) {
+                throw new \UnexpectedValueException('Declaring method for ' . $method_id . ' cannot be found');
+            }
+
+            return $this->methods->getStorage($declaring_method_id);
+        }
+
+        return $this->functions->getStorage($statements_analyzer, $function_id);
+    }
+
+    /**
      * Whether or not a given method exists
      *
      * @param  string|\Psalm\Internal\MethodIdentifier       $method_id
-     * @param  CodeLocation|null $code_location
-     * @param  string       $calling_function_id
+     * @param  string|\Psalm\Internal\MethodIdentifier|null $calling_method_id
      *
-     * @return bool
+     @return bool
      */
     public function methodExists(
         $method_id,
-        CodeLocation $code_location = null,
-        $calling_function_id = null,
-        string $file_path = null
+        ?CodeLocation $code_location = null,
+        $calling_method_id = null,
+        ?string $file_path = null
     ) {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
         return $this->methods->methodExists(
-            $method_id,
-            $calling_function_id,
+            Internal\MethodIdentifier::wrap($method_id),
+            is_string($calling_method_id) ? strtolower($calling_method_id) : strtolower((string) $calling_method_id),
             $code_location,
             null,
             $file_path
@@ -859,14 +885,7 @@ class Codebase
      */
     public function getMethodParams($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->getMethodParams($method_id);
+        return $this->methods->getMethodParams(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**
@@ -876,14 +895,7 @@ class Codebase
      */
     public function isVariadic($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->isVariadic($method_id);
+        return $this->methods->isVariadic(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**
@@ -895,15 +907,8 @@ class Codebase
      */
     public function getMethodReturnType($method_id, &$self_class, array $call_args = [])
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
         return $this->methods->getMethodReturnType(
-            $method_id,
+            Internal\MethodIdentifier::wrap($method_id),
             $self_class,
             null,
             $call_args
@@ -917,14 +922,7 @@ class Codebase
      */
     public function getMethodReturnsByRef($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->getMethodReturnsByRef($method_id);
+        return $this->methods->getMethodReturnsByRef(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**
@@ -937,15 +935,8 @@ class Codebase
         $method_id,
         CodeLocation &$defined_location = null
     ) {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
         return $this->methods->getMethodReturnTypeLocation(
-            $method_id,
+            Internal\MethodIdentifier::wrap($method_id),
             $defined_location
         );
     }
@@ -957,14 +948,7 @@ class Codebase
      */
     public function getDeclaringMethodId($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->getDeclaringMethodId($method_id);
+        return $this->methods->getDeclaringMethodId(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**
@@ -976,14 +960,7 @@ class Codebase
      */
     public function getAppearingMethodId($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->getAppearingMethodId($method_id);
+        return $this->methods->getAppearingMethodId(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**
@@ -993,14 +970,7 @@ class Codebase
      */
     public function getOverriddenMethodIds($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->getOverriddenMethodIds($method_id);
+        return $this->methods->getOverriddenMethodIds(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**
@@ -1010,14 +980,7 @@ class Codebase
      */
     public function getCasedMethodId($method_id)
     {
-        if (is_string($method_id)) {
-            // remove trailing backslash if it exists
-            $method_id = preg_replace('/^\\\\/', '', $method_id);
-            $method_id_parts = explode('::', $method_id);
-            $method_id = new \Psalm\Internal\MethodIdentifier($method_id_parts[0], strtolower($method_id_parts[1]));
-        }
-
-        return $this->methods->getCasedMethodId($method_id);
+        return $this->methods->getCasedMethodId(Internal\MethodIdentifier::wrap($method_id));
     }
 
     /**

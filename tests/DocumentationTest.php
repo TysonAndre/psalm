@@ -18,6 +18,9 @@ use function sort;
 use function strpos;
 use function substr;
 use function trim;
+use function glob;
+use function str_replace;
+use function array_shift;
 
 class DocumentationTest extends TestCase
 {
@@ -29,43 +32,37 @@ class DocumentationTest extends TestCase
      */
     private static function getCodeBlocksFromDocs()
     {
-        $issue_file = dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'docs' . DIRECTORY_SEPARATOR . 'running_psalm' . DIRECTORY_SEPARATOR . 'issues.md';
+        $issues_dir = dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'docs' . DIRECTORY_SEPARATOR . 'running_psalm' . DIRECTORY_SEPARATOR . 'issues';
 
-        if (!file_exists($issue_file)) {
+        if (!file_exists($issues_dir)) {
             throw new \UnexpectedValueException('docs not found');
         }
 
-        $file_contents = file_get_contents($issue_file);
-
-        if (!$file_contents) {
-            throw new \UnexpectedValueException('Docs are empty');
-        }
-
-        $file_lines = explode("\n", $file_contents);
-
         $issue_code = [];
 
-        $current_issue = null;
+        foreach (glob($issues_dir . '/*.md') as $file_path) {
+            $file_contents = file_get_contents($file_path);
 
-        for ($i = 0, $j = count($file_lines); $i < $j; ++$i) {
-            $current_line = $file_lines[$i];
+            $file_lines = explode("\n", $file_contents);
 
-            if (substr($current_line, 0, 4) === '### ') {
-                $current_issue = trim(substr($current_line, 4));
-                ++$i;
-                continue;
-            }
+            $current_issue = str_replace('# ', '', array_shift($file_lines));
 
-            if (substr($current_line, 0, 6) === '```php' && $current_issue) {
-                $current_block = '';
-                ++$i;
+            for ($i = 0, $j = count($file_lines); $i < $j; ++$i) {
+                $current_line = $file_lines[$i];
 
-                do {
-                    $current_block .= $file_lines[$i] . "\n";
+                if (substr($current_line, 0, 6) === '```php' && $current_issue) {
+                    $current_block = '';
                     ++$i;
-                } while (substr($file_lines[$i], 0, 3) !== '```' && $i < $j);
 
-                $issue_code[$current_issue][] = trim($current_block);
+                    do {
+                        $current_block .= $file_lines[$i] . "\n";
+                        ++$i;
+                    } while (substr($file_lines[$i], 0, 3) !== '```' && $i < $j);
+
+                    $issue_code[$current_issue][] = trim($current_block);
+
+                    continue 2;
+                }
             }
         }
 
@@ -231,7 +228,7 @@ class DocumentationTest extends TestCase
             }
 
             $invalid_code_data[$issue_name] = [
-                '<?php' . "\n" . $blocks[0],
+                $blocks[0],
                 $issue_name,
                 $ignored_issues,
                 strpos($issue_name, 'Unused') !== false

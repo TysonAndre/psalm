@@ -118,7 +118,7 @@ class PropertyFetchAnalyzer
                 $codebase->analyzer->addNodeType(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
-                    (string) $stmt_type
+                    $stmt_type->getId()
                 );
             }
 
@@ -148,7 +148,12 @@ class PropertyFetchAnalyzer
                     && $source->getMethodName() === '__construct'
                     && !$context->inside_unset
                 ) {
-                    if ($context->inside_isset) {
+                    if ($context->inside_isset
+                        || ($context->inside_assignment
+                            && isset($context->vars_in_scope[$var_id])
+                            && $context->vars_in_scope[$var_id]->isNullable()
+                        )
+                    ) {
                         $stmt_type->initialized = true;
                     } else {
                         if (IssueBuffer::accepts(
@@ -261,7 +266,7 @@ class PropertyFetchAnalyzer
             if ($stmt->name instanceof PhpParser\Node\Identifier) {
                 $codebase->analyzer->addMixedMemberName(
                     '$' . $stmt->name->name,
-                    $context->calling_function_id ?: $statements_analyzer->getFileName()
+                    $context->calling_method_id ?: $statements_analyzer->getFileName()
                 );
             }
 
@@ -275,21 +280,17 @@ class PropertyFetchAnalyzer
                 // fall through
             }
 
-            if ($stmt_var_type->hasMixed()) {
-                $statements_analyzer->node_data->setType($stmt, Type::getMixed());
+            $statements_analyzer->node_data->setType($stmt, Type::getMixed());
 
-                if ($codebase->store_node_types
-                    && !$context->collect_initializations
-                    && !$context->collect_mutations
-                ) {
-                    $codebase->analyzer->addNodeType(
-                        $statements_analyzer->getFilePath(),
-                        $stmt->name,
-                        (string) $stmt_type
-                    );
-                }
-
-                return null;
+            if ($codebase->store_node_types
+                && !$context->collect_initializations
+                && !$context->collect_mutations
+            ) {
+                $codebase->analyzer->addNodeType(
+                    $statements_analyzer->getFilePath(),
+                    $stmt->name,
+                    $stmt_var_type->getId()
+                );
             }
         }
 
@@ -325,7 +326,7 @@ class PropertyFetchAnalyzer
                     if ($type instanceof Type\Atomic\TNamedObject) {
                         $codebase->analyzer->addMixedMemberName(
                             strtolower($type->value) . '::$',
-                            $context->calling_function_id ?: $statements_analyzer->getFileName()
+                            $context->calling_method_id ?: $statements_analyzer->getFileName()
                         );
                     }
                 }
@@ -794,15 +795,21 @@ class PropertyFetchAnalyzer
             );
 
             if (!$class_property_type) {
-                if (IssueBuffer::accepts(
-                    new MissingPropertyType(
-                        'Property ' . $fq_class_name . '::$' . $prop_name
-                            . ' does not have a declared type',
-                        new CodeLocation($statements_analyzer->getSource(), $stmt)
-                    ),
-                    $statements_analyzer->getSuppressedIssues()
-                )) {
-                    // fall through
+                if ($declaring_class_storage->location
+                    && $config->isInProjectDirs(
+                        $declaring_class_storage->location->file_path
+                    )
+                ) {
+                    if (IssueBuffer::accepts(
+                        new MissingPropertyType(
+                            'Property ' . $fq_class_name . '::$' . $prop_name
+                                . ' does not have a declared type',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
                 }
 
                 $class_property_type = Type::getMixed();
@@ -825,32 +832,21 @@ class PropertyFetchAnalyzer
 
                         foreach ($reversed_class_template_types as $i => $type_name) {
                             if (isset($lhs_type_part->type_params[$provided_type_param_count - 1 - $i])) {
-                                $class_template_params[$type_name] =
-                                    (string)$lhs_type_part->type_params[$provided_type_param_count - 1 - $i];
+                                $class_template_params[$type_name][$declaring_class_storage->name] = [
+                                    $lhs_type_part->type_params[$provided_type_param_count - 1 - $i],
+                                    0
+                                ];
                             } else {
-                                $class_template_params[$type_name] = 'mixed';
+                                $class_template_params[$type_name][$declaring_class_storage->name] = [
+                                    Type::getMixed(),
+                                    0
+                                ];
                             }
                         }
 
-                        $type_tokens = Type::tokenize((string)$class_property_type);
-
-                        $new_type_tokens = [];
-
-                        foreach ($type_tokens as $type_token_map) {
-                            if (isset($class_template_params[$type_token_map[0]])) {
-                                $tokened = Type::tokenize($class_template_params[$type_token_map[0]]);
-                                foreach ($tokened as $new_t) {
-                                    $new_type_tokens[] = [$new_t[0], $type_token_map[1]];
-                                }
-                            } else {
-                                $new_type_tokens[] = $type_token_map;
-                            }
-                        }
-
-                        $class_property_type = Type::parseTokens(
-                            $new_type_tokens,
-                            null,
-                            $statements_analyzer->getTemplateTypeMap() ?: []
+                        $class_property_type->replaceTemplateTypesWithArgTypes(
+                            $class_template_params,
+                            $codebase
                         );
                     }
                 }
@@ -886,7 +882,7 @@ class PropertyFetchAnalyzer
             $codebase->analyzer->addNodeType(
                 $statements_analyzer->getFilePath(),
                 $stmt->name,
-                (string) $stmt_type
+                $stmt_type->getId()
             );
         }
 
@@ -999,11 +995,11 @@ class PropertyFetchAnalyzer
             } else {
                 $aliases = $statements_analyzer->getAliases();
 
-                if ($context->calling_function_id
+                if ($context->calling_method_id
                     && !$stmt->class instanceof PhpParser\Node\Name\FullyQualified
                 ) {
                     $codebase->file_reference_provider->addMethodReferenceToClassMember(
-                        $context->calling_function_id,
+                        $context->calling_method_id,
                         'use:' . $stmt->class->parts[0] . ':' . \md5($statements_analyzer->getFilePath())
                     );
                 }
@@ -1023,6 +1019,7 @@ class PropertyFetchAnalyzer
                         $fq_class_name,
                         new CodeLocation($statements_analyzer->getSource(), $stmt->class),
                         $context->self,
+                        $context->calling_method_id,
                         $statements_analyzer->getSuppressedIssues(),
                         false
                     ) !== true) {
@@ -1033,10 +1030,10 @@ class PropertyFetchAnalyzer
 
             if ($fq_class_name
                 && $codebase->methods_to_move
-                && $context->calling_function_id
-                && isset($codebase->methods_to_move[strtolower($context->calling_function_id)])
+                && $context->calling_method_id
+                && isset($codebase->methods_to_move[$context->calling_method_id])
             ) {
-                $destination_method_id = $codebase->methods_to_move[strtolower($context->calling_function_id)];
+                $destination_method_id = $codebase->methods_to_move[$context->calling_method_id];
 
                 $codebase->classlikes->airliftClassLikeReference(
                     $fq_class_name,
@@ -1069,7 +1066,7 @@ class PropertyFetchAnalyzer
             if ($fq_class_name) {
                 $codebase->analyzer->addMixedMemberName(
                     strtolower($fq_class_name) . '::$',
-                    $context->calling_function_id ?: $statements_analyzer->getFileName()
+                    $context->calling_method_id ?: $statements_analyzer->getFileName()
                 );
             }
 
@@ -1140,7 +1137,7 @@ class PropertyFetchAnalyzer
                 $codebase->analyzer->addNodeType(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
-                    (string) $stmt_type
+                    $stmt_type->getId()
                 );
             }
 
@@ -1197,7 +1194,7 @@ class PropertyFetchAnalyzer
                 $statements_analyzer,
                 $stmt->class,
                 $fq_class_name,
-                $context->calling_function_id
+                $context->calling_method_id
             );
 
             if (!$moved_class) {
@@ -1260,7 +1257,7 @@ class PropertyFetchAnalyzer
                 $codebase->analyzer->addNodeType(
                     $statements_analyzer->getFilePath(),
                     $stmt->name,
-                    (string) $stmt_type
+                    $stmt_type->getId()
                 );
             }
         } else {

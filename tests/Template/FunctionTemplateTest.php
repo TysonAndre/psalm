@@ -143,14 +143,14 @@ class FunctionTemplateTest extends TestCase
                     /**
                      * @template TValue
                      *
-                     * @param array<mixed, TValue> $arr
+                     * @param array<TValue> $arr
                      */
                     function byRef(array &$arr) : void {}
 
                     $b = ["a" => 5, "c" => 6];
                     byRef($b);',
                 'assertions' => [
-                    '$b' => 'array<mixed, int>',
+                    '$b' => 'array<array-key, int>',
                 ],
             ],
             'mixedArrayPop' => [
@@ -521,7 +521,7 @@ class FunctionTemplateTest extends TestCase
                     function call(callable $gen) : array {
                         $return = $gen();
                         if ($return instanceof Generator) {
-                            return [$gen->getReturn()];
+                            return [$return->getReturn()];
                         }
                         /** @var array<int, TReturn> */
                         $wrapped_gen = [$gen];
@@ -529,9 +529,6 @@ class FunctionTemplateTest extends TestCase
                     }
 
                     $arr = call(
-                        /**
-                         * @return Generator<mixed, mixed, mixed, string>
-                         */
                         function() {
                             yield 1;
                             return "hello";
@@ -958,6 +955,164 @@ class FunctionTemplateTest extends TestCase
                     foreach ($values as $value) {
                         echo $value;
                     }'
+            ],
+            'allowTemplatedCast' => [
+                '<?php
+                    /**
+                     * @psalm-template Tk of array-key
+                     * @psalm-param Tk $key
+                     */
+                    function at($key) : void {
+                        echo (string) $key;
+                    }'
+            ],
+            'uksortNoNamespace' => [
+                '<?php
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     *
+                     * @param array<Tk, Tv> $result
+                     * @param (callable(Tk, Tk): int) $comparator
+                     *
+                     * @preturn array<Tk, Tv>
+                     */
+                    function sort_by_key(array $result, callable $comparator): array
+                    {
+                        \uksort($result, $comparator);
+                        return $result;
+                    }'
+            ],
+            'uksortNamespaced' => [
+                '<?php
+                    namespace Psl\Arr;
+
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     *
+                     * @param array<Tk, Tv> $result
+                     * @param (callable(Tk, Tk): int) $comparator
+                     *
+                     * @preturn array<Tk, Tv>
+                     */
+                    function sort_by_key(array $result, callable $comparator): array
+                    {
+                        \uksort($result, $comparator);
+                        return $result;
+                    }'
+            ],
+            'mockObject' => [
+                '<?php
+                    class MockObject {}
+
+                    /**
+                     * @psalm-template T1 of object
+                     * @psalm-param    class-string<T1> $originalClassName
+                     * @psalm-return   MockObject&T1
+                     */
+                    function foo(string $originalClassName): MockObject {
+                        return createMock($originalClassName);
+                    }
+
+                    /**
+                     * @psalm-suppress InvalidReturnType
+                     * @psalm-suppress InvalidReturnStatement
+                     *
+                     * @psalm-template T2 of object
+                     * @psalm-param class-string<T2> $originalClassName
+                     * @psalm-return MockObject&T2
+                     */
+                    function createMock(string $originalClassName): MockObject {
+                        return new MockObject;
+                    }'
+            ],
+            'testStringCallableInference' => [
+                '<?php
+                    class A {
+                        public static function dup(string $a): string {
+                            return $a . $a;
+                        }
+                    }
+
+                    /**
+                     * @template T
+                     * @param iterable<T> $iter
+                     * @return list<T>
+                     */
+                    function toArray(iterable $iter): array {
+                        $data = [];
+                        foreach ($iter as $key => $val) {
+                            $data[] = $val;
+                        }
+                        return $data;
+                    }
+
+                    /**
+                     * @template T
+                     * @template U
+                     * @param callable(T): U $predicate
+                     * @return callable(iterable<T>): iterable<U>
+                     */
+                    function map(callable $predicate): callable {
+                        return
+                        /** @param iterable<T> $iter */
+                        function(iterable $iter) use ($predicate): iterable {
+                            foreach ($iter as $key => $value) {
+                                yield $key => $predicate($value);
+                            }
+                        };
+                    }
+
+                    /** @param list<string> $strings */
+                    function _test(array $strings): void {}
+                    $a =  map([A::class, "dup"])(["a", "b", "c"]);',
+                [
+                    '$a' => 'iterable<mixed, string>'
+                ]
+            ],
+            'testClosureCallableInference' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @param iterable<T> $iter
+                     * @return list<T>
+                     */
+                    function toArray(iterable $iter): array {
+                        $data = [];
+                        foreach ($iter as $key => $val) {
+                            $data[] = $val;
+                        }
+                        return $data;
+                    }
+
+                    /**
+                     * @template T
+                     * @template U
+                     * @param callable(T): U $predicate
+                     * @return callable(iterable<T>): iterable<U>
+                     */
+                    function map(callable $predicate): callable {
+                        return
+                        /** @param iterable<T> $iter */
+                        function(iterable $iter) use ($predicate): iterable {
+                            foreach ($iter as $key => $value) {
+                                yield $key => $predicate($value);
+                            }
+                        };
+                    }
+
+                    /** @param list<string> $strings */
+                    function _test(array $strings): void {}
+
+                    $a = map(
+                        function (string $a) {
+                            return $a . $a;
+                        }
+                    )(["a", "b", "c"]);',
+                [
+                    '$a' => 'iterable<mixed, string>'
+                ]
             ],
         ];
     }
@@ -1399,6 +1554,48 @@ class FunctionTemplateTest extends TestCase
                     /** @template */
                     function f():void {}',
                 'error_message' => 'MissingDocblockType'
+            ],
+            'returnNamedObjectWhereTemplateIsExpected' => [
+                '<?php
+                    class Bar {}
+
+                    /**
+                     * @template T as object
+                     * @param T $t
+                     * @return T
+                     */
+                    function shouldComplain(object $t) {
+                        return new Bar();
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
+            'returnIntersectionWhenTemplateIsExpectedForward' => [
+                '<?php
+                    interface Baz {}
+
+                    /**
+                     * @template T as object
+                     * @param T $t
+                     * @return T&Baz
+                     */
+                    function returnsTemplatedIntersection(object $t) {
+                        return $t;
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
+            'returnIntersectionWhenTemplateIsExpectedBackward' => [
+                '<?php
+                    interface Baz {}
+
+                    /**
+                     * @template T as object
+                     * @param T $t
+                     * @return Baz&T
+                     */
+                    function returnsTemplatedIntersection(object $t) {
+                        return $t;
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

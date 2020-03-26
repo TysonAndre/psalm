@@ -99,6 +99,12 @@ class IssueData
     public $error_level;
 
     /**
+     * @var string
+     * @readonly
+     */
+    public $link;
+
+    /**
      * @param string $severity
      * @param int $line_from
      * @param int $line_to
@@ -115,6 +121,7 @@ class IssueData
      * @param int $column_from
      * @param int $column_to
      * @param int $error_level
+     * @param int $shortcode
      */
     public function __construct(
         $severity,
@@ -132,6 +139,7 @@ class IssueData
         $snippet_to,
         $column_from,
         $column_to,
+        $shortcode = 0,
         $error_level = -1
     ) {
         $this->severity = $severity;
@@ -150,5 +158,6 @@ class IssueData
         $this->column_from = $column_from;
         $this->column_to = $column_to;
         $this->error_level = $error_level;
+        $this->link = 'https://psalm.dev/' . \str_pad((string) $shortcode, 3, "0", \STR_PAD_LEFT);
     }
 }

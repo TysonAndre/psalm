@@ -768,7 +768,7 @@ class ArrayAssignmentTest extends TestCase
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => ['MixedAssignment'],
+                'error_levels' => ['MixedAssignment', 'MixedReturnStatement'],
             ],
             'assignToNullDontDie' => [
                 '<?php
@@ -1320,6 +1320,74 @@ class ArrayAssignmentTest extends TestCase
                         }
                     }',
             ],
+            'arrayMixedMixedNotAllowedFromObject' => [
+                '<?php
+                    function foo(ArrayObject $a) : array {
+                        $arr = [];
+
+                        /**
+                         * @psalm-suppress MixedAssignment
+                         * @psalm-suppress MixedArrayOffset
+                         */
+                        foreach ($a as $k => $v) {
+                            $arr[$k] = $v;
+                        }
+
+                        return $arr;
+                    }',
+            ],
+            'arrayMixedMixedNotAllowedFromMixed' => [
+                '<?php
+                    /** @psalm-suppress MissingParamType */
+                    function foo($a) : array {
+                        $arr = ["a" => "foo"];
+
+                        /**
+                         * @psalm-suppress MixedAssignment
+                         * @psalm-suppress MixedArrayOffset
+                         */
+                        foreach ($a as $k => $v) {
+                            $arr[$k] = $v;
+                        }
+
+                        return $arr;
+                    }',
+            ],
+            'assignNestedKey' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedAssignment
+                     * @psalm-suppress MixedArrayOffset
+                     *
+                     * @psalm-return array<true>
+                     */
+                    function getAutoComplete(array $data): array {
+                        $response = ["s" => []];
+
+                        foreach ($data as $suggestion) {
+                            $response["s"][$suggestion] = true;
+                        }
+
+                        return $response["s"];
+                    }'
+            ],
+            'assignArrayUnion' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedArrayOffset
+                     */
+                    function foo(array $out) : array {
+                        $key = 1;
+
+                        if (rand(0, 1)) {
+                            /** @var mixed */
+                            $key = null;
+                        }
+
+                        $out[$key] = 5;
+                        return $out;
+                    }'
+            ]
         ];
     }
 

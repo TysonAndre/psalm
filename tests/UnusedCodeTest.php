@@ -543,14 +543,14 @@ class UnusedCodeTest extends TestCase
                         /**
                          * @psalm-suppress MixedArgument
                          */
-                        public function bar(): void {
+                        public function bar(string $request): void {
                             /** @var mixed $action */
                             $action = "";
                             $this->{"execute" . ucfirst($action)}($request);
                         }
                     }
 
-                    (new Foo)->bar();'
+                    (new Foo)->bar("request");'
             ],
             'usedMethodCallForExternalMutationFreeClass' => [
                 '<?php
@@ -682,6 +682,29 @@ class UnusedCodeTest extends TestCase
 
                     /** @psalm-suppress MixedAssignment */
                     foreach ($items as $_item) {}'
+            ],
+            'usedThroughNewClassStringOfBase' => [
+                '<?php
+                    abstract class FooBase {
+                        public final function __construct() {}
+
+                        public function baz() : void {
+                            echo "hello";
+                        }
+                    }
+
+                    /**
+                     * @psalm-template T as FooBase
+                     * @psalm-param class-string<T> $type
+                     * @psalm-return T
+                     */
+                    function createFoo($type): FooBase {
+                        return new $type();
+                    }
+
+                    class Foo extends FooBase {}
+
+                    createFoo(Foo::class)->baz();'
             ],
         ];
     }
@@ -966,6 +989,36 @@ class UnusedCodeTest extends TestCase
                         public static function foo() : void {}
                     }',
                 'error_message' => 'UnusedClass',
+            ],
+            'returnInBothIfConditions' => [
+                '<?php
+
+                    function doAThing(): bool {
+                        if (rand(0, 1)) {
+                            return true;
+                        } else {
+                            return false;
+                        }
+                        return false;
+                    }',
+                'error_message' => 'UnevaluatedCode',
+            ],
+            'unevaluatedCodeAfterReturnInFinally' => [
+                '<?php
+                    function noOp(): void {
+                        return;
+                    }
+
+                    function doAThing(): bool {
+                        try {
+                            noOp();
+                        } finally {
+                            return true;
+                        }
+
+                        return false;
+                    }',
+                'error_message' => 'UnevaluatedCode',
             ],
         ];
     }

@@ -32,6 +32,13 @@ class ReconcilerTest extends \Psalm\Tests\TestCase
             $this->file_analyzer,
             new \Psalm\Internal\Provider\NodeDataProvider()
         );
+
+        $this->addFile('newfile.php', '
+            <?php
+            class A {}
+            class B extends A {}
+        ');
+        $this->project_analyzer->getCodebase()->scanFiles();
     }
 
     /**
@@ -59,9 +66,7 @@ class ReconcilerTest extends \Psalm\Tests\TestCase
             $reconciled->getId()
         );
 
-        if (is_array($reconciled->getAtomicTypes())) {
-            $this->assertContainsOnlyInstancesOf('Psalm\Type\Atomic', $reconciled->getAtomicTypes());
-        }
+        $this->assertContainsOnlyInstancesOf('Psalm\Type\Atomic', $reconciled->getAtomicTypes());
     }
 
     /**
@@ -134,7 +139,7 @@ class ReconcilerTest extends \Psalm\Tests\TestCase
             'iterableToArray' => ['array<int, int>', 'array', 'iterable<int, int>'],
             'iterableToTraversable' => ['Traversable<int, int>', 'Traversable', 'iterable<int, int>'],
             'callableToCallableArray' => ['callable-array{0: class-string|object, 1: string}', 'array', 'callable'],
-            'callableOrArrayToCallableArray' => ['array<array-key, mixed>|callable-array{0: class-string|object, 1: string}', 'array', 'callable|array'],
+            'callableOrArrayToCallableArray' => ['array<array-key, mixed>', 'array', 'callable|array'],
             'traversableToIntersection' => ['Countable&Traversable', 'Traversable', 'Countable'],
             'iterableWithoutParamsToTraversableWithoutParams' => ['Traversable', '!array', 'iterable'],
             'iterableWithParamsToTraversableWithParams' => ['Traversable<int, string>', '!array', 'iterable<int, string>'],
@@ -149,7 +154,11 @@ class ReconcilerTest extends \Psalm\Tests\TestCase
         return [
             'arrayContainsWithArrayOfStrings' => ['array<string>', 'array'],
             'arrayContainsWithArrayOfExceptions' => ['array<Exception>', 'array'],
-
+            'arrayOfIterable' => ['array', 'iterable'],
+            'arrayOfIterableWithType' => ['array<A>', 'iterable<A>'],
+            'arrayOfIterableWithSubclass' => ['array<B>', 'iterable<A>'],
+            'arrayOfSubclassOfParent' => ['array<B>', 'array<A>'],
+            'subclassOfParent' => ['B', 'A'],
             'unionContainsWithstring' => ['string', 'string|false'],
             'unionContainsWithFalse' => ['false', 'string|false'],
             'objectLikeTypeWithPossiblyUndefinedToGeneric' => [

@@ -179,10 +179,6 @@ class Populator
 
         $this->populateDataFromTraits($storage, $storage_provider, $dependent_classlikes);
 
-        if ($storage->mixin_fqcln) {
-            $this->populateDataFromMixin($storage, $storage_provider, $dependent_classlikes, $storage->mixin_fqcln);
-        }
-
         if ($storage->parent_classes) {
             $this->populateDataFromParentClass($storage, $storage_provider, $dependent_classlikes);
         }
@@ -200,6 +196,10 @@ class Populator
         $this->populateInterfaceDataFromParentInterfaces($storage, $storage_provider, $dependent_classlikes);
 
         $this->populateDataFromImplementedInterfaces($storage, $storage_provider, $dependent_classlikes);
+
+        if ($storage->mixin_fqcln) {
+            $this->populateDataFromMixin($storage, $storage_provider, $dependent_classlikes, $storage->mixin_fqcln);
+        }
 
         if ($storage->location) {
             $file_path = $storage->location->file_path;
@@ -324,7 +324,7 @@ class Populator
                     }
 
                     if ((count($overridden_method_ids) === 1
-                        || $candidate_overridden_ids)
+                            || $candidate_overridden_ids)
                         && $method_storage->signature_return_type
                         && !$method_storage->signature_return_type->isVoid()
                         && ($method_storage->return_type === $method_storage->signature_return_type
@@ -753,12 +753,17 @@ class Populator
                     }
 
                     if ($implemented_interface_storage->template_type_extends) {
-                        foreach ($implemented_interface_storage->template_type_extends as $e_i => $type) {
-                            if (isset($storage->template_type_extends[$e_i])) {
-                                continue;
-                            }
+                        foreach ($implemented_interface_storage->template_type_extends as $e_i => $type_map) {
+                            foreach ($type_map as $i => $type) {
+                                if (is_int($i)) {
+                                    continue;
+                                }
 
-                            $storage->template_type_extends[$e_i] = $type;
+                                $storage->template_type_extends[$e_i][$i] = self::extendType(
+                                    $type,
+                                    $storage
+                                );
+                            }
                         }
                     }
                 } else {

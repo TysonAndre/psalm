@@ -35,7 +35,6 @@ use Psalm\Report;
 use Psalm\Report\ReportOptions;
 use Psalm\Type;
 use Psalm\Issue\CodeIssue;
-use function in_array;
 use function substr;
 use function strlen;
 use function cli_set_process_title;
@@ -488,7 +487,7 @@ class ProjectAnalyzer
             || $deleted_files === null
             || count($diff_files) > 200
         ) {
-            $this->codebase->analyzer->addFiles($this->project_files);
+            $this->codebase->analyzer->addFilesToAnalyze($this->project_files);
 
             $this->config->initializePlugins($this);
 
@@ -498,6 +497,8 @@ class ProjectAnalyzer
         } else {
             $this->progress->debug(count($diff_files) . ' changed files: ' . "\n");
             $this->progress->debug('    ' . implode("\n    ", $diff_files) . "\n");
+
+            $this->codebase->analyzer->addFilesToShowResults($this->project_files);
 
             if ($diff_files || $this->codebase->find_unused_code) {
                 $file_list = $this->getReferencedFilesFromDiff($diff_files);
@@ -529,7 +530,7 @@ class ProjectAnalyzer
 
         if ($this->parser_cache_provider) {
             $removed_parser_files = $this->parser_cache_provider->deleteOldParserCaches(
-                $is_diff ? $this->parser_cache_provider->getLastGoodRun() : $start_checks
+                $is_diff ? $this->parser_cache_provider->getLastRun() : $start_checks
             );
 
             if ($removed_parser_files) {
@@ -973,13 +974,16 @@ class ProjectAnalyzer
 
         $diff_files = [];
 
-        $last_good_run = $this->parser_cache_provider->getLastGoodRun();
+        $last_run = $this->parser_cache_provider->getLastRun();
 
         $file_paths = $this->file_provider->getFilesInDir($dir_name, $file_extensions);
 
         foreach ($file_paths as $file_path) {
             if ($config->isInProjectDirs($file_path)) {
-                if ($this->file_provider->getModifiedTime($file_path) > $last_good_run) {
+                if ($this->file_provider->getModifiedTime($file_path) > $last_run
+                    && $this->parser_cache_provider->loadExistingFileContentsFromCache($file_path)
+                        !== $this->file_provider->getContents($file_path)
+                ) {
                     $diff_files[] = $file_path;
                 }
             }

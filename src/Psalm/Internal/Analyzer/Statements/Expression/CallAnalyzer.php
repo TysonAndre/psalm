@@ -11,6 +11,7 @@ use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\MethodIdentifier;
 use Psalm\Internal\Taint\Sink;
 use Psalm\Internal\Taint\Source;
 use Psalm\Internal\Type\TypeCombination;
@@ -30,6 +31,7 @@ use Psalm\Issue\NullArgument;
 use Psalm\Issue\PossiblyFalseArgument;
 use Psalm\Issue\PossiblyInvalidArgument;
 use Psalm\Issue\PossiblyNullArgument;
+use Psalm\Issue\PossiblyUndefinedVariable;
 use Psalm\Issue\TooFewArguments;
 use Psalm\Issue\TooManyArguments;
 use Psalm\Issue\ArgumentTypeCoercion;
@@ -66,8 +68,6 @@ use function is_int;
 use function substr;
 use function array_merge;
 use Psalm\Issue\TaintedInput;
-use Doctrine\Instantiator\Exception\UnexpectedValueException;
-use Exception;
 
 /**
  * @internal
@@ -221,7 +221,7 @@ class CallAnalyzer
                     }
                 }
 
-                $old_calling_function_id = $context->calling_function_id;
+                $old_calling_method_id = $context->calling_method_id;
 
                 if ($fq_class_name === $source->getFQCLN()) {
                     $class_analyzer->getMethodMutations(strtolower($method_name), $context);
@@ -239,7 +239,7 @@ class CallAnalyzer
                     $context->self = $old_self;
                 }
 
-                $context->calling_function_id = $old_calling_function_id;
+                $context->calling_method_id = $old_calling_method_id;
 
                 foreach ($local_vars_in_scope as $var => $type) {
                     $context->vars_in_scope[$var] = $type;
@@ -361,7 +361,7 @@ class CallAnalyzer
      *
      * @return  false|null
      */
-    protected static function checkFunctionArguments(
+    public static function checkFunctionArguments(
         StatementsAnalyzer $statements_analyzer,
         array $args,
         ?array $function_params,
@@ -430,6 +430,8 @@ class CallAnalyzer
                         || $arg->value instanceof PhpParser\Node\Expr\New_
                         || $arg->value instanceof PhpParser\Node\Expr\Assign
                         || $arg->value instanceof PhpParser\Node\Expr\Array_
+                        || $arg->value instanceof PhpParser\Node\Expr\Ternary
+                        || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
                     )
                 ) {
                     if (self::handleByRefFunctionArg(
@@ -503,8 +505,11 @@ class CallAnalyzer
                         $replaced_type,
                         $replace_template_result,
                         $codebase,
+                        $statements_analyzer,
                         null,
-                        'fn-' . $context->calling_function_id
+                        null,
+                        null,
+                        'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
                     $replaced_type->replaceTemplateTypesWithArgTypes(
@@ -596,8 +601,10 @@ class CallAnalyzer
                         $generic_param_type,
                         $replace_template_result,
                         $codebase,
+                        $statements_analyzer,
                         $statements_analyzer->node_data->getType($arg->value),
-                        'fn-' . $context->calling_function_id
+                        $argument_offset,
+                        'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
                     if ($replace_template_result->generic_params) {
@@ -664,6 +671,7 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\PropertyFetch
             || $arg->value instanceof PhpParser\Node\Expr\Array_
             || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
+            || $arg->value instanceof PhpParser\Node\Expr\Ternary
             || $arg->value instanceof PhpParser\Node\Scalar\Encapsed
             || $arg->value instanceof PhpParser\Node\Expr\PostInc
             || $arg->value instanceof PhpParser\Node\Expr\PostDec
@@ -698,6 +706,21 @@ class CallAnalyzer
             if (!$context->hasVariable($var_id, $statements_analyzer)
                 || $context->vars_in_scope[$var_id]->isNull()
             ) {
+                if (!isset($context->vars_in_scope[$var_id])
+                    && $arg->value instanceof PhpParser\Node\Expr\Variable
+                ) {
+                    if (IssueBuffer::accepts(
+                        new PossiblyUndefinedVariable(
+                            'Variable ' . $var_id
+                                . ' must be defined prior to use within an unknown function or method',
+                            new CodeLocation($statements_analyzer->getSource(), $arg->value)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
                 // we don't know if it exists, assume it's passed by reference
                 $context->vars_in_scope[$var_id] = Type::getMixed();
                 $context->vars_possibly_in_scope[$var_id] = true;
@@ -766,6 +789,9 @@ class CallAnalyzer
                     true
                 ))
         ) {
+            $was_inside_assignment = $context->inside_assignment;
+            $context->inside_assignment = true;
+
             // if the variable is in scope, get or we're in a special array function,
             // figure out its type before proceeding
             if (ExpressionAnalyzer::analyze(
@@ -775,6 +801,8 @@ class CallAnalyzer
             ) === false) {
                 return false;
             }
+
+            $context->inside_assignment = $was_inside_assignment;
         }
 
         // special handling for array sort
@@ -1067,7 +1095,22 @@ class CallAnalyzer
             $array_type = $array_arg_type->getAtomicTypes()['array'];
 
             if ($array_type instanceof ObjectLike) {
-                $array_type = $array_type->getGenericArrayType();
+                if ($array_type->is_list) {
+                    $array_type = new TNonEmptyList($array_type->getGenericValueType());
+                } else {
+                    $array_type = $array_type->getGenericArrayType();
+                }
+            }
+
+            if ($array_type instanceof TArray
+                && $array_type->type_params[0]->hasInt()
+                && !$array_type->type_params[0]->hasString()
+            ) {
+                if ($array_type instanceof TNonEmptyArray) {
+                    $array_type = new TNonEmptyList($array_type->type_params[1]);
+                } else {
+                    $array_type = new TList($array_type->type_params[1]);
+                }
             }
 
             /**
@@ -1075,10 +1118,6 @@ class CallAnalyzer
              * @var TArray|ObjectLike|TList
              */
             $replacement_array_type = $replacement_arg_type->getAtomicTypes()['array'];
-
-            if ($replacement_array_type instanceof ObjectLike) {
-                $replacement_array_type = $replacement_array_type->getGenericArrayType();
-            }
 
             $by_ref_type = TypeCombination::combineTypes([$array_type, $replacement_array_type]);
 
@@ -1180,7 +1219,7 @@ class CallAnalyzer
     /**
      * @param   StatementsAnalyzer                       $statements_analyzer
      * @param   array<int, PhpParser\Node\Arg>          $args
-     * @param   string|\Psalm\Internal\MethodIdentifier|null  $method_id
+     * @param   string|MethodIdentifier|null  $method_id
      * @param   array<int,FunctionLikeParameter>        $function_params
      * @param   FunctionLikeStorage|null                $function_storage
      * @param   ClassLikeStorage|null                   $class_storage
@@ -1189,7 +1228,7 @@ class CallAnalyzer
      *
      * @return  false|null
      */
-    protected static function checkFunctionLikeArgumentsMatch(
+    public static function checkFunctionLikeArgumentsMatch(
         StatementsAnalyzer $statements_analyzer,
         array $args,
         $method_id,
@@ -1313,9 +1352,11 @@ class CallAnalyzer
                         $function_param->type,
                         $template_result,
                         $codebase,
+                        $statements_analyzer,
                         $arg_value_type,
+                        $argument_offset,
                         $context->self,
-                        $context->calling_function_id,
+                        $context->calling_method_id ?: $context->calling_function_id,
                         false
                     );
 
@@ -1440,10 +1481,15 @@ class CallAnalyzer
         if (!$is_variadic
             && count($args) > count($function_params)
             && (!count($function_params) || $function_params[count($function_params) - 1]->name !== '...=')
+            && ($in_call_map
+                || !$function_storage instanceof \Psalm\Storage\MethodStorage
+                || $function_storage->is_static
+                || ($method_id instanceof MethodIdentifier
+                    && $method_id->method_name === '__construct'))
         ) {
             if (IssueBuffer::accepts(
                 new TooManyArguments(
-                    'Too many arguments for method ' . ($cased_method_id ?: $method_id)
+                    'Too many arguments for ' . ($cased_method_id ?: $method_id)
                         . ' - expecting ' . count($function_params) . ' but saw ' . count($args),
                     $code_location,
                     (string) $method_id
@@ -1474,10 +1520,17 @@ class CallAnalyzer
             for ($i = count($args), $j = count($function_params); $i < $j; ++$i) {
                 $param = $function_params[$i];
 
-                if (!$param->is_optional && !$param->is_variadic) {
+                if (!$param->is_optional
+                    && !$param->is_variadic
+                    && ($in_call_map
+                        || !$function_storage instanceof \Psalm\Storage\MethodStorage
+                        || $function_storage->is_static
+                        || ($method_id instanceof MethodIdentifier
+                            && $method_id->method_name === '__construct'))
+                ) {
                     if (IssueBuffer::accepts(
                         new TooFewArguments(
-                            'Too few arguments for method ' . $cased_method_id
+                            'Too few arguments for ' . $cased_method_id
                                 . ' - expecting ' . $expected_param_count . ' but saw ' . count($args),
                             $code_location,
                             (string) $method_id
@@ -1500,9 +1553,11 @@ class CallAnalyzer
                         $param->type,
                         $template_result,
                         $codebase,
+                        $statements_analyzer,
                         clone $param->default_type,
+                        $i,
                         $context->self,
-                        $context->calling_function_id,
+                        $context->calling_method_id ?: $context->calling_function_id,
                         true
                     );
                 }
@@ -1634,6 +1689,8 @@ class CallAnalyzer
             || $arg->value instanceof PhpParser\Node\Expr\Cast
             || $arg->value instanceof PhpParser\Node\Expr\Array_
             || $arg->value instanceof PhpParser\Node\Expr\ClassConstFetch
+            || $arg->value instanceof PhpParser\Node\Expr\BinaryOp
+            || $arg->value instanceof PhpParser\Node\Expr\Ternary
             || (
                 (
                 $arg->value instanceof PhpParser\Node\Expr\ConstFetch
@@ -1697,8 +1754,10 @@ class CallAnalyzer
                         clone $by_ref_type,
                         $template_result,
                         $codebase,
+                        $statements_analyzer,
                         $statements_analyzer->node_data->getType($arg->value),
-                        'fn-' . $context->calling_function_id
+                        $argument_offset,
+                        'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
                     if ($template_result->generic_params) {
@@ -1717,8 +1776,10 @@ class CallAnalyzer
                         clone $by_ref_out_type,
                         $template_result,
                         $codebase,
+                        $statements_analyzer,
                         $statements_analyzer->node_data->getType($arg->value),
-                        'fn-' . $context->calling_function_id
+                        $argument_offset,
+                        'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
                     if ($template_result->generic_params) {
@@ -1789,6 +1850,12 @@ class CallAnalyzer
             $param_type = clone $function_param->type;
         }
 
+        $bindable_template_params = [];
+
+        if ($template_result) {
+            $bindable_template_params = $param_type->getTemplateTypes();
+        }
+
         if ($class_generic_params) {
             $empty_generic_params = [];
 
@@ -1800,7 +1867,9 @@ class CallAnalyzer
                 $param_type,
                 $empty_template_result,
                 $codebase,
+                $statements_analyzer,
                 $arg_value_type,
+                $argument_offset,
                 $context->self ?: 'fn-' . $context->calling_function_id
             );
 
@@ -1808,7 +1877,9 @@ class CallAnalyzer
                 $arg_type,
                 $empty_template_result,
                 $codebase,
+                $statements_analyzer,
                 $arg_value_type,
+                $argument_offset,
                 $context->self ?: 'fn-' . $context->calling_function_id
             );
         }
@@ -1848,15 +1919,15 @@ class CallAnalyzer
                 }
             }
 
-            $bindable_template_params = $param_type->getTemplateTypes();
-
             $param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
                 $param_type,
                 $template_result,
                 $codebase,
+                $statements_analyzer,
                 $arg_type_param,
+                $argument_offset,
                 $context->self,
-                $context->calling_function_id
+                $context->calling_method_id ?: $context->calling_function_id
             );
 
             foreach ($bindable_template_params as $template_type) {
@@ -1865,8 +1936,9 @@ class CallAnalyzer
                         [$template_type->param_name]
                         [$template_type->defining_class]
                 )) {
-                    $template_result->generic_params[$template_type->param_name] = [
-                        ($template_type->defining_class) => [clone $template_type->as, 0]
+                    $template_result->generic_params[$template_type->param_name][$template_type->defining_class] = [
+                        clone $template_type->as,
+                        0
                     ];
                 }
             }
@@ -1896,7 +1968,9 @@ class CallAnalyzer
             $param_type,
             $classlike_storage ? $classlike_storage->name : null,
             $static_classlike_storage ? $static_classlike_storage->name : null,
-            $parent_class
+            $parent_class,
+            true,
+            $static_classlike_storage ? $static_classlike_storage->final : false
         );
 
         $fleshed_out_signature_type = $function_param->signature_type
@@ -1908,6 +1982,8 @@ class CallAnalyzer
                 $parent_class
             )
             : null;
+
+        $unpacked_atomic_array = null;
 
         if ($arg->unpack) {
             if ($arg_type->hasMixed()) {
@@ -1941,18 +2017,20 @@ class CallAnalyzer
                  * @psalm-suppress PossiblyUndefinedStringArrayOffset
                  * @var Type\Atomic\TArray|Type\Atomic\TList|Type\Atomic\ObjectLike
                  */
-                $array_atomic_type = $arg_type->getAtomicTypes()['array'];
+                $unpacked_atomic_array = $arg_type->getAtomicTypes()['array'];
 
-                if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
-                    if ($array_atomic_type->is_list && isset($array_atomic_type->properties[$argument_offset])) {
-                        $arg_type = clone $array_atomic_type->properties[$argument_offset];
+                if ($unpacked_atomic_array instanceof Type\Atomic\ObjectLike) {
+                    if ($unpacked_atomic_array->is_list
+                        && isset($unpacked_atomic_array->properties[$argument_offset])
+                    ) {
+                        $arg_type = clone $unpacked_atomic_array->properties[$argument_offset];
                     } else {
-                        $arg_type = $array_atomic_type->getGenericValueType();
+                        $arg_type = $unpacked_atomic_array->getGenericValueType();
                     }
-                } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
-                    $arg_type = $array_atomic_type->type_param;
+                } elseif ($unpacked_atomic_array instanceof Type\Atomic\TList) {
+                    $arg_type = $unpacked_atomic_array->type_param;
                 } else {
-                    $arg_type = $array_atomic_type->type_params[1];
+                    $arg_type = $unpacked_atomic_array->type_params[1];
                 }
             } else {
                 foreach ($arg_type->getAtomicTypes() as $atomic_type) {
@@ -1989,6 +2067,7 @@ class CallAnalyzer
             $context,
             $function_param,
             $arg->unpack,
+            $unpacked_atomic_array,
             $function_is_pure,
             $in_call_map,
             $function_location
@@ -2032,6 +2111,8 @@ class CallAnalyzer
                                 ) {
                                     $output_type_candidate = $calling_class_storage
                                         ->template_type_extends[$atomic_type->defining_class][$atomic_type->param_name];
+                                } elseif ($atomic_type instanceof Type\Atomic\TTemplateParam) {
+                                    $output_type_candidate = $atomic_type->as;
                                 } else {
                                     $output_type_candidate = new Type\Union([$atomic_type]);
                                 }
@@ -2051,8 +2132,10 @@ class CallAnalyzer
                     }
                 }
             } elseif ($class_storage->template_types) {
-                foreach ($class_storage->template_types as $template_name => $type) {
-                    $template_types[$template_name] = $type;
+                foreach ($class_storage->template_types as $template_name => $type_map) {
+                    foreach ($type_map as $key => list($type)) {
+                        $template_types[$template_name][$key] = [$type];
+                    }
                 }
             }
         }
@@ -2422,9 +2505,11 @@ class CallAnalyzer
                     $closure_param_type,
                     $template_result,
                     $codebase,
+                    $statements_analyzer,
                     $input_type,
+                    $i,
                     $context->self,
-                    $context->calling_function_id
+                    $context->calling_method_id ?: $context->calling_function_id
                 );
 
                 $closure_type->return_type->replaceTemplateTypesWithArgTypes(
@@ -2519,6 +2604,7 @@ class CallAnalyzer
     }
 
     /**
+     * @param Type\Atomic\ObjectLike|Type\Atomic\TArray|Type\Atomic\TList $unpacked_atomic_array
      * @return  null|false
      */
     public static function checkFunctionArgumentType(
@@ -2533,6 +2619,7 @@ class CallAnalyzer
         Context $context,
         FunctionLikeParameter $function_param,
         bool $unpack,
+        ?Type\Atomic $unpacked_atomic_array,
         bool $function_is_pure,
         bool $in_call_map,
         CodeLocation $function_location
@@ -2625,7 +2712,8 @@ class CallAnalyzer
                         $param_type,
                         $signature_param_type,
                         $context,
-                        $unpack
+                        $unpack,
+                        $unpacked_atomic_array
                     );
                 }
             }
@@ -2724,7 +2812,7 @@ class CallAnalyzer
                     $potential_method_id = TypeAnalyzer::getCallableMethodIdFromObjectLike(
                         $input_type_part,
                         $codebase,
-                        $context->calling_function_id,
+                        $context->calling_method_id,
                         $statements_analyzer->getFilePath()
                     );
 
@@ -2745,7 +2833,7 @@ class CallAnalyzer
             foreach ($potential_method_ids as $potential_method_id) {
                 $codebase->methods->methodExists(
                     $potential_method_id,
-                    $context->calling_function_id,
+                    $context->calling_method_id,
                     null,
                     $statements_analyzer,
                     $statements_analyzer->getFilePath()
@@ -2889,6 +2977,7 @@ class CallAnalyzer
                         $input_expr->value,
                         $code_location,
                         $context->self,
+                        $context->calling_method_id,
                         $statements_analyzer->getSuppressedIssues()
                     ) === false
                     ) {
@@ -2906,6 +2995,7 @@ class CallAnalyzer
                                         $item->value->value,
                                         $code_location,
                                         $context->self,
+                                        $context->calling_method_id,
                                         $statements_analyzer->getSuppressedIssues()
                                     ) === false
                                     ) {
@@ -2953,6 +3043,7 @@ class CallAnalyzer
                                     $callable_fq_class_name,
                                     $code_location,
                                     $context->self,
+                                    $context->calling_method_id,
                                     $statements_analyzer->getSuppressedIssues()
                                 ) === false
                                 ) {
@@ -3074,7 +3165,8 @@ class CallAnalyzer
                 $param_type,
                 $signature_param_type,
                 $context,
-                $unpack
+                $unpack,
+                $unpacked_atomic_array
             );
         }
 
@@ -3259,6 +3351,9 @@ class CallAnalyzer
         }
     }
 
+    /**
+     * @param Type\Atomic\ObjectLike|Type\Atomic\TArray|Type\Atomic\TList $unpacked_atomic_array
+     */
     private static function coerceValueAfterGatekeeperArgument(
         StatementsAnalyzer $statements_analyzer,
         Type\Union $input_type,
@@ -3267,7 +3362,8 @@ class CallAnalyzer
         Type\Union $param_type,
         ?Type\Union $signature_param_type,
         Context $context,
-        bool $unpack
+        bool $unpack,
+        ?Type\Atomic $unpacked_atomic_array
     ) : void {
         if ($param_type->hasMixed()) {
             return;
@@ -3344,15 +3440,35 @@ class CallAnalyzer
             }
 
             if ($unpack) {
-                $input_type = new Type\Union([
-                    new TArray([
-                        Type::getInt(),
-                        $input_type
-                    ]),
-                ]);
-            }
+                if ($unpacked_atomic_array instanceof Type\Atomic\TList) {
+                    $unpacked_atomic_array = clone $unpacked_atomic_array;
+                    $unpacked_atomic_array->type_param = $input_type;
 
-            $context->vars_in_scope[$var_id] = $input_type;
+                    $context->vars_in_scope[$var_id] = new Type\Union([$unpacked_atomic_array]);
+                } elseif ($unpacked_atomic_array instanceof Type\Atomic\TArray) {
+                    $unpacked_atomic_array = clone $unpacked_atomic_array;
+                    /** @psalm-suppress PropertyTypeCoercion */
+                    $unpacked_atomic_array->type_params[1] = $input_type;
+
+                    $context->vars_in_scope[$var_id] = new Type\Union([$unpacked_atomic_array]);
+                } elseif ($unpacked_atomic_array instanceof Type\Atomic\ObjectLike
+                    && $unpacked_atomic_array->is_list
+                ) {
+                    $unpacked_atomic_array = $unpacked_atomic_array->getList();
+                    $unpacked_atomic_array->type_param = $input_type;
+
+                    $context->vars_in_scope[$var_id] = new Type\Union([$unpacked_atomic_array]);
+                } else {
+                    $context->vars_in_scope[$var_id] = new Type\Union([
+                        new TArray([
+                            Type::getInt(),
+                            $input_type
+                        ]),
+                    ]);
+                }
+            } else {
+                $context->vars_in_scope[$var_id] = $input_type;
+            }
         }
     }
 
@@ -3394,6 +3510,11 @@ class CallAnalyzer
         }
 
         if (count($callable_arg->items) !== 2) {
+            return [];
+        }
+
+        /** @psalm-suppress PossiblyNullPropertyFetch */
+        if ($callable_arg->items[0]->key || $callable_arg->items[1]->key) {
             return [];
         }
 

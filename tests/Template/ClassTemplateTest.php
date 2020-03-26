@@ -1055,6 +1055,40 @@ class ClassTemplateTest extends TestCase
                         return new CustomReflectionClass($className);
                     }',
             ],
+            'psalmReflectionClass' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     *
+                     * @psalm-property-read class-string<T> $name
+                     */
+                    class CustomReflectionClass {
+                        /**
+                         * @var class-string<T>
+                         */
+                        public $name;
+
+                        /**
+                         * @param T|class-string<T> $argument
+                         */
+                        public function __construct($argument) {
+                            if (is_object($argument)) {
+                                $this->name = get_class($argument);
+                            } else {
+                                $this->name = $argument;
+                            }
+                        }
+                    }
+
+                    /**
+                     * @template T as object
+                     * @param class-string<T> $className
+                     * @return CustomReflectionClass<T>
+                     */
+                    function getTypeOf(string $className) {
+                        return new CustomReflectionClass($className);
+                    }',
+            ],
             'ignoreTooManyGenericObjectArgs' => [
                 '<?php
                     /**
@@ -1569,6 +1603,7 @@ class ClassTemplateTest extends TestCase
                      */
                     function makeConcrete(string $className) : object
                     {
+                        /** @var T&I<T> */
                         return new class() extends C implements I {
                             public function getMe() {
                                 return $this;
@@ -2137,7 +2172,7 @@ class ClassTemplateTest extends TestCase
                     class Base {
                         /** @return static */
                         public static function factory(): self {
-                            return new self();
+                            return new static();
                         }
                     }
 
@@ -2386,26 +2421,7 @@ class ClassTemplateTest extends TestCase
                      * @psalm-template TKey of array-key
                      * @psalm-template T
                      */
-                    interface Collection
-                    {
-                        /**
-                         * @param Closure $p
-                         *
-                         * @return Collection A
-                         *
-                         * @psalm-param Closure(T=):bool $p
-                         * @psalm-return Collection<TKey, T>
-                         */
-                        public function filter(Closure $p);
-                    }
-
-
-                    /**
-                     * @psalm-template TKey of array-key
-                     * @psalm-template T
-                     * @template-implements Collection<TKey,T>
-                     */
-                    class ArrayCollection implements Collection
+                    class ArrayCollection
                     {
                         /**
                          * @psalm-var array<TKey,T>
@@ -2424,15 +2440,92 @@ class ClassTemplateTest extends TestCase
                         }
 
                         /**
-                         * {@inheritDoc}
-                         *
-                         * @return static
+                         * @psalm-param Closure(T=):bool $p
+                         * @psalm-return self<TKey, T>
                          */
                         public function filter(Closure $p)
                         {
                             return $this;
                         }
                     }'
+            ],
+            'unionClassStringInferenceAndDefaultEmptyArray' => [
+                '<?php
+                    class A{}
+
+                    $packages = Collection::fromClassString(A::class);
+
+                    /**
+                     * @template T
+                     */
+                    class Collection{
+                        /** @var array<T> $items */
+                        protected $items = [];
+
+                        /**
+                         * @param array<string, T> $items
+                         */
+                        public function __construct(array $items = [])
+                        {
+                            $this->items = $items;
+                        }
+
+                        /**
+                         * @template C as object
+                         * @param class-string<C> $classString
+                         * @param array<string, C> $elements
+                         * @return Collection<C>
+                         */
+                        public static function fromClassString(string $classString, array $elements = []) : Collection
+                        {
+                            return new Collection($elements);
+                        }
+                    }',
+                [
+                    '$packages' => 'Collection<A>'
+                ]
+            ],
+            'assertSameOnTemplatedProperty' => [
+                '<?php
+                    /** @template E as object */
+                    final class Box
+                    {
+                        /** @var E */
+                        private $contents;
+
+                        /** @param E $contents */
+                        public function __construct(object $contents)
+                        {
+                            $this->contents = $contents;
+                        }
+
+                        /** @param E $thing */
+                        public function contains(object $thing) : bool
+                        {
+                            if ($this->contents !== $thing) {
+                                return false;
+                            }
+
+                            return true;
+                        }
+                    }'
+            ],
+            'assertNotNullOnTemplatedProperty' => [
+                '<?php
+                    /**
+                     * @template T of object
+                     */
+                    final class A {
+                        /**
+                         * @psalm-var ?callable(T): bool
+                         */
+                        public $filter;
+                    }
+
+                    /** @psalm-var A<A> */
+                    $a = new A();
+
+                    if (null !== $a->filter) {}'
             ],
         ];
     }

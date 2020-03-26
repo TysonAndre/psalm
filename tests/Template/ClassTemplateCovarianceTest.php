@@ -306,8 +306,19 @@ class ClassTemplateCovarianceTest extends TestCase
             ],
             'allowImmutableCovariance' => [
                 '<?php
+                    /**
+                     * @psalm-immutable
+                     */
                     class Animal {}
+
+                    /**
+                     * @psalm-immutable
+                     */
                     class Dog extends Animal{}
+
+                    /**
+                     * @psalm-immutable
+                     */
                     class Cat extends Animal{}
 
                     /**
@@ -404,12 +415,12 @@ class ClassTemplateCovarianceTest extends TestCase
                     class A {
                         private $arr;
 
-                        /** @psalm-param array<mixed, T> $arr */
+                        /** @psalm-param array<T> $arr */
                         public function __construct(array $arr) {
                             $this->arr = $arr;
                         }
 
-                        /** @psalm-return array<mixed, T> */
+                        /** @psalm-return array<T> */
                         public function foo(): array {
                             return $this->arr;
                         }
@@ -466,6 +477,60 @@ class ClassTemplateCovarianceTest extends TestCase
                          */
                         public function zip();
                     }',
+            ],
+            'extendsArrayWithCovariant' => [
+                '<?php
+                    /**
+                     * @template-covariant T1
+                     */
+                    interface IParentCollection {
+                        /**
+                         * @return IParentCollection<array<T1>>
+                         */
+                        public function getNested(): IParentCollection;
+                    }
+
+                    /**
+                     * @template T2
+                     *
+                     * @extends IParentCollection<T2>
+                     */
+                    interface IChildCollection extends IParentCollection {
+                        /**
+                         * @return IChildCollection<array<T2>>
+                         */
+                        public function getNested(): IChildCollection;
+                    }',
+                [],
+                [],
+                '7.4',
+            ],
+            'extendsObjectLikeWithCovariant' => [
+                '<?php
+                    /**
+                     * @template-covariant T1
+                     */
+                    interface IParentCollection {
+                        /**
+                         * @return IParentCollection<array{0: T1}>
+                         */
+                        public function getNested(): IParentCollection;
+                    }
+
+                    /**
+                     * @template T2
+                     *
+                     * @extends IParentCollection<T2>
+                     */
+                    interface IChildCollection extends IParentCollection {
+                        /**
+                         * @return IChildCollection<array{0: T2}>
+                         */
+                        public function getNested(): IChildCollection;
+                    }',
+                [],
+                [],
+                '7.4',
             ],
         ];
     }
@@ -578,8 +643,7 @@ class ClassTemplateCovarianceTest extends TestCase
                     }
 
                     /**
-                     * @return Generator<int,Bar,Bar,mixed>
-                     * @psalm-suppress MixedReturnTypeCoercion
+                     * @return Generator<int, Bar, Bar, mixed>
                      */
                     function gen() : Generator {
                       $bar = yield new Bar();

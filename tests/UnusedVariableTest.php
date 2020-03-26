@@ -522,6 +522,7 @@ class UnusedVariableTest extends TestCase
                 '<?php
                     /** @psalm-suppress MixedMethodCall */
                     function passesByRef(object $a): void {
+                        /** @psalm-suppress PossiblyUndefinedVariable */
                         $a->passedByRef($b);
                     }',
             ],
@@ -849,7 +850,9 @@ class UnusedVariableTest extends TestCase
                 '<?php
                     interface Foo { }
 
-                    function returnFoo(): Foo { return new class implements Foo { }; }
+                    function returnFoo(): Foo {
+                        return new class implements Foo { };
+                    }
 
                     $interface = Foo::class;
 
@@ -1030,7 +1033,7 @@ class UnusedVariableTest extends TestCase
                         public function foo() : void {
                             $var = "something";
 
-                            if (true) {
+                            if (rand(0, 1)) {
                                 static::${$var} = true;
                             }
                         }
@@ -1421,6 +1424,46 @@ class UnusedVariableTest extends TestCase
 
                     function takes_ref(array &$p): void {
                         echo implode(",", $p);
+                    }'
+            ],
+            'doWhileWithBreak' => [
+                '<?php
+                    function foo(): void {
+                        $f = false;
+
+                        do {
+                            if (rand(0,1)) {
+                                $f = true;
+                                break;
+                            }
+                        } while (rand(0,1));
+
+                        if ($f) {}
+                    }'
+            ],
+            'usedParamInWhileDirectly' => [
+                '<?php
+                    function foo(int $index): void {
+                        while (100 >= $index = nextNumber($index)) {
+                            // ...
+                        }
+                    }
+
+                    function nextNumber(int $eee): int {
+                        return $eee + 1;
+                    }'
+            ],
+            'usedParamInWhileIndirectly' => [
+                '<?php
+                    function foo(int $i): void {
+                        $index = $i;
+                        while (100 >= $index = nextNumber($index)) {
+                            // ...
+                        }
+                    }
+
+                    function nextNumber(int $i): int {
+                        return $i + 1;
                     }'
             ],
         ];

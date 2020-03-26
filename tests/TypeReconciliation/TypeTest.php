@@ -1032,6 +1032,25 @@ class TypeTest extends \Psalm\Tests\TestCase
                         }
                     }'
             ],
+            'arrayKeyCanBeNumeric' => [
+                '<?php
+                    /** @param array<string> $arr */
+                    function foo(array $arr) : void {
+                        foreach ($arr as $k => $_) {
+                            if (is_numeric($k)) {}
+                            if (!is_numeric($k)) {}
+                        }
+                    }'
+            ],
+            'narrowScalar' => [
+                '<?php
+                    /** @var scalar $s */
+                    $s = 1;
+
+                    if (!is_int($s) && !is_bool($s) && !is_float($s)) {
+                        strlen($s);
+                    }'
+            ],
         ];
     }
 
@@ -1470,7 +1489,7 @@ class TypeTest extends \Psalm\Tests\TestCase
 
                     function takesB(B $i): void {}',
                 'error_message' => 'ArgumentTypeCoercion - src' . DIRECTORY_SEPARATOR . 'somefile.php:11:32 - Argument 1 of takesB expects B,'
-                    . ' parent type A provided',
+                    . ' parent type A&static provided',
             ],
             'intersectionTypeInterfaceCheckAfterInstanceof' => [
                 '<?php
@@ -1488,7 +1507,7 @@ class TypeTest extends \Psalm\Tests\TestCase
                     interface I {}
 
                     function takesI(I $i): void {}',
-                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:32 - Argument 1 of takesI expects I, A provided',
+                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:32 - Argument 1 of takesI expects I, A&static provided',
             ],
         ];
     }

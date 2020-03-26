@@ -451,6 +451,9 @@ class ConstantTest extends TestCase
                     const cons1 = true;
 
                     class Clazz {
+                        /**
+                         * @psalm-suppress RedundantCondition
+                         */
                         const cons2 = (cons1) ? 1 : 0;
                     }
 
@@ -738,6 +741,30 @@ class ConstantTest extends TestCase
                             }
                         }
                     }'
+            ],
+            'getClassConstantOffset' => [
+                '<?php
+                    class C {
+                        private const A = [ 0 => "string" ];
+                        private const B = self::A[0];
+
+                        public function foo(): string {
+                            return self::B;
+                        }
+                    }'
+            ],
+            'bitwiseOrClassConstant' => [
+                '<?php
+                    class X {
+                        public const A = 1;
+                        public const B = 2;
+                        public const C = self::A | self::B;
+                    }
+
+                    $c = X::C;',
+                [
+                    '$c' => 'int',
+                ]
             ],
         ];
     }

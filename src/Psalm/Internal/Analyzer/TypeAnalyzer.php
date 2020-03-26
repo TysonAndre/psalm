@@ -24,6 +24,7 @@ use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTemplateParamClass;
 use Psalm\Type\Atomic\GetClassT;
 use Psalm\Type\Atomic\GetTypeT;
+use Psalm\Type\Atomic\TConditional;
 use Psalm\Type\Atomic\THtmlEscapedString;
 use Psalm\Type\Atomic\TInt;
 use Psalm\Type\Atomic\TIterable;
@@ -59,7 +60,6 @@ use function array_keys;
 use function array_reduce;
 use function end;
 use function array_unique;
-use Exception;
 
 /**
  * @internal
@@ -428,7 +428,9 @@ class TypeAnalyzer
                     $atomic_comparison_result
                 );
 
-                if ($is_atomic_contained_by && !$atomic_comparison_result->to_string_cast) {
+                if (($is_atomic_contained_by && !$atomic_comparison_result->to_string_cast)
+                    || $atomic_comparison_result->type_coerced_from_mixed
+                ) {
                     return true;
                 }
             }
@@ -503,10 +505,11 @@ class TypeAnalyzer
         Codebase $codebase,
         $input_type_part,
         $container_type_part,
-        $allow_interface_equality
+        $allow_interface_equality,
+        ?TypeComparisonResult $atomic_comparison_result
     ) {
         $intersection_input_types = $input_type_part->extra_types ?: [];
-        $intersection_input_types[] = $input_type_part;
+        $intersection_input_types[$input_type_part->getKey(false)] = $input_type_part;
 
         if ($input_type_part instanceof TTemplateParam) {
             foreach ($input_type_part->as->getAtomicTypes() as $g) {
@@ -520,7 +523,7 @@ class TypeAnalyzer
         }
 
         $intersection_container_types = $container_type_part->extra_types ?: [];
-        $intersection_container_types[] = $container_type_part;
+        $intersection_container_types[$container_type_part->getKey(false)] = $container_type_part;
 
         if ($container_type_part instanceof TTemplateParam) {
             foreach ($container_type_part->as->getAtomicTypes() as $g) {
@@ -533,12 +536,34 @@ class TypeAnalyzer
             }
         }
 
-        foreach ($intersection_container_types as $intersection_container_type) {
+        foreach ($intersection_container_types as $container_type_key => $intersection_container_type) {
+            $container_was_static = false;
+
             if ($intersection_container_type instanceof TIterable) {
                 $intersection_container_type_lower = 'iterable';
             } elseif ($intersection_container_type instanceof TObjectWithProperties) {
                 $intersection_container_type_lower = 'object';
             } elseif ($intersection_container_type instanceof TTemplateParam) {
+                if (!$allow_interface_equality) {
+                    if (isset($intersection_input_types[$container_type_key])) {
+                        continue;
+                    }
+
+                    if (\substr($intersection_container_type->defining_class, 0, 3) === 'fn-') {
+                        foreach ($intersection_input_types as $intersection_input_type) {
+                            if ($intersection_input_type instanceof TTemplateParam
+                                && \substr($intersection_input_type->defining_class, 0, 3) === 'fn-'
+                                && $intersection_input_type->defining_class
+                                    !== $intersection_container_type->defining_class
+                            ) {
+                                continue 2;
+                            }
+                        }
+                    }
+
+                    return false;
+                }
+
                 if ($intersection_container_type->as->isMixed()) {
                     continue;
                 }
@@ -548,6 +573,10 @@ class TypeAnalyzer
                 foreach ($intersection_container_type->as->getAtomicTypes() as $g) {
                     if ($g instanceof TNull) {
                         continue;
+                    }
+
+                    if ($g instanceof TObject) {
+                        continue 2;
                     }
 
                     if (!$g instanceof TNamedObject) {
@@ -561,6 +590,8 @@ class TypeAnalyzer
                     return false;
                 }
             } else {
+                $container_was_static = $intersection_container_type->was_static;
+
                 $intersection_container_type_lower = strtolower(
                     $codebase->classlikes->getUnAliasedName(
                         $intersection_container_type->value
@@ -569,6 +600,8 @@ class TypeAnalyzer
             }
 
             foreach ($intersection_input_types as $intersection_input_type) {
+                $input_was_static = false;
+
                 if ($intersection_input_type instanceof TIterable) {
                     $intersection_input_type_lower = 'iterable';
                 } elseif ($intersection_input_type instanceof TObjectWithProperties) {
@@ -596,6 +629,8 @@ class TypeAnalyzer
                         return false;
                     }
                 } else {
+                    $input_was_static = $intersection_input_type->was_static;
+
                     $intersection_input_type_lower = strtolower(
                         $codebase->classlikes->getUnAliasedName(
                             $intersection_input_type->value
@@ -603,36 +638,44 @@ class TypeAnalyzer
                     );
                 }
 
+                if ($intersection_container_type instanceof TTemplateParam
+                    && $intersection_input_type instanceof TTemplateParam
+                ) {
+                    if ($intersection_container_type->param_name !== $intersection_input_type->param_name
+                        || ((string)$intersection_container_type->defining_class
+                            !== (string)$intersection_input_type->defining_class
+                            && \substr($intersection_input_type->defining_class, 0, 3) !== 'fn-'
+                            && \substr($intersection_container_type->defining_class, 0, 3) !== 'fn-')
+                    ) {
+                        if (\substr($intersection_input_type->defining_class, 0, 3) !== 'fn-') {
+                            $input_class_storage = $codebase->classlike_storage_provider->get(
+                                $intersection_input_type->defining_class
+                            );
+
+                            if (isset($input_class_storage->template_type_extends
+                                    [$intersection_container_type->defining_class]
+                                    [$intersection_container_type->param_name])
+                            ) {
+                                continue;
+                            }
+                        }
+
+                        return false;
+                    }
+                }
+
                 if (!$intersection_container_type instanceof TTemplateParam
                     || $intersection_input_type instanceof TTemplateParam
                 ) {
-                    if ($intersection_container_type instanceof TTemplateParam
-                        && $intersection_input_type instanceof TTemplateParam
-                    ) {
-                        if ($intersection_container_type->param_name !== $intersection_input_type->param_name
-                            || ((string)$intersection_container_type->defining_class
-                                !== (string)$intersection_input_type->defining_class
-                                && \substr($intersection_input_type->defining_class, 0, 3) !== 'fn-'
-                                && \substr($intersection_container_type->defining_class, 0, 3) !== 'fn-')
-                        ) {
-                            if (\substr($intersection_input_type->defining_class, 0, 3) !== 'fn-') {
-                                $input_class_storage = $codebase->classlike_storage_provider->get(
-                                    $intersection_input_type->defining_class
-                                );
-
-                                if (isset($input_class_storage->template_type_extends
-                                        [$intersection_container_type->defining_class]
-                                        [$intersection_container_type->param_name])
-                                ) {
-                                    continue;
-                                }
+                    if ($intersection_container_type_lower === $intersection_input_type_lower) {
+                        if ($container_was_static && !$input_was_static) {
+                            if ($atomic_comparison_result) {
+                                $atomic_comparison_result->type_coerced = true;
                             }
 
-                            return false;
+                            continue;
                         }
-                    }
 
-                    if ($intersection_container_type_lower === $intersection_input_type_lower) {
                         continue 2;
                     }
 
@@ -662,6 +705,14 @@ class TypeAnalyzer
                             $intersection_container_type_lower
                         )
                     ) {
+                        if ($container_was_static && !$input_was_static) {
+                            if ($atomic_comparison_result) {
+                                $atomic_comparison_result->type_coerced = true;
+                            }
+
+                            continue;
+                        }
+
                         continue 2;
                     }
 
@@ -697,12 +748,19 @@ class TypeAnalyzer
         bool $allow_float_int_equality = true,
         ?TypeComparisonResult $atomic_comparison_result = null
     ) : bool {
-        if ($container_type_part instanceof TTemplateParam && $input_type_part instanceof TTemplateParam) {
+        if (($container_type_part instanceof TTemplateParam
+                || ($container_type_part instanceof TNamedObject
+                    && isset($container_type_part->extra_types)))
+            && ($input_type_part instanceof TTemplateParam
+                || ($input_type_part instanceof TNamedObject
+                    && isset($input_type_part->extra_types)))
+        ) {
             return self::isObjectContainedByObject(
                 $codebase,
-                $container_type_part,
                 $input_type_part,
-                true
+                $container_type_part,
+                $allow_interface_equality,
+                $atomic_comparison_result
             );
         }
 
@@ -836,13 +894,14 @@ class TypeAnalyzer
                     || $input_type_part instanceof TIterable)
                 && ($container_type_part instanceof TNamedObject
                     || ($container_type_part instanceof TTemplateParam
-                        && $container_type_part->as->hasObjectType())
+                        && $container_type_part->isObjectType())
                     || $container_type_part instanceof TIterable)
                 && self::isObjectContainedByObject(
                     $codebase,
                     $input_type_part,
                     $container_type_part,
-                    $allow_interface_equality
+                    $allow_interface_equality,
+                    $atomic_comparison_result
                 )
             )
         ) {
@@ -880,9 +939,32 @@ class TypeAnalyzer
                     if ($allow_interface_equality
                         || ($input_type_part instanceof TArray
                             && !$input_type_part->type_params[1]->isEmpty())
+                        || $input_type_part instanceof ObjectLike
                     ) {
                         return true;
                     }
+                }
+            }
+
+            return false;
+        }
+
+        if ($container_type_part instanceof TConditional) {
+            $atomic_types = array_merge(
+                array_values($container_type_part->if_type->getAtomicTypes()),
+                array_values($container_type_part->else_type->getAtomicTypes())
+            );
+
+            foreach ($atomic_types as $container_as_type_part) {
+                if (self::isAtomicContainedBy(
+                    $codebase,
+                    $input_type_part,
+                    $container_as_type_part,
+                    $allow_interface_equality,
+                    $allow_float_int_equality,
+                    $atomic_comparison_result
+                )) {
+                    return true;
                 }
             }
 
@@ -1052,7 +1134,13 @@ class TypeAnalyzer
         }
 
         if ($container_type_part instanceof TNumeric &&
-            ($input_type_part->isNumericType() || $input_type_part instanceof TString)
+            $input_type_part->isNumericType()
+        ) {
+            return true;
+        }
+
+        if ($container_type_part instanceof TArrayKey
+            && $input_type_part instanceof TNumeric
         ) {
             return true;
         }
@@ -1409,6 +1497,9 @@ class TypeAnalyzer
             && ($container_type_part instanceof TNumericString
                 || $container_type_part instanceof THtmlEscapedString)
         ) {
+            if ($input_type_part instanceof TLiteralString) {
+                return \is_numeric($input_type_part->value);
+            }
             if ($atomic_comparison_result) {
                 $atomic_comparison_result->type_coerced = true;
             }
@@ -1716,26 +1807,32 @@ class TypeAnalyzer
                 $atomic_comparison_result->type_coerced = true;
             } elseif ($container_type_part instanceof TNamedObject
                 && $input_type_part instanceof TNamedObject
-                && $codebase->classOrInterfaceExists($input_type_part->value)
-                && (
-                    (
-                        $codebase->classExists($container_type_part->value)
-                        && $codebase->classExtendsOrImplements(
-                            $container_type_part->value,
-                            $input_type_part->value
-                        )
-                    )
-                    ||
-                    (
-                        $codebase->interfaceExists($container_type_part->value)
-                        && $codebase->interfaceExtends(
-                            $container_type_part->value,
-                            $input_type_part->value
-                        )
-                    )
-                )
             ) {
-                $atomic_comparison_result->type_coerced = true;
+                if ($container_type_part->was_static
+                    && !$input_type_part->was_static
+                ) {
+                    $atomic_comparison_result->type_coerced = true;
+                } elseif ($codebase->classOrInterfaceExists($input_type_part->value)
+                    && (
+                        (
+                            $codebase->classExists($container_type_part->value)
+                            && $codebase->classExtendsOrImplements(
+                                $container_type_part->value,
+                                $input_type_part->value
+                            )
+                        )
+                        ||
+                        (
+                            $codebase->interfaceExists($container_type_part->value)
+                            && $codebase->interfaceExtends(
+                                $container_type_part->value,
+                                $input_type_part->value
+                            )
+                        )
+                    )
+                ) {
+                    $atomic_comparison_result->type_coerced = true;
+                }
             }
         }
 
@@ -1748,11 +1845,15 @@ class TypeAnalyzer
     public static function getCallableFromAtomic(
         Codebase $codebase,
         Type\Atomic $input_type_part,
-        ?TCallable $container_type_part = null
+        ?TCallable $container_type_part = null,
+        ?StatementsAnalyzer $statements_analyzer = null
     ) : ?TCallable {
         if ($input_type_part instanceof TLiteralString) {
             try {
-                $function_storage = $codebase->functions->getStorage(null, $input_type_part->value);
+                $function_storage = $codebase->functions->getStorage(
+                    $statements_analyzer,
+                    $input_type_part->value
+                );
 
                 return new TCallable(
                     'callable',
@@ -1856,7 +1957,7 @@ class TypeAnalyzer
     public static function getCallableMethodIdFromObjectLike(
         ObjectLike $input_type_part,
         Codebase $codebase = null,
-        string $calling_function_id = null,
+        string $calling_method_id = null,
         string $file_name = null
     ) {
         if (!isset($input_type_part->properties[0])
@@ -1875,12 +1976,12 @@ class TypeAnalyzer
                 return 'not-callable';
             }
 
-            if ($codebase && ($calling_function_id || $file_name)) {
+            if ($codebase && ($calling_method_id || $file_name)) {
                 foreach ($lhs->getAtomicTypes() as $lhs_atomic_type) {
                     if ($lhs_atomic_type instanceof TNamedObject) {
                         $codebase->analyzer->addMixedMemberName(
                             strtolower($lhs_atomic_type->value) . '::',
-                            $calling_function_id ?: $file_name
+                            $calling_method_id ?: $file_name
                         );
                     }
                 }
@@ -1914,10 +2015,10 @@ class TypeAnalyzer
         }
 
         if (!$class_name) {
-            if ($codebase && ($calling_function_id || $file_name)) {
+            if ($codebase && ($calling_method_id || $file_name)) {
                 $codebase->analyzer->addMixedMemberName(
                     strtolower($method_name),
-                    $calling_function_id ?: $file_name
+                    $calling_method_id ?: $file_name
                 );
             }
 
@@ -2107,6 +2208,13 @@ class TypeAnalyzer
                     $param_comparison_result,
                     $allow_interface_equality
                 )) {
+                    if ($input_type_part->value === 'Generator'
+                        && $i === 2
+                        && $param_comparison_result->type_coerced_from_mixed
+                    ) {
+                        continue;
+                    }
+
                     $atomic_comparison_result->type_coerced
                         = $param_comparison_result->type_coerced === true
                             && $atomic_comparison_result->type_coerced !== false;
@@ -2164,13 +2272,28 @@ class TypeAnalyzer
                                 $allow_interface_equality
                             ) || $param_comparison_result->type_coerced
                             ) {
-                                if ($container_param->hasMixed() || $container_param->isArrayKey()) {
-                                    $atomic_comparison_result->type_coerced_from_mixed = true;
+                                if ($container_param->hasFormerStaticObject()
+                                    && $input_param->isFormerStaticObject()
+                                    && self::isContainedBy(
+                                        $codebase,
+                                        $input_param,
+                                        $container_param,
+                                        $container_param->ignore_nullable_issues,
+                                        $container_param->ignore_falsable_issues,
+                                        $param_comparison_result,
+                                        $allow_interface_equality
+                                    )
+                                ) {
+                                    // do nothing
                                 } else {
-                                    $all_types_contain = false;
-                                }
+                                    if ($container_param->hasMixed() || $container_param->isArrayKey()) {
+                                        $atomic_comparison_result->type_coerced_from_mixed = true;
+                                    } else {
+                                        $all_types_contain = false;
+                                    }
 
-                                $atomic_comparison_result->type_coerced = false;
+                                    $atomic_comparison_result->type_coerced = false;
+                                }
                             }
                         }
                     }
@@ -2394,6 +2517,15 @@ class TypeAnalyzer
                     }
                 }
             }
+        }
+
+        if ($container_type_part instanceof TNamedObject
+            && $input_type_part instanceof TNamedObject
+            && $container_type_part->was_static
+            && !$input_type_part->was_static
+        ) {
+            $all_types_contain = false;
+            $atomic_comparison_result->type_coerced = true;
         }
 
         if ($container_type_part instanceof Type\Atomic\TNonEmptyArray

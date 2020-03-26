@@ -911,7 +911,7 @@ class ArrayFunctionCallTest extends TestCase
                     $d = [1, 2, 3];
                     array_splice($d, -1, 1);',
                 'assertions' => [
-                    '$a' => 'non-empty-array<int, int|string>',
+                    '$a' => 'non-empty-list<int|string>',
                     '$b' => 'array{0: string, 1: string, 2: string}',
                     '$c' => 'array{0: int, 1: int, 2: int}',
                 ],
@@ -1296,6 +1296,33 @@ class ArrayFunctionCallTest extends TestCase
                     $bs = ["value"];
 
                     return array_map(fn ($a, $b) => [$a => $b], $as, $bs);'
+            ],
+            'allowUnpackWithArrayKey' => [
+                '<?php
+                    class Foo {
+                        protected function one(): array {
+                            return [];
+                        }
+
+                        protected function two(): array {
+                            return [];
+                        }
+
+                        public function three(): array {
+                            return [...$this->one(), ...$this->two()];
+                        }
+                    }'
+            ],
+            'spliceTurnsintKeyedInputToList' => [
+                '<?php
+                    /**
+                     * @psalm-param list<string> $elements
+                     * @return list<string>
+                     */
+                    function bar(array $elements, int $index, string $element) : array {
+                        array_splice($elements, $index, 0, [$element]);
+                        return $elements;
+                    }'
             ],
         ];
     }

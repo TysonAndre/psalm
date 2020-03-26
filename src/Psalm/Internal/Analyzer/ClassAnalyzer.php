@@ -3,10 +3,8 @@ namespace Psalm\Internal\Analyzer;
 
 use PhpParser;
 use Psalm\Aliases;
-use Psalm\Internal\Analyzer\FunctionLike\ReturnTypeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
@@ -22,6 +20,7 @@ use Psalm\Issue\MissingConstructor;
 use Psalm\Issue\MissingImmutableAnnotation;
 use Psalm\Issue\MissingPropertyType;
 use Psalm\Issue\MissingTemplateParam;
+use Psalm\Issue\MutableDependency;
 use Psalm\Issue\OverriddenPropertyAccess;
 use Psalm\Issue\PropertyNotSetInConstructor;
 use Psalm\Issue\ReservedWord;
@@ -40,7 +39,6 @@ use function preg_replace;
 use function preg_match;
 use function explode;
 use function array_pop;
-use function array_merge;
 use function strtolower;
 use function implode;
 use function substr;
@@ -227,6 +225,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $parent_fq_class_name,
                 $parent_reference_location,
                 null,
+                null,
                 $storage->suppressed_issues + $this->getSuppressedIssues(),
                 false
             ) === false) {
@@ -330,6 +329,20 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
+                if ($storage->mutation_free
+                    && !$parent_class_storage->mutation_free
+                ) {
+                    if (IssueBuffer::accepts(
+                        new MutableDependency(
+                            $fq_class_name . ' is marked immutable but ' . $parent_fq_class_name . ' is not',
+                            $code_location
+                        ),
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
                 if ($codebase->store_node_types) {
                     $codebase->analyzer->addNodeReference(
                         $this->getFilePath(),
@@ -381,6 +394,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $this,
                 $fq_interface_name,
                 $interface_location,
+                null,
                 null,
                 $this->getSuppressedIssues(),
                 false
@@ -630,7 +644,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         continue;
                     }
 
-                    MethodAnalyzer::compareMethods(
+                    MethodComparator::compare(
                         $codebase,
                         $implementer_classlike_storage ?: $storage,
                         $interface_storage,
@@ -693,130 +707,13 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
         }
 
-        foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
-            $property_class_name = $codebase->properties->getDeclaringClassForProperty(
-                $appearing_property_id,
-                true
-            );
-
-            if ($property_class_name === null) {
-                continue;
-            }
-
-            $property_class_storage = $classlike_storage_provider->get($property_class_name);
-
-            $property_storage = $property_class_storage->properties[$property_name];
-
-            if (isset($storage->overridden_property_ids[$property_name])) {
-                foreach ($storage->overridden_property_ids[$property_name] as $overridden_property_id) {
-                    list($guide_class_name) = explode('::$', $overridden_property_id);
-                    $guide_class_storage = $classlike_storage_provider->get($guide_class_name);
-                    $guide_property_storage = $guide_class_storage->properties[$property_name];
-
-                    if ($property_storage->visibility > $guide_property_storage->visibility
-                        && $property_storage->location
-                    ) {
-                        if (IssueBuffer::accepts(
-                            new OverriddenPropertyAccess(
-                                'Property ' . $guide_class_storage->name . '::$' . $property_name
-                                    . ' has different access level than '
-                                    . $storage->name . '::$' . $property_name,
-                                $property_storage->location
-                            )
-                        )) {
-                            return false;
-                        }
-
-                        return null;
-                    }
-                }
-            }
-
-            if ($property_storage->type) {
-                $property_type = clone $property_storage->type;
-
-                if (!$property_type->isMixed()
-                    && !$property_storage->has_default
-                    && !($property_type->isNullable() && $property_type->from_docblock)
-                ) {
-                    $property_type->initialized = false;
-                }
-            } else {
-                $property_type = Type::getMixed();
-
-                if (!$property_storage->has_default) {
-                    $property_type->initialized = false;
-                }
-            }
-
-            $property_type_location = $property_storage->type_location;
-
-            $fleshed_out_type = !$property_type->isMixed()
-                ? ExpressionAnalyzer::fleshOutType(
-                    $codebase,
-                    $property_type,
-                    $this->fq_class_name,
-                    $this->fq_class_name,
-                    $this->parent_fq_class_name
-                )
-                : $property_type;
-
-            $class_template_params = MethodCallAnalyzer::getClassTemplateParams(
-                $codebase,
-                $property_class_storage,
-                $fq_class_name,
-                null,
-                new Type\Atomic\TNamedObject($fq_class_name),
-                '$this'
-            );
-
-            $template_result = new \Psalm\Internal\Type\TemplateResult(
-                $class_template_params ?: [],
-                []
-            );
-
-            if ($class_template_params) {
-                $fleshed_out_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
-                    $fleshed_out_type,
-                    $template_result,
-                    $codebase,
-                    null,
-                    null
-                );
-            }
-
-            if ($property_type_location && !$fleshed_out_type->isMixed()) {
-                $fleshed_out_type->check(
-                    $this,
-                    $property_type_location,
-                    $storage->suppressed_issues + $this->getSuppressedIssues(),
-                    [],
-                    false
-                );
-            }
-
-            if ($property_storage->is_static) {
-                $property_id = $this->fq_class_name . '::$' . $property_name;
-
-                $class_context->vars_in_scope[$property_id] = $fleshed_out_type;
-            } else {
-                $class_context->vars_in_scope['$this->' . $property_name] = $fleshed_out_type;
-            }
-        }
-
-        foreach ($storage->pseudo_property_get_types as $property_name => $property_type) {
-            $fleshed_out_type = !$property_type->isMixed()
-                ? ExpressionAnalyzer::fleshOutType(
-                    $codebase,
-                    $property_type,
-                    $this->fq_class_name,
-                    $this->fq_class_name,
-                    $this->parent_fq_class_name
-                )
-                : $property_type;
-
-            $class_context->vars_in_scope['$this->' . substr($property_name, 1)] = $fleshed_out_type;
-        }
+        self::addContextProperties(
+            $this,
+            $storage,
+            $class_context,
+            $this->fq_class_name,
+            $this->parent_fq_class_name
+        );
 
         $constructor_analyzer = null;
         $member_stmts = [];
@@ -952,8 +849,14 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         continue;
                     }
 
+                    $trait_storage = $codebase->classlike_storage_provider->get($fq_trait_name);
                     $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name);
-                    $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name);
+                    $trait_aliases = $trait_storage->aliases;
+
+                    if ($trait_aliases === null) {
+                        continue;
+                    }
+
                     $trait_analyzer = new TraitAnalyzer(
                         $trait_node,
                         $trait_file_analyzer,
@@ -964,7 +867,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $fq_trait_name_lc = strtolower($fq_trait_name);
 
                     if (isset($storage->template_type_uses_count[$fq_trait_name_lc])) {
-                        $trait_storage = $codebase->classlike_storage_provider->get($fq_trait_name_lc);
                         $expected_param_count = $storage->template_type_uses_count[$fq_trait_name_lc];
 
                         $this->checkTemplateParams(
@@ -1011,7 +913,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
                     $parent_storage = $classlike_storage_provider->get($overridden_fq_class_name);
 
-                    MethodAnalyzer::compareMethods(
+                    MethodComparator::compare(
                         $codebase,
                         $storage,
                         $parent_storage,
@@ -1051,6 +953,142 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $file_manipulations
                 );
             }
+        }
+    }
+
+    public static function addContextProperties(
+        StatementsSource $statements_source,
+        ClassLikeStorage $storage,
+        Context $class_context,
+        string $fq_class_name,
+        ?string $parent_fq_class_name
+    ) : void {
+        $codebase = $statements_source->getCodebase();
+
+        foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
+            $property_class_name = $codebase->properties->getDeclaringClassForProperty(
+                $appearing_property_id,
+                true
+            );
+
+            if ($property_class_name === null) {
+                continue;
+            }
+
+            $property_class_storage = $codebase->classlike_storage_provider->get($property_class_name);
+
+            $property_storage = $property_class_storage->properties[$property_name];
+
+            if (isset($storage->overridden_property_ids[$property_name])) {
+                foreach ($storage->overridden_property_ids[$property_name] as $overridden_property_id) {
+                    list($guide_class_name) = explode('::$', $overridden_property_id);
+                    $guide_class_storage = $codebase->classlike_storage_provider->get($guide_class_name);
+                    $guide_property_storage = $guide_class_storage->properties[$property_name];
+
+                    if ($property_storage->visibility > $guide_property_storage->visibility
+                        && $property_storage->location
+                    ) {
+                        if (IssueBuffer::accepts(
+                            new OverriddenPropertyAccess(
+                                'Property ' . $guide_class_storage->name . '::$' . $property_name
+                                    . ' has different access level than '
+                                    . $storage->name . '::$' . $property_name,
+                                $property_storage->location
+                            )
+                        )) {
+                            // fall through
+                        }
+
+                        continue;
+                    }
+                }
+            }
+
+            if ($property_storage->type) {
+                $property_type = clone $property_storage->type;
+
+                if (!$property_type->isMixed()
+                    && !$property_storage->has_default
+                    && !($property_type->isNullable() && $property_type->from_docblock)
+                ) {
+                    $property_type->initialized = false;
+                }
+            } else {
+                $property_type = Type::getMixed();
+
+                if (!$property_storage->has_default) {
+                    $property_type->initialized = false;
+                }
+            }
+
+            $property_type_location = $property_storage->type_location;
+
+            $fleshed_out_type = !$property_type->isMixed()
+                ? ExpressionAnalyzer::fleshOutType(
+                    $codebase,
+                    $property_type,
+                    $fq_class_name,
+                    $fq_class_name,
+                    $parent_fq_class_name
+                )
+                : $property_type;
+
+            $class_template_params = ClassTemplateParamCollector::collect(
+                $codebase,
+                $property_class_storage,
+                $fq_class_name,
+                null,
+                new Type\Atomic\TNamedObject($fq_class_name),
+                '$this'
+            );
+
+            $template_result = new \Psalm\Internal\Type\TemplateResult(
+                $class_template_params ?: [],
+                []
+            );
+
+            if ($class_template_params) {
+                $fleshed_out_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                    $fleshed_out_type,
+                    $template_result,
+                    $codebase,
+                    null,
+                    null,
+                    null
+                );
+            }
+
+            if ($property_type_location && !$fleshed_out_type->isMixed()) {
+                $fleshed_out_type->check(
+                    $statements_source,
+                    $property_type_location,
+                    $storage->suppressed_issues + $statements_source->getSuppressedIssues(),
+                    [],
+                    false
+                );
+            }
+
+            if ($property_storage->is_static) {
+                $property_id = $fq_class_name . '::$' . $property_name;
+
+                $class_context->vars_in_scope[$property_id] = $fleshed_out_type;
+            } else {
+                $class_context->vars_in_scope['$this->' . $property_name] = $fleshed_out_type;
+            }
+        }
+
+        foreach ($storage->pseudo_property_get_types as $property_name => $property_type) {
+            $fleshed_out_type = !$property_type->isMixed()
+                ? ExpressionAnalyzer::fleshOutType(
+                    $codebase,
+                    $property_type,
+                    $fq_class_name,
+                    $fq_class_name,
+                    $parent_fq_class_name
+                )
+                : $property_type;
+
+            $class_context->vars_in_scope['$this->' . substr($property_name, 1)] = $fleshed_out_type;
         }
     }
 
@@ -1277,9 +1315,13 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $method_context = clone $class_context;
             $method_context->collect_initializations = true;
             $method_context->self = $fq_class_name;
-            $method_context->vars_in_scope['$this'] = Type::parseString($fq_class_name);
+
+            $this_atomic_object_type = new Type\Atomic\TNamedObject($fq_class_name);
+            $this_atomic_object_type->was_static = true;
+
+            $method_context->vars_in_scope['$this'] = new Type\Union([$this_atomic_object_type]);
             $method_context->vars_possibly_in_scope['$this'] = true;
-            $method_context->calling_function_id = strtolower($fq_class_name) . '::__construct';
+            $method_context->calling_method_id = strtolower($fq_class_name) . '::__construct';
 
             $constructor_analyzer->analyze(
                 $method_context,
@@ -1434,9 +1476,25 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
+                if ($storage->mutation_free && !$trait_storage->mutation_free) {
+                    if (IssueBuffer::accepts(
+                        new MutableDependency(
+                            $storage->name . ' is marked immutable but ' . $fq_trait_name . ' is not',
+                            new CodeLocation($this, $trait_name)
+                        ),
+                        $storage->suppressed_issues + $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+
                 $trait_file_analyzer = $project_analyzer->getFileAnalyzerForClassLike($fq_trait_name_resolved);
                 $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name_resolved);
-                $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name_resolved);
+                $trait_aliases = $trait_storage->aliases;
+                if ($trait_aliases === null) {
+                    continue;
+                }
+
                 $trait_analyzer = new TraitAnalyzer(
                     $trait_node,
                     $trait_file_analyzer,
@@ -1505,9 +1563,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             );
 
             if (!$declaring_property_class) {
-                throw new \UnexpectedValueException(
-                    'Cannot get declaring class for ' . $property_id
-                );
+                return;
             }
 
             $fq_class_name = $declaring_property_class;
@@ -1610,7 +1666,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         $actual_method_id->fq_class_name
                     );
 
-                    MethodAnalyzer::compareMethods(
+                    MethodComparator::compare(
                         $codebase,
                         $class_storage,
                         $declaring_storage,
@@ -1779,7 +1835,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $this_object_type = new Type\Atomic\TNamedObject($original_fq_classlike_name);
             }
 
-            $class_template_params = Statements\Expression\Call\MethodCallAnalyzer::getClassTemplateParams(
+            $class_template_params = ClassTemplateParamCollector::collect(
                 $codebase,
                 $class_storage,
                 $original_fq_classlike_name,
@@ -1796,6 +1852,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $return_type,
                 $template_result,
                 $codebase,
+                null,
                 null,
                 null
             );

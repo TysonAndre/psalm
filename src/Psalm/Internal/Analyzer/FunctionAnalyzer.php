@@ -119,29 +119,36 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
                         if (count($atomic_types) === 1) {
                             if (isset($atomic_types['array'])) {
+                                if ($atomic_types['array'] instanceof Type\Atomic\TCallableArray
+                                    || $atomic_types['array'] instanceof Type\Atomic\TCallableList
+                                    || $atomic_types['array'] instanceof Type\Atomic\TCallableObjectLikeArray
+                                ) {
+                                    return Type::getInt(false, 2);
+                                }
+
                                 if ($atomic_types['array'] instanceof Type\Atomic\TNonEmptyArray) {
                                     return new Type\Union([
                                         $atomic_types['array']->count !== null
                                             ? new Type\Atomic\TLiteralInt($atomic_types['array']->count)
                                             : new Type\Atomic\TInt
                                     ]);
-                                } elseif ($atomic_types['array'] instanceof Type\Atomic\TNonEmptyList) {
+                                }
+
+                                if ($atomic_types['array'] instanceof Type\Atomic\TNonEmptyList) {
                                     return new Type\Union([
                                         $atomic_types['array']->count !== null
                                             ? new Type\Atomic\TLiteralInt($atomic_types['array']->count)
                                             : new Type\Atomic\TInt
                                     ]);
-                                } elseif ($atomic_types['array'] instanceof Type\Atomic\ObjectLike
+                                }
+
+                                if ($atomic_types['array'] instanceof Type\Atomic\ObjectLike
                                     && $atomic_types['array']->sealed
                                 ) {
                                     return new Type\Union([
                                         new Type\Atomic\TLiteralInt(count($atomic_types['array']->properties))
                                     ]);
                                 }
-                            } elseif (isset($atomic_types['callable-array'])
-                                || isset($atomic_types['callable-list'])
-                            ) {
-                                return Type::getInt(false, 2);
                             }
                         }
                     }
@@ -361,6 +368,15 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
                 ) {
                     $call_map_return_type->ignore_falsable_issues = true;
                 }
+        }
+
+        switch ($call_map_key) {
+            case 'array_replace':
+            case 'array_replace_recursive':
+                if ($codebase->config->ignore_internal_nullable_issues) {
+                    $call_map_return_type->ignore_nullable_issues = true;
+                }
+                break;
         }
 
         return $call_map_return_type;

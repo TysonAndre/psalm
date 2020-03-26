@@ -3,6 +3,7 @@ namespace Psalm\Internal\Analyzer\Statements;
 
 use PhpParser;
 use Psalm\Codebase;
+use Psalm\Internal\Analyzer\ClassAnalyzer;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\ClosureAnalyzer;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
@@ -25,7 +26,6 @@ use Psalm\Internal\Analyzer\Statements\Expression\Fetch\VariableFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\IncludeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\TernaryAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Context;
@@ -168,7 +168,7 @@ class ExpressionAnalyzer
                             $statements_analyzer,
                             $stmt,
                             $context->self,
-                            $context->calling_function_id
+                            $context->calling_method_id
                         );
                     }
 
@@ -494,6 +494,18 @@ class ExpressionAnalyzer
                 }
             }
 
+            if ($context->self) {
+                $self_class_storage = $codebase->classlike_storage_provider->get($context->self);
+
+                ClassAnalyzer::addContextProperties(
+                    $statements_analyzer,
+                    $self_class_storage,
+                    $use_context,
+                    $context->self,
+                    $statements_analyzer->getParentFQCLN()
+                );
+            }
+
             foreach ($context->vars_possibly_in_scope as $var => $_) {
                 if (strpos($var, '$this->') === 0) {
                     $use_context->vars_possibly_in_scope[$var] = true;
@@ -530,7 +542,7 @@ class ExpressionAnalyzer
             } else {
                 $traverser = new PhpParser\NodeTraverser;
 
-                $short_closure_visitor = new \Psalm\Internal\Visitor\ShortClosureVisitor();
+                $short_closure_visitor = new \Psalm\Internal\PhpVisitor\ShortClosureVisitor();
 
                 $traverser->addVisitor($short_closure_visitor);
                 $traverser->traverse($stmt->getStmts());
@@ -545,7 +557,7 @@ class ExpressionAnalyzer
                 }
             }
 
-            $use_context->calling_function_id = $context->calling_function_id;
+            $use_context->calling_method_id = $context->calling_method_id;
 
             $closure_analyzer->analyze($use_context, $statements_analyzer->node_data, $context, false, $byref_uses);
 
@@ -700,6 +712,7 @@ class ExpressionAnalyzer
                         $fq_class_name,
                         new CodeLocation($statements_analyzer->getSource(), $stmt->class),
                         $context->self,
+                        $context->calling_method_id,
                         $statements_analyzer->getSuppressedIssues(),
                         false
                     ) === false) {
@@ -712,7 +725,7 @@ class ExpressionAnalyzer
                             $statements_analyzer,
                             $stmt->class,
                             $fq_class_name,
-                            $context->calling_function_id
+                            $context->calling_method_id
                         );
                     }
                 }
@@ -763,9 +776,12 @@ class ExpressionAnalyzer
                 // continue
             }
         } elseif ($stmt instanceof PhpParser\Node\Expr\Print_) {
+            $was_inside_call = $context->inside_call;
+            $context->inside_call = true;
             if (self::analyzePrint($statements_analyzer, $stmt, $context) === false) {
                 return false;
             }
+            $context->inside_call = $was_inside_call;
         } elseif ($stmt instanceof PhpParser\Node\Expr\Yield_) {
             self::analyzeYield($statements_analyzer, $stmt, $context);
         } elseif ($stmt instanceof PhpParser\Node\Expr\YieldFrom) {
@@ -1176,7 +1192,8 @@ class ExpressionAnalyzer
         ?string $self_class,
         $static_class_type,
         ?string $parent_class,
-        bool $evaluate = true
+        bool $evaluate = true,
+        bool $final = false
     ) {
         $return_type = clone $return_type;
 
@@ -1189,7 +1206,8 @@ class ExpressionAnalyzer
                 $self_class,
                 $static_class_type,
                 $parent_class,
-                $evaluate
+                $evaluate,
+                $final
             );
 
             if (is_array($parts)) {
@@ -1227,7 +1245,8 @@ class ExpressionAnalyzer
         ?string $self_class,
         $static_class_type,
         ?string $parent_class,
-        bool $evaluate = true
+        bool $evaluate = true,
+        bool $final = false
     ) {
         if ($return_type instanceof TNamedObject
             || $return_type instanceof TTemplateParam
@@ -1280,6 +1299,10 @@ class ExpressionAnalyzer
                             $return_type = clone $static_class_type;
                         }
                     }
+
+                    if (!$final && $return_type instanceof TNamedObject) {
+                        $return_type->was_static = true;
+                    }
                 } elseif ($return_type_lc === 'self') {
                     if (!$self_class) {
                         throw new \UnexpectedValueException(
@@ -1299,6 +1322,27 @@ class ExpressionAnalyzer
                 } else {
                     $return_type->value = $codebase->classlikes->getUnAliasedName($return_type->value);
                 }
+            }
+        }
+
+        if ($return_type instanceof Type\Atomic\TClassString
+            && $return_type->as_type
+        ) {
+            $new_as_type = clone $return_type->as_type;
+
+            self::fleshOutAtomicType(
+                $codebase,
+                $new_as_type,
+                $self_class,
+                $static_class_type,
+                $parent_class,
+                $evaluate,
+                $final
+            );
+
+            if ($new_as_type instanceof TNamedObject) {
+                $return_type->as_type = $new_as_type;
+                $return_type->as = $return_type->as_type->value;
             }
         }
 
@@ -1415,7 +1459,9 @@ class ExpressionAnalyzer
                     $type_param,
                     $self_class,
                     $static_class_type,
-                    $parent_class
+                    $parent_class,
+                    $evaluate,
+                    $final
                 );
             }
         } elseif ($return_type instanceof Type\Atomic\ObjectLike) {
@@ -1425,7 +1471,9 @@ class ExpressionAnalyzer
                     $property_type,
                     $self_class,
                     $static_class_type,
-                    $parent_class
+                    $parent_class,
+                    $evaluate,
+                    $final
                 );
             }
         } elseif ($return_type instanceof Type\Atomic\TList) {
@@ -1434,7 +1482,9 @@ class ExpressionAnalyzer
                 $return_type->type_param,
                 $self_class,
                 $static_class_type,
-                $parent_class
+                $parent_class,
+                $evaluate,
+                $final
             );
         }
 
@@ -1447,7 +1497,9 @@ class ExpressionAnalyzer
                             $param->type,
                             $self_class,
                             $static_class_type,
-                            $parent_class
+                            $parent_class,
+                            $evaluate,
+                            $final
                         );
                     }
                 }
@@ -1458,7 +1510,9 @@ class ExpressionAnalyzer
                     $return_type->return_type,
                     $self_class,
                     $static_class_type,
-                    $parent_class
+                    $parent_class,
+                    $evaluate,
+                    $final
                 );
             }
         }
@@ -1616,6 +1670,7 @@ class ExpressionAnalyzer
                 $context,
                 new FunctionLikeParameter('var', false),
                 false,
+                null,
                 false,
                 true,
                 new CodeLocation($statements_analyzer->getSource(), $stmt)
@@ -1942,7 +1997,11 @@ class ExpressionAnalyzer
         $valid_strings = [];
         $castable_types = [];
 
-        foreach ($stmt_type->getAtomicTypes() as $atomic_type) {
+        $atomic_types = $stmt_type->getAtomicTypes();
+
+        while ($atomic_types) {
+            $atomic_type = \array_pop($atomic_types);
+
             if ($atomic_type instanceof TString) {
                 $valid_strings[] = $atomic_type;
                 continue;
@@ -1989,6 +2048,12 @@ class ExpressionAnalyzer
                 && isset($atomic_type->methods['__toString'])
             ) {
                 $castable_types[] = new TString();
+
+                continue;
+            }
+
+            if ($atomic_type instanceof Type\Atomic\TTemplateParam) {
+                $atomic_types = array_merge($atomic_types, $atomic_type->as->getAtomicTypes());
 
                 continue;
             }
@@ -2142,16 +2207,8 @@ class ExpressionAnalyzer
                     return;
                 }
 
-                $codebase = $statements_analyzer->getCodebase();
-
-                if ($clone_type_part instanceof TNamedObject
-                    && $codebase->classExists($clone_type_part->value)
-                ) {
-                    $class_storage = $codebase->classlike_storage_provider->get($clone_type_part->value);
-
-                    if ($class_storage->mutation_free) {
-                        $immutable_cloned = true;
-                    }
+                if ($clone_type_part instanceof TNamedObject) {
+                    $immutable_cloned = true;
                 }
             }
 
@@ -2160,8 +2217,8 @@ class ExpressionAnalyzer
             if ($immutable_cloned) {
                 $stmt_expr_type = clone $stmt_expr_type;
                 $statements_analyzer->node_data->setType($stmt, $stmt_expr_type);
-                $stmt_expr_type->external_mutation_free = true;
-                $stmt_expr_type->mutation_free = false;
+                $stmt_expr_type->reference_free = true;
+                $stmt_expr_type->allow_mutations = true;
             }
         }
     }

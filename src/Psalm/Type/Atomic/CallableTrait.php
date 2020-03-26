@@ -6,6 +6,7 @@ use function count;
 use function implode;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\TemplateResult;
 use Psalm\Internal\Type\UnionTemplateHandler;
 use Psalm\StatementsSource;
@@ -64,7 +65,7 @@ trait CallableTrait
     /**
      * @return string
      */
-    public function getKey()
+    public function getKey(bool $include_extra = true)
     {
         return $this->__toString();
     }
@@ -197,7 +198,9 @@ trait CallableTrait
     public function replaceTemplateTypesWithStandins(
         TemplateResult $template_result,
         Codebase $codebase = null,
+        ?StatementsAnalyzer $statements_analyzer = null,
         Atomic $input_type = null,
+        ?int $input_arg_offset = null,
         ?string $calling_class = null,
         ?string $calling_function = null,
         bool $replace = true,
@@ -224,7 +227,9 @@ trait CallableTrait
                     $param->type,
                     $template_result,
                     $codebase,
+                    $statements_analyzer,
                     $input_param_type,
+                    $input_arg_offset,
                     $calling_class,
                     $calling_function,
                     $replace,
@@ -242,7 +247,9 @@ trait CallableTrait
                 $callable->return_type,
                 $template_result,
                 $codebase,
+                $statements_analyzer,
                 $input_type->return_type,
+                $input_arg_offset,
                 $calling_class,
                 $calling_function,
                 $replace,
@@ -276,90 +283,24 @@ trait CallableTrait
     }
 
     /**
-     * @return list<Type\Atomic\TTemplateParam>
+     * @return array<\Psalm\Type\TypeNode>
      */
-    public function getTemplateTypes() : array
+    public function getChildNodes() : array
     {
-        $template_types = [];
+        $child_nodes = [];
 
         if ($this->params) {
             foreach ($this->params as $param) {
                 if ($param->type) {
-                    $template_types = \array_merge($template_types, $param->type->getTemplateTypes());
+                    $child_nodes[] = $param->type;
                 }
             }
         }
 
         if ($this->return_type) {
-            $template_types = \array_merge($template_types, $this->return_type->getTemplateTypes());
+            $child_nodes[] = $this->return_type;
         }
 
-        return $template_types;
-    }
-
-    /**
-     * @return void
-     */
-    public function setFromDocblock()
-    {
-        $this->from_docblock = true;
-
-        if ($this->params) {
-            foreach ($this->params as $param) {
-                if (!$param->type) {
-                    continue;
-                }
-
-                $param->type->setFromDocblock();
-            }
-        }
-
-        if ($this->return_type) {
-            $this->return_type->setFromDocblock();
-        }
-    }
-
-    /**
-     * @param  StatementsSource $source
-     * @param  CodeLocation     $code_location
-     * @param  array<string>    $suppressed_issues
-     * @param  array<string, bool> $phantom_classes
-     * @param  bool             $inferred
-     *
-     * @return false|null
-     */
-    public function check(
-        StatementsSource $source,
-        CodeLocation $code_location,
-        array $suppressed_issues,
-        array $phantom_classes = [],
-        bool $inferred = true,
-        bool $prevent_template_covariance = false
-    ) {
-        if ($this->params) {
-            foreach ($this->params as $param) {
-                if ($param->type) {
-                    $param->type->check(
-                        $source,
-                        $code_location,
-                        $suppressed_issues,
-                        $phantom_classes,
-                        $inferred,
-                        $prevent_template_covariance
-                    );
-                }
-            }
-        }
-
-        if ($this->return_type) {
-            $this->return_type->check(
-                $source,
-                $code_location,
-                $suppressed_issues,
-                $phantom_classes,
-                $inferred,
-                $prevent_template_covariance
-            );
-        }
+        return $child_nodes;
     }
 }

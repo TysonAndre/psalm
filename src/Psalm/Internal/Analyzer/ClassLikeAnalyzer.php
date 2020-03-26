@@ -146,7 +146,13 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
 
                     $trait_file_analyzer = $project_analyzer->getFileAnalyzerForClassLike($fq_trait_name);
                     $trait_node = $codebase->classlikes->getTraitNode($fq_trait_name);
-                    $trait_aliases = $codebase->classlikes->getTraitAliases($fq_trait_name);
+                    $trait_storage = $codebase->classlike_storage_provider->get($fq_trait_name);
+                    $trait_aliases = $trait_storage->aliases;
+
+                    if ($trait_aliases === null) {
+                        continue;
+                    }
+
                     $trait_analyzer = new TraitAnalyzer(
                         $trait_node,
                         $trait_file_analyzer,
@@ -211,6 +217,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
         string $fq_class_name,
         CodeLocation $code_location,
         ?string $calling_fq_class_name,
+        ?string $calling_method_id,
         array $suppressed_issues,
         bool $inferred = true,
         bool $allow_trait = false,
@@ -264,12 +271,14 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
         $class_exists = $codebase->classlikes->classExists(
             $fq_class_name,
             !$inferred ? $code_location : null,
-            $calling_fq_class_name
+            $calling_fq_class_name,
+            $calling_method_id
         );
         $interface_exists = $codebase->classlikes->interfaceExists(
             $fq_class_name,
             !$inferred ? $code_location : null,
-            $calling_fq_class_name
+            $calling_fq_class_name,
+            $calling_method_id
         );
 
         if (!$class_exists && !$interface_exists) {
@@ -608,7 +617,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                         ),
                         $suppressed_issues
                     )) {
-                        return false;
+                        // fall through
                     }
 
                     return null;
@@ -629,7 +638,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                         ),
                         $suppressed_issues
                     )) {
-                        return false;
+                        // fall through
                     }
 
                     return null;
@@ -647,7 +656,7 @@ abstract class ClassLikeAnalyzer extends SourceAnalyzer implements StatementsSou
                         ),
                         $suppressed_issues
                     )) {
-                        return false;
+                        // fall through
                     }
 
                     return null;

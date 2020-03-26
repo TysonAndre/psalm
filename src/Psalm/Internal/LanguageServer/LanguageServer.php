@@ -200,6 +200,7 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
             /** @return \Generator<int, true, mixed, InitializeResult> */
             function () use ($capabilities, $rootPath, $processId) {
                 // Eventually, this might block on something. Leave it as a generator.
+                /** @psalm-suppress TypeDoesNotContainType */
                 if (false) {
                     yield true;
                 }
@@ -307,7 +308,7 @@ class LanguageServer extends AdvancedJsonRpc\Dispatcher
         }
 
         $all_file_paths_to_analyze = array_keys($all_files_to_analyze);
-        $codebase->analyzer->addFiles(array_combine($all_file_paths_to_analyze, $all_file_paths_to_analyze));
+        $codebase->analyzer->addFilesToAnalyze(array_combine($all_file_paths_to_analyze, $all_file_paths_to_analyze));
         $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
 
         $this->emitIssues($all_files_to_analyze);

@@ -86,7 +86,7 @@ class VariableFetchAnalyzer
                 $codebase->analyzer->addNodeType(
                     $statements_analyzer->getFilePath(),
                     $stmt,
-                    (string) $stmt_type
+                    $stmt_type->getId()
                 );
             }
 
@@ -313,7 +313,7 @@ class VariableFetchAnalyzer
                 $codebase->analyzer->addNodeType(
                     $statements_analyzer->getFilePath(),
                     $stmt,
-                    (string) $stmt_type
+                    $stmt_type->getId()
                 );
             }
 

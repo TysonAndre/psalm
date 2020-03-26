@@ -10,6 +10,7 @@ use function array_pop;
 abstract class CodeIssue
 {
     const ERROR_LEVEL = -1;
+    const SHORTCODE = 0;
 
     /**
      * @var CodeLocation
@@ -120,6 +121,7 @@ abstract class CodeIssue
             $snippet_bounds[1],
             $location->getColumn(),
             $location->getEndColumn(),
+            (int) static::SHORTCODE,
             (int) static::ERROR_LEVEL
         );
     }

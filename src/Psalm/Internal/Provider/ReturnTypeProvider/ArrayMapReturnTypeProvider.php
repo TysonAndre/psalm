@@ -164,7 +164,7 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
 
                                 if (!$codebase->methods->methodExists(
                                     $method_id,
-                                    $context->calling_function_id,
+                                    $context->calling_method_id,
                                     $codebase->collect_references
                                         ? new CodeLocation(
                                             $statements_source,
@@ -280,9 +280,11 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
                         $closure_param_type,
                         $template_result,
                         $codebase,
+                        $statements_source,
                         $array_arg_type->value,
+                        0,
                         $context->self,
-                        $context->calling_function_id
+                        $context->calling_method_id ?: $context->calling_function_id
                     );
 
                     $mapping_return_type->replaceTemplateTypesWithArgTypes(

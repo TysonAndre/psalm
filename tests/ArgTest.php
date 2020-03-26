@@ -100,6 +100,26 @@ class ArgTest extends TestCase
                     function f(DateTime $d, int $a): void {}
                     f(...$a);',
             ],
+            'unpackWithoutAlteringArray' => [
+                '<?php
+                    function takeVariadicInts(int ...$inputs): void {}
+
+                    $a = [3, 5, 7];
+                    takeVariadicInts(...$a);',
+                [
+                    '$a' => 'non-empty-list<int>'
+                ]
+            ],
+            'iterableSplat' => [
+                '<?php
+                    function foo(iterable $args): int {
+                        return intval(...$args);
+                    }
+
+                    function bar(ArrayIterator $args): int {
+                        return intval(...$args);
+                    }',
+            ],
         ];
     }
 
@@ -136,6 +156,21 @@ class ArgTest extends TestCase
                     function bar($b) : void {}
 
                     bar($foo);',
+                'error_message' => 'PossiblyInvalidArgument',
+            ],
+            'possiblyInvalidArgumentWithMixed' => [
+                '<?php declare(strict_types=1);
+                    /**
+                     * @psalm-suppress MissingParamType
+                     * @psalm-suppress MixedArgument
+                     */
+                    function foo($a) : void {
+                        if (rand(0, 1)) {
+                            $a = 0;
+                        }
+
+                        echo strlen($a);
+                    }',
                 'error_message' => 'PossiblyInvalidArgument',
             ],
         ];

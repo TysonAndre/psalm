@@ -1,0 +1,133 @@
+<?php
+
+/**
+ * @psalm-immutable
+ */
+class DateTimeImmutable implements DateTimeInterface
+{
+    public function __construct(string $time = "now", DateTimeZone $tz = null) {}
+}
+
+/**
+ * @psalm-immutable
+ */
+class DateTimeZone
+{
+    public function __construct(string $tz) {}
+}
+
+interface Throwable
+{
+    /**
+     * @psalm-mutation-free
+     */
+    public final function getMessage() : string {}
+}
+
+class Exception implements Throwable
+{
+    /**
+     * @var string
+     */
+    protected $message = '';
+
+    /**
+     * @var int
+     */
+    protected $code = 0;
+
+    /**
+     * @var string
+     */
+    protected $file = '';
+
+    /**
+     * @var int
+     */
+    protected $line = 0;
+
+    /**
+     * @psalm-external-mutation-free
+     * @param string $message
+     * @param int $code
+     * @param Throwable $previous
+     */
+    public function __construct($message = "", $code = 0, Throwable $previous = null) {}
+
+    /**
+     * @psalm-mutation-free
+     */
+    public final function getMessage() : string {}
+
+    /**
+     * @psalm-mutation-free
+     * @return int|string
+     */
+    public final function getCode(){}
+
+    /**
+     * @psalm-mutation-free
+     * @return string
+     */
+    public final function getFile(){}
+
+    /**
+     * @psalm-mutation-free
+     * @return int
+     */
+    public final function getLine(){}
+}
+
+class Error implements Throwable
+{
+    /**
+     * @var string
+     */
+    protected $message = '';
+
+    /**
+     * @var int
+     */
+    protected $code = 0;
+
+    /**
+     * @var string
+     */
+    protected $file = '';
+
+    /**
+     * @var int
+     */
+    protected $line = 0;
+
+    /**
+     * @psalm-external-mutation-free
+     * @param string $message
+     * @param int $code
+     * @param Throwable $previous
+     */
+    public function __construct($message = "", $code = 0, Throwable $previous = null) {}
+
+    /**
+     * @psalm-mutation-free
+     */
+    public final function getMessage() : string {}
+
+    /**
+     * @psalm-mutation-free
+     * @return int|string
+     */
+    public final function getCode(){}
+
+    /**
+     * @psalm-mutation-free
+     * @return string
+     */
+    public final function getFile(){}
+
+    /**
+     * @psalm-mutation-free
+     * @return int
+     */
+    public final function getLine(){}
+}

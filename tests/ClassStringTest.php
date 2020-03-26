@@ -678,6 +678,66 @@ class ClassStringTest extends TestCase
                         }
                     }',
             ],
+            'selfResolvedOnStaticProperty' => [
+                '<?php
+                    namespace Bar;
+
+                    class Foo {
+                        /** @var class-string<self> */
+                        private static $c;
+
+                        /**
+                         * @return class-string<self>
+                         */
+                        public static function r() : string
+                        {
+                            return self::$c;
+                        }
+                    }'
+            ],
+            'traitClassStringClone' => [
+                '<?php
+                    trait Factory
+                    {
+                        /** @return class-string<static> */
+                        public static function getFactoryClass()
+                        {
+                            return static::class;
+                        }
+                    }
+
+                    class A
+                    {
+                        use Factory;
+
+                        public static function factory(): self
+                        {
+                            $class = static::getFactoryClass();
+                            return new $class;
+                        }
+                    }
+
+                    class B
+                    {
+                        use Factory;
+
+                        public static function factory(): self
+                        {
+                            $class = static::getFactoryClass();
+                            return new $class;
+                        }
+                    }'
+            ],
+            'staticClassReturn' => [
+                '<?php
+                    class A {
+                        /** @return static */
+                        public static function getInstance() {
+                            $class = static::class;
+                            return new $class();
+                        }
+                    }'
+            ],
         ];
     }
 

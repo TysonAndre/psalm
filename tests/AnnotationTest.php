@@ -71,16 +71,15 @@ class AnnotationTest extends TestCase
             '<?php
                 /** @psalm-suppress MissingConstructor */
                 class Foo {
-                  /** @var \stdClass[]|\ArrayObject */
-                  public $bar;
+                    /** @var \stdClass[]|\ArrayObject */
+                    public $bar;
 
-                  /**
-                   * @return \stdClass[]|\ArrayObject
-                   */
-                  public function getBar(): \ArrayObject
-                  {
-                    return $this->bar;
-                  }
+                    /**
+                     * @return \stdClass[]|\ArrayObject
+                     */
+                    public function getBar(): \ArrayObject {
+                        return $this->bar;
+                    }
                 }'
         );
 
@@ -572,12 +571,11 @@ class AnnotationTest extends TestCase
             ],
             'builtInClassInAShape' => [
                 '<?php
-                  /**
-                   * @return array{d:Exception}
-                   * @psalm-suppress InvalidReturnType
-                   */
-                  function f() {}
-                '
+                    /**
+                     * @return array{d:Exception}
+                     * @psalm-suppress InvalidReturnType
+                     */
+                    function f() {}'
             ],
             'slashAfter?' => [
                 '<?php
@@ -793,10 +791,10 @@ class AnnotationTest extends TestCase
                     }
 
                     /**
-                      * @psalm-type _A=array{elt:int}
-                      * @param _A $p
-                      * @return _A
-                      */
+                     * @psalm-type _A=array{elt:int}
+                     * @param _A $p
+                     * @return _A
+                     */
                     function f($p) {
                         /** @var _A */
                         $r = $p;
@@ -997,6 +995,17 @@ class AnnotationTest extends TestCase
             'allowClosingComma' => [
                 '<?php
                     /**
+                     * @psalm-type _Alias=array{
+                     *    foo: string,
+                     *    bar: string,
+                     *    baz: array{
+                     *       a: int,
+                     *    },
+                     * }
+                     */
+                    class Foo { }
+
+                    /**
                      * @param array{
                      *    foo: string,
                      *    bar: string,
@@ -1006,7 +1015,7 @@ class AnnotationTest extends TestCase
                      * } $foo
                      */
                     function foo(array $foo) : int {
-                      return count($foo);
+                        return count($foo);
                     }
 
                     /**
@@ -1071,7 +1080,7 @@ class AnnotationTest extends TestCase
             'possiblyUndefinedObjectProperty' => [
                 '<?php
                     function consume(string $value): void {
-                      echo $value;
+                        echo $value;
                     }
 
                     /** @var object{value?: string} $data */
@@ -1086,9 +1095,8 @@ class AnnotationTest extends TestCase
                         /**
                          * @throws self
                          */
-                        public static function create(): void
-                        {
-                          throw new self();
+                        public static function create(): void {
+                            throw new self();
                         }
                     }'
             ],
@@ -1103,6 +1111,52 @@ class AnnotationTest extends TestCase
                     function foo(): array {
                         return ["a" => 1, "b" => "two"];
                     }'
+            ],
+            'falsableFunctionAllowedWhenBooleanExpected' => [
+                '<?php
+
+                    /** @psalm-return bool */
+                    function alwaysFalse1()
+                    {
+                        return false;
+                    }
+
+                    function alwaysFalse2(): bool
+                    {
+                        return false;
+                    }'
+            ],
+            'conditionalReturnType' => [
+                '<?php
+
+                    class A {
+                        /** @var array<string, string> */
+                        private array $itemAttr = [];
+
+                        /**
+                         * @template T as ?string
+                         * @param T $name
+                         * @return string|string[]
+                         * @psalm-return (T is string ? string : array<string, string>)
+                         */
+                        public function getAttribute(?string $name, string $default = "")
+                        {
+                            if (null === $name) {
+                                return $this->itemAttr;
+                            }
+                            return isset($this->itemAttr[$name]) ? $this->itemAttr[$name] : $default;
+                        }
+                    }
+
+                    $a = (new A)->getAttribute("colour", "red"); // typed as string
+                    $b = (new A)->getAttribute(null); // typed as array<string, string>
+                    /** @psalm-suppress MixedArgument */
+                    $c = (new A)->getAttribute($_GET["foo"]); // typed as string|array<string, string>',
+                [
+                    '$a' => 'string',
+                    '$b' => 'array<string, string>',
+                    '$c' => 'array<string, string>|string'
+                ]
             ],
         ];
     }
@@ -1197,7 +1251,7 @@ class AnnotationTest extends TestCase
                     }
 
                     fooBar("hello");',
-                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:21 - Too many arguments for method fooBar '
+                'error_message' => 'TooManyArguments - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:21 - Too many arguments for fooBar '
                     . '- expecting 0 but saw 1',
             ],
             'missingParamVar' => [
@@ -1215,7 +1269,7 @@ class AnnotationTest extends TestCase
                      * @return \?string
                      */
                     function foo() {
-                      return rand(0, 1) ? "hello" : null;
+                        return rand(0, 1) ? "hello" : null;
                     }',
                 'error_message' => 'InvalidDocblock',
             ],
@@ -1318,7 +1372,7 @@ class AnnotationTest extends TestCase
                      * @psalm-suppress MismatchingDocblockReturnType
                      */
                     function foo(): B {
-                      return new A;
+                        return new A;
                     }',
                 'error_message' => 'UndefinedClass',
             ],
@@ -1600,6 +1654,26 @@ class AnnotationTest extends TestCase
                      */
                     function f($reference) {}',
                 'error_message' => 'MissingDocblockType',
+            ],
+            'canNeverReturnDeclaredType' => [
+                '<?php
+
+                    /** @psalm-return false */
+                    function alwaysFalse() : bool
+                    {
+                        return true;
+                    }',
+                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:32',
+            ],
+            'falsableWithExpectedTypeTrue' => [
+                '<?php
+
+                    /** @psalm-return true */
+                    function alwaysFalse()
+                    {
+                        return false;
+                    }',
+                'error_message' => 'FalsableReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:32',
             ],
         ];
     }

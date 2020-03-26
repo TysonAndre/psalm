@@ -295,10 +295,18 @@ abstract class Type
             }
 
             if ($generic_type_value === 'array' || $generic_type_value === 'associative-array') {
+                if ($generic_params[0]->isMixed()) {
+                    $generic_params[0] = Type::getArrayKey();
+                }
+
                 return new TArray($generic_params);
             }
 
             if ($generic_type_value === 'non-empty-array') {
+                if ($generic_params[0]->isMixed()) {
+                    $generic_params[0] = Type::getArrayKey();
+                }
+
                 return new Type\Atomic\TNonEmptyArray($generic_params);
             }
 
@@ -528,7 +536,14 @@ abstract class Type
 
             $first_type = array_shift($keyed_intersection_types);
 
-            $first_type->extra_types = $keyed_intersection_types;
+            if (count($keyed_intersection_types) === 1
+                && isset($keyed_intersection_types['static'])
+                && $first_type instanceof TNamedObject
+            ) {
+                $first_type->was_static = true;
+            } else {
+                $first_type->extra_types = $keyed_intersection_types;
+            }
 
             return $first_type;
         }
@@ -564,7 +579,7 @@ abstract class Type
                 $properties[$property_key] = $property_type;
             }
 
-            if ($type !== 'array' && $type !== 'object') {
+            if ($type !== 'array' && $type !== 'object' && $type !== 'callable-array') {
                 throw new TypeParseTreeException('Unexpected brace character');
             }
 
@@ -574,6 +589,10 @@ abstract class Type
 
             if ($type === 'object') {
                 return new TObjectWithProperties($properties);
+            }
+
+            if ($type === 'callable-array') {
+                return new Atomic\TCallableObjectLikeArray($properties);
             }
 
             return new ObjectLike($properties);
@@ -727,6 +746,53 @@ abstract class Type
                 new Union([new TNamedObject($parse_tree->as)]),
                 'class-string-map'
             );
+        }
+
+        if ($parse_tree instanceof ParseTree\ConditionalTree) {
+            $template_param_name = $parse_tree->condition->param_name;
+
+            if (isset($template_type_map[$template_param_name])) {
+                $first_class = array_keys($template_type_map[$template_param_name])[0];
+
+                $conditional_type = self::getTypeFromTree(
+                    $parse_tree->condition->children[0],
+                    null,
+                    $template_type_map
+                );
+
+                $if_type = self::getTypeFromTree(
+                    $parse_tree->children[0],
+                    null,
+                    $template_type_map
+                );
+
+                $else_type = self::getTypeFromTree(
+                    $parse_tree->children[1],
+                    null,
+                    $template_type_map
+                );
+
+                if ($conditional_type instanceof Type\Atomic) {
+                    $conditional_type = new Type\Union([$conditional_type]);
+                }
+
+                if ($if_type instanceof Type\Atomic) {
+                    $if_type = new Type\Union([$if_type]);
+                }
+
+                if ($else_type instanceof Type\Atomic) {
+                    $else_type = new Type\Union([$else_type]);
+                }
+
+                return new Atomic\TConditional(
+                    $template_param_name,
+                    $first_class,
+                    $template_type_map[$template_param_name][$first_class][0],
+                    $conditional_type,
+                    $if_type,
+                    $else_type
+                );
+            }
         }
 
         if (!$parse_tree instanceof ParseTree\Value) {
@@ -899,11 +965,11 @@ abstract class Type
                 $type_tokens[++$rtc] = [' ', $i - 1];
                 $type_tokens[++$rtc] = ['', $i];
             } elseif ($was_space
-                && $char === 'a'
+                && ($char === 'a' || $char === 'i')
                 && ($chars[$i + 1] ?? null) === 's'
                 && ($chars[$i + 2] ?? null) === ' '
             ) {
-                $type_tokens[++$rtc] = ['as', $i - 1];
+                $type_tokens[++$rtc] = [$char . 's', $i - 1];
                 $type_tokens[++$rtc] = ['', ++$i];
                 continue;
             } elseif ($was_char) {
@@ -1073,7 +1139,7 @@ abstract class Type
             if (in_array(
                 $string_type_token[0],
                 [
-                    '<', '>', '|', '?', ',', '{', '}', ':', '::', '[', ']', '(', ')', '&', '=', '...', 'as',
+                    '<', '>', '|', '?', ',', '{', '}', ':', '::', '[', ']', '(', ')', '&', '=', '...', 'as', 'is',
                 ],
                 true
             )) {
@@ -1609,8 +1675,8 @@ abstract class Type
                 $combined_type->had_template = true;
             }
 
-            if ($type_1->external_mutation_free && $type_2->external_mutation_free) {
-                $combined_type->external_mutation_free = true;
+            if ($type_1->reference_free && $type_2->reference_free) {
+                $combined_type->reference_free = true;
             }
 
             if ($both_failed_reconciliation) {

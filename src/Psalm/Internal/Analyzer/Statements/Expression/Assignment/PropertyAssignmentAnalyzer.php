@@ -14,6 +14,7 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\DeprecatedProperty;
 use Psalm\Issue\ImplicitToStringCast;
+use Psalm\Issue\ImpurePropertyAssignment;
 use Psalm\Issue\InaccessibleProperty;
 use Psalm\Issue\InternalProperty;
 use Psalm\Issue\InvalidPropertyAssignment;
@@ -164,7 +165,7 @@ class PropertyAssignmentAnalyzer
                 if ($stmt->name instanceof PhpParser\Node\Identifier) {
                     $codebase->analyzer->addMixedMemberName(
                         '$' . $stmt->name->name,
-                        $context->calling_function_id ?: $statements_analyzer->getFileName()
+                        $context->calling_method_id ?: $statements_analyzer->getFileName()
                     );
                 }
 
@@ -649,6 +650,7 @@ class PropertyAssignmentAnalyzer
                         }
                     }
 
+                    // prevents writing to readonly properties
                     if ($property_storage->readonly) {
                         $appearing_property_class = $codebase->properties->getAppearingClassForProperty(
                             $property_id,
@@ -657,29 +659,37 @@ class PropertyAssignmentAnalyzer
 
                         $stmt_var_type = $statements_analyzer->node_data->getType($stmt->var);
 
-                        $property_pure_compatible = $stmt_var_type
-                            && $stmt_var_type->external_mutation_free
-                            && !$stmt_var_type->mutation_free;
+                        $property_var_pure_compatible = $stmt_var_type
+                            && $stmt_var_type->reference_free
+                            && $stmt_var_type->allow_mutations;
 
-                        if ($appearing_property_class
-                            && !($context->self
+                        if ($appearing_property_class) {
+                            $can_set_property = $context->self
+                                && $context->calling_method_id
                                 && ($appearing_property_class === $context->self
                                     || $codebase->classExtends($context->self, $appearing_property_class))
-                                && (!$context->calling_function_id
-                                    || \strpos($context->calling_function_id, '::__construct')
-                                    || \strpos($context->calling_function_id, '::unserialize')
+                                && (\strpos($context->calling_method_id, '::__construct')
+                                    || \strpos($context->calling_method_id, '::unserialize')
                                     || $property_storage->allow_private_mutation
-                                    || $property_pure_compatible)
-                            )
-                        ) {
-                            if (IssueBuffer::accepts(
-                                new InaccessibleProperty(
-                                    $property_id . ' is marked readonly',
-                                    new CodeLocation($statements_analyzer->getSource(), $stmt)
-                                ),
-                                $statements_analyzer->getSuppressedIssues()
-                            )) {
-                                // fall through
+                                    || $property_var_pure_compatible);
+
+                            if (!$can_set_property) {
+                                if (IssueBuffer::accepts(
+                                    new InaccessibleProperty(
+                                        $property_id . ' is marked readonly',
+                                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            } elseif ($class_storage->mutation_free) {
+                                $visitor = new \Psalm\Internal\TypeVisitor\ImmutablePropertyAssignmentVisitor(
+                                    $statements_analyzer,
+                                    $stmt
+                                );
+
+                                $visitor->traverse($assignment_value_type);
                             }
                         }
                     }
@@ -812,7 +822,7 @@ class PropertyAssignmentAnalyzer
             $codebase->analyzer->addNodeType(
                 $statements_analyzer->getFilePath(),
                 $stmt->name,
-                (string) $class_property_types[0]
+                $class_property_types[0]->getId()
             );
         }
 
@@ -1094,9 +1104,9 @@ class PropertyAssignmentAnalyzer
         Type\Union $assignment_value_type,
         Context $context
     ) {
-        $var_id = ExpressionAnalyzer::getVarId(
+        $var_id = ExpressionAnalyzer::getArrayVarId(
             $stmt,
-            $statements_analyzer->getFQCLN(),
+            $context->self,
             $statements_analyzer
         );
 
@@ -1114,7 +1124,7 @@ class PropertyAssignmentAnalyzer
             if ($fq_class_name && !$context->ignore_variable_property) {
                 $codebase->analyzer->addMixedMemberName(
                     strtolower($fq_class_name) . '::$',
-                    $context->calling_function_id ?: $statements_analyzer->getFileName()
+                    $context->calling_method_id ?: $statements_analyzer->getFileName()
                 );
             }
 
@@ -1161,7 +1171,7 @@ class PropertyAssignmentAnalyzer
                 $statements_analyzer,
                 $stmt->class,
                 $fq_class_name,
-                $context->calling_function_id
+                $context->calling_method_id
             );
 
             if (!$moved_class) {
@@ -1263,8 +1273,8 @@ class PropertyAssignmentAnalyzer
             if ($union_comparison_results->type_coerced_from_mixed) {
                 if (IssueBuffer::accepts(
                     new MixedPropertyTypeCoercion(
-                        $var_id . ' expects \'' . $class_property_type . '\', '
-                            . ' parent type `' . $assignment_value_type . '` provided',
+                        $var_id . ' expects \'' . $class_property_type->getId() . '\', '
+                            . ' parent type `' . $assignment_value_type->getId() . '` provided',
                         new CodeLocation(
                             $statements_analyzer->getSource(),
                             $assignment_value ?: $stmt,
@@ -1279,8 +1289,8 @@ class PropertyAssignmentAnalyzer
             } else {
                 if (IssueBuffer::accepts(
                     new PropertyTypeCoercion(
-                        $var_id . ' expects \'' . $class_property_type . '\', '
-                            . ' parent type \'' . $assignment_value_type . '\' provided',
+                        $var_id . ' expects \'' . $class_property_type->getId() . '\', '
+                            . ' parent type \'' . $assignment_value_type->getId() . '\' provided',
                         new CodeLocation(
                             $statements_analyzer->getSource(),
                             $assignment_value ?: $stmt,

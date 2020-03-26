@@ -5,6 +5,9 @@ use function define;
 use function defined;
 use function dirname;
 use function getcwd;
+use function implode;
+use function explode;
+use const DIRECTORY_SEPARATOR;
 use Psalm\Config;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
@@ -72,7 +75,9 @@ class StubTest extends TestCase
             Config::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -94,7 +99,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -123,6 +130,63 @@ class StubTest extends TestCase
     }
 
     /**
+     * @param string $file
+     *
+     * @return string
+     */
+    private function getOperatingSystemStyledPath(string $file): string
+    {
+        return implode(DIRECTORY_SEPARATOR, explode('/', $file));
+    }
+
+    /**
+     * @return void
+     */
+    public function testLoadStubFileWithRelativePath()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm
+                    errorLevel="1"
+                >
+                    <stubs>
+                        <file name="./tests/../tests/fixtures/stubs/systemclass.php" />
+                    </stubs>
+                </psalm>'
+            )
+        );
+
+        $path = $this->getOperatingSystemStyledPath('tests/fixtures/stubs/systemclass.php');
+        $this->assertStringContainsString($path, $this->project_analyzer->getConfig()->getStubFiles()[0]);
+    }
+
+    /**
+     * @return void
+     */
+    public function testLoadStubFileWithAbsolutePath()
+    {
+        $runDir = dirname(__DIR__);
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                $runDir,
+                '<?xml version="1.0"?>
+                <psalm
+                    errorLevel="1"
+                >
+                    <stubs>
+                        <file name="' . $runDir . '/tests/fixtures/stubs/systemclass.php" />
+                    </stubs>
+                </psalm>'
+            )
+        );
+
+        $path = $this->getOperatingSystemStyledPath('tests/fixtures/stubs/systemclass.php');
+        $this->assertStringContainsString($path, $this->project_analyzer->getConfig()->getStubFiles()[0]);
+    }
+
+    /**
      * @return void
      */
     public function testStubFileConstant()
@@ -131,7 +195,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -168,7 +234,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -227,19 +295,19 @@ class StubTest extends TestCase
                      */
                     function bar(array $a) {}
 
-                    $a1 = (new \Ns\MyClass)->create("object");
-                    $a2 = (new \Ns\MyClass)->create("exception");
+                    $a1 = (new \Ns\MyClass)->creAte("object");
+                    $a2 = (new \Ns\MyClass)->creaTe("exception");
 
-                    $b1 = \create("object");
-                    $b2 = \create("exception");
+                    $b1 = \Create("object");
+                    $b2 = \cReate("exception");
 
-                    $e2 = \create(\LogicException::class);
+                    $e2 = \creAte(\LogicException::class);
 
                     $c1 = (new \Ns\MyClass)->foo(5);
                     $c2 = (new \Ns\MyClass)->bar(["hello"]);
 
-                    $d1 = \foo(5);
-                    $d2 = \bar(["hello"]);
+                    $d1 = \foO(5);
+                    $d2 = \baR(["hello"]);
                 }'
         );
 
@@ -256,7 +324,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -294,7 +364,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -326,7 +398,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -360,7 +434,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -394,7 +470,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -517,7 +595,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -550,7 +630,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -586,7 +668,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -614,7 +698,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -646,7 +732,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -678,7 +766,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -726,7 +816,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -758,7 +850,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -807,7 +901,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -845,7 +941,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -891,7 +989,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>
@@ -933,7 +1033,9 @@ class StubTest extends TestCase
             TestConfig::loadFromXML(
                 dirname(__DIR__),
                 '<?xml version="1.0"?>
-                <psalm>
+                <psalm
+                    errorLevel="1"
+                >
                     <projectFiles>
                         <directory name="src" />
                     </projectFiles>

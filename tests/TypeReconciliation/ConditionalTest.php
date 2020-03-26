@@ -823,21 +823,47 @@ class ConditionalTest extends \Psalm\Tests\TestCase
             ],
             'scalarToBool' => [
                 '<?php
-                    /** @param mixed $s */
-                    function foo($s) : void {
-                        if (!is_scalar($s)) {
-                            return;
-                        }
+                    /** @var scalar */
+                    $s = 1;
 
-                        if (is_bool($s)) {}
-                        if (!is_bool($s)) {}
-                        if (is_string($s)) {}
-                        if (!is_string($s)) {}
-                        if (is_int($s)) {}
-                        if (!is_int($s)) {}
-                        if (is_float($s)) {}
-                        if (!is_float($s)) {}
-                    }',
+                    if (is_bool($s)) {}
+                    if (!is_bool($s)) {}',
+                [
+                    '$s' => 'scalar'
+                ]
+            ],
+            'scalarToString' => [
+                '<?php
+                    /** @var scalar */
+                    $s = 1;
+
+                    if (is_string($s)) {}
+                    if (!is_string($s)) {}',
+                [
+                    '$s' => 'scalar'
+                ]
+            ],
+            'scalarToInt' => [
+                '<?php
+                    /** @var scalar */
+                    $s = 1;
+
+                    if (is_int($s)) {}
+                    if (!is_int($s)) {}',
+                [
+                    '$s' => 'scalar'
+                ]
+            ],
+            'scalarToFloat' => [
+                '<?php
+                    /** @var scalar */
+                    $s = 1;
+
+                    if (is_float($s)) {}
+                    if (!is_float($s)) {}',
+                [
+                    '$s' => 'scalar'
+                ]
             ],
             'removeFromArray' => [
                 '<?php
@@ -2540,6 +2566,26 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                      */
                     if(!(count($colonnes) == 37 || count($colonnes) == 40)) {}',
             ],
+            'reconcilePropertyInTrait' => [
+                '<?php
+                    class A {}
+
+                    trait T {
+                        private static ?A $one = null;
+
+                        private static function maybeSetOne(): A {
+                            if (null === self::$one) {
+                                self::$one = new A();
+                            }
+
+                            return self::$one;
+                        }
+                    }
+
+                    class Implementer {
+                        use T;
+                    }'
+            ],
         ];
     }
 
@@ -2751,7 +2797,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                             if (is_bool($s)) {}
                         }
                     }',
-                'error_message' => 'ParadoxicalCondition',
+                'error_message' => 'TypeDoesNotContainType',
             ],
             'noCrashWhenCastingArray' => [
                 '<?php

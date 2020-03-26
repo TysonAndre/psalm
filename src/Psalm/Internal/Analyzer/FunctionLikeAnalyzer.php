@@ -35,18 +35,15 @@ use Psalm\Storage\MethodStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
 use function md5;
-use function explode;
 use function strtolower;
 use function array_merge;
 use function array_filter;
-use function is_string;
 use function array_key_exists;
 use function substr;
 use function strpos;
 use function array_search;
 use function array_keys;
 use function end;
-use function array_diff;
 use Psalm\Internal\Taint\Source;
 
 /**
@@ -208,8 +205,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                         $context->self,
                         $template_params
                     );
+                    $this_object_type->was_static = true;
                 } else {
                     $this_object_type = new TNamedObject($context->self);
+                    $this_object_type->was_static = true;
                 }
 
                 $context->vars_in_scope['$this'] = new Type\Union([$this_object_type]);
@@ -217,10 +216,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 if ($storage->external_mutation_free
                     && !$storage->mutation_free_inferred
                 ) {
-                    $context->vars_in_scope['$this']->external_mutation_free = true;
+                    $context->vars_in_scope['$this']->reference_free = true;
 
-                    if ($storage->mutation_free) {
-                        $context->vars_in_scope['$this']->mutation_free = true;
+                    if ($this->function->name->name !== '__construct') {
+                        $context->vars_in_scope['$this']->allow_mutations = false;
                     }
                 }
 
@@ -289,7 +288,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
                     // we've already checked this in the class checker
                     if (!isset($appearing_class_storage->class_implements[strtolower($overridden_fq_class_name)])) {
-                        MethodAnalyzer::compareMethods(
+                        MethodComparator::compare(
                             $codebase,
                             $declaring_class_storage,
                             $parent_storage,
@@ -320,12 +319,15 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
             MethodAnalyzer::checkMethodSignatureMustOmitReturnType($storage, $codeLocation);
 
-            if (!$context->calling_function_id || !$context->collect_initializations) {
-                $context->calling_function_id = strtolower((string) $method_id);
+            if (!$context->calling_method_id || !$context->collect_initializations) {
+                $context->calling_method_id = strtolower((string) $method_id);
             }
         } elseif ($this->function instanceof Function_) {
             $cased_method_id = $this->function->name->name;
-            $context->calling_function_id = strtolower($cased_method_id);
+            $namespace_prefix = $this->getNamespace();
+            $context->calling_function_id = strtolower(
+                ($namespace_prefix !== null ? $namespace_prefix . '\\' : '') . $cased_method_id
+            );
         } else { // Closure
             if ($storage->return_type) {
                 $closure_return_type = ExpressionAnalyzer::fleshOutType(
@@ -657,6 +659,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $expected_exception,
                     $storage->throw_locations[$expected_exception],
                     $context->self,
+                    $context->calling_method_id,
                     $statements_analyzer->getSuppressedIssues(),
                     false,
                     false,
@@ -686,7 +689,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                             $this,
                             $input_type,
                             $storage->throw_locations[$expected_exception],
-                            $context->calling_function_id
+                            $context->calling_method_id
                         );
                     }
                 }
@@ -951,6 +954,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                         $storage->suppressed_issues,
                         [],
                         false,
+                        false,
                         $this->function instanceof ClassMethod
                             && strtolower($this->function->name->name) !== '__construct'
                     ) === false) {
@@ -1202,7 +1206,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $this,
                     $param_name_node,
                     $resolved_name,
-                    $context->calling_function_id,
+                    $context->calling_method_id,
                     false,
                     true
                 );
@@ -1236,7 +1240,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $this,
                     $return_name_node,
                     $resolved_name,
-                    $context->calling_function_id,
+                    $context->calling_method_id,
                     false,
                     true
                 );
@@ -1261,7 +1265,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 $this,
                 $replace_type,
                 $storage->return_type_location,
-                $context->calling_function_id
+                $context->calling_method_id
             );
         }
 
@@ -1285,7 +1289,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $this,
                     $replace_type,
                     $function_param->type_location,
-                    $context->calling_function_id
+                    $context->calling_method_id
                 );
             }
         }
@@ -1704,7 +1708,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
     /**
      * @return Type\Union
      */
-    public function getLocalReturnType(Type\Union $storage_return_type)
+    public function getLocalReturnType(Type\Union $storage_return_type, bool $final = false)
     {
         if ($this->local_return_type) {
             return $this->local_return_type;
@@ -1715,7 +1719,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             $storage_return_type,
             $this->getFQCLN(),
             $this->getFQCLN(),
-            $this->getParentFQCLN()
+            $this->getParentFQCLN(),
+            true,
+            $final
         );
 
         return $this->local_return_type;

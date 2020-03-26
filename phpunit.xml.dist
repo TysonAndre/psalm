@@ -11,10 +11,12 @@
          verbose="true"
          executionOrder="default"
 >
-    <testsuite name="psalm">
-        <directory>tests</directory>
-        <exclude>tests/integration</exclude>
-    </testsuite>
+    <testsuites>
+        <testsuite name="psalm">
+            <directory>tests</directory>
+            <exclude>tests/integration</exclude>
+        </testsuite>
+    </testsuites>
 
     <filter>
         <whitelist processUncoveredFilesFromWhitelist="true">

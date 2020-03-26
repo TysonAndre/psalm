@@ -94,6 +94,7 @@ class MethodCallTest extends TestCase
             ],
             'dateTimeImmutableStatic' => [
                 '<?php
+                    /** @psalm-immutable */
                     final class MyDate extends DateTimeImmutable {}
 
                     $today = new MyDate();
@@ -108,11 +109,16 @@ class MethodCallTest extends TestCase
             'magicCall' => [
                 '<?php
                     class A {
-                        public function __call(string $method_name, array $args) {}
+                        public function __call(string $method_name, array $args) : string {
+                            return "hello";
+                        }
                     }
 
                     $a = new A;
-                    $a->bar();',
+                    $s = $a->bar();',
+                [
+                    '$s' => 'string',
+                ]
             ],
             'canBeCalledOnMagic' => [
                 '<?php
@@ -511,6 +517,64 @@ class MethodCallTest extends TestCase
                     $date = new DateTime(null, new DateTimeZone("Pacific/Nauru"));
                     echo $date->format("Y-m-d H:i:sP") . "\n";'
             ],
+            'noCrashOnGetClassMethodCallWithNull' => [
+                '<?php
+                    class User {
+                        /**
+                         * @psalm-suppress NullArgument
+                         */
+                        public function give(): void{
+                            $model = null;
+                            $class = \get_class($model);
+                            $class::foo();
+                        }
+                    }',
+            ],
+            'unknownMethodCallWithProperty' => [
+                '<?php
+                    class A {
+                        private string $b = "c";
+
+                        public function passesByRef(object $a): void {
+                            /** @psalm-suppress MixedMethodCall */
+                            $a->passedByRef($this->b);
+                        }
+                    }',
+            ],
+            'maybeNotTooManyArgumentsToInstance' => [
+                '<?php
+                    class A {
+                        public function fooFoo(int $a): void {}
+                    }
+
+                    class B {
+                        public function fooFoo(int $a, string $s): void {}
+                    }
+
+                    (rand(0, 1) ? new A : new B)->fooFoo(5, "dfd");',
+            ],
+            'interfaceMethodCallCheck' => [
+                '<?php
+                    interface A {
+                        function foo() : void;
+                    }
+
+                    interface B extends A {
+                        function foo(string $a = "") : void;
+                    }
+
+                    class C implements B {
+                        public function foo(string $a = "") : void {}
+                    }
+
+                    function takesWithoutArguments(A $a) : void {
+                        if ($a instanceof B) {
+                           $a->foo("");
+                        }
+                    }
+
+                    takesWithoutArguments(new C);'
+            ],
         ];
     }
 
@@ -845,6 +909,55 @@ class MethodCallTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidStringClass',
+            ],
+            'preventAbstractMethodCall' => [
+                '<?php
+                    abstract class Base {
+                        public static function callAbstract() : void {
+                            static::bar();
+                        }
+
+                        abstract static function bar() : void;
+                    }
+
+                    Base::bar();',
+                'error_message' => 'AbstractMethodCall',
+            ],
+            'tooManyArgumentsToStatic' => [
+                '<?php
+                    class A {
+                        public static function fooFoo(int $a): void {}
+                    }
+
+                    A::fooFoo(5, "dfd");',
+                'error_message' => 'TooManyArguments',
+            ],
+            'tooFewArgumentsToStatic' => [
+                '<?php
+                    class A {
+                        public static function fooFoo(int $a): void {}
+                    }
+
+                    A::fooFoo();',
+                'error_message' => 'TooFewArguments',
+            ],
+            'tooManyArgumentsToInstance' => [
+                '<?php
+                    class A {
+                        public function fooFoo(int $a): void {}
+                    }
+
+                    (new A)->fooFoo(5, "dfd");',
+                'error_message' => 'TooManyArguments',
+            ],
+            'tooFewArgumentsToInstance' => [
+                '<?php
+                    class A {
+                        public function fooFoo(int $a): void {}
+                    }
+
+                    (new A)->fooFoo();',
+                'error_message' => 'TooFewArguments',
             ],
         ];
     }

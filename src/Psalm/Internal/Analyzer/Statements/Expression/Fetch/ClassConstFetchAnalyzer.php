@@ -7,19 +7,17 @@ use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
-use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\CircularReference;
 use Psalm\Issue\DeprecatedClass;
 use Psalm\Issue\DeprecatedConstant;
 use Psalm\Issue\InaccessibleClassConstant;
+use Psalm\Issue\NonStaticSelfCall;
 use Psalm\Issue\ParentNotFound;
-use Psalm\Issue\UndefinedClass;
 use Psalm\Issue\UndefinedConstant;
 use Psalm\IssueBuffer;
 use Psalm\Type;
-use function implode;
 use function strtolower;
 use function explode;
 
@@ -47,10 +45,20 @@ class ClassConstFetchAnalyzer
 
             if ($first_part_lc === 'self' || $first_part_lc === 'static') {
                 if (!$context->self) {
-                    throw new \UnexpectedValueException('$context->self cannot be null');
+                    if (IssueBuffer::accepts(
+                        new NonStaticSelfCall(
+                            'Cannot use ' . $first_part_lc . ' outside class context',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        return false;
+                    }
+
+                    return;
                 }
 
-                $fq_class_name = (string)$context->self;
+                $fq_class_name = $context->self;
             } elseif ($first_part_lc === 'parent') {
                 $fq_class_name = $statements_analyzer->getParentFQCLN();
 
@@ -74,12 +82,15 @@ class ClassConstFetchAnalyzer
                 );
 
                 if ($stmt->name instanceof PhpParser\Node\Identifier) {
-                    if (!$context->inside_class_exists || $stmt->name->name !== 'class') {
+                    if ((!$context->inside_class_exists || $stmt->name->name !== 'class')
+                        && !isset($context->phantom_classes[strtolower($fq_class_name)])
+                    ) {
                         if (ClassLikeAnalyzer::checkFullyQualifiedClassLikeName(
                             $statements_analyzer,
                             $fq_class_name,
                             new CodeLocation($statements_analyzer->getSource(), $stmt->class),
                             $context->self,
+                            $context->calling_method_id,
                             $statements_analyzer->getSuppressedIssues(),
                             false,
                             true
@@ -100,7 +111,7 @@ class ClassConstFetchAnalyzer
                     $statements_analyzer,
                     $stmt->class,
                     $fq_class_name,
-                    $context->calling_function_id,
+                    $context->calling_method_id,
                     false,
                     $stmt->class->parts[0] === 'self'
                 );
@@ -127,10 +138,13 @@ class ClassConstFetchAnalyzer
                 }
 
                 if ($first_part_lc === 'static') {
+                    $static_named_object = new Type\Atomic\TNamedObject($fq_class_name);
+                    $static_named_object->was_static = true;
+
                     $statements_analyzer->node_data->setType(
                         $stmt,
                         new Type\Union([
-                            new Type\Atomic\TClassString($fq_class_name, new Type\Atomic\TNamedObject($fq_class_name))
+                            new Type\Atomic\TClassString($fq_class_name, $static_named_object)
                         ])
                     );
                 } else {
@@ -259,9 +273,9 @@ class ClassConstFetchAnalyzer
                 return;
             }
 
-            if ($context->calling_function_id) {
+            if ($context->calling_method_id) {
                 $codebase->file_reference_provider->addMethodReferenceToClassMember(
-                    $context->calling_function_id,
+                    $context->calling_method_id,
                     strtolower($fq_class_name) . '::' . $stmt->name->name
                 );
             }

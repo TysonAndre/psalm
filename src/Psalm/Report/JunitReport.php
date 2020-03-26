@@ -5,10 +5,12 @@ use DOMDocument;
 use DOMElement;
 use Psalm\Config;
 use Psalm\Report;
+use Psalm\Internal\Analyzer\IssueData;
+use const ENT_XML1;
+use const ENT_QUOTES;
 use function count;
-use function sprintf;
+use function htmlspecialchars;
 use function trim;
-use Doctrine\Instantiator\Exception\UnexpectedValueException;
 
 /**
  * based on https://github.com/m50/psalm-json-to-junit
@@ -50,9 +52,7 @@ class JunitReport extends Report
                 $ndata[$fname] = [
                     'errors'   => $is_error ? 1 : 0,
                     'warnings' => $is_warning ? 1 : 0,
-                    'failures' => [
-                        $this->createFailure($error),
-                    ],
+                    'failures' => [],
                 ];
             } else {
                 if ($is_error) {
@@ -60,9 +60,9 @@ class JunitReport extends Report
                 } else {
                     $ndata[$fname]['warnings']++;
                 }
-
-                $ndata[$fname]['failures'][] = $this->createFailure($error);
             }
+
+            $ndata[$fname]['failures'][] = $error;
         }
 
         $dom = new DOMDocument('1.0', 'UTF-8');
@@ -72,28 +72,32 @@ class JunitReport extends Report
             'junit5/r5.5.1/platform-tests/src/test/resources/jenkins-junit.xsd';
 
         $suites = $dom->createElement('testsuites');
-        $testsuite = $dom->createElement('testsuite');
 
-        if ($testsuite === false) {
-            throw new \UnexpectedValueException('Bad falsy value');
-        }
-
-        $testsuite->setAttribute('failures', (string) $errors);
-        $testsuite->setAttribute('warnings', (string) $warnings);
-        $testsuite->setAttribute('name', 'psalm');
-        $testsuite->setAttribute('tests', (string) $tests);
-        $testsuite->setAttribute('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance');
-        $testsuite->setAttribute('xsi:noNamespaceSchemaLocation', $schema);
-        $suites->appendChild($testsuite);
+        $suites->setAttribute('failures', (string) $errors);
+        $suites->setAttribute('errors', '0');
+        $suites->setAttribute('name', 'psalm');
+        $suites->setAttribute('tests', (string) $tests);
+        $suites->setAttribute('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance');
+        $suites->setAttribute('xsi:noNamespaceSchemaLocation', $schema);
         $dom->appendChild($suites);
 
         if (!count($ndata)) {
+            $suites->setAttribute('tests', '1');
+
+            $testsuite = $dom->createElement('testsuite');
+            $testsuite->setAttribute('name', 'psalm');
+            $testsuite->setAttribute('failures', '0');
+            $testsuite->setAttribute('errors', '0');
+            $testsuite->setAttribute('tests', '1');
+
             $testcase = $dom->createElement('testcase');
             $testcase->setAttribute('name', 'psalm');
             $testsuite->appendChild($testcase);
+
+            $suites->appendChild($testsuite);
         } else {
             foreach ($ndata as $file => $report) {
-                $this->createTestSuite($dom, $testsuite, $file, $report);
+                $this->createTestSuite($dom, $suites, $file, $report);
             }
         }
 
@@ -106,17 +110,7 @@ class JunitReport extends Report
      * @param  array{
      *         errors: int,
      *         warnings: int,
-     *         failures: list<array{
-     *             data: array{
-     *                 column_from: int,
-     *                 column_to: int,
-     *                 line: int,
-     *                 message: string,
-     *                 selected_text: string,
-     *                 snippet: string,
-     *                 type: string},
-     *                 type: string
-     *             }>
+     *         failures: list<IssueData>
      *         } $report
      */
     private function createTestSuite(DOMDocument $dom, DOMElement $parent, string $file, array $report): void
@@ -128,113 +122,62 @@ class JunitReport extends Report
 
         $testsuite = $dom->createElement('testsuite');
         $testsuite->setAttribute('name', $file);
-        $testsuite->setAttribute('file', $file);
-        $testsuite->setAttribute('assertions', (string) $totalTests);
         $testsuite->setAttribute('failures', (string) $report['errors']);
-        $testsuite->setAttribute('warnings', (string) $report['warnings']);
+        $testsuite->setAttribute('errors', '0');
+        $testsuite->setAttribute('tests', (string) $totalTests);
 
         $failuresByType = $this->groupByType($report['failures']);
-        $testsuite->setAttribute('tests', (string) count($failuresByType));
 
-        $iterator = 0;
         foreach ($failuresByType as $type => $data) {
             foreach ($data as $d) {
                 $testcase = $dom->createElement('testcase');
-                $testcase->setAttribute('name', "{$file}:{$d['line']}");
-                $testcase->setAttribute('file', $file);
-                $testcase->setAttribute('class', $type);
+                $testcase->setAttribute('name', "{$file}:{$d->line_from}");
                 $testcase->setAttribute('classname', $type);
-                $testcase->setAttribute('line', (string) $d['line']);
                 $testcase->setAttribute('assertions', (string) count($data));
 
-                $failure = $dom->createElement('failure');
-                $failure->setAttribute('type', $type);
-                $failure->nodeValue = $this->dataToOutput($d);
+                if ($d->severity === Config::REPORT_ERROR) {
+                    $issue = $dom->createElement('failure');
+                    $issue->setAttribute('type', $type);
+                } else {
+                    $issue = $dom->createElement('skipped');
+                }
+                $issue->nodeValue = $this->dataToOutput($d);
 
-                $testcase->appendChild($failure);
+                $testcase->appendChild($issue);
                 $testsuite->appendChild($testcase);
             }
-            $iterator++;
         }
         $parent->appendChild($testsuite);
     }
 
     /**
-     * @return array{
-     *     data: array{
-     *         column_from: int,
-     *         column_to: int,
-     *         line: int,
-     *         message: string,
-     *         selected_text: string,
-     *         snippet: string,
-     *         type: string
-     *     },
-     *     type: string
-     * }
-     */
-    private function createFailure(\Psalm\Internal\Analyzer\IssueData $issue_data) : array
-    {
-        return [
-            'type' => $issue_data->type,
-            'data' => [
-                'message'       => $issue_data->message,
-                'type'          => $issue_data->type,
-                'snippet'       => $issue_data->snippet,
-                'selected_text' => $issue_data->selected_text,
-                'line'          => $issue_data->line_from,
-                'column_from'   => $issue_data->column_from,
-                'column_to'     => $issue_data->column_to,
-            ],
-        ];
-    }
-
-    /**
-     * @param  array<array{
-     *     data: array{
-     *         column_from: int,
-     *         column_to: int,
-     *         line: int,
-     *         message: string,
-     *         selected_text: string,
-     *         snippet: string,
-     *         type: string
-     *     },
-     *     type: string
-     * }>  $failures
+     * @param  list<IssueData> $failures
      *
-     * @return array<string, non-empty-list<array{
-     *         column_from: int,
-     *         column_to: int,
-     *         line: int,
-     *         message: string,
-     *         selected_text: string,
-     *         snippet: string,
-     *         type: string
-     *  }>>
+     * @return array<string, list<IssueData>>
      */
     private function groupByType(array $failures)
     {
         $nfailures = [];
 
         foreach ($failures as $failure) {
-            $nfailures[$failure['type']][] = $failure['data'];
+            $nfailures[$failure->type][] = $failure;
         }
 
         return $nfailures;
     }
 
     /**
-     * @param  array<string, int|string>  $data
+     * @param  IssueData  $data
      */
-    private function dataToOutput(array $data): string
+    private function dataToOutput(IssueData $data): string
     {
-        $ret = '';
-
-        foreach ($data as $key => $value) {
-            $value = trim((string) $value);
-            $ret .= "{$key}: {$value}\n";
-        }
+        $ret = 'message: ' . htmlspecialchars(trim($data->message), ENT_XML1 | ENT_QUOTES) . "\n";
+        $ret .= 'type: ' . trim($data->type) . "\n";
+        $ret .= 'snippet: ' . htmlspecialchars(trim($data->snippet), ENT_XML1 | ENT_QUOTES) . "\n";
+        $ret .= 'selected_text: ' . trim($data->selected_text) . "\n";
+        $ret .= 'line: ' . $data->line_from . "\n";
+        $ret .= 'column_from: ' . $data->column_from . "\n";
+        $ret .= 'column_to: ' . $data->column_to . "\n";
 
         return $ret;
     }

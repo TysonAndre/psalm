@@ -513,6 +513,48 @@ class ClassTest extends TestCase
                         }
                     }',
             ],
+            'noErrorsAfterClassExists' => [
+                '<?php
+                    if (class_exists(A::class)) {
+                        if (method_exists(A::class, "method")) {
+                            echo A::method();
+                        }
+
+                        echo A::class;
+                        /** @psalm-suppress MixedArgument */
+                        echo A::SOME_CONST;
+                    }'
+            ],
+            'noCrashOnClassExists' => [
+                '<?php
+                    if (!class_exists(ReflectionGenerator::class)) {
+                        class ReflectionGenerator {
+                            private $prop;
+                        }
+                    }',
+            ],
+            'extendException' => [
+                '<?php
+                    class ME extends Exception {
+                        /** @var string */
+                        protected $message = "hello";
+                    }',
+            ],
+            'allowFinalReturnerForStatic' => [
+                '<?php
+                    class A {
+                        /** @return static */
+                        public static function getInstance() {
+                            return new static();
+                        }
+                    }
+
+                    final class AChild extends A {
+                        public static function getInstance() {
+                            return new AChild();
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -740,6 +782,39 @@ class ClassTest extends TestCase
                         if ($a === $b) {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'cannotOverrideFinalType' => [
+                '<?php
+                    class P {
+                        public final function f() : void {}
+                    }
+
+                    class C extends P {
+                        public function f() : void {}
+                    }',
+                'error_message' => 'MethodSignatureMismatch',
+            ],
+            'preventFinalOverriding' => [
+                '<?php
+                    class A {
+                        /** @return static */
+                        public static function getInstance() {
+                            return new static();
+                        }
+                    }
+
+                    class AChild extends A {
+                        public static function getInstance() {
+                            return new AChild();
+                        }
+                    }
+
+                    class AGrandChild extends AChild {
+                        public function foo() : void {}
+                    }
+
+                    AGrandChild::getInstance()->foo();',
+                'error_message' => 'LessSpecificReturnStatement',
             ],
         ];
     }

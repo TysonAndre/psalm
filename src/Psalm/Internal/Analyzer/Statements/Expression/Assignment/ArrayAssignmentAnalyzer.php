@@ -427,9 +427,13 @@ class ArrayAssignmentAnalyzer
                         new TList($current_type),
                     ]);
                 } else {
+                    $current_dim_type = $statements_analyzer->node_data->getType($current_dim);
+
                     $array_assignment_type = new Type\Union([
                         new TArray([
-                            $statements_analyzer->node_data->getType($current_dim) ?: Type::getMixed(),
+                            $current_dim_type && !$current_dim_type->hasMixed()
+                                ? $current_dim_type
+                                : Type::getArrayKey(),
                             $current_type,
                         ]),
                     ]);
@@ -530,11 +534,15 @@ class ArrayAssignmentAnalyzer
         } elseif (!$root_is_string) {
             if ($current_dim) {
                 if ($current_dim_type = $statements_analyzer->node_data->getType($current_dim)) {
+                    if ($current_dim_type->hasMixed()) {
+                        $current_dim_type = Type::getArrayKey();
+                    }
+
                     $array_atomic_key_type = ArrayFetchAnalyzer::replaceOffsetTypeWithInts(
                         $current_dim_type
                     );
                 } else {
-                    $array_atomic_key_type = Type::getMixed();
+                    $array_atomic_key_type = Type::getArrayKey();
                 }
 
                 if ($offset_already_existed

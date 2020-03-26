@@ -120,7 +120,7 @@ class Config
     ];
 
     /**
-     * @var self|null
+     * @var static|null
      */
     private static $instance;
 
@@ -245,6 +245,11 @@ class Config
     /** @var 1|2|3|4|5|6|7|8 */
     public $level = 1;
 
+    /**
+     * @var ?bool
+     */
+    public $show_mixed_issues = null;
+
     /** @var bool */
     public $strict_binary_operands = false;
 
@@ -285,6 +290,11 @@ class Config
      * @var bool
      */
     public $use_phpdoc_property_without_magic_or_parent = false;
+
+    /**
+     * @var bool
+     */
+    public $skip_checks_on_unresolvable_includes = true;
 
     /**
      * @var bool
@@ -766,6 +776,8 @@ class Config
             'loadXdebugStub' => 'load_xdebug_stub',
             'ensureArrayStringOffsetsExist' => 'ensure_array_string_offsets_exist',
             'ensureArrayIntOffsetsExist' => 'ensure_array_int_offsets_exist',
+            'reportMixedIssues' => 'show_mixed_issues',
+            'skipChecksOnUnresolvableIncludes' => 'skip_checks_on_unresolvable_includes'
         ];
 
         foreach ($booleanAttributes as $xmlName => $internalName) {
@@ -849,6 +861,10 @@ class Config
                 $config->level = 1;
             } else {
                 $config->level = 2;
+
+                if ($config->show_mixed_issues === null) {
+                    $config->show_mixed_issues = false;
+                }
             }
         } else {
             $config->level = 2;
@@ -933,7 +949,11 @@ class Config
         if (isset($config_xml->stubs) && isset($config_xml->stubs->file)) {
             /** @var \SimpleXMLElement $stub_file */
             foreach ($config_xml->stubs->file as $stub_file) {
-                $file_path = realpath($config->base_dir . DIRECTORY_SEPARATOR . $stub_file['name']);
+                $stub_file_name = (string)$stub_file['name'];
+                if (!Path::isAbsolute($stub_file_name)) {
+                    $stub_file_name = $config->base_dir . DIRECTORY_SEPARATOR . $stub_file_name;
+                }
+                $file_path = realpath($stub_file_name);
 
                 if (!$file_path) {
                     throw new Exception\ConfigException(
@@ -1257,6 +1277,12 @@ class Config
      */
     public function reportIssueInFile($issue_type, $file_path)
     {
+        if (($this->show_mixed_issues === false || $this->level > 2)
+            && in_array($issue_type, self::MIXED_ISSUES, true)
+        ) {
+            return false;
+        }
+
         if ($this->mustBeIgnored($file_path)) {
             return false;
         }
@@ -1638,20 +1664,27 @@ class Config
         $codebase->register_stub_files = true;
 
         // note: don't realpath $generic_stubs_path, or phar version will fail
-        $generic_stubs_path = __DIR__ . '/Internal/Stubs/CoreGenericFunctions.php';
+        $generic_stubs_path = __DIR__ . '/Internal/Stubs/CoreGenericFunctions.phpstub';
 
         if (!file_exists($generic_stubs_path)) {
             throw new \UnexpectedValueException('Cannot locate core generic stubs');
         }
 
         // note: don't realpath $generic_classes_path, or phar version will fail
-        $generic_classes_path = __DIR__ . '/Internal/Stubs/CoreGenericClasses.php';
+        $generic_classes_path = __DIR__ . '/Internal/Stubs/CoreGenericClasses.phpstub';
 
         if (!file_exists($generic_classes_path)) {
             throw new \UnexpectedValueException('Cannot locate core generic classes');
         }
 
-        $core_generic_files = [$generic_stubs_path, $generic_classes_path];
+        // note: don't realpath $generic_classes_path, or phar version will fail
+        $immutable_classes_path = __DIR__ . '/Internal/Stubs/CoreImmutableClasses.phpstub';
+
+        if (!file_exists($immutable_classes_path)) {
+            throw new \UnexpectedValueException('Cannot locate core immutable classes');
+        }
+
+        $core_generic_files = [$generic_stubs_path, $generic_classes_path, $immutable_classes_path];
 
         if (\extension_loaded('ds')) {
             $ext_ds_path = __DIR__ . '/Internal/Stubs/ext-ds.php';
@@ -1943,6 +1976,14 @@ class Config
     public function addStubFile(string $stub_file)
     {
         $this->stub_files[] = $stub_file;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function getStubFiles(): array
+    {
+        return $this->stub_files;
     }
 
     public function getPhpVersion(): ?string

@@ -13,7 +13,7 @@ use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\ScopeAnalyzer;
 use Psalm\Internal\Analyzer\SourceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
@@ -364,7 +364,9 @@ class ReturnTypeAnalyzer
             $return_type,
             $self_fq_class_name,
             $self_fq_class_name,
-            $parent_class
+            $parent_class,
+            true,
+            $function_like_storage instanceof MethodStorage && $function_like_storage->final
         );
 
         if (!$inferred_return_type_parts && !$inferred_yield_types) {
@@ -759,13 +761,14 @@ class ReturnTypeAnalyzer
             $storage->return_type_location,
             $storage->suppressed_issues,
             [],
-            false
+            false,
+            $storage instanceof MethodStorage && $storage->inherited_return_type
         ) === false) {
             return false;
         }
 
         if ($classlike_storage && $context->self) {
-            $class_template_params = MethodCallAnalyzer::getClassTemplateParams(
+            $class_template_params = ClassTemplateParamCollector::collect(
                 $codebase,
                 $classlike_storage,
                 $context->self,
@@ -786,6 +789,7 @@ class ReturnTypeAnalyzer
                     $fleshed_out_return_type,
                     $template_result,
                     $codebase,
+                    null,
                     null,
                     null
                 );

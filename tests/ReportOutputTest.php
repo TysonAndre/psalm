@@ -2,6 +2,7 @@
 
 namespace Psalm\Tests;
 
+use DOMDocument;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
@@ -124,6 +125,7 @@ echo $a;';
                 'column_from' => 10,
                 'column_to' => 17,
                 'error_level' => -1,
+                'link' => 'https://psalm.dev/024'
             ],
             [
                 'severity' => 'error',
@@ -142,6 +144,7 @@ echo $a;';
                 'column_from' => 42,
                 'column_to' => 49,
                 'error_level' => 1,
+                'link' => 'https://psalm.dev/047'
             ],
             [
                 'severity' => 'error',
@@ -160,6 +163,7 @@ echo $a;';
                 'column_from' => 6,
                 'column_to' => 15,
                 'error_level' => -1,
+                'link' => 'https://psalm.dev/020'
             ],
             [
                 'severity' => 'info',
@@ -178,6 +182,7 @@ echo $a;';
                 'column_from' => 6,
                 'column_to' => 8,
                 'error_level' => 3,
+                'link' => 'https://psalm.dev/126'
             ],
         ];
 
@@ -356,16 +361,16 @@ somefile.php:15: [W0001] PossiblyUndefinedGlobalVariable: Possibly undefined glo
         $console_report_options->use_color = false;
 
         $this->assertSame(
-            'ERROR: UndefinedVariable - somefile.php:3:10 - Cannot find referenced variable $as_you
+            'ERROR: UndefinedVariable - somefile.php:3:10 - Cannot find referenced variable $as_you (see https://psalm.dev/024)
   return $as_you . "type";
 
-ERROR: MixedInferredReturnType - somefile.php:2:42 - Could not verify return type \'null|string\' for psalmCanVerify
+ERROR: MixedInferredReturnType - somefile.php:2:42 - Could not verify return type \'null|string\' for psalmCanVerify (see https://psalm.dev/047)
 function psalmCanVerify(int $your_code): ?string {
 
-ERROR: UndefinedConstant - somefile.php:7:6 - Const CHANGE_ME is not defined
+ERROR: UndefinedConstant - somefile.php:7:6 - Const CHANGE_ME is not defined (see https://psalm.dev/020)
 echo CHANGE_ME;
 
-INFO: PossiblyUndefinedGlobalVariable - somefile.php:15:6 - Possibly undefined global variable $a, first seen on line 10
+INFO: PossiblyUndefinedGlobalVariable - somefile.php:15:6 - Possibly undefined global variable $a, first seen on line 10 (see https://psalm.dev/126)
 echo $a
 
 ',
@@ -385,13 +390,13 @@ echo $a
         $console_report_options->show_info = false;
 
         $this->assertSame(
-            'ERROR: UndefinedVariable - somefile.php:3:10 - Cannot find referenced variable $as_you
+            'ERROR: UndefinedVariable - somefile.php:3:10 - Cannot find referenced variable $as_you (see https://psalm.dev/024)
   return $as_you . "type";
 
-ERROR: MixedInferredReturnType - somefile.php:2:42 - Could not verify return type \'null|string\' for psalmCanVerify
+ERROR: MixedInferredReturnType - somefile.php:2:42 - Could not verify return type \'null|string\' for psalmCanVerify (see https://psalm.dev/047)
 function psalmCanVerify(int $your_code): ?string {
 
-ERROR: UndefinedConstant - somefile.php:7:6 - Const CHANGE_ME is not defined
+ERROR: UndefinedConstant - somefile.php:7:6 - Const CHANGE_ME is not defined (see https://psalm.dev/020)
 echo CHANGE_ME;
 
 ',
@@ -411,16 +416,16 @@ echo CHANGE_ME;
         $console_report_options->use_color = false;
 
         $this->assertSame(
-            'ERROR: UndefinedVariable - somefile.php:3:10 - Cannot find referenced variable $as_you
+            'ERROR: UndefinedVariable - somefile.php:3:10 - Cannot find referenced variable $as_you (see https://psalm.dev/024)
 
 
-ERROR: MixedInferredReturnType - somefile.php:2:42 - Could not verify return type \'null|string\' for psalmCanVerify
+ERROR: MixedInferredReturnType - somefile.php:2:42 - Could not verify return type \'null|string\' for psalmCanVerify (see https://psalm.dev/047)
 
 
-ERROR: UndefinedConstant - somefile.php:7:6 - Const CHANGE_ME is not defined
+ERROR: UndefinedConstant - somefile.php:7:6 - Const CHANGE_ME is not defined (see https://psalm.dev/020)
 
 
-INFO: PossiblyUndefinedGlobalVariable - somefile.php:15:6 - Possibly undefined global variable $a, first seen on line 10
+INFO: PossiblyUndefinedGlobalVariable - somefile.php:15:6 - Possibly undefined global variable $a, first seen on line 10 (see https://psalm.dev/126)
 
 
 ',
@@ -499,13 +504,14 @@ INFO: PossiblyUndefinedGlobalVariable - somefile.php:15:6 - Possibly undefined g
 
         $checkstyle_report_options = ProjectAnalyzer::getFileReportOptions([__DIR__ . '/test-report.junit.xml'])[0];
 
+        $xml = IssueBuffer::getOutput($checkstyle_report_options);
+
         $this->assertSame(
             '<?xml version="1.0" encoding="UTF-8"?>
-<testsuites>
-  <testsuite failures="3" warnings="1" name="psalm" tests="4" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/junit-team/junit5/r5.5.1/platform-tests/src/test/resources/jenkins-junit.xsd">
-    <testsuite name="somefile.php" file="somefile.php" assertions="4" failures="3" warnings="1" tests="4">
-      <testcase name="somefile.php:3" file="somefile.php" class="UndefinedVariable" classname="UndefinedVariable" line="3" assertions="1">
-        <failure type="UndefinedVariable">message: Cannot find referenced variable $as_you
+<testsuites failures="3" errors="0" name="psalm" tests="4" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/junit-team/junit5/r5.5.1/platform-tests/src/test/resources/jenkins-junit.xsd">
+  <testsuite name="somefile.php" failures="3" errors="0" tests="4">
+    <testcase name="somefile.php:3" classname="UndefinedVariable" assertions="1">
+      <failure type="UndefinedVariable">message: Cannot find referenced variable $as_you
 type: UndefinedVariable
 snippet: return $as_you . "type";
 selected_text: $as_you
@@ -513,9 +519,9 @@ line: 3
 column_from: 10
 column_to: 17
 </failure>
-      </testcase>
-      <testcase name="somefile.php:2" file="somefile.php" class="MixedInferredReturnType" classname="MixedInferredReturnType" line="2" assertions="1">
-        <failure type="MixedInferredReturnType">message: Could not verify return type \'null|string\' for psalmCanVerify
+    </testcase>
+    <testcase name="somefile.php:2" classname="MixedInferredReturnType" assertions="1">
+      <failure type="MixedInferredReturnType">message: Could not verify return type \'null|string\' for psalmCanVerify
 type: MixedInferredReturnType
 snippet: function psalmCanVerify(int $your_code): ?string {
 selected_text: ?string
@@ -523,9 +529,9 @@ line: 2
 column_from: 42
 column_to: 49
 </failure>
-      </testcase>
-      <testcase name="somefile.php:7" file="somefile.php" class="UndefinedConstant" classname="UndefinedConstant" line="7" assertions="1">
-        <failure type="UndefinedConstant">message: Const CHANGE_ME is not defined
+    </testcase>
+    <testcase name="somefile.php:7" classname="UndefinedConstant" assertions="1">
+      <failure type="UndefinedConstant">message: Const CHANGE_ME is not defined
 type: UndefinedConstant
 snippet: echo CHANGE_ME;
 selected_text: CHANGE_ME
@@ -533,23 +539,31 @@ line: 7
 column_from: 6
 column_to: 15
 </failure>
-      </testcase>
-      <testcase name="somefile.php:15" file="somefile.php" class="PossiblyUndefinedGlobalVariable" classname="PossiblyUndefinedGlobalVariable" line="15" assertions="1">
-        <failure type="PossiblyUndefinedGlobalVariable">message: Possibly undefined global variable $a, first seen on line 10
+    </testcase>
+    <testcase name="somefile.php:15" classname="PossiblyUndefinedGlobalVariable" assertions="1">
+      <skipped>message: Possibly undefined global variable $a, first seen on line 10
 type: PossiblyUndefinedGlobalVariable
 snippet: echo $a
 selected_text: $a
 line: 15
 column_from: 6
 column_to: 8
-</failure>
-      </testcase>
-    </testsuite>
+</skipped>
+    </testcase>
   </testsuite>
 </testsuites>
 ',
-            IssueBuffer::getOutput($checkstyle_report_options)
+            $xml
         );
+
+        // Validate against junit xsd
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $dom->preserveWhiteSpace = false;
+        $dom->loadXML($xml);
+
+        // Validate against xsd
+        $valid = $dom->schemaValidate(__DIR__ . '/junit.xsd');
+        $this->assertTrue($valid, 'Output did not validate against XSD');
 
         // FIXME: The XML parser only return strings, all int value are casted, so the assertSame failed
         //$this->assertSame(
