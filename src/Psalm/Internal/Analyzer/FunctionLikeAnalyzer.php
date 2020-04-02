@@ -162,6 +162,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             }
         }
 
+        foreach ($storage->docblock_issues as $docblock_issue) {
+            IssueBuffer::add($docblock_issue);
+        }
+
         $overridden_method_ids = [];
 
         if ($this->function instanceof ClassMethod) {
@@ -588,6 +592,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 $storage->return_type,
                 $this->source->getFQCLN(),
                 $storage->return_type_location,
+                $context->has_returned,
                 $global_context && $global_context->inside_call
             );
 
@@ -632,8 +637,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             }
         }
 
-        if ($context->collect_references
+        if ($codebase->collect_references
             && !$context->collect_initializations
+            && !$context->collect_mutations
             && $codebase->find_unused_variables
             && $context->check_variables
         ) {
@@ -828,20 +834,22 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
                 $method_name_lc = strtolower($storage->cased_name);
 
-                if ($storage->abstract || !isset($class_storage->overridden_method_ids[$method_name_lc])) {
+                if ($storage->abstract) {
                     continue;
                 }
 
-                $parent_method_id = end($class_storage->overridden_method_ids[$method_name_lc]);
+                if (isset($class_storage->overridden_method_ids[$method_name_lc])) {
+                    $parent_method_id = end($class_storage->overridden_method_ids[$method_name_lc]);
 
-                if ($parent_method_id) {
-                    $parent_method_storage = $codebase->methods->getStorage($parent_method_id);
+                    if ($parent_method_id) {
+                        $parent_method_storage = $codebase->methods->getStorage($parent_method_id);
 
-                    // if the parent method has a param at that position and isn't abstract
-                    if (!$parent_method_storage->abstract
-                        && isset($parent_method_storage->params[$position])
-                    ) {
-                        continue;
+                        // if the parent method has a param at that position and isn't abstract
+                        if (!$parent_method_storage->abstract
+                            && isset($parent_method_storage->params[$position])
+                        ) {
+                            continue;
+                        }
                     }
                 }
 
@@ -1004,7 +1012,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             $context->vars_in_scope['$' . $function_param->name] = $var_type;
             $context->vars_possibly_in_scope['$' . $function_param->name] = true;
 
-            if ($context->collect_references && $function_param->location) {
+            if ($codebase->find_unused_variables && $function_param->location) {
                 $context->unreferenced_vars['$' . $function_param->name] = [
                     $function_param->location->getHash() => $function_param->location
                 ];
@@ -1136,7 +1144,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 }
             }
 
-            if ($codebase->collect_references) {
+            if ($codebase->collect_locations) {
                 if ($function_param->type_location !== $function_param->signature_type_location &&
                     $function_param->signature_type_location &&
                     $function_param->signature_type
@@ -1309,6 +1317,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
         Type\Union $return_type = null,
         $fq_class_name = null,
         CodeLocation $return_type_location = null,
+        bool $did_explicitly_return = false,
         bool $closure_inside_call = false
     ) {
         ReturnTypeAnalyzer::verifyReturnType(
@@ -1321,6 +1330,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             $fq_class_name,
             $return_type_location,
             [],
+            $did_explicitly_return,
             $closure_inside_call
         );
     }
@@ -1720,6 +1730,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             $this->getFQCLN(),
             $this->getFQCLN(),
             $this->getParentFQCLN(),
+            true,
             true,
             $final
         );

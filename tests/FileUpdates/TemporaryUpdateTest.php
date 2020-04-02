@@ -58,11 +58,15 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
         array $file_stages,
         array $error_positions,
         array $error_levels = [],
-        bool $test_save = true
+        bool $test_save = true,
+        bool $check_unused_code = false
     ) {
-        $this->project_analyzer->getCodebase()->diff_methods = true;
-
         $codebase = $this->project_analyzer->getCodebase();
+        $codebase->diff_methods = true;
+
+        if ($check_unused_code) {
+            $codebase->reportUnusedCode();
+        }
 
         $config = $codebase->config;
 
@@ -84,7 +88,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
 
         $codebase->scanFiles();
 
-        $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
+        $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false, true);
 
         $data = \Psalm\IssueBuffer::clear();
 
@@ -110,7 +114,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
 
             $codebase->reloadFiles($this->project_analyzer, array_keys($file_stage));
 
-            $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
+            $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false, true);
 
             $data = \Psalm\IssueBuffer::clear();
 
@@ -138,7 +142,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
 
             $codebase->reloadFiles($this->project_analyzer, array_keys($last_file_stage));
 
-            $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false);
+            $codebase->analyzer->analyzeFiles($this->project_analyzer, 1, false, true);
 
             $data = \Psalm\IssueBuffer::clear();
 
@@ -1437,6 +1441,120 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                     ],
                 ],
                 'error_positions' => [[], []],
+            ],
+            'dontForgetErrorInTraitMethod' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                use T;
+                            }
+
+                            (new A)->foo();',
+                        getcwd() . DIRECTORY_SEPARATOR . 'T.php' => '<?php
+                            namespace Foo;
+
+                            trait T {
+                                public function foo() : void {
+                                    echo $a;
+                                }
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                use T;
+                            }
+
+                            (new A)->foo();',
+                        getcwd() . DIRECTORY_SEPARATOR . 'T.php' => '<?php
+                            namespace Foo;
+
+                            trait T {
+                                public function foo() : void {
+                                    echo $a;
+                                }
+                            }',
+                    ],
+                ],
+                'error_positions' => [[192, 192], [192, 192]],
+            ],
+            'stillUnusedClass' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {}',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'B.php' => '<?php
+                            namespace Foo;
+
+                            class B {}',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'user.php' => '<?php
+                            namespace Foo;
+
+                            new B();',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {}',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'B.php' => '<?php
+                            namespace Foo;
+
+                            class B {}',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'user.php' => '<?php
+                            namespace Foo;
+
+                            new B();',
+                    ],
+                ],
+                'error_positions' => [[84], [84]],
+                [],
+                false,
+                true
+            ],
+            'stillUnusedMethod' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                public function foo() : void {}
+
+                                public function bar() : void {}
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'user.php' => '<?php
+                            namespace Foo;
+
+                            (new A())->foo();',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class A {
+                                public function foo() : void {
+                                }
+
+                                public function bar() : void {}
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'user.php' => '<?php
+                            namespace Foo;
+
+                            (new A())->foo();',
+                    ],
+                ],
+                'error_positions' => [[201], [234]],
+                [],
+                false,
+                true
             ],
         ];
     }

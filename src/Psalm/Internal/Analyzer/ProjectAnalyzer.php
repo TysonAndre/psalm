@@ -171,7 +171,7 @@ class ProjectAnalyzer
     /**
      * @var array<string,string>
      */
-    private $project_files;
+    private $project_files = [];
 
     /**
      * @var array<string, string>
@@ -246,8 +246,6 @@ class ProjectAnalyzer
         $this->stdout_report_options = $stdout_report_options;
         $this->generated_report_options = $generated_report_options;
 
-        $project_files = [];
-
         foreach ($this->config->getProjectDirectories() as $dir_name) {
             $file_extensions = $this->config->getFileExtensions();
 
@@ -255,16 +253,14 @@ class ProjectAnalyzer
 
             foreach ($file_paths as $file_path) {
                 if ($this->config->isInProjectDirs($file_path)) {
-                    $project_files[$file_path] = $file_path;
+                    $this->addProjectFile($file_path);
                 }
             }
         }
 
         foreach ($this->config->getProjectFiles() as $file_path) {
-            $project_files[$file_path] = $file_path;
+            $this->addProjectFile($file_path);
         }
-
-        $this->project_files = $project_files;
 
         self::$instance = $this;
     }
@@ -309,12 +305,26 @@ class ProjectAnalyzer
         return $report_options;
     }
 
+    private function visitAutoloadFiles() : void
+    {
+        $start_time = microtime(true);
+
+        $this->config->visitComposerAutoloadFiles($this, $this->progress);
+
+        $now_time = microtime(true);
+
+        $this->progress->debug(
+            'Visiting autoload files took ' . \number_format($now_time - $start_time, 3) . 's' . "\n"
+        );
+    }
+
     /**
      * @param  string|null $address
      * @return void
      */
     public function server($address = '127.0.0.1:12345', bool $socket_server_mode = false)
     {
+        $this->visitAutoloadFiles();
         $this->codebase->diff_methods = true;
         $this->file_reference_provider->loadReferenceCache();
         $this->codebase->enterServerMode();
@@ -461,6 +471,8 @@ class ProjectAnalyzer
 
         $reference_cache = $this->file_reference_provider->loadReferenceCache(true);
 
+        $this->codebase->diff_methods = $is_diff;
+
         if ($is_diff
             && $reference_cache
             && $this->parser_cache_provider
@@ -476,17 +488,15 @@ class ProjectAnalyzer
 
         $this->progress->startScanningFiles();
 
-        if ($diff_files === null
-            || $deleted_files === null
-            || count($diff_files) > 200
-            || $this->codebase->find_unused_code) {
-            $this->codebase->scanner->addFilesToDeepScan($this->project_files);
-        }
+        $diff_no_files = false;
 
         if ($diff_files === null
             || $deleted_files === null
             || count($diff_files) > 200
         ) {
+            $this->visitAutoloadFiles();
+
+            $this->codebase->scanner->addFilesToDeepScan($this->project_files);
             $this->codebase->analyzer->addFilesToAnalyze($this->project_files);
 
             $this->config->initializePlugins($this);
@@ -500,33 +510,48 @@ class ProjectAnalyzer
 
             $this->codebase->analyzer->addFilesToShowResults($this->project_files);
 
-            if ($diff_files || $this->codebase->find_unused_code) {
+            if ($diff_files) {
                 $file_list = $this->getReferencedFilesFromDiff($diff_files);
 
                 // strip out deleted files
                 $file_list = array_diff($file_list, $deleted_files);
 
-                $this->checkDiffFilesWithConfig($this->config, $file_list);
+                if ($file_list) {
+                    $this->visitAutoloadFiles();
 
-                $this->config->initializePlugins($this);
+                    $this->checkDiffFilesWithConfig($this->config, $file_list);
 
-                $this->codebase->scanFiles($this->threads);
+                    $this->config->initializePlugins($this);
+
+                    $this->codebase->scanFiles($this->threads);
+                } else {
+                    $diff_no_files = true;
+                }
+            } else {
+                $diff_no_files = true;
             }
         }
 
-        $this->config->visitStubFiles($this->codebase, $this->progress);
+        if (!$diff_no_files) {
+            $this->config->visitStubFiles($this->codebase, $this->progress);
 
-        $plugin_classes = $this->config->after_codebase_populated;
+            $plugin_classes = $this->config->after_codebase_populated;
 
-        if ($plugin_classes) {
-            foreach ($plugin_classes as $plugin_fq_class_name) {
-                $plugin_fq_class_name::afterCodebasePopulated($this->codebase);
+            if ($plugin_classes) {
+                foreach ($plugin_classes as $plugin_fq_class_name) {
+                    $plugin_fq_class_name::afterCodebasePopulated($this->codebase);
+                }
             }
         }
 
         $this->progress->startAnalyzingFiles();
 
-        $this->codebase->analyzer->analyzeFiles($this, $this->threads, $this->codebase->alter_code);
+        $this->codebase->analyzer->analyzeFiles(
+            $this,
+            $this->threads,
+            $this->codebase->alter_code,
+            true
+        );
 
         if ($this->parser_cache_provider) {
             $removed_parser_files = $this->parser_cache_provider->deleteOldParserCaches(
@@ -911,7 +936,12 @@ class ProjectAnalyzer
 
         $this->progress->startAnalyzingFiles();
 
-        $this->codebase->analyzer->analyzeFiles($this, $this->threads, $this->codebase->alter_code);
+        $this->codebase->analyzer->analyzeFiles(
+            $this,
+            $this->threads,
+            $this->codebase->alter_code,
+            $this->codebase->find_unused_code === 'always'
+        );
     }
 
     /**
@@ -957,6 +987,17 @@ class ProjectAnalyzer
 
         return $file_paths;
     }
+
+    /**
+     * @param  string  $dir_name
+     *
+     * @return void
+     */
+    public function addProjectFile(string $file_path)
+    {
+        $this->project_files[$file_path] = $file_path;
+    }
+
 
     /**
      * @param  string $dir_name
@@ -1044,7 +1085,12 @@ class ProjectAnalyzer
 
         $this->progress->startAnalyzingFiles();
 
-        $this->codebase->analyzer->analyzeFiles($this, $this->threads, $this->codebase->alter_code);
+        $this->codebase->analyzer->analyzeFiles(
+            $this,
+            $this->threads,
+            $this->codebase->alter_code,
+            $this->codebase->find_unused_code === 'always'
+        );
     }
 
     /**
@@ -1053,6 +1099,8 @@ class ProjectAnalyzer
      */
     public function checkPaths(array $paths_to_check)
     {
+        $this->visitAutoloadFiles();
+
         foreach ($paths_to_check as $path) {
             $this->progress->debug('Checking ' . $path . "\n");
 
@@ -1076,7 +1124,12 @@ class ProjectAnalyzer
 
         $this->progress->startAnalyzingFiles();
 
-        $this->codebase->analyzer->analyzeFiles($this, $this->threads, $this->codebase->alter_code);
+        $this->codebase->analyzer->analyzeFiles(
+            $this,
+            $this->threads,
+            $this->codebase->alter_code,
+            $this->codebase->find_unused_code === 'always'
+        );
 
         if ($this->stdout_report_options
             && $this->stdout_report_options->format === Report::TYPE_CONSOLE

@@ -616,7 +616,7 @@ class CallAnalyzer
                     }
                 }
 
-                if ($context->collect_references
+                if ($codebase->find_unused_variables
                     && ($arg->value instanceof PhpParser\Node\Expr\AssignOp
                         || $arg->value instanceof PhpParser\Node\Expr\PreInc
                         || $arg->value instanceof PhpParser\Node\Expr\PreDec)
@@ -1316,10 +1316,10 @@ class CallAnalyzer
             : [];
 
         if ($function_storage) {
-            $template_types = self::getTemplateTypesForFunction(
-                $function_storage,
+            $template_types = self::getTemplateTypesForCall(
                 $class_storage,
-                $calling_class_storage
+                $calling_class_storage,
+                $function_storage->template_types ?: []
             );
 
             if ($template_types) {
@@ -1970,6 +1970,7 @@ class CallAnalyzer
             $static_classlike_storage ? $static_classlike_storage->name : null,
             $parent_class,
             true,
+            false,
             $static_classlike_storage ? $static_classlike_storage->final : false
         );
 
@@ -2078,26 +2079,23 @@ class CallAnalyzer
 
     /**
      * @return array<string, array<string, array{Type\Union}>>
+     * @param array<string, non-empty-array<string, array{Type\Union}>> $existing_template_types
      */
-    private static function getTemplateTypesForFunction(
-        FunctionLikeStorage $function_storage,
-        ClassLikeStorage $class_storage = null,
-        ClassLikeStorage $calling_class_storage = null
+    public static function getTemplateTypesForCall(
+        ClassLikeStorage $declaring_class_storage = null,
+        ClassLikeStorage $calling_class_storage = null,
+        array $existing_template_types = []
     ) : array {
-        $template_types = [];
+        $template_types = $existing_template_types;
 
-        if ($function_storage->template_types) {
-            $template_types = $function_storage->template_types;
-        }
-
-        if ($class_storage) {
+        if ($declaring_class_storage) {
             if ($calling_class_storage
-                && $class_storage !== $calling_class_storage
+                && $declaring_class_storage !== $calling_class_storage
                 && $calling_class_storage->template_type_extends
             ) {
                 foreach ($calling_class_storage->template_type_extends as $class_name => $type_map) {
                     foreach ($type_map as $template_name => $type) {
-                        if (is_string($template_name) && $class_name === $class_storage->name) {
+                        if (is_string($template_name) && $class_name === $declaring_class_storage->name) {
                             $output_type = null;
 
                             foreach ($type->getAtomicTypes() as $atomic_type) {
@@ -2110,7 +2108,9 @@ class CallAnalyzer
                                     )
                                 ) {
                                     $output_type_candidate = $calling_class_storage
-                                        ->template_type_extends[$atomic_type->defining_class][$atomic_type->param_name];
+                                        ->template_type_extends
+                                            [$atomic_type->defining_class]
+                                            [$atomic_type->param_name];
                                 } elseif ($atomic_type instanceof Type\Atomic\TTemplateParam) {
                                     $output_type_candidate = $atomic_type->as;
                                 } else {
@@ -2127,12 +2127,12 @@ class CallAnalyzer
                                 }
                             }
 
-                            $template_types[$template_name][$class_storage->name] = [$output_type];
+                            $template_types[$template_name][$declaring_class_storage->name] = [$output_type];
                         }
                     }
                 }
-            } elseif ($class_storage->template_types) {
-                foreach ($class_storage->template_types as $template_name => $type_map) {
+            } elseif ($declaring_class_storage->template_types) {
+                foreach ($declaring_class_storage->template_types as $template_name => $type_map) {
                     foreach ($type_map as $key => list($type)) {
                         $template_types[$template_name][$key] = [$type];
                     }

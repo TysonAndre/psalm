@@ -895,6 +895,44 @@ class StubTest extends TestCase
     /**
      * @return void
      */
+    public function testExtendOnlyStubbedClass()
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm
+                    errorLevel="1"
+                >
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+
+                    <stubs>
+                        <file name="tests/fixtures/stubs/partial_class.php" />
+                    </stubs>
+                </psalm>'
+            )
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                namespace Foo;
+
+                class A extends PartiallyStubbedClass {}
+
+                (new A)->foo(A::class);'
+        );
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    /**
+     * @return void
+     */
     public function testStubFileWithExtendedStubbedClass()
     {
         $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
@@ -1121,10 +1159,7 @@ class StubTest extends TestCase
                 \SomeVendor\VendorClass::vendorFunction(new MyClass);'
         );
 
-        $context = new Context();
-        $context->collect_references = true;
-
-        $this->analyzeFile($file_path, $context, false);
+        $this->analyzeFile($file_path, new Context(), false);
 
         $this->project_analyzer->consolidateAnalyzedData();
     }

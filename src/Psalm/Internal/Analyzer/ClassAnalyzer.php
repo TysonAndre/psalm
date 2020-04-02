@@ -209,6 +209,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             );
         }
 
+        foreach ($storage->docblock_issues as $docblock_issue) {
+            IssueBuffer::add($docblock_issue);
+        }
+
         $classlike_storage_provider = $codebase->classlike_storage_provider;
 
         $parent_fq_class_name = $this->parent_fq_class_name;
@@ -662,7 +666,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         if (!$class_context) {
             $class_context = new Context($this->fq_class_name);
-            $class_context->collect_references = $codebase->collect_references;
             $class_context->parent = $parent_fq_class_name;
         }
 
@@ -1054,7 +1057,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $codebase,
                     null,
                     null,
-                    null
+                    null,
+                    $class_context->self
                 );
             }
 
@@ -1117,10 +1121,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         $fq_class_name_lc = strtolower($fq_class_name);
 
         $included_file_path = $this->getFilePath();
-
-        if ($class_context->include_location) {
-            $included_file_path = $class_context->include_location->file_path;
-        }
 
         $method_already_analyzed = $codebase->analyzer->isMethodAlreadyAnalyzed(
             $included_file_path,
@@ -1298,6 +1298,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
                 $codebase->analyzer->disableMixedCounts();
 
+                $was_collecting_initializations = $class_context->collect_initializations;
+
+                $class_context->collect_initializations = true;
+
                 $constructor_analyzer = $this->analyzeClassMethod(
                     $fake_stmt,
                     $storage,
@@ -1306,6 +1310,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $global_context,
                     true
                 );
+
+                $class_context->collect_initializations = $was_collecting_initializations;
 
                 $codebase->analyzer->enableMixedCounts();
             }
@@ -1642,10 +1648,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         $included_file_path = $source->getFilePath();
 
-        if ($class_context->include_location) {
-            $included_file_path = $class_context->include_location->file_path;
-        }
-
         if ($class_context->self && strtolower($class_context->self) !== strtolower((string) $source->getFQCLN())) {
             $analyzed_method_id = $method_analyzer->getMethodId($class_context->self);
 
@@ -1741,6 +1743,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
         $type_provider = new \Psalm\Internal\Provider\NodeDataProvider();
 
+        $time = \microtime(true);
+
         $method_analyzer->analyze(
             $method_context,
             $type_provider,
@@ -1760,9 +1764,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $class_storage,
                 $class_context->self,
                 $analyzed_method_id,
-                $actual_method_id
+                $actual_method_id,
+                $method_context->has_returned
             );
         }
+
+        $project_analyzer->progress->debug(
+            'Analyzing method ' . $stmt->name . ' took '
+                . \number_format(\microtime(true) - $time, 4) . "seconds \n"
+        );
 
         if (!$method_already_analyzed
             && !$class_context->collect_initializations
@@ -1784,7 +1794,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         ClassLikeStorage $class_storage,
         string $fq_classlike_name,
         \Psalm\Internal\MethodIdentifier $analyzed_method_id,
-        \Psalm\Internal\MethodIdentifier $actual_method_id
+        \Psalm\Internal\MethodIdentifier $actual_method_id,
+        bool $did_explicitly_return
     ) : void {
         $secondary_return_type_location = null;
 
@@ -1891,7 +1902,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $interface_return_type,
                     $interface_class,
                     $interface_return_type_location,
-                    [$analyzed_method_id]
+                    [$analyzed_method_id],
+                    $did_explicitly_return
                 );
             }
         }
@@ -1909,7 +1921,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $return_type,
             $fq_classlike_name,
             $return_type_location,
-            $overridden_method_ids
+            $overridden_method_ids,
+            $did_explicitly_return
         );
     }
 

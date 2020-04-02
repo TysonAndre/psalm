@@ -68,6 +68,7 @@ class ReturnTypeAnalyzer
         $fq_class_name = null,
         CodeLocation $return_type_location = null,
         array $compatible_method_ids = [],
+        bool $did_explicitly_return = false,
         bool $closure_inside_call = false
     ) {
         $suppressed_issues = $function_like_analyzer->getSuppressedIssues();
@@ -138,6 +139,10 @@ class ReturnTypeAnalyzer
             true
         );
 
+        if (!$inferred_return_type_parts) {
+            $did_explicitly_return = true;
+        }
+
         if ((!$return_type || $return_type->from_docblock)
             && ScopeAnalyzer::getFinalControlActions(
                 $function_stmts,
@@ -146,6 +151,7 @@ class ReturnTypeAnalyzer
             ) !== [ScopeAnalyzer::ACTION_END]
             && !$inferred_yield_types
             && count($inferred_return_type_parts)
+            && !$did_explicitly_return
         ) {
             // only add null if we have a return statement elsewhere and it wasn't void
             foreach ($inferred_return_type_parts as $inferred_return_type_part) {
@@ -325,6 +331,7 @@ class ReturnTypeAnalyzer
                     $source,
                     $function_like_analyzer,
                     $compatible_method_ids
+                        || !$did_explicitly_return
                         || (($project_analyzer->only_replace_php_types_with_non_docblock_types
                                 || $unsafe_return_type)
                             && $inferred_return_type->from_docblock),
@@ -365,6 +372,7 @@ class ReturnTypeAnalyzer
             $self_fq_class_name,
             $self_fq_class_name,
             $parent_class,
+            true,
             true,
             $function_like_storage instanceof MethodStorage && $function_like_storage->final
         );
@@ -497,20 +505,27 @@ class ReturnTypeAnalyzer
 
                     if ($union_comparison_results->has_partial_match) {
                         if (IssueBuffer::accepts(
-                            new PossiblyInvalidReturnType(
-                                'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
-                                    ' is incorrect but has some compatible types, got \'' . $inferred_return_type . '\'',
+                            new InvalidReturnType(
+                                'The declared return type \''
+                                    . $declared_return_type->getId()
+                                    . '\' for ' . $cased_method_id
+                                    . ' is incorrect, got \''
+                                    . $inferred_return_type->getId() . '\'',
                                 $return_type_location
                             ),
-                            $suppressed_issues
+                            $suppressed_issues,
+                            true
                         )) {
                             return false;
                         }
                     } else {
                         if (IssueBuffer::accepts(
                             new InvalidReturnType(
-                                'The declared return type \'' . $declared_return_type . '\' for ' . $cased_method_id .
-                                    ' is incorrect, got \'' . $inferred_return_type . '\'',
+                                'The declared return type \''
+                                    . $declared_return_type->getId()
+                                    . '\' for ' . $cased_method_id
+                                    . ' is incorrect, got \''
+                                    . $inferred_return_type->getId() . '\'',
                                 $return_type_location
                             ),
                             $suppressed_issues,

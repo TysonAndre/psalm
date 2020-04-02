@@ -327,7 +327,7 @@ class ClassLikeStorage
     public $overridden_property_ids = [];
 
     /**
-     * @var array<string, array<string, array{Type\Union}>>|null
+     * @var array<string, non-empty-array<string, array{Type\Union}>>|null
      */
     public $template_types;
 
@@ -384,9 +384,9 @@ class ClassLikeStorage
     public $has_visitor_issues = false;
 
     /**
-     * @var bool
+     * @var list<\Psalm\Issue\CodeIssue>
      */
-    public $has_docblock_issues = false;
+    public $docblock_issues = [];
 
     /**
      * @param string $name

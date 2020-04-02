@@ -148,6 +148,14 @@ class MethodCallReturnTypeFetcher
                 }
 
                 if ($template_result->generic_params) {
+                    $return_type_candidate = ExpressionAnalyzer::fleshOutType(
+                        $codebase,
+                        $return_type_candidate,
+                        null,
+                        null,
+                        null
+                    );
+
                     $return_type_candidate->replaceTemplateTypesWithArgTypes(
                         $template_result->generic_params,
                         $codebase
@@ -162,13 +170,15 @@ class MethodCallReturnTypeFetcher
                     $class_storage->parent_class
                 );
 
-                $return_type_candidate->sources = [
-                    new Source(
-                        strtolower((string) $method_id),
-                        $cased_method_id,
-                        new CodeLocation($statements_analyzer, $stmt->name)
-                    )
-                ];
+                if ($codebase->taint) {
+                    $return_type_candidate->sources = [
+                        new Source(
+                            strtolower((string) $method_id),
+                            $cased_method_id,
+                            new CodeLocation($statements_analyzer, $stmt->name)
+                        )
+                    ];
+                }
 
                 $return_type_location = $codebase->methods->getMethodReturnTypeLocation(
                     $method_id,

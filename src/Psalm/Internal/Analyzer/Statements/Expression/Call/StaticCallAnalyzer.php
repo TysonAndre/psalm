@@ -160,8 +160,14 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                         $statements_analyzer,
                         $fq_class_name,
                         new CodeLocation($source, $stmt->class),
-                        $context->self,
-                        $context->calling_method_id,
+                        !$context->collect_initializations
+                            && !$context->collect_mutations
+                            ? $context->self
+                            : null,
+                        !$context->collect_initializations
+                            && !$context->collect_mutations
+                            ? $context->calling_method_id
+                            : null,
                         $statements_analyzer->getSuppressedIssues(),
                         false,
                         false,
@@ -221,8 +227,14 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $statements_analyzer,
                     $fq_class_name,
                     new CodeLocation($source, $stmt->class),
-                    $context->self,
-                    $context->calling_method_id,
+                    !$context->collect_initializations
+                        && !$context->collect_mutations
+                        ? $context->self
+                        : null,
+                    !$context->collect_initializations
+                        && !$context->collect_mutations
+                        ? $context->calling_method_id
+                        : null,
                     $statements_analyzer->getSuppressedIssues(),
                     $stmt->class instanceof PhpParser\Node\Name
                         && count($stmt->class->parts) === 1
@@ -427,8 +439,13 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
 
                 if (!$codebase->methods->methodExists(
                     $method_id,
-                    $context->calling_method_id,
-                    $codebase->collect_references ? new CodeLocation($source, $stmt->name) : null,
+                    !$context->collect_initializations
+                        && !$context->collect_mutations
+                        ? $context->calling_method_id
+                        : null,
+                    $codebase->collect_locations
+                        ? new CodeLocation($source, $stmt->name)
+                        : null,
                     $statements_analyzer,
                     $statements_analyzer->getFilePath()
                 )
@@ -447,7 +464,9 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if ($codebase->methods->methodExists(
                         $callstatic_id,
                         $context->calling_method_id,
-                        $codebase->collect_references ? new CodeLocation($source, $stmt->name) : null,
+                        $codebase->collect_locations
+                            ? new CodeLocation($source, $stmt->name)
+                            : null,
                         !$context->collect_initializations
                             && !$context->collect_mutations
                             ? $statements_analyzer
@@ -904,13 +923,6 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             }
                         }
 
-                        if ($template_result->generic_params) {
-                            $return_type_candidate->replaceTemplateTypesWithArgTypes(
-                                $template_result->generic_params,
-                                $codebase
-                            );
-                        }
-
                         if ($lhs_type_part instanceof Type\Atomic\TTemplateParam) {
                             $static_type = $lhs_type_part;
                         } elseif ($lhs_type_part instanceof Type\Atomic\TTemplateParamClass) {
@@ -923,6 +935,21 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             );
                         } else {
                             $static_type = $fq_class_name;
+                        }
+
+                        if ($template_result->generic_params) {
+                            $return_type_candidate = ExpressionAnalyzer::fleshOutType(
+                                $codebase,
+                                $return_type_candidate,
+                                null,
+                                null,
+                                null
+                            );
+
+                            $return_type_candidate->replaceTemplateTypesWithArgTypes(
+                                $template_result->generic_params,
+                                $codebase
+                            );
                         }
 
                         $return_type_candidate = ExpressionAnalyzer::fleshOutType(
