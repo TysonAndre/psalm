@@ -505,11 +505,11 @@ class ReturnTypeAnalyzer
 
                     if ($union_comparison_results->has_partial_match) {
                         if (IssueBuffer::accepts(
-                            new InvalidReturnType(
+                            new PossiblyInvalidReturnType(
                                 'The declared return type \''
                                     . $declared_return_type->getId()
                                     . '\' for ' . $cased_method_id
-                                    . ' is incorrect, got \''
+                                    . ' is incorrect but has some compatible types, got \''
                                     . $inferred_return_type->getId() . '\'',
                                 $return_type_location
                             ),
