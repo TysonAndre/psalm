@@ -1071,7 +1071,6 @@ class IfAnalyzer
             );
 
             $elseif_context = $if_conditional_scope->if_context;
-            $original_context = $if_conditional_scope->original_context;
             $cond_referenced_var_ids = $if_conditional_scope->cond_referenced_var_ids;
             $cond_assigned_var_ids = $if_conditional_scope->cond_assigned_var_ids;
             $entry_clauses = $if_conditional_scope->entry_clauses;
@@ -1325,7 +1324,7 @@ class IfAnalyzer
         $if_scope->final_actions = array_merge($final_actions, $if_scope->final_actions);
 
         // update the parent context as necessary
-        $elseif_redefined_vars = $elseif_context->getRedefinedVars($original_context->vars_in_scope);
+        $elseif_redefined_vars = $elseif_context->getRedefinedVars($outer_context->vars_in_scope);
 
         if (!$has_leaving_statements) {
             if ($if_scope->new_vars === null) {
@@ -1387,9 +1386,7 @@ class IfAnalyzer
                 }
 
                 foreach ($possibly_redefined_vars as $var => $type) {
-                    if ($type->hasMixed()) {
-                        $if_scope->possibly_redefined_vars[$var] = $type;
-                    } elseif (isset($if_scope->possibly_redefined_vars[$var])) {
+                    if (isset($if_scope->possibly_redefined_vars[$var])) {
                         $if_scope->possibly_redefined_vars[$var] = Type::combineUnionTypes(
                             $type,
                             $if_scope->possibly_redefined_vars[$var],
@@ -1517,9 +1514,11 @@ class IfAnalyzer
         }
 
         try {
-            $if_scope->negated_clauses = array_merge(
-                $if_scope->negated_clauses,
-                Algebra::negateFormula($elseif_clauses)
+            $if_scope->negated_clauses = Algebra::simplifyCNF(
+                array_merge(
+                    $if_scope->negated_clauses,
+                    Algebra::negateFormula($elseif_clauses)
+                )
             );
         } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
             $if_scope->negated_clauses = [];
@@ -1719,9 +1718,7 @@ class IfAnalyzer
                 }
 
                 foreach ($else_redefined_vars as $var => $type) {
-                    if ($type->hasMixed()) {
-                        $if_scope->possibly_redefined_vars[$var] = $type;
-                    } elseif (isset($if_scope->possibly_redefined_vars[$var])) {
+                    if (isset($if_scope->possibly_redefined_vars[$var])) {
                         $if_scope->possibly_redefined_vars[$var] = Type::combineUnionTypes(
                             $type,
                             $if_scope->possibly_redefined_vars[$var],

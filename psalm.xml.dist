@@ -40,10 +40,6 @@
         <class name="LogicException"/>
     </ignoreExceptions>
 
-    <stubs>
-        <file name="src/Psalm/Internal/Stubs/Amp.php"/>
-    </stubs>
-
     <plugins>
         <plugin filename="examples/plugins/FunctionCasingChecker.php"/>
         <pluginClass class="Psalm\PhpUnitPlugin\Plugin"/>
@@ -55,12 +51,8 @@
         <DeprecatedMethod>
             <errorLevel type="suppress">
                 <directory name="tests" />
-            </errorLevel>
-        </DeprecatedMethod>
-
-        <DeprecatedMethod>
-            <errorLevel type="suppress">
-                <directory name="tests" />
+                <referencedMethod name="PhpParser\Comment::getFilePos" />
+                <referencedMethod name="PhpParser\Comment::getLine" />
             </errorLevel>
         </DeprecatedMethod>
 

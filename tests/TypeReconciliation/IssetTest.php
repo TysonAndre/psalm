@@ -887,6 +887,72 @@ class IssetTest extends \Psalm\Tests\TestCase
                         }
                     }',
             ],
+            'noMixedMethodCallAfterIsset' => [
+                '<?php
+                    $data = file_get_contents("php://input");
+                    /** @psalm-suppress MixedAssignment */
+                    $payload = json_decode($data, true);
+
+                    if (!isset($payload["a"]) || rand(0, 1)) {
+                        return;
+                    }
+
+                    /**
+                     * @psalm-suppress MixedArrayAccess
+                     * @psalm-suppress MixedArgument
+                     */
+                    echo $payload["b"];'
+            ],
+            'implicitIssetWithStringKeyOnArrayDoesntChangeArrayType' => [
+                '<?php
+                    class A {}
+
+                    function run1(array $arguments): void {
+                        if ($arguments["a"] instanceof A) {}
+
+                        if ($arguments["b"]) {
+                            /** @psalm-suppress MixedArgument */
+                            echo $arguments["b"];
+                        }
+                    }',
+            ],
+            'issetOnClassConstantOffset' => [
+                '<?php
+
+                    final class StudyJwtPayload {
+                        public const STUDY_ID = "studid";
+
+                        public static function fromClaims(array $claims): string
+                        {
+                            if (!isset($claims["usrid"])) {
+                                throw new \InvalidArgumentException();
+                            }
+
+                            if (!\is_string($claims["usrid"])) {
+                                throw new \InvalidArgumentException();
+                            }
+
+                            if (!isset($claims[self::STUDY_ID])) {
+                                throw new \InvalidArgumentException();
+                            }
+
+                            if (!\is_string($claims[self::STUDY_ID])) {
+                                throw new \InvalidArgumentException();
+                            }
+
+                            return $claims[self::STUDY_ID];
+                        }
+                    }'
+            ],
+            'noCrashAfterTwoIsset' => [
+                '<?php
+                    /** @psalm-suppress MixedArrayOffset */
+                    function foo(array $a, array $b) : void {
+                        if (! isset($b["id"], $a[$b["id"]])) {
+                            echo "z";
+                        }
+                    }'
+            ],
         ];
     }
 

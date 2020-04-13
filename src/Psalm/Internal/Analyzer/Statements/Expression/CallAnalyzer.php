@@ -348,6 +348,15 @@ class CallAnalyzer
             return false;
         }
 
+        if ($class_template_result) {
+            self::checkTemplateResult(
+                $statements_analyzer,
+                $class_template_result,
+                $code_location,
+                strtolower((string) $method_id)
+            );
+        }
+
         return null;
     }
 
@@ -462,7 +471,7 @@ class CallAnalyzer
                 if (($arg->value instanceof PhpParser\Node\Expr\Closure
                         || $arg->value instanceof PhpParser\Node\Expr\ArrowFunction)
                     && $template_result
-                    && $template_result->generic_params
+                    && $template_result->upper_bounds
                     && $param
                     && $param->type
                     && !$arg->value->getDocComment()
@@ -472,7 +481,7 @@ class CallAnalyzer
                     ) {
                         $function_like_params = [];
 
-                        foreach ($template_result->generic_params as $template_name => $_) {
+                        foreach ($template_result->upper_bounds as $template_name => $_) {
                             $function_like_params[] = new \Psalm\Storage\FunctionLikeParameter(
                                 'function',
                                 false,
@@ -497,7 +506,7 @@ class CallAnalyzer
                     }
 
                     $replace_template_result = new \Psalm\Internal\Type\TemplateResult(
-                        $template_result->generic_params,
+                        $template_result->upper_bounds,
                         []
                     );
 
@@ -513,7 +522,7 @@ class CallAnalyzer
                     );
 
                     $replaced_type->replaceTemplateTypesWithArgTypes(
-                        $replace_template_result->generic_params,
+                        $replace_template_result,
                         $codebase
                     );
 
@@ -607,12 +616,12 @@ class CallAnalyzer
                         'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
-                    if ($replace_template_result->generic_params) {
+                    if ($replace_template_result->upper_bounds) {
                         if (!$template_result) {
                             $template_result = new TemplateResult([], []);
                         }
 
-                        $template_result->generic_params += $replace_template_result->generic_params;
+                        $template_result->upper_bounds += $replace_template_result->upper_bounds;
                     }
                 }
 
@@ -1312,7 +1321,7 @@ class CallAnalyzer
         $template_result = null;
 
         $class_generic_params = $class_template_result
-            ? $class_template_result->generic_params
+            ? $class_template_result->upper_bounds
             : [];
 
         if ($function_storage) {
@@ -1361,7 +1370,7 @@ class CallAnalyzer
                     );
 
                     if (!$class_template_result) {
-                        $template_result->generic_params = [];
+                        $template_result->upper_bounds = [];
                     }
                 }
             }
@@ -1760,9 +1769,10 @@ class CallAnalyzer
                         'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
-                    if ($template_result->generic_params) {
+                    if ($template_result->upper_bounds) {
                         $original_by_ref_type->replaceTemplateTypesWithArgTypes(
-                            $template_result->generic_params
+                            $template_result,
+                            $codebase
                         );
 
                         $by_ref_type = $original_by_ref_type;
@@ -1782,9 +1792,10 @@ class CallAnalyzer
                         'fn-' . ($context->calling_method_id ?: $context->calling_function_id)
                     );
 
-                    if ($template_result->generic_params) {
+                    if ($template_result->upper_bounds) {
                         $original_by_ref_out_type->replaceTemplateTypesWithArgTypes(
-                            $template_result->generic_params
+                            $template_result,
+                            $codebase
                         );
 
                         $by_ref_out_type = $original_by_ref_out_type;
@@ -1932,11 +1943,17 @@ class CallAnalyzer
 
             foreach ($bindable_template_params as $template_type) {
                 if (!isset(
-                    $template_result->generic_params
+                    $template_result->upper_bounds
                         [$template_type->param_name]
                         [$template_type->defining_class]
-                )) {
-                    $template_result->generic_params[$template_type->param_name][$template_type->defining_class] = [
+                )
+                    && !isset(
+                        $template_result->lower_bounds
+                        [$template_type->param_name]
+                        [$template_type->defining_class]
+                    )
+                ) {
+                    $template_result->upper_bounds[$template_type->param_name][$template_type->defining_class] = [
                         clone $template_type->as,
                         0
                     ];
@@ -2001,7 +2018,7 @@ class CallAnalyzer
                 if (IssueBuffer::accepts(
                     new MixedArgument(
                         'Argument ' . ($argument_offset + 1) . ' of ' . $cased_method_id
-                            . ' cannot be mixed, expecting array',
+                            . ' cannot be ' . $arg_type->getId() . ', expecting array',
                         new CodeLocation($statements_analyzer->getSource(), $arg->value),
                         $cased_method_id
                     ),
@@ -2513,7 +2530,8 @@ class CallAnalyzer
                 );
 
                 $closure_type->return_type->replaceTemplateTypesWithArgTypes(
-                    $template_result->generic_params
+                    $template_result,
+                    $codebase
                 );
             }
 
@@ -2687,7 +2705,8 @@ class CallAnalyzer
 
             if (IssueBuffer::accepts(
                 new MixedArgument(
-                    'Argument ' . ($argument_offset + 1) . $method_identifier . ' cannot be mixed, expecting ' .
+                    'Argument ' . ($argument_offset + 1) . $method_identifier
+                        . ' cannot be ' . $input_type->getId() . ', expecting ' .
                         $param_type,
                     $code_location,
                     $cased_method_id
@@ -3550,7 +3569,6 @@ class CallAnalyzer
 
         if (!$file_source instanceof StatementsAnalyzer
             || !($class_arg_type = $file_source->node_data->getType($class_arg))
-            || !$class_arg_type->hasObjectType()
         ) {
             return [];
         }
@@ -3667,10 +3685,12 @@ class CallAnalyzer
                 if ($arg_var_id) {
                     $assertion_var_id = $arg_var_id;
                 }
-            } elseif (isset($context->vars_in_scope[$assertion->var_id])) {
-                $assertion_var_id = $assertion->var_id;
+            } elseif ($assertion->var_id === '$this' && !is_null($thisName)) {
+                $assertion_var_id = $thisName;
             } elseif (strpos($assertion->var_id, '$this->') === 0 && !is_null($thisName)) {
                 $assertion_var_id = $thisName . str_replace('$this->', '->', $assertion->var_id);
+            } elseif (isset($context->vars_in_scope[$assertion->var_id])) {
+                $assertion_var_id = $assertion->var_id;
             }
 
             if ($assertion_var_id) {
@@ -3822,6 +3842,88 @@ class CallAnalyzer
             }
 
             $context->vars_in_scope = $op_vars_in_scope;
+        }
+    }
+
+    public static function checkTemplateResult(
+        StatementsAnalyzer $statements_analyzer,
+        TemplateResult $template_result,
+        CodeLocation $code_location,
+        ?string $function_id
+    ) : void {
+        if ($template_result->upper_bounds && $template_result->lower_bounds) {
+            foreach ($template_result->lower_bounds as $template_name => $defining_map) {
+                foreach ($defining_map as $defining_id => list($lower_bound_type)) {
+                    if (isset($template_result->upper_bounds[$template_name][$defining_id])) {
+                        $upper_bound_type = $template_result->upper_bounds[$template_name][$defining_id][0];
+
+                        $union_comparison_result = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
+                        if (!TypeAnalyzer::isContainedBy(
+                            $statements_analyzer->getCodebase(),
+                            $upper_bound_type,
+                            $lower_bound_type,
+                            false,
+                            false,
+                            $union_comparison_result
+                        )) {
+                            if ($union_comparison_result->type_coerced) {
+                                if ($union_comparison_result->type_coerced_from_mixed) {
+                                    if (IssueBuffer::accepts(
+                                        new MixedArgumentTypeCoercion(
+                                            'Type ' . $lower_bound_type->getId() . ' should be a subtype of '
+                                                . $upper_bound_type->getId(),
+                                            $code_location,
+                                            $function_id
+                                        ),
+                                        $statements_analyzer->getSuppressedIssues()
+                                    )) {
+                                        // continue
+                                    }
+                                } else {
+                                    if (IssueBuffer::accepts(
+                                        new ArgumentTypeCoercion(
+                                            'Type ' . $lower_bound_type->getId() . ' should be a subtype of '
+                                                . $upper_bound_type->getId(),
+                                            $code_location,
+                                            $function_id
+                                        ),
+                                        $statements_analyzer->getSuppressedIssues()
+                                    )) {
+                                        // continue
+                                    }
+                                }
+                            } elseif ($union_comparison_result->scalar_type_match_found) {
+                                if (IssueBuffer::accepts(
+                                    new InvalidScalarArgument(
+                                        'Type ' . $lower_bound_type->getId() . ' should be a subtype of '
+                                                . $upper_bound_type->getId(),
+                                        $code_location,
+                                        $function_id
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // continue
+                                }
+                            } else {
+                                if (IssueBuffer::accepts(
+                                    new InvalidArgument(
+                                        'Type ' . $lower_bound_type->getId() . ' should be a subtype of '
+                                                . $upper_bound_type->getId(),
+                                        $code_location,
+                                        $function_id
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // continue
+                                }
+                            }
+                        }
+                    } else {
+                        $template_result->upper_bounds[$template_name][$defining_id][0] = clone $lower_bound_type;
+                    }
+                }
+            }
         }
     }
 }

@@ -341,6 +341,7 @@
             <xs:element name="ReservedWord" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="StringIncrement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TaintedInput" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="Trace" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TraitMethodSignatureMismatch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="TooFewArguments" type="ArgumentIssueHandlerType" minOccurs="0" />
             <xs:element name="TooManyArguments" type="ArgumentIssueHandlerType" minOccurs="0" />
@@ -363,6 +364,7 @@
             <xs:element name="UndefinedPropertyFetch" type="PropertyIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedThisPropertyAssignment" type="PropertyIssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedThisPropertyFetch" type="PropertyIssueHandlerType" minOccurs="0" />
+            <xs:element name="UndefinedTrace" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedTrait" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedGlobalVariable" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UndefinedVariable" type="IssueHandlerType" minOccurs="0" />

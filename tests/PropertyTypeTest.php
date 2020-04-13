@@ -335,7 +335,7 @@ class PropertyTypeTest extends TestCase
                     $a = new DOMElement("foo");
                     $owner = $a->ownerDocument;',
                 'assertions' => [
-                    '$owner' => 'DOMDocument',
+                    '$owner' => 'DOMDocument|null',
                 ],
             ],
             'propertyMapHydration' => [
@@ -1925,6 +1925,34 @@ class PropertyTypeTest extends TestCase
                          */
                         public function foo(&$onCancel) : void {
                             $onCancel = function (): void {};
+                        }
+                    }'
+            ],
+            'dontCarryAssertionsOver' => [
+                '<?php
+                    class A
+                    {
+                        private string $network;
+
+                        public function __construct(string $s)
+                        {
+                            $this->network = $s;
+                            $this->firstCheck();
+                            $this->secondCheck();
+                        }
+
+                        public function firstCheck(): void
+                        {
+                            if ($this->network === "x") {
+                                return;
+                            }
+                        }
+
+                        public function secondCheck(): void
+                        {
+                            if ($this->network === "x") {
+                                return;
+                            }
                         }
                     }'
             ],

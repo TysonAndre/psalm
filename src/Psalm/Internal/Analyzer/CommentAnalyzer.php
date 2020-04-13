@@ -122,9 +122,7 @@ class CommentAnalyzer
                     $type_start = $offset + $comment->getFilePos();
                     $type_end = $type_start + strlen($line_parts[0]);
 
-                    $line_parts[0] = preg_replace('@^[ \t]*\*@m', '', $line_parts[0]);
-                    $line_parts[0] = preg_replace('/,\n\s+\}/', '}', $line_parts[0]);
-                    $line_parts[0] = str_replace("\n", '', $line_parts[0]);
+                    $line_parts[0] = self::sanitizeDocblockType($line_parts[0]);
 
                     if ($line_parts[0] === ''
                         || ($line_parts[0][0] === '$'
@@ -231,6 +229,13 @@ class CommentAnalyzer
         }
 
         return $var_comments;
+    }
+
+    private static function sanitizeDocblockType(string $docblock_type) : string
+    {
+        $docblock_type = preg_replace('@^[ \t]*\*@m', '', $docblock_type);
+        $docblock_type = preg_replace('/,\n\s+\}/', '}', $docblock_type);
+        return str_replace("\n", '', $docblock_type);
     }
 
     /**
@@ -431,9 +436,7 @@ class CommentAnalyzer
                         $start = $offset + $comment->getFilePos();
                         $end = $start + strlen($line_parts[0]);
 
-                        $line_parts[0] = preg_replace('@^[ \t]*\*@m', '', $line_parts[0]);
-                        $line_parts[0] = preg_replace('/,\n\s+\}/', '}', $line_parts[0]);
-                        $line_parts[0] = str_replace("\n", '', $line_parts[0]);
+                        $line_parts[0] = self::sanitizeDocblockType($line_parts[0]);
 
                         if ($line_parts[0] === ''
                             || ($line_parts[0][0] === '$'
@@ -663,6 +666,8 @@ class CommentAnalyzer
                     throw new IncorrectDocblockException('Misplaced variable');
                 }
 
+                $line_parts[0] = self::sanitizeDocblockType($line_parts[0]);
+
                 $info->assertions[] = [
                     'type' => $line_parts[0],
                     'param_name' => substr($line_parts[1], 1),
@@ -750,9 +755,7 @@ class CommentAnalyzer
                 $start = $offset + $comment->getFilePos();
                 $end = $start + strlen($line_parts[0]);
 
-                $line_parts[0] = preg_replace('@^[ \t]*\*@m', '', $line_parts[0]);
-                $line_parts[0] = preg_replace('/,\n\s+\}/', '}', $line_parts[0]);
-                $line_parts[0] = str_replace("\n", '', $line_parts[0]);
+                $line_parts[0] = self::sanitizeDocblockType($line_parts[0]);
                 $line_parts[0] = self::getRenamedType($line_parts[0]);
 
                 $info->return_type = array_shift($line_parts);
@@ -782,6 +785,7 @@ class CommentAnalyzer
         Aliases $aliases
     ) {
         $parsed_docblock = DocComment::parsePreservingLength($comment);
+        $codebase = ProjectAnalyzer::getInstance()->getCodebase();
 
         $info = new ClassLikeDocblockComment();
 
@@ -897,6 +901,13 @@ class CommentAnalyzer
             foreach ($all_inheritance as $template_line) {
                 $info->template_implements[] = trim(preg_replace('@^[ \t]*\*@m', '', $template_line));
             }
+        }
+
+        if (isset($parsed_docblock['specials']['psalm-yield'])
+        ) {
+            $yield = reset($parsed_docblock['specials']['psalm-yield']);
+
+            $info->yield = trim(preg_replace('@^[ \t]*\*@m', '', $yield));
         }
 
         if (isset($parsed_docblock['specials']['deprecated'])) {
@@ -1037,7 +1048,10 @@ class CommentAnalyzer
                 }
 
                 if ($method_tree instanceof ParseTree\MethodWithReturnTypeTree) {
-                    $docblock_lines[] = '@return ' . Type::getTypeFromTree($method_tree->children[1]);
+                    $docblock_lines[] = '@return ' . Type::getTypeFromTree(
+                        $method_tree->children[1],
+                        $codebase
+                    );
                     $method_tree = $method_tree->children[0];
                 }
 
@@ -1059,7 +1073,7 @@ class CommentAnalyzer
 
 
                     if ($method_tree_child->children) {
-                        $param_type = Type::getTypeFromTree($method_tree_child->children[0]);
+                        $param_type = Type::getTypeFromTree($method_tree_child->children[0], $codebase);
                         $docblock_lines[] = '@param \\' . $param_type . ' '
                             . ($method_tree_child->variadic ? '...' : '')
                             . $method_tree_child->name;
@@ -1082,7 +1096,8 @@ class CommentAnalyzer
                     throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
                 }
 
-                if (!$statements[0] instanceof \PhpParser\Node\Stmt\Class_
+                if (!$statements
+                    || !$statements[0] instanceof \PhpParser\Node\Stmt\Class_
                     || !isset($statements[0]->stmts[0])
                     || !$statements[0]->stmts[0] instanceof \PhpParser\Node\Stmt\ClassMethod
                 ) {

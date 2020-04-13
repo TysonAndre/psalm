@@ -2,6 +2,9 @@
 namespace Phan\Language\Internal;
 
 /**
+ * CURRENT PHP TARGET VERSION: 7.4
+ * The version above have to match Psalm\Internal\Codebase\CallMap::PHP_(MAJOR|MINOR)_VERSION
+ *
  * Format
  *
  * '<function_name>' => ['<return_type>, '<arg_name>'=>'<arg_type>']
@@ -11443,6 +11446,7 @@ return [
 'ReflectionProperty::getDocComment' => ['string|false'],
 'ReflectionProperty::getModifiers' => ['int'],
 'ReflectionProperty::getName' => ['string'],
+'ReflectionProperty::getType' => ['?ReflectionType'],
 'ReflectionProperty::getValue' => ['mixed', 'object='=>'object'],
 'ReflectionProperty::isDefault' => ['bool'],
 'ReflectionProperty::isPrivate' => ['bool'],
@@ -16542,7 +16546,7 @@ return [
 'ZipArchive::getStatusString' => ['string|false'],
 'ZipArchive::getStream' => ['resource|false', 'entryname'=>'string'],
 'ZipArchive::locateName' => ['int|false', 'filename'=>'string', 'flags='=>'int'],
-'ZipArchive::open' => ['resource|int|false', 'source'=>'string', 'flags='=>'int'],
+'ZipArchive::open' => ['int|bool', 'source'=>'string', 'flags='=>'int'],
 'ZipArchive::renameIndex' => ['bool', 'index'=>'int', 'new_name'=>'string'],
 'ZipArchive::renameName' => ['bool', 'name'=>'string', 'new_name'=>'string'],
 'ZipArchive::setArchiveComment' => ['bool', 'comment'=>'string'],

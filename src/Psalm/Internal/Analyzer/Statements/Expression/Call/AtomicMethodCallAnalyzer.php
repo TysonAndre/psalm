@@ -205,7 +205,8 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                     } else {
                         $all_intersection_return_type = Type::intersectUnionTypes(
                             $all_intersection_return_type,
-                            $intersection_result->return_type
+                            $intersection_result->return_type,
+                            $codebase
                         ) ?: Type::getMixed();
                     }
                 }
@@ -489,20 +490,33 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
 
         $can_memoize = false;
 
-        $return_type_candidate = MethodCallReturnTypeFetcher::fetch(
-            $statements_analyzer,
-            $codebase,
-            $stmt,
-            $context,
-            $method_id,
-            $declaring_method_id,
-            $cased_method_id,
-            $lhs_type_part,
-            $static_type,
-            $args,
-            $result,
-            $template_result
-        );
+        $class_storage_for_method = $codebase->methods->getClassLikeStorageForMethod($method_id);
+        $plain_getter_property = null;
+
+        if ($lhs_var_id !== '$this'
+            && (isset($class_storage_for_method->methods[$method_name_lc]))
+            && !$class_storage_for_method->methods[$method_name_lc]->overridden_somewhere
+            && !$class_storage_for_method->methods[$method_name_lc]->overridden_downstream
+            && ($plain_getter_property = $class_storage_for_method->methods[$method_name_lc]->plain_getter)
+            && isset($context->vars_in_scope[$getter_var_id = $lhs_var_id . '->' . $plain_getter_property])
+        ) {
+            $return_type_candidate = clone $context->vars_in_scope[$getter_var_id];
+        } else {
+            $return_type_candidate = MethodCallReturnTypeFetcher::fetch(
+                $statements_analyzer,
+                $codebase,
+                $stmt,
+                $context,
+                $method_id,
+                $declaring_method_id,
+                $cased_method_id,
+                $lhs_type_part,
+                $static_type,
+                $args,
+                $result,
+                $template_result
+            );
+        }
 
         $in_call_map = CallMap::inCallMap((string) ($declaring_method_id ?: $method_id));
 
@@ -521,7 +535,8 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                         $result,
                         $return_type_candidate,
                         $all_intersection_return_type,
-                        $method_name_lc
+                        $method_name_lc,
+                        $codebase
                     );
 
                     return;
@@ -601,7 +616,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                 );
             }
 
-            $class_template_params = $template_result->generic_params;
+            $class_template_params = $template_result->upper_bounds;
 
             if ($method_storage->assertions) {
                 self::applyAssertionsToContext(
@@ -725,7 +740,8 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
             $result,
             $return_type_candidate,
             $all_intersection_return_type,
-            $method_name_lc
+            $method_name_lc,
+            $codebase
         );
     }
 
@@ -733,13 +749,15 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
         AtomicMethodCallAnalysisResult $result,
         ?Type\Union $return_type_candidate,
         ?Type\Union $all_intersection_return_type,
-        string $method_name
+        string $method_name,
+        Codebase $codebase
     ) : void {
         if ($return_type_candidate) {
             if ($all_intersection_return_type) {
                 $return_type_candidate = Type::intersectUnionTypes(
                     $all_intersection_return_type,
-                    $return_type_candidate
+                    $return_type_candidate,
+                    $codebase
                 ) ?: Type::getMixed();
             }
 

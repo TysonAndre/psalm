@@ -327,3 +327,71 @@ function fclose(&$handle) : bool
 function sodium_memzero(string &$reference): void
 {
 }
+
+/**
+ * @param mixed $var
+ * @param bool $return
+ * @return ($return is true ? string : void)
+ */
+function var_export($var, bool $return = false) {}
+
+/**
+ * @param mixed $var
+ * @param bool $return
+ * @return ($return is true ? string : true)
+ */
+function print_r($var, bool $return = false) {}
+
+/**
+ * @param mixed $var
+ * @return ($return is true ? string : bool)
+ */
+function highlight_file($var, bool $return = false) {}
+
+/**
+ * @param mixed $var
+ * @return ($return is true ? string : bool)
+ */
+function highlight_string($var, bool $return = false) {}
+
+/**
+ * @return ($get_as_float is true ? float : string)
+ */
+function microtime(bool $get_as_float = false) {}
+
+/**
+ * @return ($return_float is true ? float : array<string, int>)
+ */
+function gettimeofday(bool $return_float = false) {}
+
+/**
+ * @param numeric $number
+ * @return ($number is int ? int : ($number is float ? float : int|float))
+ */
+function abs($number) {}
+
+/**
+ * @template T as string|int|float
+ * @template TStep as int|float
+ * @param T $start
+ * @param T $end
+ * @param TStep $step
+ * @return (
+ *     T is int
+ *     ? (TStep is int ? list<int> : list<int|float>)
+ *     : (
+ *         T is float
+ *         ? list<float>
+ *         : (
+ *              T is string
+ *              ? list<string>
+ *              : (
+ *                   T is int|float
+ *                   ? list<int|float>
+ *                   : list<int|float|string>
+ *              )
+ *         )
+ *     )
+ * )
+ */
+function range($start, $end, $step = 1) {}

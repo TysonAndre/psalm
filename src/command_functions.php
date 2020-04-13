@@ -116,6 +116,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
  *
  * @psalm-suppress MixedArrayAccess
  * @psalm-suppress MixedAssignment
+ * @psalm-suppress PossiblyUndefinedStringArrayOffset
  */
 function getVendorDir($current_dir)
 {
@@ -133,8 +134,12 @@ function getVendorDir($current_dir)
         exit(1);
     }
 
-    if (isset($composer_json['config']['vendor-dir'])) {
-        return (string) $composer_json['config']['vendor-dir'];
+    if (isset($composer_json['config'])
+        && is_array($composer_json['config'])
+        && isset($composer_json['config']['vendor-dir'])
+        && is_string($composer_json['config']['vendor-dir'])
+    ) {
+        return $composer_json['config']['vendor-dir'];
     }
 
     return 'vendor';
@@ -335,7 +340,7 @@ Output:
 
     --output-format=console
         Changes the output format.
-        Available formats: compact, console, emacs, json, pylint, xml, checkstyle, junit, sonarqube, github
+        Available formats: compact, console, text, emacs, json, pylint, xml, checkstyle, junit, sonarqube, github
 
     --no-progress
         Disable the progress indicator
@@ -367,6 +372,10 @@ Caching:
     --no-reflection-cache
         Runs Psalm without using cached representations of unchanged classes and files.
         Useful if you want the afterClassLikeVisit plugin hook to run every time you visit a file.
+
+    --no-file-cache
+        Runs Psalm without using caching every single file for later diffing.
+        This reduces the space Psalm uses on disk and file I/O.
 
 Miscellaneous:
     -h, --help

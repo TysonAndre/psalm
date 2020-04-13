@@ -1114,6 +1114,102 @@ class FunctionTemplateTest extends TestCase
                     '$a' => 'iterable<mixed, string>'
                 ]
             ],
+            'possiblyNullMatchesTemplateType' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     * @param T $o
+                     * @return T
+                     */
+                    function takesObject(object $o) : object {
+                        return $o;
+                    }
+
+                    class A {}
+
+                    /** @psalm-suppress PossiblyNullArgument */
+                    $a = takesObject(rand(0, 1) ? new A() : null);',
+                [
+                    '$a' => 'A',
+                ]
+            ],
+            'possiblyNullMatchesAnotherTemplateType' => [
+                '<?php
+                    /**
+                     * @psalm-template RealObjectType of object
+                     *
+                     * @psalm-param class-string<RealObjectType> $className
+                     * @psalm-param Closure(
+                     *   RealObjectType|null
+                     * ) : void $initializer
+                     */
+                    function createProxy(
+                        string $className,
+                        Closure $initializer
+                    ) : void {}
+
+                    class Foo {}
+
+                    createProxy(Foo::class, function (?Foo $f) : void {});'
+            ],
+            'assertIntersectionsOnTemplatedTypes' => [
+                '<?php
+                    interface Input {}
+                    interface HasFoo {}
+                    interface HasBar {}
+
+                    /**
+                     * @psalm-template InputType of Input
+                     * @psalm-param InputType $input
+                     * @psalm-return InputType&HasFoo
+                     */
+                    function decorateWithFoo(Input $input): Input
+                    {
+                        assert($input instanceof HasFoo);
+                        return $input;
+                    }
+
+                    /**
+                     * @psalm-template InputType of Input
+                     * @psalm-param InputType $input
+                     * @psalm-return InputType&HasBar
+                     */
+                    function decorateWithBar(Input $input): Input
+                    {
+                        assert($input instanceof HasBar);
+                        return $input;
+                    }
+
+                    /** @param HasFoo&HasBar $input */
+                    function useFooAndBar(object $input): void {}
+
+                    function consume(Input $input): void {
+                        useFooAndBar(decorateWithFoo(decorateWithBar($input)));
+                    }'
+            ],
+            'bottomTypeInClosureShouldNotBind' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @param class-string<T> $className
+                     * @param Closure(T):void $outmaker
+                     * @return T
+                     */
+                    function createProxy(
+                        string $className,
+                        Closure $outmaker
+                    ) : object {
+                        $t = new $className();
+                        $outmaker($t);
+                        return $t;
+                    }
+
+                    class A {
+                        public function bar() : void {}
+                    }
+
+                    createProxy(A::class, function(object $o):void {})->bar();'
+            ],
         ];
     }
 
@@ -1596,6 +1692,32 @@ class FunctionTemplateTest extends TestCase
                         return $t;
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'bottomTypeInClosureShouldClash' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @param class-string<T> $className
+                     * @param Closure(T):void $outmaker
+                     * @return T
+                     */
+                    function createProxy(
+                        string $className,
+                        Closure $outmaker
+                    ) : object {
+                        $t = new $className();
+                        $outmaker($t);
+                        return $t;
+                    }
+
+                    class A {
+                        public function bar() : void {}
+                    }
+
+                    class B {}
+
+                    createProxy(A::class, function(B $o):void {})->bar();',
+                'error_message' => 'InvalidArgument'
             ],
         ];
     }

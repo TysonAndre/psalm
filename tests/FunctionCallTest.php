@@ -44,7 +44,7 @@ class FunctionCallTest extends TestCase
                 'assertions' => [
                     '$a' => 'int',
                     '$b' => 'float',
-                    '$c' => 'null|numeric',
+                    '$c' => 'float|int|null',
                 ],
                 'error_levels' => ['MixedAssignment', 'MixedArgument'],
             ],
@@ -122,7 +122,7 @@ class FunctionCallTest extends TestCase
             'noRedundantConditionAfterMixedOrEmptyArrayCountCheck' => [
                 '<?php
                     function foo(string $s) : void {
-                        $a = json_decode($s) ?: [];
+                        $a = $_GET["s"] ?: [];
                         if (count($a)) {}
                         if (!count($a)) {}
                     }',
@@ -843,24 +843,6 @@ class FunctionCallTest extends TestCase
 
                         foo();
                     }',
-            ],
-            'round' => [
-                '<?php
-                    $a = round(4.6);
-                    $b = round(3.6, 0);
-                    $c = round(3.0, 1);
-                    $d = round(3.1, 2);
-
-                    /** @var int */
-                    $sig = 1;
-                    $e = round(3.1, $sig);',
-                'assertions' => [
-                    '$a' => 'int',
-                    '$b' => 'int',
-                    '$c' => 'float',
-                    '$d' => 'float',
-                    '$e' => 'float|int',
-                ],
             ],
             'hashInit70' => [
                 '<?php

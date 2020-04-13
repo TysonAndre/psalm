@@ -33,7 +33,7 @@ use function array_values;
  * @psalm-type  WorkerData = array{
  *      issues: array<string, list<IssueData>>,
  *      fixable_issue_counts: array<string, int>,
- *      file_references_to_classes: array<string, array<string,bool>>,
+ *      nonmethod_references_to_classes: array<string, array<string,bool>>,
  *      method_references_to_classes: array<string, array<string,bool>>,
  *      file_references_to_class_members: array<string, array<string,bool>>,
  *      file_references_to_missing_class_members: array<string, array<string,bool>>,
@@ -345,6 +345,8 @@ class Analyzer
     {
         $this->progress->start(count($this->files_to_analyze));
 
+        \ksort($this->files_to_analyze);
+
         $codebase = $project_analyzer->getCodebase();
 
         $filetype_analyzers = $this->config->getFiletypeAnalyzers();
@@ -435,7 +437,7 @@ class Analyzer
 
                     $file_reference_provider = $codebase->file_reference_provider;
 
-                    $file_reference_provider->setFileReferencesToClasses([]);
+                    $file_reference_provider->setNonMethodReferencesToClasses([]);
                     $file_reference_provider->setCallingMethodReferencesToClassMembers([]);
                     $file_reference_provider->setFileReferencesToClassMembers([]);
                     $file_reference_provider->setCallingMethodReferencesToMissingClassMembers([]);
@@ -457,7 +459,7 @@ class Analyzer
                     return [
                         'issues' => IssueBuffer::getIssuesData(),
                         'fixable_issue_counts' => IssueBuffer::getFixableIssues(),
-                        'file_references_to_classes' => $rerun ? [] : $file_reference_provider->getAllFileReferencesToClasses(),
+                        'nonmethod_references_to_classes' => $rerun ? [] : $file_reference_provider->getAllNonMethodReferencesToClasses(),
                         'method_references_to_classes' => $rerun ? [] : $file_reference_provider->getAllMethodReferencesToClasses(),
                         'file_references_to_class_members' => $rerun ? [] : $file_reference_provider->getAllFileReferencesToClassMembers(),
                         'method_references_to_class_members' => $rerun ? [] : $file_reference_provider->getAllMethodReferencesToClassMembers(),
@@ -509,8 +511,8 @@ class Analyzer
                     continue;
                 }
 
-                $codebase->file_reference_provider->addFileReferencesToClasses(
-                    $pool_data['file_references_to_classes']
+                $codebase->file_reference_provider->addNonMethodReferencesToClasses(
+                    $pool_data['nonmethod_references_to_classes']
                 );
                 $codebase->file_reference_provider->addMethodReferencesToClasses(
                     $pool_data['method_references_to_classes']
@@ -636,7 +638,7 @@ class Analyzer
 
         $all_referencing_methods = $method_references_to_class_members + $method_references_to_missing_class_members;
 
-        $file_references_to_classes = $file_reference_provider->getAllFileReferencesToClasses();
+        $nonmethod_references_to_classes = $file_reference_provider->getAllNonMethodReferencesToClasses();
 
         $method_references_to_classes = $file_reference_provider->getAllMethodReferencesToClasses();
 
@@ -737,25 +739,25 @@ class Analyzer
         }
 
         foreach ($newly_invalidated_methods as $method_id => $_) {
-            foreach ($method_references_to_class_members as &$referencing_method_ids) {
-                unset($referencing_method_ids[$method_id]);
+            foreach ($method_references_to_class_members as $i => $_) {
+                unset($method_references_to_class_members[$i][$method_id]);
             }
 
-            foreach ($method_references_to_classes as &$referencing_method_ids) {
-                unset($referencing_method_ids[$method_id]);
+            foreach ($method_references_to_classes as $i => $_) {
+                unset($method_references_to_classes[$i][$method_id]);
             }
 
-            foreach ($method_references_to_missing_class_members as &$referencing_method_ids) {
-                unset($referencing_method_ids[$method_id]);
+            foreach ($method_references_to_missing_class_members as $i => $_) {
+                unset($method_references_to_missing_class_members[$i][$method_id]);
             }
 
-            foreach ($references_to_mixed_member_names as &$references) {
-                unset($references[$method_id]);
+            foreach ($references_to_mixed_member_names as $i => $_) {
+                unset($references_to_mixed_member_names[$i][$method_id]);
             }
 
-            foreach ($method_param_uses as &$references) {
-                foreach ($references as &$method_refs) {
-                    unset($method_refs[$method_id]);
+            foreach ($method_param_uses as $i => $_) {
+                foreach ($method_param_uses[$i] as $j => $_) {
+                    unset($method_param_uses[$i][$j][$method_id]);
                 }
             }
         }
@@ -785,20 +787,20 @@ class Analyzer
 
             $this->setMixedCountsForFile($file_path, [0, 0]);
 
-            foreach ($file_references_to_class_members as &$referencing_file_paths) {
-                unset($referencing_file_paths[$file_path]);
+            foreach ($file_references_to_class_members as $i => $_) {
+                unset($file_references_to_class_members[$i][$file_path]);
             }
 
-            foreach ($file_references_to_classes as &$referencing_file_paths) {
-                unset($referencing_file_paths[$file_path]);
+            foreach ($nonmethod_references_to_classes as $i => $_) {
+                unset($nonmethod_references_to_classes[$i][$file_path]);
             }
 
-            foreach ($references_to_mixed_member_names as &$references) {
-                unset($references[$file_path]);
+            foreach ($references_to_mixed_member_names as $i => $_) {
+                unset($references_to_mixed_member_names[$i][$file_path]);
             }
 
-            foreach ($file_references_to_missing_class_members as &$referencing_file_paths) {
-                unset($referencing_file_paths[$file_path]);
+            foreach ($file_references_to_missing_class_members as $i => $_) {
+                unset($file_references_to_missing_class_members[$i][$file_path]);
             }
         }
 
@@ -832,8 +834,8 @@ class Analyzer
             $references_to_mixed_member_names
         );
 
-        $file_references_to_classes = array_filter(
-            $file_references_to_classes
+        $nonmethod_references_to_classes = array_filter(
+            $nonmethod_references_to_classes
         );
 
         $method_references_to_classes = array_filter(
@@ -868,8 +870,8 @@ class Analyzer
             $method_references_to_classes
         );
 
-        $file_reference_provider->setFileReferencesToClasses(
-            $file_references_to_classes
+        $file_reference_provider->setNonMethodReferencesToClasses(
+            $nonmethod_references_to_classes
         );
 
         $file_reference_provider->setMethodParamUses(

@@ -284,7 +284,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             if (!in_array(strtolower($fq_classlike_name), ['self', 'static', 'parent'], true)) {
                 $this->codebase->scanner->queueClassLikeForScanning(
                     $fq_classlike_name,
-                    $this->file_path,
                     false,
                     !($node instanceof PhpParser\Node\Expr\ClassConstFetch)
                         || !($node->name instanceof PhpParser\Node\Identifier)
@@ -298,7 +297,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $catch_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($catch_type, $this->aliases);
 
                     if (!in_array(strtolower($catch_fqcln), ['self', 'static', 'parent'], true)) {
-                        $this->codebase->scanner->queueClassLikeForScanning($catch_fqcln, $this->file_path);
+                        $this->codebase->scanner->queueClassLikeForScanning($catch_fqcln);
                         $this->file_storage->referenced_classlikes[strtolower($catch_fqcln)] = $catch_fqcln;
                     }
                 }
@@ -315,7 +314,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $this->registerFunctionLike($node);
 
             if ($node instanceof PhpParser\Node\Expr\Closure) {
-                $this->codebase->scanner->queueClassLikeForScanning('Closure', $this->file_path);
+                $this->codebase->scanner->queueClassLikeForScanning('Closure');
             }
 
             if (!$this->scan_deep) {
@@ -390,7 +389,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             foreach ($node->traits as $trait) {
                 $trait_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($trait, $this->aliases);
-                $this->codebase->scanner->queueClassLikeForScanning($trait_fqcln, $this->file_path, $this->scan_deep);
+                $this->codebase->scanner->queueClassLikeForScanning($trait_fqcln, $this->scan_deep);
                 $storage->used_traits[strtolower($trait_fqcln)] = $trait_fqcln;
                 $this->file_storage->required_classes[strtolower($trait_fqcln)] = $trait_fqcln;
             }
@@ -567,7 +566,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $function_like_storage->has_yield = true;
             }
         } elseif ($node instanceof PhpParser\Node\Expr\Cast\Object_) {
-            $this->codebase->scanner->queueClassLikeForScanning('stdClass', null, false, false);
+            $this->codebase->scanner->queueClassLikeForScanning('stdClass', false, false);
             $this->file_storage->referenced_classlikes['stdclass'] = 'stdClass';
         }
     }
@@ -744,8 +743,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 if ($reflection_class->getFileName() !== $this->file_path) {
                     $this->codebase->scanner->queueClassLikeForScanning(
-                        $string_value,
-                        $this->file_path
+                        $string_value
                     );
 
                     return true;
@@ -771,8 +769,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 if ($reflection_class->getFileName() !== $this->file_path) {
                     $this->codebase->scanner->queueClassLikeForScanning(
-                        $string_value,
-                        $this->file_path
+                        $string_value
                     );
 
                     return true;
@@ -873,8 +870,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 if (!in_array(strtolower($callable_fqcln), ['self', 'parent', 'static'], true)) {
                     $this->codebase->scanner->queueClassLikeForScanning(
-                        $callable_fqcln,
-                        $this->file_path
+                        $callable_fqcln
                     );
                 }
             }
@@ -896,8 +892,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             if ($second_arg instanceof PhpParser\Node\Scalar\String_) {
                 $this->codebase->scanner->queueClassLikeForScanning(
-                    $second_arg->value,
-                    $this->file_path
+                    $second_arg->value
                 );
             }
         }
@@ -1069,7 +1064,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $parent_fqcln = $this->codebase->classlikes->getUnAliasedName($parent_fqcln);
                 $this->codebase->scanner->queueClassLikeForScanning(
                     $parent_fqcln,
-                    $this->file_path,
                     $this->scan_deep
                 );
                 $parent_fqcln_lc = strtolower($parent_fqcln);
@@ -1080,7 +1074,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             foreach ($node->implements as $interface) {
                 $interface_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($interface, $this->aliases);
-                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln, $this->file_path);
+                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln);
                 $storage->class_implements[strtolower($interface_fqcln)] = $interface_fqcln;
                 $storage->direct_class_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
                 $this->file_storage->required_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
@@ -1092,7 +1086,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             foreach ($node->extends as $interface) {
                 $interface_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($interface, $this->aliases);
                 $interface_fqcln = $this->codebase->classlikes->getUnAliasedName($interface_fqcln);
-                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln, $this->file_path);
+                $this->codebase->scanner->queueClassLikeForScanning($interface_fqcln);
                 $storage->parent_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
                 $storage->direct_interface_parents[strtolower($interface_fqcln)] = $interface_fqcln;
                 $this->file_storage->required_interfaces[strtolower($interface_fqcln)] = $interface_fqcln;
@@ -1179,6 +1173,33 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 foreach ($docblock_info->template_implements as $implemented_class_name) {
                     $this->implementTemplatedType($storage, $node, $implemented_class_name);
+                }
+
+                if ($docblock_info->yield) {
+                    $yield_type_tokens = Type::fixUpLocalType(
+                        $docblock_info->yield,
+                        $this->aliases,
+                        $storage->template_types,
+                        $this->type_aliases
+                    );
+
+                    try {
+                        $yield_type = Type::parseTokens(
+                            $yield_type_tokens,
+                            null,
+                            $storage->template_types ?: []
+                        );
+                        $yield_type->setFromDocblock();
+                        $yield_type->queueClassLikesForScanning(
+                            $this->codebase,
+                            $this->file_storage,
+                            $storage->template_types ?: []
+                        );
+
+                        $storage->yield = $yield_type;
+                    } catch (TypeParseTreeException $e) {
+                        // do nothing
+                    }
                 }
 
                 $storage->sealed_properties = $docblock_info->sealed_properties;
@@ -1842,6 +1863,25 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->mutation_free = true;
                 $storage->external_mutation_free = true;
                 $storage->mutation_free_inferred = true;
+
+                if ($stmt->stmts[0]->expr->name instanceof PhpParser\Node\Identifier) {
+                    $property_name = $stmt->stmts[0]->expr->name->name;
+
+                    if (isset($class_storage->properties[$property_name])
+                        && $class_storage->properties[$property_name]->type
+                        && ($class_storage->properties[$property_name]->type->isNullable()
+                            || $class_storage->properties[$property_name]->type->isFalsable()
+                            || $class_storage->properties[$property_name]->type->hasArray()
+                        )
+                    ) {
+                        $storage->plain_getter = $property_name;
+
+                        $storage->if_true_assertions[] = new \Psalm\Storage\Assertion(
+                            '$this->' . $property_name,
+                            [['!falsy']]
+                        );
+                    }
+                }
             } elseif (strpos($stmt->name->name, 'assert') === 0) {
                 $var_assertions = [];
 
@@ -2091,7 +2131,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $exception_fqcln = $throw_class;
                 }
 
-                $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln, $this->file_path);
+                $this->codebase->scanner->queueClassLikeForScanning($exception_fqcln);
                 $this->file_storage->referenced_classlikes[strtolower($exception_fqcln)] = $exception_fqcln;
                 $storage->throws[$exception_fqcln] = true;
                 $storage->throw_locations[$exception_fqcln] = $throw_location;
@@ -2442,8 +2482,61 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $class_storage && !$class_storage->is_trait ? $class_storage->name : null
                 );
 
+                $param_type_mapping = [];
+
+                // This checks for param references in the return type tokens
+                // If found, the param is replaced with a generated template param
+                foreach ($fixed_type_tokens as $i => $type_token) {
+                    if ($type_token[0][0] === '$') {
+                        $token_body = $type_token[0];
+
+                        foreach ($storage->params as $j => $param_storage) {
+                            if ('$' . $param_storage->name === $token_body) {
+                                if (!isset($param_type_mapping[$token_body])) {
+                                    $template_name = 'TGeneratedFromParam' . $j;
+
+                                    $template_function_id = 'fn-' . strtolower($cased_function_id);
+
+                                    $template_as_type = $param_storage->type
+                                        ? clone $param_storage->type
+                                        : Type::getMixed();
+
+                                    $storage->template_types[$template_name] = [
+                                        $template_function_id => [
+                                            $template_as_type
+                                        ],
+                                    ];
+
+                                    $this->function_template_types[$template_name]
+                                        = $storage->template_types[$template_name];
+
+                                    $param_type_mapping[$token_body] = $template_name;
+
+                                    $param_storage->type = new Type\Union([
+                                        new Type\Atomic\TTemplateParam(
+                                            $template_name,
+                                            $template_as_type,
+                                            $template_function_id
+                                        )
+                                    ]);
+                                }
+
+                                // spaces are allowed before $foo in get(string $foo) magic method
+                                // definitions, but we want to remove them in this instance
+                                if (isset($fixed_type_tokens[$i - 1])
+                                    && $fixed_type_tokens[$i - 1][0][0] === ' '
+                                ) {
+                                    unset($fixed_type_tokens[$i - 1]);
+                                }
+
+                                $fixed_type_tokens[$i][0] = $param_type_mapping[$token_body];
+                            }
+                        }
+                    }
+                }
+
                 $storage->return_type = Type::parseTokens(
-                    $fixed_type_tokens,
+                    \array_values($fixed_type_tokens),
                     null,
                     $this->function_template_types + $class_template_types
                 );
@@ -2687,7 +2780,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             } elseif ($param_typehint instanceof PhpParser\Node\Name\FullyQualified) {
                 $param_type_string = (string)$param_typehint;
 
-                $this->codebase->scanner->queueClassLikeForScanning($param_type_string, $this->file_path);
+                $this->codebase->scanner->queueClassLikeForScanning($param_type_string);
                 $this->file_storage->referenced_classlikes[strtolower($param_type_string)] = $param_type_string;
             } elseif ($param_typehint instanceof PhpParser\Node\UnionType) {
                 // not yet supported
@@ -2703,7 +2796,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
 
                 if (!in_array(strtolower($param_type_string), ['self', 'static', 'parent'], true)) {
-                    $this->codebase->scanner->queueClassLikeForScanning($param_type_string, $this->file_path);
+                    $this->codebase->scanner->queueClassLikeForScanning($param_type_string);
                     $this->file_storage->referenced_classlikes[strtolower($param_type_string)] = $param_type_string;
                 }
             }

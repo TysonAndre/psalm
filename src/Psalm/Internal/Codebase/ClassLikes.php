@@ -308,6 +308,33 @@ class ClassLikes
             $fq_class_name_lc = strtolower($this->classlike_aliases[$fq_class_name_lc]);
         }
 
+        if ($code_location) {
+            if ($calling_method_id) {
+                $this->file_reference_provider->addMethodReferenceToClass(
+                    $calling_method_id,
+                    $fq_class_name_lc
+                );
+            } elseif (!$calling_fq_class_name || strtolower($calling_fq_class_name) !== $fq_class_name_lc) {
+                $this->file_reference_provider->addNonMethodReferenceToClass(
+                    $code_location->file_path,
+                    $fq_class_name_lc
+                );
+
+                if ($calling_fq_class_name) {
+                    $class_storage = $this->classlike_storage_provider->get($calling_fq_class_name);
+
+                    if ($class_storage->location
+                        && $class_storage->location->file_path !== $code_location->file_path
+                    ) {
+                        $this->file_reference_provider->addNonMethodReferenceToClass(
+                            $class_storage->location->file_path,
+                            $fq_class_name_lc
+                        );
+                    }
+                }
+            }
+        }
+
         if (!isset($this->existing_classes_lc[$fq_class_name_lc])
             || !$this->existing_classes_lc[$fq_class_name_lc]
             || !$this->classlike_storage_provider->has($fq_class_name_lc)
@@ -328,33 +355,6 @@ class ClassLikes
             }
 
             return false;
-        }
-
-        if ($code_location) {
-            if ($calling_method_id) {
-                $this->file_reference_provider->addMethodReferenceToClass(
-                    $calling_method_id,
-                    $fq_class_name_lc
-                );
-            } else {
-                $this->file_reference_provider->addFileReferenceToClass(
-                    $code_location->file_path,
-                    $fq_class_name_lc
-                );
-
-                if ($calling_fq_class_name) {
-                    $class_storage = $this->classlike_storage_provider->get($calling_fq_class_name);
-
-                    if ($class_storage->location
-                        && $class_storage->location->file_path !== $code_location->file_path
-                    ) {
-                        $this->file_reference_provider->addFileReferenceToClass(
-                            $class_storage->location->file_path,
-                            $fq_class_name_lc
-                        );
-                    }
-                }
-            }
         }
 
         if ($this->collect_locations && $code_location) {
@@ -413,7 +413,7 @@ class ClassLikes
                     $fq_class_name_lc
                 );
             } else {
-                $this->file_reference_provider->addFileReferenceToClass(
+                $this->file_reference_provider->addNonMethodReferenceToClass(
                     $code_location->file_path,
                     $fq_class_name_lc
                 );
@@ -424,7 +424,7 @@ class ClassLikes
                     if ($class_storage->location
                         && $class_storage->location->file_path !== $code_location->file_path
                     ) {
-                        $this->file_reference_provider->addFileReferenceToClass(
+                        $this->file_reference_provider->addNonMethodReferenceToClass(
                             $class_storage->location->file_path,
                             $fq_class_name_lc
                         );
@@ -463,7 +463,7 @@ class ClassLikes
         }
 
         if ($this->collect_references && $code_location) {
-            $this->file_reference_provider->addFileReferenceToClass(
+            $this->file_reference_provider->addNonMethodReferenceToClass(
                 $code_location->file_path,
                 $fq_class_name_lc
             );

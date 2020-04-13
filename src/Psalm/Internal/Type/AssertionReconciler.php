@@ -12,6 +12,7 @@ use Psalm\CodeLocation;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Type\TemplateResult;
 use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\ParadoxicalCondition;
 use Psalm\Issue\PsalmInternalError;
@@ -54,6 +55,8 @@ use function strpos;
 use function substr;
 use Psalm\Issue\InvalidDocblock;
 use Doctrine\Instantiator\Exception\UnexpectedValueException;
+use function array_intersect_key;
+use function array_merge;
 
 class AssertionReconciler extends \Psalm\Type\Reconciler
 {
@@ -324,7 +327,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 $key,
                 $code_location,
                 $suppressed_issues,
-                $failed_reconciliation
+                $failed_reconciliation,
+                $inside_loop
             );
         }
 
@@ -335,7 +339,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 $key,
                 $code_location,
                 $suppressed_issues,
-                $failed_reconciliation
+                $failed_reconciliation,
+                $inside_loop
             );
         }
 
@@ -662,10 +667,10 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         try {
-            if (strpos($assertion, '<') || strpos($assertion, '[')) {
+            if (strpos($assertion, '<') || strpos($assertion, '[') || strpos($assertion, '{')) {
                 $new_type_union = Type::parseString($assertion);
 
-                $new_type_part = \array_values($new_type_union->getAtomicTypes());
+                $new_type_part = \array_values($new_type_union->getAtomicTypes())[0];
             } else {
                 $new_type_part = Atomic::create($assertion, null, $template_type_map);
             }
@@ -716,6 +721,31 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             }
         }
 
+        if ($new_type_part instanceof Type\Atomic\ObjectLike) {
+            $acceptable_atomic_types = [];
+
+            foreach ($existing_var_type->getAtomicTypes() as $existing_var_type_part) {
+                if ($existing_var_type_part instanceof Type\Atomic\ObjectLike) {
+                    if (!array_intersect_key(
+                        $existing_var_type_part->properties,
+                        $new_type_part->properties
+                    )) {
+                        $existing_var_type_part = clone $existing_var_type_part;
+                        $existing_var_type_part->properties = array_merge(
+                            $existing_var_type_part->properties,
+                            $new_type_part->properties
+                        );
+
+                        $acceptable_atomic_types[] = $existing_var_type_part;
+                    }
+                }
+            }
+
+            if ($acceptable_atomic_types) {
+                return new Type\Union($acceptable_atomic_types);
+            }
+        }
+
         if ($new_type_part instanceof TNamedObject
             && ((
                 $new_type_has_interface
@@ -750,6 +780,12 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                     && ($codebase->classExists($existing_var_type_part->value)
                         || $codebase->interfaceExists($existing_var_type_part->value))
                 ) {
+                    $existing_var_type_part = clone $existing_var_type_part;
+                    $existing_var_type_part->addIntersectionType($new_type_part);
+                    $acceptable_atomic_types[] = $existing_var_type_part;
+                }
+
+                if ($existing_var_type_part instanceof TTemplateParam) {
                     $existing_var_type_part = clone $existing_var_type_part;
                     $existing_var_type_part->addIntersectionType($new_type_part);
                     $acceptable_atomic_types[] = $existing_var_type_part;
@@ -1658,7 +1694,13 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                             $const_type_atomic = $const_type_atomic->getGenericArrayType();
                         }
 
-                        return clone $const_type_atomic->type_params[0];
+                        if (TypeAnalyzer::isContainedBy(
+                            $codebase,
+                            $const_type_atomic->type_params[0],
+                            $existing_var_type
+                        )) {
+                            return clone $const_type_atomic->type_params[0];
+                        }
                     }
                 }
             }
@@ -1911,7 +1953,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         ?string $key,
         ?CodeLocation $code_location,
         array $suppressed_issues,
-        int &$failed_reconciliation
+        int &$failed_reconciliation,
+        bool $inside_loop
     ) : Union {
         $old_var_type_string = $existing_var_type->getId();
 
@@ -1960,7 +2003,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
 
         $failed_reconciliation = 2;
 
-        return Type::getMixed();
+        return Type::getMixed($inside_loop);
     }
 
     /**
@@ -1973,7 +2016,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         ?string $key,
         ?CodeLocation $code_location,
         array $suppressed_issues,
-        int &$failed_reconciliation
+        int &$failed_reconciliation,
+        bool $inside_loop
     ) : Union {
         $old_var_type_string = $existing_var_type->getId();
 
@@ -2017,7 +2061,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
 
         $failed_reconciliation = 2;
 
-        return Type::getMixed();
+        return Type::getMixed($inside_loop);
     }
 
     /**
@@ -2567,7 +2611,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
 
                         if ($template_type_map) {
                             $new_param->replaceTemplateTypesWithArgTypes(
-                                $template_type_map,
+                                new TemplateResult([], $template_type_map),
                                 $codebase
                             );
                         }

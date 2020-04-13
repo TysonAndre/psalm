@@ -32,6 +32,8 @@ use Psalm\Issue\ForbiddenEcho;
 use Psalm\Issue\ImpureFunctionCall;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidGlobal;
+use Psalm\Issue\Trace;
+use Psalm\Issue\UndefinedTrace;
 use Psalm\Issue\UnevaluatedCode;
 use Psalm\Issue\UnrecognizedStatement;
 use Psalm\Issue\UnusedVariable;
@@ -43,6 +45,7 @@ use function fwrite;
 use const STDERR;
 use function array_filter;
 use function array_map;
+use function array_merge;
 use function preg_split;
 use function is_string;
 use function get_class;
@@ -268,6 +271,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
             */
 
             $new_issues = null;
+            $traced_variables = [];
 
             if ($docblock = $stmt->getDocComment()) {
                 try {
@@ -349,6 +353,18 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
                 if (isset($comments['specials']['psalm-ignore-variable-property'])) {
                     $context->ignore_variable_property = $ignore_variable_property = true;
+                }
+
+                if (isset($comments['specials']['psalm-trace'])) {
+                    foreach ($comments['specials']['psalm-trace'] as $traced_variable_line) {
+                        $possible_traced_variable_names = preg_split('/[\s]+/', $traced_variable_line);
+                        if ($possible_traced_variable_names) {
+                            $traced_variables = array_merge(
+                                $traced_variables,
+                                array_filter($possible_traced_variable_names)
+                            );
+                        }
+                    }
                 }
             } else {
                 $this->parsed_docblock = null;
@@ -917,6 +933,30 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
 
             if ($ignore_variable_method) {
                 $context->ignore_variable_method = false;
+            }
+
+            foreach ($traced_variables as $traced_variable) {
+                if (isset($context->vars_in_scope[$traced_variable])) {
+                    if (IssueBuffer::accepts(
+                        new Trace(
+                            $traced_variable . ': ' . $context->vars_in_scope[$traced_variable]->getId(),
+                            new CodeLocation($this->source, $stmt)
+                        ),
+                        $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new UndefinedTrace(
+                            'Attempt to trace undefined variable ' . $traced_variable,
+                            new CodeLocation($this->source, $stmt)
+                        ),
+                        $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
             }
         }
 
@@ -1645,9 +1685,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 ) {
                     $result = $left->getSingleStringLiteral()->value . $right->getSingleStringLiteral()->value;
 
-                    if (strlen($result) < 50) {
-                        return Type::getString($result);
-                    }
+                    return Type::getString($result);
                 }
 
                 return Type::getString();
@@ -1823,7 +1861,7 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\String_) {
-            return Type::getString(strlen($stmt->value) < 30 ? $stmt->value : null);
+            return Type::getString($stmt->value);
         }
 
         if ($stmt instanceof PhpParser\Node\Scalar\LNumber) {

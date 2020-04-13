@@ -35,7 +35,8 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
             new \Psalm\Tests\Internal\Provider\ParserInstanceCacheProvider(),
             null,
             null,
-            new Provider\FakeFileReferenceCacheProvider()
+            new Provider\FakeFileReferenceCacheProvider(),
+            new \Psalm\Tests\Internal\Provider\ProjectCacheProvider()
         );
 
         $this->project_analyzer = new ProjectAnalyzer(
@@ -1552,6 +1553,65 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                     ],
                 ],
                 'error_positions' => [[201], [234]],
+                [],
+                false,
+                true
+            ],
+            'usedMethodWithNoAffectedConstantChanges' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class Z {
+                                const ONE = "1";
+                                const TWO = "2";
+
+                                public static function foo() : void {}
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'B.php' => '<?php
+                            namespace Foo;
+
+                            class B {
+                                public function doFoo() : void {
+                                    echo Z::ONE;
+                                    Z::foo();
+                                    echo Z::TWO;
+                                }
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'user.php' => '<?php
+                            namespace Foo;
+
+                            (new B())->doFoo();',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo;
+
+                            class Z {
+                                const ONE = "1";
+                                const TWO = "2";
+                                const THREE = "3";
+
+                                public static function foo() : void {}
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'B.php' => '<?php
+                            namespace Foo;
+
+                            class B {
+                                public function doFoo() : void {
+                                    echo Z::ONE;
+                                    Z::foo();
+                                    echo Z::TWO;
+                                }
+                            }',
+                        getcwd() . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'user.php' => '<?php
+                            namespace Foo;
+
+                            (new B())->doFoo();',
+                    ],
+                ],
+                'error_positions' => [[], []],
                 [],
                 false,
                 true

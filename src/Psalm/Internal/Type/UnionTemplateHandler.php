@@ -153,13 +153,13 @@ class UnionTemplateHandler
                 $include_first = true;
 
                 if (isset($template_result->template_types[$atomic_type->array_param_name][$atomic_type->defining_class])
-                    && !empty($template_result->generic_params[$atomic_type->offset_param_name])
+                    && !empty($template_result->upper_bounds[$atomic_type->offset_param_name])
                 ) {
                     $array_template_type
                         = $template_result->template_types[$atomic_type->array_param_name][$atomic_type->defining_class][0];
                     $offset_template_type
                         = array_values(
-                            $template_result->generic_params[$atomic_type->offset_param_name]
+                            $template_result->upper_bounds[$atomic_type->offset_param_name]
                         )[0][0];
 
                     if ($array_template_type->isSingle()
@@ -454,7 +454,7 @@ class UnionTemplateHandler
                                 $atomic_types[] = clone $key_type_atomic;
                             }
 
-                            $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class][0]
+                            $template_result->upper_bounds[$atomic_type->param_name][$atomic_type->defining_class][0]
                                 = clone $key_type;
                         }
                     }
@@ -478,29 +478,48 @@ class UnionTemplateHandler
                 }
             }
 
+            $matching_input_keys = [];
+
             if ($input_type
                 && (
                     $atomic_type->as->isMixed()
                     || !$codebase
-                    || TypeAnalyzer::isContainedBy(
+                    || TypeAnalyzer::canBeContainedBy(
                         $codebase,
                         $input_type,
-                        $atomic_type->as
+                        $atomic_type->as,
+                        false,
+                        false,
+                        $matching_input_keys
                     )
                 )
             ) {
                 $generic_param = clone $input_type;
 
+                if ($matching_input_keys) {
+                    $generic_param_keys = \array_keys($generic_param->getAtomicTypes());
+
+                    foreach ($generic_param_keys as $atomic_key) {
+                        if (!isset($matching_input_keys[$atomic_key])) {
+                            $generic_param->removeType($atomic_key);
+                        }
+                    }
+                }
+
                 if ($was_nullable && $generic_param->isNullable() && !$generic_param->isNull()) {
                     $generic_param->removeType('null');
+                }
+
+                if ($add_upper_bound) {
+                    return array_values($generic_param->getAtomicTypes());
                 }
 
                 $generic_param->setFromDocblock();
 
                 if (isset(
-                    $template_result->generic_params[$param_name_key][$atomic_type->defining_class][0]
+                    $template_result->upper_bounds[$param_name_key][$atomic_type->defining_class][0]
                 )) {
-                    $existing_generic_param = $template_result->generic_params
+                    $existing_generic_param = $template_result->upper_bounds
                         [$param_name_key]
                         [$atomic_type->defining_class];
 
@@ -513,7 +532,7 @@ class UnionTemplateHandler
 
                     if ($existing_depth === $depth || $input_arg_offset !== $existing_arg_offset) {
                         $generic_param = \Psalm\Type::combineUnionTypes(
-                            $template_result->generic_params
+                            $template_result->upper_bounds
                                 [$param_name_key]
                                 [$atomic_type->defining_class]
                                 [0],
@@ -523,7 +542,7 @@ class UnionTemplateHandler
                     }
                 }
 
-                $template_result->generic_params[$param_name_key][$atomic_type->defining_class] = [
+                $template_result->upper_bounds[$param_name_key][$atomic_type->defining_class] = [
                     $generic_param,
                     $depth,
                     $input_arg_offset
@@ -534,15 +553,43 @@ class UnionTemplateHandler
         }
 
         if ($add_upper_bound && $input_type) {
+            $matching_input_keys = [];
+
             if ($codebase
-                && TypeAnalyzer::isContainedBy(
+                && TypeAnalyzer::canBeContainedBy(
                     $codebase,
                     $input_type,
-                    $replacement_type
+                    $replacement_type,
+                    false,
+                    false,
+                    $matching_input_keys
                 )
             ) {
-                $template_result->template_types[$param_name_key][$atomic_type->defining_class][0]
-                    = clone $input_type;
+                $generic_param = clone $input_type;
+
+                if ($matching_input_keys) {
+                    $generic_param_keys = \array_keys($generic_param->getAtomicTypes());
+
+                    foreach ($generic_param_keys as $atomic_key) {
+                        if (!isset($matching_input_keys[$atomic_key])) {
+                            $generic_param->removeType($atomic_key);
+                        }
+                    }
+                }
+
+                if (isset($template_result->lower_bounds[$param_name_key][$atomic_type->defining_class][0])) {
+                    $intersection_type = \Psalm\Type::intersectUnionTypes(
+                        $template_result->lower_bounds[$param_name_key][$atomic_type->defining_class][0],
+                        $generic_param,
+                        $codebase
+                    );
+
+                    $template_result->lower_bounds[$param_name_key][$atomic_type->defining_class][0]
+                        = $intersection_type ?: \Psalm\Type::getMixed();
+                } else {
+                    $template_result->lower_bounds[$param_name_key][$atomic_type->defining_class][0]
+                        = $generic_param;
+                }
             }
         }
 
@@ -607,16 +654,16 @@ class UnionTemplateHandler
             }
 
             if ($generic_param) {
-                if (isset($template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class])) {
-                    $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class] = [
+                if (isset($template_result->upper_bounds[$atomic_type->param_name][$atomic_type->defining_class])) {
+                    $template_result->upper_bounds[$atomic_type->param_name][$atomic_type->defining_class] = [
                         \Psalm\Type::combineUnionTypes(
                             $generic_param,
-                            $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class][0]
+                            $template_result->upper_bounds[$atomic_type->param_name][$atomic_type->defining_class][0]
                         ),
                         $depth
                     ];
                 } else {
-                    $template_result->generic_params[$atomic_type->param_name][$atomic_type->defining_class] = [
+                    $template_result->upper_bounds[$atomic_type->param_name][$atomic_type->defining_class] = [
                         $generic_param,
                         $depth,
                         $input_arg_offset

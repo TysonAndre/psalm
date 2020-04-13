@@ -1469,6 +1469,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
             ],
             'combineAfterLoopAssert' => [
                 '<?php
+                    /** @param array<string, string> $array */
                     function foo(array $array) : void {
                         $c = 0;
 
@@ -1480,8 +1481,17 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         }
                     }',
             ],
-            'assertOnXml' => [
+            'assertOnArrayTwice' => [
                 '<?php
+                    /** @param array<string, string> $array */
+                    function f(array $array) : void {
+                        if ($array["bar"] === "a") {}
+                        if ($array["bar"] === "b") {}
+                    }',
+            ],
+            'assertOnArrayThrice' => [
+                '<?php
+                    /** @param array<string, string> $array */
                     function f(array $array) : void {
                         if ($array["foo"] === "ok") {
                             if ($array["bar"] === "a") {}
@@ -1547,14 +1557,14 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         return count() > 0;
                     }',
             ],
-            'assertHasArrayAccess' => [
+            'assertHasArrayAccessSimple' => [
                 '<?php
                     /**
-                     * @return array|ArrayAccess
+                     * @return mixed
                      */
                     function getBar(array $array) {
                         if (isset($array[\'foo\'][\'bar\'])) {
-                            return $array[\'foo\'];
+                            return $array[\'foo\'][\'baz\'];
                         }
 
                         return [];
@@ -2364,7 +2374,6 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         protected static array $cache = [];
 
                         /**
-                         * @psalm-suppress MixedArrayAccess
                          * @psalm-suppress MixedReturnStatement
                          * @psalm-suppress MixedInferredReturnType
                          */

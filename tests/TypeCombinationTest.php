@@ -29,7 +29,7 @@ class TypeCombinationTest extends TestCase
 
         $this->assertSame(
             $expected,
-            (string) TypeCombination::combineTypes($converted_types)
+            TypeCombination::combineTypes($converted_types)->getId()
         );
     }
 
@@ -453,7 +453,7 @@ class TypeCombinationTest extends TestCase
                 ],
             ],
             'objectLikePlusArrayEqualsArray' => [
-                'array<string, int>',
+                'array<string, int(1)|int(2)|int(3)>',
                 [
                     'array<"a"|"b"|"c", 1|2|3>',
                     'array{a: 1|2, b: 2|3, c: 1|3}',
@@ -548,6 +548,27 @@ class TypeCombinationTest extends TestCase
                 [
                     'callable-array{class-string, string}',
                     'array',
+                ],
+            ],
+            'combineGenericArrayAndMixedArray' => [
+                'array<array-key, int|mixed>',
+                [
+                    'array<string, int>',
+                    'array<array-key, mixed>',
+                ],
+            ],
+            'combineObjectLikeArrayAndArray' => [
+                'array<array-key, mixed>',
+                [
+                    'array{hello: int}',
+                    'array<array-key, mixed>',
+                ],
+            ],
+            'combineObjectLikeArrayAndNestedArray' => [
+                'array<array-key, mixed>',
+                [
+                    'array{hello: array{goodbye: int}}',
+                    'array<array-key, mixed>',
                 ],
             ],
         ];

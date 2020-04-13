@@ -776,7 +776,12 @@ class ArrayAccessTest extends TestCase
                     $array = new C([]);
                     $array["key"] = [];
                     /** @psalm-suppress PossiblyInvalidArrayAssignment */
-                    $array["key"][] = "testing";',
+                    $array["key"][] = "testing";
+
+                    $c = isset($array["foo"]) ? $array["foo"] : null;',
+                [
+                    '$c' => 'C|null|scalar',
+                ]
             ],
             'singleLetterOffset' => [
                 '<?php
@@ -900,6 +905,69 @@ class ArrayAccessTest extends TestCase
                     function foo(SimpleXMLElement $s) : SimpleXMLElement {
                         return $s["a"];
                     }',
+            ],
+            'assertOnArrayAccess' => [
+                '<?php
+                    class A {
+                        public function foo() : void {}
+                    }
+
+                    class C implements ArrayAccess
+                    {
+                        /**
+                         * @var array
+                         */
+                        protected $data = [];
+
+                        /**
+                         * @param string $name
+                         * @return mixed
+                         */
+                        public function offsetGet($name)
+                        {
+                            return $this->data[$name];
+                        }
+
+                        /**
+                         * @param string $name
+                         * @param mixed $value
+                         */
+                        public function offsetSet($name, $value) : void
+                        {
+                            $this->data[$name] = $value;
+                        }
+
+                        public function __isset(string $name) : bool
+                        {
+                            return isset($this->data[$name]);
+                        }
+
+                        public function __unset(string $name) : void
+                        {
+                            unset($this->data[$name]);
+                        }
+
+                        /**
+                         * @psalm-suppress MixedArgument
+                         */
+                        public function offsetExists($offset) : bool
+                        {
+                            return $this->__isset($offset);
+                        }
+
+                        /**
+                         * @psalm-suppress MixedArgument
+                         */
+                        public function offsetUnset($offset) : void
+                        {
+                            $this->__unset($offset);
+                        }
+                    }
+
+                    $container = new C();
+                    if ($container["a"] instanceof A) {
+                        $container["a"]->foo();
+                    }'
             ],
         ];
     }

@@ -597,14 +597,15 @@ class ArrayAssignmentTest extends TestCase
             ],
             'mixedArrayAssignmentWithStringKeys' => [
                 '<?php
+                    /** @psalm-suppress MixedArgument */
                     function foo(array $a) : array {
+                        /** @psalm-suppress MixedArrayAssignment */
                         $a["b"]["c"] = 5;
+                        /** @psalm-suppress MixedArrayAccess */
                         echo $a["b"]["d"];
                         echo $a["a"];
                         return $a;
                     }',
-                'assertions' => [],
-                'error_levels' => ['MixedArrayAssignment', 'MixedArrayAccess', 'MixedArgument'],
             ],
             'mixedArrayCoercion' => [
                 '<?php
@@ -910,7 +911,7 @@ class ArrayAssignmentTest extends TestCase
             ],
             'mixedAccessNestedKeys' => [
                 '<?php
-                    function takesString(string $s) : void {}
+                    function takesString(string $s) : string { return "hello"; }
                     function updateArray(array $arr) : array {
                         foreach ($arr as $i => $item) {
                             $arr[$i]["a"]["b"] = 5;
@@ -1387,7 +1388,40 @@ class ArrayAssignmentTest extends TestCase
                         $out[$key] = 5;
                         return $out;
                     }'
-            ]
+            ],
+            'mergeWithNestedMixed' => [
+                '<?php
+                    function getArray() : array {
+                        return [];
+                    }
+
+                    $arr = getArray();
+
+                    if (rand(0, 1)) {
+                        /** @psalm-suppress MixedArrayAssignment */
+                        $arr["hello"]["goodbye"] = 5;
+                    }',
+                [
+                    '$arr' => 'array<array-key, mixed>',
+                ]
+            ],
+            'dontUpdateMixedArrayWithStringKey' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @psalm-suppress MixedArgument
+                     */
+                    function run1(array $arguments): void {
+                        if (rand(0, 1)) {
+                            $arguments["c"] = new A();
+                        }
+
+                        if ($arguments["b"]) {
+                            echo $arguments["b"];
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -1603,6 +1637,63 @@ class ArrayAssignmentTest extends TestCase
 
                     (new A)->foo()[3] = 5;',
                 'error_message' => 'InvalidArrayAssignment',
+            ],
+            'mergeIntWithMixed' => [
+                '<?php
+                    function getCachedMixed(array $cache, string $locale) : string {
+                        if (!isset($cache[$locale])) {
+                            $cache[$locale] = 5;
+                        }
+
+                        return $cache[$locale];
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
+            'mergeIntWithNestedMixed' => [
+                '<?php
+                    function getCachedMixed(array $cache, string $locale) : string {
+                        if (!isset($cache[$locale][$locale])) {
+                            /**
+                             * @psalm-suppress MixedArrayAssignment
+                             */
+                            $cache[$locale][$locale] = 5;
+                        }
+
+                        /**
+                         * @psalm-suppress MixedArrayAccess
+                         */
+                        return $cache[$locale][$locale];
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
+            'mergeWithDeeplyNestedArray' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedInferredReturnType
+                     */
+                    function getTwoPartsLocale(array $cache, string $a, string $b) : string
+                    {
+                        if (!isset($cache[$b])) {
+                            $cache[$b] = array();
+                        }
+
+                        if (!isset($cache[$b][$a])) {
+                            if (rand(0, 1)) {
+                                /** @psalm-suppress MixedArrayAssignment */
+                                $cache[$b][$a] = "hello";
+                            } else {
+                                /** @psalm-suppress MixedArrayAssignment */
+                                $cache[$b][$a] = rand(0, 1) ? "string" : null;
+                            }
+                        }
+
+                        /**
+                         * @psalm-suppress MixedArrayAccess
+                         * @psalm-suppress MixedReturnStatement
+                         */
+                        return $cache[$b][$a];
+                    }',
+                'error_message' => 'NullableReturnStatement',
             ],
         ];
     }

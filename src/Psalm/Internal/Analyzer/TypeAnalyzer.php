@@ -4,6 +4,7 @@ namespace Psalm\Internal\Analyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Codebase;
 use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\Type\TemplateResult;
 use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TObjectWithProperties;
@@ -84,17 +85,17 @@ class TypeAnalyzer
             $union_comparison_result->scalar_type_match_found = true;
         }
 
-        if ($container_type->hasMixed() && !$container_type->isEmptyMixed()) {
-            return true;
-        }
-
         if ($input_type->possibly_undefined && !$container_type->possibly_undefined) {
             return false;
         }
 
+        if ($container_type->hasMixed() && !$container_type->isEmptyMixed()) {
+            return true;
+        }
+
         $has_overall_match = true;
 
-        foreach ($input_type->getTypes() as $input_type_part) {
+        foreach ($input_type->getAtomicTypes() as $input_type_part) {
             if ($input_type_part instanceof TNull && $ignore_null) {
                 continue;
             }
@@ -398,7 +399,8 @@ class TypeAnalyzer
         Type\Union $input_type,
         Type\Union $container_type,
         $ignore_null = false,
-        $ignore_false = false
+        $ignore_false = false,
+        array &$matching_input_keys = []
     ) {
         if ($container_type->hasMixed()) {
             return true;
@@ -431,12 +433,12 @@ class TypeAnalyzer
                 if (($is_atomic_contained_by && !$atomic_comparison_result->to_string_cast)
                     || $atomic_comparison_result->type_coerced_from_mixed
                 ) {
-                    return true;
+                    $matching_input_keys[$input_type_part->getKey()] = true;
                 }
             }
         }
 
-        return false;
+        return !!$matching_input_keys;
     }
 
     /**
@@ -668,7 +670,10 @@ class TypeAnalyzer
                     || $intersection_input_type instanceof TTemplateParam
                 ) {
                     if ($intersection_container_type_lower === $intersection_input_type_lower) {
-                        if ($container_was_static && !$input_was_static) {
+                        if ($container_was_static
+                            && !$input_was_static
+                            && !$intersection_input_type instanceof TTemplateParam
+                        ) {
                             if ($atomic_comparison_result) {
                                 $atomic_comparison_result->type_coerced = true;
                             }
@@ -2165,7 +2170,8 @@ class TypeAnalyzer
 
                             $new_input_param = clone $new_input_param;
                             $new_input_param->replaceTemplateTypesWithArgTypes(
-                                $replacement_templates
+                                new TemplateResult([], $replacement_templates),
+                                $codebase
                             );
 
                             $new_input_params[] = $new_input_param;

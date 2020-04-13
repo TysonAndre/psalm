@@ -134,7 +134,7 @@ class Methods
                         $declaring_fq_class_name
                     );
                 } else {
-                    $this->file_reference_provider->addFileReferenceToClass(
+                    $this->file_reference_provider->addNonMethodReferenceToClass(
                         $source->getFilePath(),
                         $declaring_fq_class_name
                     );
@@ -243,7 +243,7 @@ class Methods
                     $fq_class_name
                 );
             } else {
-                $this->file_reference_provider->addFileReferenceToClass(
+                $this->file_reference_provider->addNonMethodReferenceToClass(
                     $source->getFilePath(),
                     $fq_class_name
                 );
@@ -419,7 +419,6 @@ class Methods
             foreach ($params as $i => $param) {
                 if (isset($overridden_storage->params[$i]->type)
                     && $overridden_storage->params[$i]->has_docblock_type
-                    && $overridden_storage->params[$i]->name === $param->name
                 ) {
                     $params[$i] = clone $param;
                     /** @var Type\Union $params[$i]->type */
@@ -762,7 +761,8 @@ class Methods
                     if (!$old_contained_by_new && !$new_contained_by_old) {
                         $attempted_intersection = Type::intersectUnionTypes(
                             $candidate_type,
-                            $overridden_return_type
+                            $overridden_return_type,
+                            $source_analyzer->getCodebase()
                         );
 
                         if ($attempted_intersection) {

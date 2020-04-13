@@ -17,6 +17,7 @@ use Psalm\Exception\DocblockParseException;
 use Psalm\Internal\Analyzer\TypeComparisonResult;
 use Psalm\Internal\Taint\Sink;
 use Psalm\Internal\Taint\Source;
+use Psalm\Internal\Type\TemplateResult;
 use Psalm\Issue\FalsableReturnStatement;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidReturnStatement;
@@ -250,7 +251,8 @@ class ReturnAnalyzer
                             $local_return_type = clone $local_return_type;
 
                             $local_return_type->replaceTemplateTypesWithArgTypes(
-                                $found_generic_params
+                                new TemplateResult([], $found_generic_params),
+                                $codebase
                             );
                         }
                     }
@@ -259,7 +261,7 @@ class ReturnAnalyzer
                         return null;
                     }
 
-                    if ($stmt_type->hasMixed()) {
+                    if ($stmt_type->isMixed()) {
                         if ($local_return_type->isVoid() || $local_return_type->isNever()) {
                             if (IssueBuffer::accepts(
                                 new InvalidReturnStatement(
@@ -330,16 +332,28 @@ class ReturnAnalyzer
                         if ($union_comparison_results->type_coerced) {
                             if ($union_comparison_results->type_coerced_from_mixed) {
                                 if (!$union_comparison_results->type_coerced_from_as_mixed) {
-                                    if (IssueBuffer::accepts(
-                                        new MixedReturnTypeCoercion(
-                                            'The type \'' . $stmt_type->getId() . '\' is more general than the'
-                                                . ' declared return type \'' . $local_return_type->getId() . '\''
-                                                . ' for ' . $cased_method_id,
-                                            new CodeLocation($source, $stmt->expr)
-                                        ),
-                                        $statements_analyzer->getSuppressedIssues()
-                                    )) {
-                                        return false;
+                                    if ($inferred_type->hasMixed()) {
+                                        if (IssueBuffer::accepts(
+                                            new MixedReturnStatement(
+                                                'Could not infer a return type',
+                                                new CodeLocation($source, $stmt->expr)
+                                            ),
+                                            $statements_analyzer->getSuppressedIssues()
+                                        )) {
+                                            // fall through
+                                        }
+                                    } else {
+                                        if (IssueBuffer::accepts(
+                                            new MixedReturnTypeCoercion(
+                                                'The type \'' . $stmt_type->getId() . '\' is more general than the'
+                                                    . ' declared return type \'' . $local_return_type->getId() . '\''
+                                                    . ' for ' . $cased_method_id,
+                                                new CodeLocation($source, $stmt->expr)
+                                            ),
+                                            $statements_analyzer->getSuppressedIssues()
+                                        )) {
+                                            // fall through
+                                        }
                                     }
                                 }
                             } else {
@@ -352,7 +366,7 @@ class ReturnAnalyzer
                                     ),
                                     $statements_analyzer->getSuppressedIssues()
                                 )) {
-                                    return false;
+                                    // fall throuhg
                                 }
                             }
 
@@ -418,7 +432,7 @@ class ReturnAnalyzer
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
-                                return false;
+                                // fall through
                             }
                         }
                     }
@@ -437,7 +451,7 @@ class ReturnAnalyzer
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            //fall through
                         }
                     }
 
@@ -456,7 +470,7 @@ class ReturnAnalyzer
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
-                            return false;
+                            // fall throughg
                         }
                     }
                 }
@@ -472,10 +486,8 @@ class ReturnAnalyzer
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
-                        return false;
+                        // fall through
                     }
-
-                    return null;
                 }
             }
         }
