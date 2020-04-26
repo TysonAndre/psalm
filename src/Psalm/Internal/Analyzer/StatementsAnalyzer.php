@@ -175,9 +175,17 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
         // hoist functions to the top
         foreach ($stmts as $stmt) {
             if ($stmt instanceof PhpParser\Node\Stmt\Function_) {
+                $function_name = strtolower($stmt->name->name);
+
+                if ($ns = $this->getNamespace()) {
+                    $fq_function_name = strtolower($ns) . '\\' . $function_name;
+                } else {
+                    $fq_function_name = $function_name;
+                }
+
                 try {
                     $function_analyzer = new FunctionAnalyzer($stmt, $this->source);
-                    $this->function_analyzers[strtolower($stmt->name->name)] = $function_analyzer;
+                    $this->function_analyzers[$fq_function_name] = $function_analyzer;
                 } catch (\UnexpectedValueException $e) {
                     // do nothing
                 }
@@ -691,31 +699,38 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                 if (!$codebase->register_stub_files
                     && !$codebase->register_autoload_files
                 ) {
-                    $function_id = strtolower($stmt->name->name);
+                    $function_name = strtolower($stmt->name->name);
+
+                    if ($ns = $this->getNamespace()) {
+                        $fq_function_name = strtolower($ns) . '\\' . $function_name;
+                    } else {
+                        $fq_function_name = $function_name;
+                    }
+
                     $function_context = new Context($context->self);
                     $function_context->strict_types = $context->strict_types;
                     $config = Config::getInstance();
                     $function_context->collect_exceptions = $config->check_for_throws_docblock;
 
-                    if (isset($this->function_analyzers[$function_id])) {
-                        $this->function_analyzers[$function_id]->analyze(
+                    if (isset($this->function_analyzers[$fq_function_name])) {
+                        $this->function_analyzers[$fq_function_name]->analyze(
                             $function_context,
                             $this->node_data,
                             $context
                         );
 
                         if ($config->reportIssueInFile('InvalidReturnType', $this->getFilePath())) {
-                            $method_id = $this->function_analyzers[$function_id]->getId();
+                            $method_id = $this->function_analyzers[$fq_function_name]->getId();
 
                             $function_storage = $codebase->functions->getStorage(
                                 $this,
-                                $method_id
+                                strtolower($method_id)
                             );
 
                             $return_type = $function_storage->return_type;
                             $return_type_location = $function_storage->return_type_location;
 
-                            $this->function_analyzers[$function_id]->verifyReturnType(
+                            $this->function_analyzers[$fq_function_name]->verifyReturnType(
                                 $stmt->getStmts(),
                                 $this,
                                 $return_type,
@@ -774,6 +789,8 @@ class StatementsAnalyzer extends SourceAnalyzer implements StatementsSource
                                         : $this->getGlobalType($var_id);
 
                                 $context->vars_possibly_in_scope[$var_id] = true;
+
+                                $context->byref_constraints[$var_id] = new \Psalm\Internal\ReferenceConstraint();
                             }
                         }
                     }

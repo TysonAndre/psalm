@@ -253,6 +253,118 @@ class ConditionalReturnTypeTest extends TestCase
                         return true;
                     }'
             ],
+            'nullableClassString' => [
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        public function test1() : void {}
+                    }
+
+                    class Application {
+                        public function test2() : void {}
+                    }
+
+                    /**
+                     * @template T of object
+                     * @template TName as class-string<T>|null
+                     *
+                     * @psalm-param TName $className
+                     *
+                     * @psalm-return (TName is null ? Application : T)
+                     */
+                    function app(?string $className = null) {
+                        if ($className === null) {
+                            return new Application();
+                        }
+
+                        return new $className();
+                    }
+
+                    app(A::class)->test1();
+                    app()->test2();'
+            ],
+            'refineTypeInConditionalWithString' => [
+                '<?php
+                    /**
+                     * @template TInput
+                     *
+                     * @param TInput $input
+                     *
+                     * @return (TInput is string ? TInput : \'hello\')
+                     */
+                    function foobaz($input): string {
+                        if (is_string($input)) {
+                            return $input;
+                        }
+
+                        return "hello";
+                    }
+
+                    $a = foobaz("boop");
+                    $b = foobaz(4);',
+                [
+                    '$a' => 'string',
+                    '$b' => 'string',
+                ]
+            ],
+            'refineTypeInConditionalWithClassName' => [
+                '<?php
+                    class A {}
+                    class AChild extends A {}
+                    class B {}
+
+                    /**
+                     * @template TInput as object
+                     *
+                     * @param TInput $input
+                     *
+                     * @return (TInput is A ? TInput : A)
+                     */
+                    function foobaz(object $input): A {
+                        if ($input instanceof A) {
+                            return $input;
+                        }
+
+                        return new A();
+                    }
+
+                    $a = foobaz(new AChild());
+                    $b = foobaz(new B());',
+                [
+                    '$a' => 'AChild',
+                    '$b' => 'A',
+                ]
+            ],
+            'isTemplateArrayCheck' => [
+                '<?php
+                    /**
+                     * @param string|array $pv_var
+                     *
+                     * @psalm-return ($pv_var is array ? array : string)
+                     */
+                    function test($pv_var) {
+                        $return = $pv_var;
+                        if(!is_array($pv_var)) {
+                            $return = utf8_encode($pv_var);
+                        }
+
+                        return $return;
+                    }'
+            ],
+            'combineConditionalArray' => [
+                '<?php
+                    /**
+                     * @psalm-return ($idOnly is true ? array<int> : array<stdClass>)
+                     */
+                    function test(bool $idOnly = false) {
+                        if ($idOnly) {
+                            return [0, 1];
+                        }
+
+                        return [new stdClass(), new stdClass()];
+                    }'
+            ],
         ];
     }
 }

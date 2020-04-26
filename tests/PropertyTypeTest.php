@@ -1513,7 +1513,7 @@ class PropertyTypeTest extends TestCase
                             parent::__construct();
                         }
 
-                        protected function overriddenByB(): void {
+                        protected final function overriddenByB(): void {
                             $this->foo = 1;
                             $this->bar = 1;
                         }
@@ -1538,7 +1538,7 @@ class PropertyTypeTest extends TestCase
                         /** @var int */
                         protected $bar;
 
-                        protected function overriddenByB(): void {
+                        protected final function overriddenByB(): void {
                             $this->foo = 1;
                             $this->bar = 1;
                         }
@@ -3052,6 +3052,25 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidPropertyAssignmentValue'
+            ],
+            'overriddenConstructorCalledMethod' => [
+                '<?php
+                    class ParentClass {
+                        private string $prop;
+
+                        public function __construct() {
+                            $this->init();
+                        }
+
+                        public function init(): void {
+                            $this->prop = "zxc";
+                        }
+                    }
+
+                    class ChildClass extends ParentClass {
+                        public function init(): void {}
+                    }',
+                'error_message' => 'PropertyNotSetInConstructor'
             ],
         ];
     }

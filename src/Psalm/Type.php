@@ -1249,7 +1249,11 @@ abstract class Type
                 continue;
             }
 
-            if (isset($type_tokens[$i + 1]) && $type_tokens[$i + 1][0] === ':') {
+            if (isset($type_tokens[$i + 1])
+                && $type_tokens[$i + 1][0] === ':'
+                && isset($type_tokens[$i - 1])
+                && ($type_tokens[$i - 1][0] === '{' || $type_tokens[$i - 1][0] === ',')
+            ) {
                 continue;
             }
 
@@ -1294,8 +1298,12 @@ abstract class Type
                 continue;
             }
 
-            if (isset($type_tokens[$i + 1])) {
+            if (isset($type_tokens[$i + 1])
+                && isset($type_tokens[$i - 1])
+                && ($type_tokens[$i - 1][0] === '{' || $type_tokens[$i - 1][0] === ',')
+            ) {
                 $next_char = $type_tokens[$i + 1][0];
+
                 if ($next_char === ':') {
                     continue;
                 }

@@ -3647,6 +3647,338 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }'
             ],
+            'nestedTemplateExtends' => [
+                '<?php
+                    namespace Foo;
+
+                    interface IBaseViewData {}
+
+                    /**
+                     * @template TViewData
+                     */
+                    class BaseModel {}
+
+                    /**
+                     * @template TViewData as IBaseViewData
+                     * @template TModel as BaseModel<TViewData>
+                     */
+                    abstract class BaseRepository {}
+
+                    class StudentViewData implements IBaseViewData {}
+                    class TeacherViewData implements IBaseViewData {}
+
+                    /** @extends BaseModel<StudentViewData> */
+                    class StudentModel extends BaseModel {}
+
+                    /** @extends BaseModel<TeacherViewData> */
+                    class TeacherModel extends BaseModel {}
+
+                    /** @extends BaseRepository<StudentViewData, StudentModel> */
+                    class StudentRepository extends BaseRepository {}
+
+                    /** @extends BaseRepository<TeacherViewData, TeacherModel> */
+                    class TeacherRepository extends BaseRepository {}'
+            ],
+            'templateInheritedPropertyCorrectly' => [
+                '<?php
+                    /**
+                     * @template TKey1
+                     * @template TValue1
+                     */
+                    class Pair
+                    {
+                        /** @psalm-var TKey1 */
+                        public $one;
+
+                        /** @psalm-var TValue1 */
+                        public $two;
+
+                        /**
+                         * @psalm-param TKey1 $key
+                         * @psalm-param TValue1 $value
+                         */
+                        public function __construct($key, $value) {
+                            $this->one = $key;
+                            $this->two = $value;
+                        }
+                    }
+
+                    /**
+                     * @template TValue2
+                     * @extends Pair<string, TValue2>
+                     */
+                    class StringKeyedPair extends Pair {
+                        /**
+                         * @param TValue2 $value
+                         */
+                        public function __construct(string $key, $value) {
+                            parent::__construct($key, $value);
+                        }
+                    }
+
+                    $pair = new StringKeyedPair("somekey", 250);
+                    $a = $pair->two;
+                    $b = $pair->one;',
+                [
+                    '$pair' => 'StringKeyedPair<int>',
+                    '$a' => 'int',
+                    '$b' => 'string',
+                ]
+            ],
+            'templateInheritedPropertySameName' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class Pair
+                    {
+                        /** @psalm-var TKey */
+                        public $one;
+
+                        /** @psalm-var TValue */
+                        public $two;
+
+                        /**
+                         * @psalm-param TKey $key
+                         * @psalm-param TValue $value
+                         */
+                        public function __construct($key, $value) {
+                            $this->one = $key;
+                            $this->two = $value;
+                        }
+                    }
+
+                    /**
+                     * @template TValue
+                     * @extends Pair<string, TValue>
+                     */
+                    class StringKeyedPair extends Pair {
+                        /**
+                         * @param TValue $value
+                         */
+                        public function __construct(string $key, $value) {
+                            parent::__construct($key, $value);
+                        }
+                    }
+
+                    $pair = new StringKeyedPair("somekey", 250);
+                    $a = $pair->two;
+                    $b = $pair->one;',
+                [
+                    '$pair' => 'StringKeyedPair<int>',
+                    '$a' => 'int',
+                    '$b' => 'string',
+                ]
+            ],
+            'templateInheritedPropertySameNameFlipped' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    class Pair
+                    {
+                        /** @psalm-var TKey */
+                        public $one;
+
+                        /** @psalm-var TValue */
+                        public $two;
+
+                        /**
+                         * @psalm-param TKey $key
+                         * @psalm-param TValue $value
+                         */
+                        public function __construct($key, $value) {
+                            $this->one = $key;
+                            $this->two = $value;
+                        }
+                    }
+
+                    /**
+                     * @template TValue
+                     * @extends Pair<TValue, string>
+                     */
+                    class StringKeyedPair extends Pair {
+                        /**
+                         * @param TValue $value
+                         */
+                        public function __construct(string $key, $value) {
+                            parent::__construct($value, $key);
+                        }
+                    }
+
+                    $pair = new StringKeyedPair("somekey", 250);
+                    $a = $pair->one;
+                    $b = $pair->two;',
+                [
+                    '$pair' => 'StringKeyedPair<int>',
+                    '$a' => 'int',
+                    '$b' => 'string',
+                ]
+            ],
+            'implementExtendedInterfaceWithMethodOwnTemplateParams' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface IFoo {
+                        /**
+                         * @template T2
+                         * @psalm-param T2 $f
+                         * @psalm-return self<T2>
+                         */
+                        public static function doFoo($f): self;
+                    }
+
+                    /**
+                     * @template T3
+                     * @extends IFoo<T3>
+                     */
+                    interface IFooChild extends IFoo {}
+
+                    /**
+                     * @template T5
+                     * @implements IFooChild<T5>
+                     */
+                    class ConcreteFooChild implements IFooChild {
+                        /** @var T5 */
+                        private $baz;
+
+                        /** @param T5 $baz */
+                        public function __construct($baz) {
+                            $this->baz = $baz;
+                        }
+
+                        /**
+                         * @template T6
+                         * @psalm-param T6 $f
+                         * @psalm-return ConcreteFooChild<T6>
+                         */
+                        public static function doFoo($f): self {
+                            $r = new self($f);
+                            return $r;
+                        }
+                    }',
+                [],
+                [],
+                '7.4'
+            ],
+            'implementInterfaceWithMethodOwnTemplateParams' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface IFoo {
+                        /**
+                         * @template T2
+                         * @psalm-param T2 $f
+                         * @psalm-return self<T2>
+                         */
+                        public static function doFoo($f): self;
+                    }
+
+
+                    /**
+                     * @template T5
+                     * @implements IFoo<T5>
+                     */
+                    class ConcreteFooChild implements IFoo {
+                        /** @var T5 */
+                        private $baz;
+
+                        /** @param T5 $baz */
+                        public function __construct($baz) {
+                            $this->baz = $baz;
+                        }
+
+                        /**
+                         * @template T6
+                         * @psalm-param T6 $f
+                         * @psalm-return ConcreteFooChild<T6>
+                         */
+                        public static function doFoo($f): self
+                        {
+                            $r = new self($f);
+                            return $r;
+                        }
+                    }',
+                [],
+                [],
+                '7.4'
+            ],
+            'inheritTraitPropertyObjectLike' => [
+                '<?php
+                    /** @template TValue */
+                    trait A {
+                        /** @psalm-var array{TValue} */
+                        private $foo;
+
+                        /** @psalm-param array{TValue} $foo */
+                        public function __construct(array $foo)
+                        {
+                            $this->foo = $foo;
+                        }
+                    }
+
+                    /** @template TValue */
+                    class B {
+                        /** @use A<TValue> */
+                        use A;
+                    }'
+            ],
+            'inheritTraitPropertyArray' => [
+                '<?php
+                    /** @template TValue */
+                    trait A {
+                        /** @psalm-var array<TValue> */
+                        private $foo;
+
+                        /** @psalm-param array<TValue> $foo */
+                        public function __construct(array $foo)
+                        {
+                            $this->foo = $foo;
+                        }
+                    }
+
+                    /** @template TValue */
+                    class B {
+                        /** @use A<TValue> */
+                        use A;
+                    }'
+            ],
+            'staticShouldBeBoundInCall' => [
+                '<?php
+                    /**
+                     * @template TVehicle of Vehicle
+                     */
+                    class VehicleCollection {
+                        /**
+                         * @param class-string<TVehicle> $item
+                         */
+                        public function __construct(string $item) {}
+                    }
+
+                    abstract class Vehicle {
+                        /**
+                         * @return VehicleCollection<static>
+                         */
+                        public static function all() {
+                            return new VehicleCollection(static::class);
+                        }
+                    }
+
+                    class Car extends Vehicle {}
+
+                    class CarRepository {
+                        /**
+                        * @return VehicleCollection<Car>
+                        */
+                        public function getAllCars(): VehicleCollection {
+                            return Car::all();
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -4871,6 +5203,36 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }',
                 'error_message' => 'LessSpecificReturnStatement'
+            ],
+            'nestedTemplateExtendsInvalid' => [
+                '<?php
+                    namespace Foo;
+
+                    interface IBaseViewData {}
+
+                    /**
+                     * @template TViewData
+                     */
+                    class BaseModel {}
+
+                    /**
+                     * @template TViewData as IBaseViewData
+                     * @template TModel as BaseModel<TViewData>
+                     */
+                    abstract class BaseRepository {}
+
+                    class StudentViewData implements IBaseViewData {}
+                    class TeacherViewData implements IBaseViewData {}
+
+                    /** @extends BaseModel<StudentViewData> */
+                    class StudentModel extends BaseModel {}
+
+                    /** @extends BaseModel<TeacherViewData> */
+                    class TeacherModel extends BaseModel {}
+
+                    /** @extends BaseRepository<StudentViewData, TeacherModel> */
+                    class StudentRepository extends BaseRepository {}',
+                'error_message' => 'InvalidTemplateParam'
             ],
         ];
     }

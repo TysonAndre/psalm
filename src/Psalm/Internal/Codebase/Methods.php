@@ -522,6 +522,17 @@ class Methods
                 );
             }
 
+            if ($atomic_type instanceof Type\Atomic\ObjectLike) {
+                foreach ($atomic_type->properties as &$property_type) {
+                    $property_type = self::localizeType(
+                        $codebase,
+                        $property_type,
+                        $appearing_fq_class_name,
+                        $base_fq_class_name
+                    );
+                }
+            }
+
             if ($atomic_type instanceof Type\Atomic\TCallable
                 || $atomic_type instanceof Type\Atomic\TFn
             ) {
@@ -549,6 +560,8 @@ class Methods
             }
         }
 
+        $type->bustCache();
+
         return $type;
     }
 
@@ -556,7 +569,7 @@ class Methods
      * @param array<string, array<int|string, Type\Union>> $extends
      * @return list<Type\Atomic>
      */
-    private static function getExtendedTemplatedTypes(
+    public static function getExtendedTemplatedTypes(
         Type\Atomic\TTemplateParam $atomic_type,
         array $extends
     ) : array {

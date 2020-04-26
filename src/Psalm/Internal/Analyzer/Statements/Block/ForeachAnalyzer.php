@@ -64,7 +64,8 @@ class ForeachAnalyzer
                 $var_comments = CommentAnalyzer::getTypeFromComment(
                     $doc_comment,
                     $statements_analyzer->getSource(),
-                    $statements_analyzer->getSource()->getAliases()
+                    $statements_analyzer->getSource()->getAliases(),
+                    $statements_analyzer->getTemplateTypeMap() ?: []
                 );
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
@@ -734,6 +735,10 @@ class ForeachAnalyzer
                         $statements_analyzer->addSuppressedIssues(['PossiblyInvalidMethodCall']);
                     }
 
+                    if (!in_array('PossiblyUndefinedMethod', $suppressed_issues, true)) {
+                        $statements_analyzer->addSuppressedIssues(['PossiblyUndefinedMethod']);
+                    }
+
                     \Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer::analyze(
                         $statements_analyzer,
                         $fake_method_call,
@@ -742,6 +747,10 @@ class ForeachAnalyzer
 
                     if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
                         $statements_analyzer->removeSuppressedIssues(['PossiblyInvalidMethodCall']);
+                    }
+
+                    if (!in_array('PossiblyUndefinedMethod', $suppressed_issues, true)) {
+                        $statements_analyzer->removeSuppressedIssues(['PossiblyUndefinedMethod']);
                     }
 
                     $iterator_class_type = $statements_analyzer->node_data->getType($fake_method_call) ?: null;

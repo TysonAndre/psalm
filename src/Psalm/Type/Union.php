@@ -791,7 +791,17 @@ class Union implements TypeNode
      */
     public function isNullable()
     {
-        return isset($this->types['null']);
+        if (isset($this->types['null'])) {
+            return true;
+        }
+
+        foreach ($this->types as $type) {
+            if ($type instanceof TTemplateParam && $type->as->isNullable()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -799,7 +809,17 @@ class Union implements TypeNode
      */
     public function isFalsable()
     {
-        return isset($this->types['false']);
+        if (isset($this->types['false'])) {
+            return true;
+        }
+
+        foreach ($this->types as $type) {
+            if ($type instanceof TTemplateParam && $type->as->isFalsable()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1321,6 +1341,10 @@ class Union implements TypeNode
                         $atomic_type->conditional_type
                     )) {
                         $class_template_type = clone $atomic_type->if_type;
+                        $class_template_type->replaceTemplateTypesWithArgTypes(
+                            $template_result,
+                            $codebase
+                        );
                     } elseif (TypeAnalyzer::isContainedBy(
                         $codebase,
                         $template_type,
@@ -1333,10 +1357,24 @@ class Union implements TypeNode
                         )
                     ) {
                         $class_template_type = clone $atomic_type->else_type;
+                        $class_template_type->replaceTemplateTypesWithArgTypes(
+                            $template_result,
+                            $codebase
+                        );
                     }
                 }
 
                 if (!$class_template_type) {
+                    $atomic_type->if_type->replaceTemplateTypesWithArgTypes(
+                        $template_result,
+                        $codebase
+                    );
+
+                    $atomic_type->else_type->replaceTemplateTypesWithArgTypes(
+                        $template_result,
+                        $codebase
+                    );
+
                     $class_template_type = Type::combineUnionTypes(
                         $atomic_type->if_type,
                         $atomic_type->else_type,
@@ -1385,6 +1423,8 @@ class Union implements TypeNode
                 $atomic_types,
                 $codebase
             )->getAtomicTypes();
+
+            $this->id = null;
         }
     }
 

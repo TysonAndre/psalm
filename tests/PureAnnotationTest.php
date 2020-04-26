@@ -68,11 +68,11 @@ class PureAnnotationTest extends TestCase
                             return $this->options;
                         }
 
-                        function setOptions(array $options): void {
+                        public final function setOptions(array $options): void {
                             $this->options = $options;
                         }
 
-                        function setDefaultOptions(array $defaultOptions): void {
+                        public final function setDefaultOptions(array $defaultOptions): void {
                             $this->defaultOptions = $defaultOptions;
                         }
                     }',
@@ -209,6 +209,97 @@ class PureAnnotationTest extends TestCase
                     }
 
                     echo getMessage(new Exception("test"));'
+            ],
+            'exceptionGetCode' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     *
+                     * @return int|string https://www.php.net/manual/en/throwable.getcode.php
+                     */
+                    function getCode(Throwable $e) {
+                        return $e->getCode();
+                    }
+
+                    echo getCode(new Exception("test"));'
+            ],
+            'exceptionGetFile' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getFile(Throwable $e): string {
+                        return $e->getFile();
+                    }
+
+                    echo getFile(new Exception("test"));'
+            ],
+            'exceptionGetLine' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getLine(Throwable $e): int {
+                        return $e->getLine();
+                    }
+
+                    echo getLine(new Exception("test"));'
+            ],
+            'exceptionGetTrace' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getTrace(Throwable $e): array {
+                        return $e->getTrace();
+                    }
+
+                    echo count(getTrace(new Exception("test")));'
+            ],
+            'exceptionGetPrevious' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getPrevious(Throwable $e): ?Throwable {
+                        return $e->getPrevious();
+                    }
+
+                    echo gettype(getPrevious(new Exception("test")));'
+            ],
+            'exceptionGetTraceAsString' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getTraceAsString(Throwable $e): string {
+                        return $e->getTraceAsString();
+                    }
+
+                    echo getTraceAsString(new Exception("test"));'
+            ],
+            'callingMethodInThrowStillPure' => [
+                '<?php
+                    final class MyException extends \Exception {
+                        public static function hello(): self
+                        {
+                            return new self();
+                        }
+                    }
+
+                    /**
+                     * @psalm-pure
+                     */
+                    function sumExpectedToNotBlowPowerFuse(int $first, int $second): int {
+                        $sum = $first + $second;
+                        if ($sum > 9000) {
+                            throw MyException::hello();
+                        }
+                        if ($sum > 90001) {
+                            throw new MyException();
+                        }
+                        return $sum;
+                    }'
             ],
         ];
     }

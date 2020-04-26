@@ -1133,9 +1133,11 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                                         Type::fixUpLocalType(
                                             $template_map[2],
                                             $this->aliases,
-                                            null,
+                                            $storage->template_types,
                                             $this->type_aliases
-                                        )
+                                        ),
+                                        null,
+                                        $storage->template_types
                                     );
                                 } catch (TypeParseTreeException $e) {
                                     $storage->docblock_issues[] = new InvalidDocblock(
@@ -1265,10 +1267,15 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                             $name_location ?: $class_location
                         );
                     } else {
-                        $storage->mixin_fqcln = Type::getFQCLNFromString(
+                        $mixin_fqcln = Type::getFQCLNFromString(
                             $docblock_info->mixin,
                             $this->aliases
                         );
+
+                        $storage->mixin_fqcln = $mixin_fqcln;
+
+                        $this->codebase->scanner->queueClassLikeForScanning($mixin_fqcln);
+                        $this->file_storage->referenced_classlikes[strtolower($mixin_fqcln)] = $mixin_fqcln;
 
                         // if there's a mixin, assume it's the reason for the __call
                         $storage->sealed_properties = true;
@@ -1997,6 +2004,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $parser_return_type,
                     $this->aliases
                 );
+
+                if ($class_storage && !$class_storage->is_trait && $return_type_fq_classlike_name === 'self') {
+                    $return_type_fq_classlike_name = $class_storage->name;
+                }
 
                 $return_type_string = $return_type_fq_classlike_name . $suffix;
             }
@@ -3487,6 +3498,24 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         if ($stmt instanceof PhpParser\Node\Scalar\MagicConst\Namespace_) {
             return new UnresolvedConstant\ScalarValue($aliases->namespace);
+        }
+
+        if ($stmt instanceof PhpParser\Node\Expr\ArrayDimFetch && $stmt->dim) {
+            $left = self::getUnresolvedClassConstExpr(
+                $stmt->var,
+                $aliases,
+                $fq_classlike_name
+            );
+
+            $right = self::getUnresolvedClassConstExpr(
+                $stmt->dim,
+                $aliases,
+                $fq_classlike_name
+            );
+
+            if ($left && $right) {
+                return new UnresolvedConstant\ArrayOffsetFetch($left, $right);
+            }
         }
 
         if ($stmt instanceof PhpParser\Node\Expr\ClassConstFetch) {

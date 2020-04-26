@@ -238,6 +238,9 @@ class FunctionCallTest extends TestCase
             ],
             'compact' => [
                 '<?php
+                    /**
+                     * @return array<string, mixed>
+                     */
                     function test(): array {
                         return compact(["val"]);
                     }',
@@ -1173,6 +1176,9 @@ class FunctionCallTest extends TestCase
             ],
             'compactDefinedVariable' => [
                 '<?php
+                    /**
+                     * @return array<string, mixed>
+                     */
                     function foo(int $a, string $b, bool $c) : array {
                         return compact("a", "b", "c");
                     }',
@@ -1236,6 +1242,24 @@ class FunctionCallTest extends TestCase
                     $a = call_user_func_array($func, [2, 4]);',
                 [
                     '$a' => 'int',
+                ]
+            ],
+            'dateTest' => [
+                '<?php
+                    $y = date("Y");
+                    $m = date("m");
+                    $F = date("F");
+                    $y2 = date("Y", 10000);
+                    $F2 = date("F", 10000);
+                    /** @psalm-suppress MixedArgument */
+                    $F3 = date("F", $_GET["F3"]);',
+                [
+                    '$y' => 'numeric-string',
+                    '$m' => 'numeric-string',
+                    '$F' => 'string',
+                    '$y2' => 'numeric-string',
+                    '$F2' => 'string',
+                    '$F3' => 'false|string',
                 ]
             ],
         ];
@@ -1629,6 +1653,9 @@ class FunctionCallTest extends TestCase
             ],
             'compactUndefinedVariable' => [
                 '<?php
+                    /**
+                     * @return array<string, mixed>
+                     */
                     function foo() : array {
                         return compact("a", "b", "c");
                     }',

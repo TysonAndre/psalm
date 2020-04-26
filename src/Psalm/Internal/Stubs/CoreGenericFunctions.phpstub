@@ -1,12 +1,13 @@
 <?php
 /**
- * @psalm-template T as array-key
+ * @psalm-template TKey as array-key
+ * @psalm-template TArray as array<TKey, mixed>
  *
- * @param array<T, mixed> $arr
- * @param mixed           $search_value
- * @param bool            $strict
+ * @param TArray $arr
+ * @param mixed $search_value
+ * @param bool  $strict
  *
- * @return list<T>
+ * @return (TArray is non-empty-array ? non-empty-list<TKey> : list<TKey>)
  * @psalm-pure
  */
 function array_keys(array $arr, $search_value = null, bool $strict = false)
@@ -395,3 +396,12 @@ function abs($number) {}
  * )
  */
 function range($start, $end, $step = 1) {}
+
+/**
+ * @return (
+ *     $format is 'd'|'j'|'N'|'w'|'z'|'W'|'m'|'n'|'t'|'L'|'o'|'Y'|'y'|'B'|'g'|'G'|'h'|'H'|'i'|'s'|'u'|'v'|'Z'|'U'|'I'
+ *     ? numeric-string
+ *     : ($timestamp is numeric ? string : string|false)
+ * )
+ */
+function date(string $format, int $timestamp = 0) {}

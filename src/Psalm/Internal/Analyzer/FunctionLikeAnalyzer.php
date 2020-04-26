@@ -985,6 +985,15 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 }
             }
 
+            if ($param_type->hasTemplate() && $param_type->isSingle()) {
+                /** @var Type\Atomic\TTemplateParam */
+                $template_type = \array_values($param_type->getAtomicTypes())[0];
+
+                if ($template_type->as->getTemplateTypes()) {
+                    $param_type = $template_type->as;
+                }
+            }
+
             $var_type = $param_type;
 
             if ($function_param->is_variadic) {
@@ -1544,7 +1553,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             throw new \UnexpectedValueException('This is weird');
         }
 
-        return $codebase->functions->getStorage($statements_analyzer, $function_id);
+        return $codebase->functions->getStorage($statements_analyzer, strtolower($function_id));
     }
 
     public function getId() : string

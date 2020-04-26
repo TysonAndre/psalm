@@ -2611,6 +2611,68 @@ class ClassTemplateTest extends TestCase
                         }
                     }'
             ],
+            'noCrashTemplateInsideGenerator' => [
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @template T
+                     */
+                    final class Set
+                    {
+                        /** @var \Iterator<T> */
+                        private \Iterator $values;
+
+                        /**
+                         * @param \Iterator<T> $values
+                         */
+                        public function __construct(\Iterator $values)
+                        {
+                            $this->values = $values;
+                        }
+
+                        /**
+                         * @param T $element
+                         *
+                         * @return self<T>
+                         */
+                        public function __invoke($element): self
+                        {
+                            return new self(
+                                (
+                                    function($values, $element): \Generator {
+                                        /** @var T $value */
+                                        foreach ($values as $value) {
+                                            yield $value;
+                                        }
+
+                                        yield $element;
+                                    }
+                                )($this->values, $element),
+                            );
+                        }
+                    }',
+                [],
+                ['MissingClosureParamType']
+            ],
+            'templatedPropertyAllowsNull' => [
+                '<?php
+                    /**
+                     * @template TKey as string|null
+                     */
+                    class A {
+                        /** @var TKey  */
+                        public $key;
+
+                        /**
+                         * @param TKey $key
+                         */
+                        public function __construct(?string $key)
+                        {
+                            $this->key = $key;
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -3108,6 +3170,21 @@ class ClassTemplateTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidArgument'
+            ],
+            'preventIteratorAggregateToIterableWithDifferentTypes' => [
+                '<?php
+                    class Foo {}
+
+                    class Bar {}
+
+                    /** @param iterable<int, Foo> $foos */
+                    function consume(iterable $foos): void {}
+
+                    /** @param IteratorAggregate<int, Bar> $t */
+                    function foo(IteratorAggregate $t) : void {
+                        consume($t);
+                    }',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

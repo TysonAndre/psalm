@@ -5,6 +5,7 @@ use PhpParser;
 use Psalm\Aliases;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
+use Psalm\Internal\Type\UnionTemplateHandler;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
@@ -1051,7 +1052,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             );
 
             if ($class_template_params) {
-                $fleshed_out_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $fleshed_out_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
                     $fleshed_out_type,
                     $template_result,
                     $codebase,
@@ -1082,17 +1083,21 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         }
 
         foreach ($storage->pseudo_property_get_types as $property_name => $property_type) {
-            $fleshed_out_type = !$property_type->isMixed()
-                ? ExpressionAnalyzer::fleshOutType(
-                    $codebase,
-                    $property_type,
-                    $fq_class_name,
-                    $fq_class_name,
-                    $parent_fq_class_name
-                )
-                : $property_type;
+            $property_name = substr($property_name, 1);
 
-            $class_context->vars_in_scope['$this->' . substr($property_name, 1)] = $fleshed_out_type;
+            if (isset($class_context->vars_in_scope['$this->' . $property_name])) {
+                $fleshed_out_type = !$property_type->isMixed()
+                    ? ExpressionAnalyzer::fleshOutType(
+                        $codebase,
+                        $property_type,
+                        $fq_class_name,
+                        $fq_class_name,
+                        $parent_fq_class_name
+                    )
+                    : $property_type;
+
+                $class_context->vars_in_scope['$this->' . $property_name] = $fleshed_out_type;
+            }
         }
     }
 
@@ -1143,6 +1148,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         $uninitialized_variables = [];
         $uninitialized_properties = [];
         $uninitialized_typed_properties = [];
+        $uninitialized_private_properties = false;
 
         foreach ($storage->appearing_property_ids as $property_name => $appearing_property_id) {
             $property_class_name = $codebase->properties->getDeclaringClassForProperty(
@@ -1201,6 +1207,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $fq_class_name_lc . '::__construct',
                 strtolower($property_class_name) . '::$' . $property_name
             );
+
+            if ($property->visibility === ClassLikeAnalyzer::VISIBILITY_PRIVATE) {
+                $uninitialized_private_properties = true;
+            }
 
             $uninitialized_variables[] = '$this->' . $property_name;
             $uninitialized_properties[$property_class_name . '::$' . $property_name] = $property;
@@ -1301,6 +1311,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $was_collecting_initializations = $class_context->collect_initializations;
 
                 $class_context->collect_initializations = true;
+                $class_context->collect_nonprivate_initializations = !$uninitialized_private_properties;
 
                 $constructor_analyzer = $this->analyzeClassMethod(
                     $fake_stmt,
@@ -1320,6 +1331,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         if ($constructor_analyzer) {
             $method_context = clone $class_context;
             $method_context->collect_initializations = true;
+            $method_context->collect_nonprivate_initializations = !$uninitialized_private_properties;
             $method_context->self = $fq_class_name;
 
             $this_atomic_object_type = new Type\Atomic\TNamedObject($fq_class_name);
@@ -1375,11 +1387,16 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     && $error_location
                     && (!$end_type->initialized || $property_storage !== $constructor_class_property_storage)
                 ) {
+                    $expected_visibility = $uninitialized_private_properties
+                        ? 'private or final '
+                        : '';
+
                     if (IssueBuffer::accepts(
                         new PropertyNotSetInConstructor(
                             'Property ' . $class_storage->name . '::$' . $property_name
-                                . ' is not defined in constructor of ' .
-                                $this->fq_class_name . ' and in any methods called in the constructor',
+                                . ' is not defined in constructor of '
+                                . $this->fq_class_name . ' and in any ' . $expected_visibility
+                                . 'methods called in the constructor',
                             $error_location,
                             $property_id
                         ),
@@ -1859,7 +1876,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 []
             );
 
-            $return_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $return_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
                 $return_type,
                 $template_result,
                 $codebase,
@@ -1967,8 +1984,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         if ($parent_storage->template_types && $storage->template_type_extends) {
             $i = 0;
 
+            $previous_extended = [];
+
             foreach ($parent_storage->template_types as $template_name => $type_map) {
-                foreach ($type_map as $template_type) {
+                foreach ($type_map as $declaring_class => $template_type) {
                     if (isset($storage->template_type_extends[$parent_storage->name][$template_name])) {
                         $extended_type = $storage->template_type_extends[$parent_storage->name][$template_name];
 
@@ -1998,19 +2017,40 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             }
                         }
 
-                        if (!$template_type[0]->isMixed()
-                            && !TypeAnalyzer::isContainedBy($codebase, $extended_type, $template_type[0])
-                        ) {
-                            if (IssueBuffer::accepts(
-                                new InvalidTemplateParam(
-                                    'Extended template param ' . $template_name
-                                        . ' expects type ' . $template_type[0]->getId()
-                                        . ', type ' . $extended_type->getId() . ' given',
-                                    $code_location
-                                ),
-                                $storage->suppressed_issues + $this->getSuppressedIssues()
-                            )) {
-                                // fall through
+                        if (!$template_type[0]->isMixed()) {
+                            $template_type_copy = clone $template_type[0];
+
+                            $template_result = new \Psalm\Internal\Type\TemplateResult(
+                                $previous_extended ?: [],
+                                []
+                            );
+
+                            $template_type_copy = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                                $template_type_copy,
+                                $template_result,
+                                $codebase,
+                                null,
+                                $extended_type,
+                                null,
+                                null
+                            );
+
+                            if (!TypeAnalyzer::isContainedBy($codebase, $extended_type, $template_type_copy)) {
+                                if (IssueBuffer::accepts(
+                                    new InvalidTemplateParam(
+                                        'Extended template param ' . $template_name
+                                            . ' expects type ' . $template_type[0]->getId()
+                                            . ', type ' . $extended_type->getId() . ' given',
+                                        $code_location
+                                    ),
+                                    $storage->suppressed_issues + $this->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            } else {
+                                $previous_extended[$template_name] = [
+                                    $declaring_class => [$extended_type]
+                                ];
                             }
                         }
                     }
