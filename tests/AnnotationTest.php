@@ -1136,6 +1136,13 @@ class AnnotationTest extends TestCase
                 [],
                 '7.4'
             ],
+            'arrayWithKeySlashesAndNewline' => [
+                '<?php
+                    $arr = ["foo\\bar\nbaz" => "literal"];',
+                [
+                    '$arr' => 'array{\'foo\\\\bar\nbaz\': string}'
+                ]
+            ],
         ];
     }
 

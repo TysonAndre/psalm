@@ -351,7 +351,7 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
-    public function testParamaterizedClassString()
+    public function testParameterizedClassString()
     {
         $this->assertSame('class-string<A>', (string) Type::parseString('class-string<A>'));
     }
@@ -359,7 +359,7 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
-    public function testParamaterizedClassStringUnion()
+    public function testParameterizedClassStringUnion()
     {
         $this->assertSame('class-string<A>|class-string<B>', (string) Type::parseString('class-string<A>|class-string<B>'));
     }
@@ -396,6 +396,23 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithSimpleArgs()
     {
         $this->assertSame('array{a: int, b: string}', (string) Type:: parseString('array{a: int, b: string}'));
+    }
+
+    /**
+     * @return void
+     */
+    public function testObjectLikeWithSpace()
+    {
+        $this->assertSame('array{\'a \': int, \'b  \': string}', (string) Type:: parseString('array{\'a \': int, \'b  \': string}'));
+    }
+
+    /**
+     * @return void
+     */
+    public function testObjectLikeWithQuotedKeys()
+    {
+        $this->assertSame('array{\'\\"\': int, \'\\\'\': string}', (string) Type:: parseString('array{\'"\': int, \'\\\'\': string}'));
+        $this->assertSame('array{\'\\"\': int, \'\\\'\': string}', (string) Type:: parseString('array{"\\"": int, "\\\'": string}'));
     }
 
     /**
@@ -648,7 +665,23 @@ class TypeParseTest extends TestCase
     {
         $this->assertSame(
             '(T is string ? string : array<string, string>)',
-            (string) Type::parseString('(T is string ? string : array<string, string>)', null, ['T' => ['' => [Type::getArray()]]])
+            (string) Type::parseString(
+                '(T is string ? string : array<string, string>)',
+                null,
+                ['T' => ['' => [Type::getArray()]]]
+            )
+        );
+    }
+
+    public function testConditionalTypeWithCallable() : void
+    {
+        $this->assertSame(
+            '(T is string ? callable(string, string):string : callable(mixed...):mixed)',
+            (string) Type::parseString(
+                '(T is string ? callable(string, string):string : callable(mixed...):mixed)',
+                null,
+                ['T' => ['' => [Type::getArray()]]]
+            )
         );
     }
 

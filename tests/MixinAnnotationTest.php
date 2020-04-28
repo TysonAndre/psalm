@@ -95,6 +95,78 @@ class MixinAnnotationTest extends TestCase
                      */
                     class A extends AParent {}'
             ],
+            'implicitMixin' => [
+                '<?php
+                    function foo(string $dir) : void {
+                        $iterator = new \RecursiveIteratorIterator(
+                            new \RecursiveDirectoryIterator($dir)
+                        );
+
+                        while ($iterator->valid()) {
+                            if (!$iterator->isDot() && $iterator->isLink()) {}
+
+                            $iterator->next();
+                        }
+                    }'
+            ],
+            'wrapCustomIterator' => [
+                '<?php
+                    class Subject implements Iterator {
+                        /**
+                         * the index method exists
+                         *
+                         * @param int $index
+                         * @return bool
+                         */
+                        public function index($index) {
+                            return true;
+                        }
+
+                        public function current() {
+                            return 2;
+                        }
+
+                        public function next() {}
+
+                        public function key() {
+                            return 1;
+                        }
+
+                        public function valid() {
+                            return false;
+                        }
+
+                        public function rewind() {}
+                    }
+
+                    $iter = new IteratorIterator(new Subject());
+                    $b = $iter->index(0);',
+                [
+                    '$b' => 'bool',
+                ]
+            ],
+            'templatedMixin' => [
+                '<?php
+
+                    /**
+                     * @template T
+                     */
+                    abstract class Foo {
+                        /** @return T */
+                        abstract public function hi();
+                    }
+
+                    /**
+                     * @mixin Foo<string>
+                     */
+                    class Bar {}
+
+                    $bar = new Bar();
+                    $b = $bar->hi();',
+                [
+                    '$b' => 'string',
+                ]
+            ],
         ];
     }
 }

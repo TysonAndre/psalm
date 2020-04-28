@@ -323,7 +323,8 @@ class ParseTree
                         break;
                     }
 
-                    while ($current_parent instanceof ParseTree\UnionTree
+                    while (($current_parent instanceof ParseTree\UnionTree
+                            || $current_parent instanceof ParseTree\CallableWithReturnTypeTree)
                         && $current_leaf->parent
                     ) {
                         $current_leaf = $current_leaf->parent;

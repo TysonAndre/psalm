@@ -979,7 +979,11 @@ class FunctionCallAnalyzer extends CallAnalyzer
                                 $statements_analyzer,
                                 new CodeLocation($statements_analyzer->getSource(), $stmt),
                                 $statements_analyzer->getSuppressedIssues(),
-                                $context->phantom_classes
+                                $context->phantom_classes,
+                                true,
+                                false,
+                                false,
+                                $context->calling_method_id
                             );
                         }
                     }
@@ -1264,7 +1268,7 @@ class FunctionCallAnalyzer extends CallAnalyzer
                     $statements_analyzer->getAliases()
                 );
 
-                if ($fq_const_name !== null) {
+                if ($fq_const_name !== null && isset($stmt->args[1])) {
                     $second_arg = $stmt->args[1];
                     $was_in_call = $context->inside_call;
                     $context->inside_call = true;

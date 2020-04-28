@@ -103,6 +103,11 @@ class ClassLikeStorage
     public $mixin_fqcln = null;
 
     /**
+     * @var null|Type\Atomic\TTemplateParam|Type\Atomic\TNamedObject
+     */
+    public $mixin = null;
+
+    /**
      * @var array<string, bool>
      */
     public $deprecated_constants = [];
