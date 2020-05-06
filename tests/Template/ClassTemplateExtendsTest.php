@@ -3979,6 +3979,58 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }'
             ],
+            'templatedParameterIsNotMoreSpecific' => [
+                '<?php
+                    interface I {
+                        /**
+                         * @param bool $b
+                         */
+                        public function foo($b): bool;
+                    }
+
+                    class T implements I
+                    {
+                        /**
+                         * @template TBool as bool
+                         * @param TBool $b
+                         *
+                         * @psalm-return TBool
+                         */
+                        public function foo($b): bool {
+                            return $b;
+                        }
+                    }'
+            ],
+            'finalOverridesStatic' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Collection {
+                        /**
+                         * @param T $item
+                         */
+                        public function __construct($item) {}
+                    }
+
+                    abstract class Food {
+                        /**
+                         * @return Collection<static>
+                         */
+                        public function getTypes() {
+                            return new Collection(new static);
+                        }
+                    }
+
+                    final class Cheese extends Food {}
+
+                    /**
+                     * @return Collection<Cheese>
+                     */
+                    function test(Cheese $cheese): Collection {
+                        return $cheese->getTypes();
+                    }'
+            ],
         ];
     }
 

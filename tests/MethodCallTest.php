@@ -637,6 +637,27 @@ class MethodCallTest extends TestCase
                         }
                     }'
             ],
+            'abstractMethodExistsOnChild' => [
+                '<?php
+                    abstract class Foo {}
+
+                    abstract class FooChild extends Foo {}
+
+                    abstract class AbstractTestCase {
+                        abstract public function createFoo(): Foo;
+                    }
+
+                    abstract class AbstractChildTestCase extends AbstractTestCase {
+                        abstract public function createFoo(): FooChild;
+
+                        public function testFoo(): FooChild {
+                            return $this->createFoo();
+                        }
+                    }',
+                [],
+                [],
+                '7.4'
+            ],
         ];
     }
 
@@ -1079,7 +1100,13 @@ class MethodCallTest extends TestCase
 
                     foo(new AChild());',
                 'error_message' => 'PossiblyNullArgument'
-            ]
+            ],
+            'checkVariableInUnknownClassConstructor' => [
+                '<?php
+                    /** @psalm-suppress UndefinedClass */
+                    new Missing($class_arg);',
+                'error_message' => 'PossiblyUndefinedVariable',
+            ],
         ];
     }
 }

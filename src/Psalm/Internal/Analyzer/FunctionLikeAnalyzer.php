@@ -552,7 +552,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 && $function_param->location
                 && !isset($implemented_docblock_param_types[$offset])
             ) {
-                if ($this->function instanceof Closure) {
+                if ($this->function instanceof Closure
+                    || $this->function instanceof ArrowFunction
+                ) {
                     IssueBuffer::accepts(
                         new MissingClosureParamType(
                             'Parameter $' . $function_param->name . ' has no provided type',
@@ -616,6 +618,14 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $closure_return_types,
                     $codebase
                 );
+
+                $closure_yield_type = $closure_yield_types
+                    ? \Psalm\Internal\Type\TypeCombination::combineTypes($closure_yield_types)
+                    : null;
+
+                if ($closure_yield_type) {
+                    $closure_return_type = $closure_yield_type;
+                }
 
                 if (($storage->return_type === $storage->signature_return_type)
                     && (!$storage->return_type
@@ -770,6 +780,31 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             }
         }
 
+        $plugin_classes = $codebase->config->after_functionlike_checks;
+
+        if ($plugin_classes) {
+            $file_manipulations = [];
+
+            foreach ($plugin_classes as $plugin_fq_class_name) {
+                if ($plugin_fq_class_name::afterStatementAnalysis(
+                    $this->function,
+                    $storage,
+                    $this,
+                    $codebase,
+                    $file_manipulations
+                ) === false) {
+                    return false;
+                }
+            }
+
+            if ($file_manipulations) {
+                \Psalm\Internal\FileManipulation\FileManipulationBuffer::add(
+                    $this->getFilePath(),
+                    $file_manipulations
+                );
+            }
+        }
+
         return null;
     }
 
@@ -806,7 +841,9 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 || !$storage->cased_name
                 || $storage->visibility === ClassLikeAnalyzer::VISIBILITY_PRIVATE
             ) {
-                if ($this->function instanceof Closure) {
+                if ($this->function instanceof Closure
+                    || $this->function instanceof ArrowFunction
+                ) {
                     if (IssueBuffer::accepts(
                         new UnusedClosureParam(
                             'Param ' . $var_name . ' is never referenced in this method',

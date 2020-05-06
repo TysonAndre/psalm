@@ -105,6 +105,10 @@ class ParseTree
 
                         $new_parent_leaf = new ParseTree\IndexedAccessTree($next_token[0], $current_parent);
                     } else {
+                        if ($current_leaf instanceof ParseTree\ObjectLikePropertyTree) {
+                            throw new TypeParseTreeException('Unexpected token ' . $type_token[0]);
+                        }
+
                         $new_parent_leaf = new ParseTree\GenericTree('array', $current_parent);
                     }
 
@@ -163,6 +167,12 @@ class ParseTree
                         && !$current_leaf instanceof ParseTree\CallableTree
                         && !$current_leaf instanceof ParseTree\MethodTree);
 
+                    if ($current_leaf instanceof ParseTree\EncapsulationTree
+                        || $current_leaf instanceof ParseTree\CallableTree
+                    ) {
+                        $current_leaf->terminated = true;
+                    }
+
                     break;
 
                 case '>':
@@ -173,6 +183,8 @@ class ParseTree
 
                         $current_leaf = $current_leaf->parent;
                     } while (!$current_leaf instanceof ParseTree\GenericTree);
+
+                    $current_leaf->terminated = true;
 
                     break;
 
@@ -188,6 +200,8 @@ class ParseTree
 
                         $current_leaf = $current_leaf->parent;
                     } while (!$current_leaf instanceof ParseTree\ObjectLikeTree);
+
+                    $current_leaf->terminated = true;
 
                     break;
 
@@ -332,6 +346,10 @@ class ParseTree
                     }
 
                     if ($current_parent && $current_parent instanceof ParseTree\ConditionalTree) {
+                        if (count($current_parent->children) > 1) {
+                            throw new TypeParseTreeException('Cannot process colon in conditional twice');
+                        }
+
                         $current_leaf = $current_parent;
                         $current_parent = $current_parent->parent;
                         break;
@@ -393,7 +411,16 @@ class ParseTree
                 case '?':
                     if ($next_token === null || $next_token[0] !== ':') {
                         while (($current_leaf instanceof ParseTree\Value
-                                || $current_leaf instanceof ParseTree\UnionTree)
+                                || $current_leaf instanceof ParseTree\UnionTree
+                                || ($current_leaf instanceof ParseTree\ObjectLikeTree
+                                    && $current_leaf->terminated)
+                                || ($current_leaf instanceof ParseTree\GenericTree
+                                    && $current_leaf->terminated)
+                                || ($current_leaf instanceof ParseTree\EncapsulationTree
+                                    && $current_leaf->terminated)
+                                || ($current_leaf instanceof ParseTree\CallableTree
+                                    && $current_leaf->terminated)
+                                || $current_leaf instanceof ParseTree\IntersectionTree)
                             && $current_leaf->parent
                         ) {
                             $current_leaf = $current_leaf->parent;

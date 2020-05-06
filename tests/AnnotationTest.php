@@ -892,7 +892,10 @@ class AnnotationTest extends TestCase
                     function bat(array $arr) : void {
                         $item = null;
 
-                        /** @var string $item */
+                        /**
+                         * @psalm-suppress MixedArrayAccess
+                         * @var string $item
+                         */
                         foreach ($arr as list($item)) {}
 
                         if (is_null($item)) {}
@@ -901,7 +904,10 @@ class AnnotationTest extends TestCase
                     function baz(array $arr) : void {
                         $item = null;
 
-                        /** @var string $item */
+                        /**
+                         * @psalm-suppress MixedArrayAccess
+                         * @var string $item
+                         */
                         foreach ($arr as list($item => $_)) {}
 
                         if (is_null($item)) {}
@@ -1142,6 +1148,13 @@ class AnnotationTest extends TestCase
                 [
                     '$arr' => 'array{\'foo\\\\bar\nbaz\': string}'
                 ]
+            ],
+            'doubleSpaceBeforeAt' => [
+                '<?php
+                    /**
+                     *  @param string $c
+                     */
+                    function foo($c) : void {}'
             ],
         ];
     }

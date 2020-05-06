@@ -843,6 +843,10 @@ abstract class Type
                 throw new TypeParseTreeException('Unrecognized template \'' . $template_param_name . '\'');
             }
 
+            if (count($parse_tree->children) !== 2) {
+                throw new TypeParseTreeException('Invalid conditional');
+            }
+
             $first_class = array_keys($template_type_map[$template_param_name])[0];
 
             $conditional_type = self::getTypeFromTree(
@@ -1127,6 +1131,17 @@ abstract class Type
                 || $char === '&'
                 || $char === '='
             ) {
+                if ($char === '('
+                    && $type_tokens[$rtc][0] === 'func_num_args'
+                    && isset($chars[$i + 1])
+                    && $chars[$i + 1] === ')'
+                ) {
+                    $type_tokens[$rtc][0] = 'func_num_args()';
+                    ++$i;
+
+                    continue;
+                }
+
                 if ($type_tokens[$rtc][0] === '') {
                     $type_tokens[$rtc] = [$char, $i];
                 } else {

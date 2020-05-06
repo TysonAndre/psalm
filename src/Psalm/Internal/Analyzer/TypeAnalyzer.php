@@ -96,12 +96,24 @@ class TypeAnalyzer
 
         $has_overall_match = true;
 
-        foreach ($input_type->getAtomicTypes() as $input_type_part) {
+        $container_has_template = $container_type->hasTemplateOrStatic();
+
+        $input_atomic_types = \array_reverse($input_type->getAtomicTypes());
+
+        while ($input_type_part = \array_pop($input_atomic_types)) {
             if ($input_type_part instanceof TNull && $ignore_null) {
                 continue;
             }
 
             if ($input_type_part instanceof TFalse && $ignore_false) {
+                continue;
+            }
+
+            if ($input_type_part instanceof TTemplateParam
+                && !$container_has_template
+                && !$input_type_part->extra_types
+            ) {
+                $input_atomic_types = array_merge($input_type_part->as->getAtomicTypes(), $input_atomic_types);
                 continue;
             }
 
@@ -1015,6 +1027,28 @@ class TypeAnalyzer
                     continue;
                 }
 
+                if (self::isAtomicContainedBy(
+                    $codebase,
+                    $input_as_type_part,
+                    $container_type_part,
+                    $allow_interface_equality,
+                    $allow_float_int_equality,
+                    $atomic_comparison_result
+                )) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($input_type_part instanceof TConditional) {
+            $input_atomic_types = array_merge(
+                array_values($input_type_part->if_type->getAtomicTypes()),
+                array_values($input_type_part->else_type->getAtomicTypes())
+            );
+
+            foreach ($input_atomic_types as $input_as_type_part) {
                 if (self::isAtomicContainedBy(
                     $codebase,
                     $input_as_type_part,

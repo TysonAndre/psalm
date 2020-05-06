@@ -365,6 +365,102 @@ class ConditionalReturnTypeTest extends TestCase
                         return [new stdClass(), new stdClass()];
                     }'
             ],
+            'promiseConditional' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Promise {
+                        /** @var T */
+                        private $t;
+
+                        /** @param T $t */
+                        public function __construct($t) {
+                            $this->t = $t;
+                        }
+                    }
+
+                    /**
+                     * @template T
+                     * @extends Promise<T>
+                     */
+                    class Success extends Promise {}
+
+                    /**
+                     * @template TReturn
+                     * @template TPromise
+                     *
+                     * @template T as Promise<TPromise>|TReturn
+                     *
+                     * @param callable(): T $callback
+                     *
+                     * @return Promise
+                     * @psalm-return (T is Promise ? Promise<TPromise> : Promise<TReturn>)
+                     */
+                    function call(callable $callback): Promise {
+                        $result = $callback();
+
+                        if ($result instanceof Promise) {
+                            return $result;
+                        }
+
+                        return new Promise($result);
+                    }
+
+                    $ret_int_promise = function (): Promise {
+                        return new Success(9);
+                    };
+
+                    $c1 = call($ret_int_promise);
+
+                    $c2 = call(function (): int {
+                        return 42;
+                    });',
+                [
+                    '$c1' => 'Promise<int>',
+                    '$c2' => 'Promise<int>',
+                ]
+            ],
+            'conditionalReturnShouldMatchInherited' => [
+                '<?php
+                    interface I {
+                        public function test1(bool $idOnly): array;
+                    }
+
+                    class Test implements I
+                    {
+                        /**
+                         * @template T1 as bool
+                         * @param T1 $idOnly
+                         * @psalm-return (T1 is true ? array : array)
+                         */
+                        public function test1(bool $idOnly): array {
+                            return [];
+                        }
+                    }'
+            ],
+            'conditionalOnArgCount' => [
+                '<?php
+                    /**
+                     * @return (func_num_args() is 0 ? false : string)
+                     */
+                    function zeroArgsFalseOneArgString(string $s = "") {
+                        if (func_num_args() === 0) {
+                            return false;
+                        }
+
+                        return $s;
+                    }
+
+                    $a = zeroArgsFalseOneArgString();
+                    $b = zeroArgsFalseOneArgString("");
+                    $c = zeroArgsFalseOneArgString("hello");',
+                [
+                    '$a' => 'false',
+                    '$b' => 'string',
+                    '$c' => 'string',
+                ]
+            ],
         ];
     }
 }

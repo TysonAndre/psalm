@@ -167,6 +167,62 @@ class MixinAnnotationTest extends TestCase
                     '$b' => 'string',
                 ]
             ],
+            'templatedMixinSelf' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Animal {
+                        /** @var T */
+                        private $item;
+
+                        /**
+                         * @param T $item
+                         */
+                        public function __construct($item) {
+                            $this->item = $item;
+                        }
+
+                        /**
+                         * @return T
+                         */
+                        public function get() {
+                            return $this->item;
+                        }
+                    }
+
+                    /**
+                     * @mixin Animal<self>
+                     */
+                    class Dog {
+                        public function __construct() {}
+                    }
+
+                    function getDog(): Dog {
+                        return (new Dog())->get();
+                    }'
+            ],
+            'inheritPropertyAnnotations' => [
+                '<?php
+                    /**
+                     * @property string $foo
+                     */
+                    class A {
+                        /** @return mixed */
+                        public function __get(string $s) {
+                            return 5;
+                        }
+                    }
+
+                    /**
+                     * @mixin A
+                     */
+                    class B {}
+
+                    function toArray(B $b) : string {
+                        return $b->foo;
+                    }'
+            ],
         ];
     }
 }

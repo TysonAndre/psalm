@@ -3822,7 +3822,21 @@ class CallAnalyzer
 
             foreach ($changed_var_ids as $var_id => $_) {
                 if (isset($op_vars_in_scope[$var_id])) {
-                    if ($first_appearance = $statements_analyzer->getFirstAppearance($var_id)) {
+                    $first_appearance = $statements_analyzer->getFirstAppearance($var_id);
+
+                    $codebase = $statements_analyzer->getCodebase();
+
+                    if ($first_appearance && $context->vars_in_scope[$var_id]->hasMixed()) {
+                        if (!$context->collect_initializations
+                            && !$context->collect_mutations
+                            && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                            && (!(($parent_source = $statements_analyzer->getSource())
+                                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+                        ) {
+                            $codebase->analyzer->decrementMixedCount($statements_analyzer->getFilePath());
+                        }
+
                         IssueBuffer::remove(
                             $statements_analyzer->getFilePath(),
                             'MixedAssignment',
@@ -3863,6 +3877,11 @@ class CallAnalyzer
                         $upper_bound_type = $template_result->upper_bounds[$template_name][$defining_id][0];
 
                         $union_comparison_result = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+
+                        if (count($template_result->lower_bounds_unintersectable_types) > 1) {
+                            $upper_bound_type = $template_result->lower_bounds_unintersectable_types[0];
+                            $lower_bound_type = $template_result->lower_bounds_unintersectable_types[1];
+                        }
 
                         if (!TypeAnalyzer::isContainedBy(
                             $statements_analyzer->getCodebase(),

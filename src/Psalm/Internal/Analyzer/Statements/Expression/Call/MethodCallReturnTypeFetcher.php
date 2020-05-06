@@ -140,9 +140,15 @@ class MethodCallReturnTypeFetcher
                                     [$template_type->defining_class]
                             )
                         ) {
-                            $template_result->upper_bounds[$template_type->param_name] = [
-                                ($template_type->defining_class) => [Type::getEmpty(), 0]
-                            ];
+                            if ($template_type->param_name === 'TFunctionArgCount') {
+                                $template_result->upper_bounds[$template_type->param_name] = [
+                                    'fn-' . $method_id => [Type::getInt(false, \count($stmt->args)), 0]
+                                ];
+                            } else {
+                                $template_result->upper_bounds[$template_type->param_name] = [
+                                    ($template_type->defining_class) => [Type::getEmpty(), 0]
+                                ];
+                            }
                         }
                     }
                 }
@@ -167,7 +173,11 @@ class MethodCallReturnTypeFetcher
                     $return_type_candidate,
                     $self_fq_class_name,
                     $static_type,
-                    $class_storage->parent_class
+                    $class_storage->parent_class,
+                    true,
+                    false,
+                    $static_type instanceof Type\Atomic\TNamedObject
+                        && $codebase->classlike_storage_provider->get($static_type->value)->final
                 );
 
                 if ($codebase->taint) {

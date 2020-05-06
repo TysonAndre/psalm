@@ -203,6 +203,17 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testIteratorAndTraversableOrNull()
+    {
+        $this->assertSame(
+            'Iterator<mixed, int>&Traversable|null',
+            (string) Type::parseString('Iterator<mixed, int>&Traversable|null')
+        );
+    }
+
+    /**
+     * @return void
+     */
     public function testIntersectionAfterGeneric()
     {
         $this->assertSame('Countable&iterable<mixed, int>&I', (string) Type::parseString('Countable&iterable<int>&I'));
@@ -422,6 +433,15 @@ class TypeParseTest extends TestCase
     {
         $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
         Type::parseString('array{a: int, b: string');
+    }
+
+    /**
+     * @return void
+     */
+    public function testObjectLikeArrayInType()
+    {
+        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
+        Type::parseString('array{a:[]}');
     }
 
     /**
@@ -653,11 +673,64 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testConditionalTypeWithObjectLikeArray()
+    {
+        $this->assertSame(
+            '(T is array{a: string} ? string : int)',
+            (string) Type::parseString('(T is array{a: string} ? string : int)', null, ['T' => ['' => [Type::getArray()]]])
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testConditionalTypeWithGenericIs()
+    {
+        $this->assertSame(
+            '(T is array<array-key, string> ? string : int)',
+            (string) Type::parseString('(T is array<string> ? string : int)', null, ['T' => ['' => [Type::getArray()]]])
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testConditionalTypeWithIntersection()
+    {
+        $this->assertSame(
+            '(T is A&B ? string : int)',
+            (string) Type::parseString('(T is A&B ? string : int)', null, ['T' => ['' => [Type::getArray()]]])
+        );
+    }
+
+    /**
+     * @return void
+     */
     public function testConditionalTypeWithoutSpaces()
     {
         $this->assertSame(
             '(T is string ? string : int)',
             (string) Type::parseString('(T is string?string:int)', null, ['T' => ['' => [Type::getArray()]]])
+        );
+    }
+
+    /**
+     * @return void
+     */
+    public function testConditionalTypeWithCallableElseBool()
+    {
+        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
+        Type::parseString('(T is string ? callable() : bool)', null, ['T' => ['' => [Type::getArray()]]]);
+    }
+
+    /**
+     * @return void
+     */
+    public function testConditionalTypeWithCallableReturningBoolElseBool()
+    {
+        $this->assertSame(
+            '(T is string ? callable():bool : bool)',
+            (string) Type::parseString('(T is string ? (callable() : bool) : bool)', null, ['T' => ['' => [Type::getArray()]]])
         );
     }
 
@@ -673,7 +746,19 @@ class TypeParseTest extends TestCase
         );
     }
 
-    public function testConditionalTypeWithCallable() : void
+    public function testConditionalTypeWithCallableBracketed() : void
+    {
+        $this->assertSame(
+            '(T is string ? callable(string, string):string : callable(mixed...):mixed)',
+            (string) Type::parseString(
+                '(T is string ? (callable(string, string):string) : (callable(mixed...):mixed))',
+                null,
+                ['T' => ['' => [Type::getArray()]]]
+            )
+        );
+    }
+
+    public function testConditionalTypeWithCallableNotBracketed() : void
     {
         $this->assertSame(
             '(T is string ? callable(string, string):string : callable(mixed...):mixed)',
