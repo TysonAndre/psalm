@@ -2,23 +2,14 @@
 namespace Psalm\Internal\Type;
 
 use function array_filter;
-use function count;
 use function explode;
 use function get_class;
-use function implode;
 use function is_string;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
-use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
-use Psalm\Internal\Type\TemplateResult;
-use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\ParadoxicalCondition;
-use Psalm\Issue\PsalmInternalError;
 use Psalm\Issue\RedundantCondition;
-use Psalm\Issue\RedundantConditionGivenDocblockType;
-use Psalm\Issue\TypeDoesNotContainNull;
 use Psalm\Issue\TypeDoesNotContainType;
 use Psalm\IssueBuffer;
 use Psalm\Type;
@@ -42,7 +33,6 @@ use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNonEmptyArray;
 use Psalm\Type\Atomic\TNonEmptyList;
-use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
 use Psalm\Type\Atomic\TObject;
@@ -50,14 +40,8 @@ use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTemplateParam;
-use Psalm\Type\Atomic\TTrue;
 use function strpos;
 use function substr;
-use Psalm\Issue\InvalidDocblock;
-use Doctrine\Instantiator\Exception\UnexpectedValueException;
-use function array_intersect_key;
-use function array_merge;
-
 
 class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
 {
@@ -124,6 +108,13 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
                 $codebase,
                 $existing_var_type,
                 substr($assertion, 9)
+            );
+        }
+
+        if (substr($assertion, 0, 14) === 'has-array-key-') {
+            return self::reconcileHasArrayKey(
+                $existing_var_type,
+                substr($assertion, 14)
             );
         }
 
@@ -357,6 +348,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         if ($existing_var_type->isSingle()
             && $existing_var_type->hasTemplate()
             && strpos($assertion, '-') === false
+            && strpos($assertion, '(') === false
         ) {
             foreach ($existing_var_type->getAtomicTypes() as $atomic_type) {
                 if ($atomic_type instanceof TTemplateParam) {
@@ -1283,6 +1275,38 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
      * @param   string[]  $suppressed_issues
      * @param   0|1|2    $failed_reconciliation
      */
+    private static function reconcileHasArrayKey(
+        Union $existing_var_type,
+        string $assertion
+    ) : Union {
+        foreach ($existing_var_type->getAtomicTypes() as $atomic_type) {
+            if ($atomic_type instanceof Type\Atomic\ObjectLike) {
+                $is_class_string = false;
+
+                if (strpos($assertion, '::class')) {
+                    list($assertion) = explode('::', $assertion);
+                    $is_class_string = true;
+                }
+
+                if (isset($atomic_type->properties[$assertion])) {
+                    $atomic_type->properties[$assertion]->possibly_undefined = false;
+                } else {
+                    $atomic_type->properties[$assertion] = Type::getMixed();
+
+                    if ($is_class_string) {
+                        $atomic_type->class_strings[$assertion] = true;
+                    }
+                }
+            }
+        }
+
+        return $existing_var_type;
+    }
+
+    /**
+     * @param   string[]  $suppressed_issues
+     * @param   0|1|2    $failed_reconciliation
+     */
     private static function reconcileTraversable(
         Codebase $codebase,
         Union $existing_var_type,
@@ -1673,7 +1697,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
                 $callable_types[] = new Type\Atomic\TCallableString();
                 $did_remove_type = true;
             } elseif (get_class($type) === Type\Atomic\TLiteralString::class
-                && \Psalm\Internal\Codebase\CallMap::inCallMap($type->value)
+                && \Psalm\Internal\Codebase\InternalCallMapHandler::inCallMap($type->value)
             ) {
                 $callable_types[] = $type;
                 $did_remove_type = true;

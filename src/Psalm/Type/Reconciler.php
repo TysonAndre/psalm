@@ -177,6 +177,14 @@ class Reconciler
                         } else {
                             $new_types[$key_parts[2]] = [['=in-array-' . $key_parts[0]]];
                         }
+
+                        if ($key_parts[0][0] === '$') {
+                            if (isset($new_types[$key_parts[0]])) {
+                                $new_types[$key_parts[0]][] = ['=has-array-key-' . $key_parts[2]];
+                            } else {
+                                $new_types[$key_parts[0]] = [['=has-array-key-' . $key_parts[2]]];
+                            }
+                        }
                     }
                 }
             }
@@ -647,7 +655,7 @@ class Reconciler
                                     );
 
                                     if ($method_return_type) {
-                                        $class_property_type = ExpressionAnalyzer::fleshOutType(
+                                        $class_property_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                                             $codebase,
                                             clone $method_return_type,
                                             $declaring_class,
@@ -685,7 +693,7 @@ class Reconciler
                                     );
 
                                     if ($class_property_type) {
-                                        $class_property_type = ExpressionAnalyzer::fleshOutType(
+                                        $class_property_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                                             $codebase,
                                             clone $class_property_type,
                                             $declaring_class_storage->name,

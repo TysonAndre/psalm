@@ -3,7 +3,6 @@ namespace Psalm\Internal\Analyzer;
 
 use PhpParser;
 use Psalm\Aliases;
-use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Type\UnionTemplateHandler;
 use Psalm\Codebase;
@@ -489,6 +488,20 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
         }
 
+        if ($storage->mixin && $storage->mixin_declaring_fqcln === $storage->name) {
+            $union = new Type\Union([$storage->mixin]);
+            $union->check(
+                $this,
+                new CodeLocation(
+                    $this,
+                    $class->name ?: $class,
+                    null,
+                    true
+                ),
+                $this->getSuppressedIssues()
+            );
+        }
+
         if ($storage->template_type_extends) {
             foreach ($storage->template_type_extends as $type_map) {
                 foreach ($type_map as $atomic_type) {
@@ -762,7 +775,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             && $property_storage->type_location
                             && $property_storage->type_location !== $property_storage->signature_type_location
                         ) {
-                            $replace_type = ExpressionAnalyzer::fleshOutType(
+                            $replace_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                                 $codebase,
                                 $property_storage->type,
                                 $this->getFQCLN(),
@@ -1028,7 +1041,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $property_type_location = $property_storage->type_location;
 
             $fleshed_out_type = !$property_type->isMixed()
-                ? ExpressionAnalyzer::fleshOutType(
+                ? \Psalm\Internal\Type\TypeExpander::expandUnion(
                     $codebase,
                     $property_type,
                     $fq_class_name,
@@ -1040,7 +1053,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $class_template_params = ClassTemplateParamCollector::collect(
                 $codebase,
                 $property_class_storage,
-                $fq_class_name,
+                $codebase->classlike_storage_provider->get($fq_class_name),
                 null,
                 new Type\Atomic\TNamedObject($fq_class_name),
                 '$this'
@@ -1087,7 +1100,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
 
             if (isset($class_context->vars_in_scope['$this->' . $property_name])) {
                 $fleshed_out_type = !$property_type->isMixed()
-                    ? ExpressionAnalyzer::fleshOutType(
+                    ? \Psalm\Internal\Type\TypeExpander::expandUnion(
                         $codebase,
                         $property_type,
                         $fq_class_name,
@@ -1866,7 +1879,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $class_template_params = ClassTemplateParamCollector::collect(
                 $codebase,
                 $class_storage,
-                $original_fq_classlike_name,
+                $codebase->classlike_storage_provider->get($original_fq_classlike_name),
                 strtolower($stmt->name->name),
                 $this_object_type
             ) ?: [];
@@ -2039,7 +2052,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                 if (IssueBuffer::accepts(
                                     new InvalidTemplateParam(
                                         'Extended template param ' . $template_name
-                                            . ' expects type ' . $template_type[0]->getId()
+                                            . ' expects type ' . $template_type_copy->getId()
                                             . ', type ' . $extended_type->getId() . ' given',
                                         $code_location
                                     ),
@@ -2052,6 +2065,10 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                     $declaring_class => [$extended_type]
                                 ];
                             }
+                        } else {
+                            $previous_extended[$template_name] = [
+                                $declaring_class => [$extended_type]
+                            ];
                         }
                     }
                 }

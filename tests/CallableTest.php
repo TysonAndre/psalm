@@ -785,6 +785,32 @@ class CallableTest extends TestCase
 
                     $test();'
             ],
+            'resolveTraitClosureReturn' => [
+                '<?php
+                    class B {
+                        /**
+                         * @psalm-param callable(mixed...):static $i
+                         */
+                        function takesACall(callable $i) : void {}
+
+                        public function call() : void {
+                            $this->takesACall(function() {return $this;});
+                        }
+                    }'
+            ],
+            'retunClosureReturningStatic' => [
+                '<?php
+                    class C {
+                        /**
+                         * @return Closure():static
+                         */
+                        public static function foo() {
+                            return function() {
+                                return new static();
+                            };
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -1062,6 +1088,26 @@ class CallableTest extends TestCase
 
                     run("ff");',
                 'error_message' => 'UndefinedFunction',
+            ],
+            'badCustomFunction' => [
+                '<?php
+                    /**
+                     * @param callable(int):bool $func
+                     */
+                    function takesFunction(callable $func) : void {}
+
+                    function myFunction( string $foo ) : bool {
+                        return false;
+                    }
+
+                    takesFunction("myFunction");',
+                'error_message' => 'InvalidScalarArgument',
+            ],
+            'emptyCallable' => [
+                '<?php
+                    $a = "";
+                    $a();',
+                'error_message' => 'InvalidFunctionCall',
             ],
         ];
     }

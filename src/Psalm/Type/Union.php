@@ -36,22 +36,6 @@ use Doctrine\Instantiator\Exception\UnexpectedValueException;
 
 class Union implements TypeNode
 {
-    const TAINTED_INPUT_SQL = 1;
-    const TAINTED_INPUT_HTML = 2;
-    const TAINTED_INPUT_SHELL = 4;
-    const TAINTED_USER_SECRET = 8;
-    const TAINTED_SYSTEM_SECRET = 16;
-
-    const TAINTED_INPUT = self::TAINTED_INPUT_SQL
-        | self::TAINTED_INPUT_HTML
-        | self::TAINTED_INPUT_SHELL;
-
-    const TAINTED = self::TAINTED_INPUT_SQL
-        | self::TAINTED_INPUT_HTML
-        | self::TAINTED_INPUT_SHELL
-        | self::TAINTED_USER_SECRET
-        | self::TAINTED_SYSTEM_SECRET;
-
     /**
      * @var non-empty-array<string, Atomic>
      */
@@ -180,14 +164,9 @@ class Union implements TypeNode
     private $id;
 
     /**
-     * @var ?int
+     * @var ?array<\Psalm\Internal\Taint\Taintable>
      */
-    public $tainted = null;
-
-    /**
-     * @var ?array<\Psalm\Internal\Taint\Source>
-     */
-    public $sources;
+    public $parent_nodes;
 
     /**
      * @var bool
@@ -848,7 +827,9 @@ class Union implements TypeNode
      */
     public function hasLowercaseString()
     {
-        return isset($this->types['string']) && $this->types['string'] instanceof Atomic\TLowercaseString;
+        return isset($this->types['string'])
+            && ($this->types['string'] instanceof Atomic\TLowercaseString
+                || $this->types['string'] instanceof Atomic\TNonEmptyLowercaseString);
     }
 
     /**
@@ -964,6 +945,19 @@ class Union implements TypeNode
                             }
                         )
                     );
+            }
+        );
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasConditional()
+    {
+        return (bool) array_filter(
+            $this->types,
+            function (Atomic $type) : bool {
+                return $type instanceof Type\Atomic\TConditional;
             }
         );
     }
@@ -1375,6 +1369,10 @@ class Union implements TypeNode
                         $template_result,
                         $codebase
                     );
+
+                    if ($atomic_type->as_type->isNullable() && $template_type->isVoid()) {
+                        $template_type = Type::getNull();
+                    }
 
                     if (TypeAnalyzer::isContainedBy(
                         $codebase,

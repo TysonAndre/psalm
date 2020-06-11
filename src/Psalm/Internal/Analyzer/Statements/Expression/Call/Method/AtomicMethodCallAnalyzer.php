@@ -1,5 +1,5 @@
 <?php
-namespace Psalm\Internal\Analyzer\Statements\Expression\Call;
+namespace Psalm\Internal\Analyzer\Statements\Expression\Call\Method;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
@@ -7,9 +7,14 @@ use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\MethodAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\ArgumentMapPopulator;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
+use Psalm\Internal\Analyzer\Statements\Expression\Call\ArgumentsAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Fetch\PropertyFetchAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
-use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\Codebase\InternalCallMapHandler;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
@@ -126,7 +131,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
         ) {
             $result->return_type = Type::getMixed();
 
-            self::checkFunctionArguments(
+            ArgumentsAnalyzer::analyze(
                 $statements_analyzer,
                 $stmt->args,
                 null,
@@ -277,6 +282,8 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                             $method_name_lc
                         );
 
+                        $mixin_class_storage = $codebase->classlike_storage_provider->get($lhs_type_part_new->value);
+
                         if ($codebase->methods->methodExists(
                             $new_method_id,
                             $context->calling_method_id,
@@ -290,15 +297,20 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                             $statements_analyzer->getFilePath()
                         )) {
                             $lhs_type_part = clone $lhs_type_part_new;
-                            $class_storage = $codebase->classlike_storage_provider->get($lhs_type_part->value);
+                            $class_storage = $mixin_class_storage;
 
                             $naive_method_exists = true;
+                            $method_id = $new_method_id;
+                        } elseif (isset($mixin_class_storage->pseudo_methods[$method_name_lc])) {
+                            $lhs_type_part = clone $lhs_type_part_new;
+                            $class_storage = $mixin_class_storage;
                             $method_id = $new_method_id;
                         }
                     }
                 }
             }
         } elseif (!$naive_method_exists
+            && $class_storage->mixin_declaring_fqcln
             && $class_storage->mixin instanceof Type\Atomic\TNamedObject
         ) {
             $new_method_id = new MethodIdentifier(
@@ -318,10 +330,47 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                     : null,
                 $statements_analyzer->getFilePath()
             )) {
-                $fq_class_name = $class_storage->mixin->value;
-                $lhs_type_part = clone $class_storage->mixin;
-                $class_storage = $codebase->classlike_storage_provider->get($class_storage->mixin->value);
+                $mixin_declaring_class_storage = $codebase->classlike_storage_provider->get(
+                    $class_storage->mixin_declaring_fqcln
+                );
 
+                $mixin_class_template_params = ClassTemplateParamCollector::collect(
+                    $codebase,
+                    $mixin_declaring_class_storage,
+                    $codebase->classlike_storage_provider->get($fq_class_name),
+                    null,
+                    $lhs_type_part,
+                    $lhs_var_id
+                );
+
+                $lhs_type_part = clone $class_storage->mixin;
+
+                $lhs_type_part->replaceTemplateTypesWithArgTypes(
+                    new \Psalm\Internal\Type\TemplateResult([], $mixin_class_template_params ?: []),
+                    $codebase
+                );
+
+                $lhs_type_expanded = \Psalm\Internal\Type\TypeExpander::expandUnion(
+                    $codebase,
+                    new Type\Union([$lhs_type_part]),
+                    $mixin_declaring_class_storage->name,
+                    $fq_class_name,
+                    $class_storage->parent_class,
+                    true,
+                    false,
+                    $class_storage->final
+                );
+
+                $new_lhs_type_part = array_values($lhs_type_expanded->getAtomicTypes())[0];
+
+                if ($new_lhs_type_part instanceof Type\Atomic\TNamedObject) {
+                    $lhs_type_part = $new_lhs_type_part;
+                }
+
+                $mixin_class_storage = $codebase->classlike_storage_provider->get($class_storage->mixin->value);
+
+                $fq_class_name = $mixin_class_storage->name;
+                $class_storage = $mixin_class_storage;
                 $naive_method_exists = true;
                 $method_id = $new_method_id;
             }
@@ -355,7 +404,15 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
             if (!$interface_has_method
                 && $codebase->methods->methodExists(
                     new MethodIdentifier($fq_class_name, '__call'),
-                    $context->calling_method_id
+                    $context->calling_method_id,
+                    $codebase->collect_locations
+                        ? new CodeLocation($source, $stmt->name)
+                        : null,
+                    !$context->collect_initializations
+                        && !$context->collect_mutations
+                        ? $statements_analyzer
+                        : null,
+                    $statements_analyzer->getFilePath()
                 )
             ) {
                 $new_call_context = MissingMethodCallHandler::handleMagicMethod(
@@ -499,12 +556,14 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
 
         $fq_class_name = $codebase->classlikes->getUnAliasedName($fq_class_name);
 
+        $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
+
         $parent_source = $statements_analyzer->getSource();
 
         $class_template_params = ClassTemplateParamCollector::collect(
             $codebase,
             $codebase->methods->getClassLikeStorageForMethod($method_id),
-            $fq_class_name,
+            $class_storage,
             $method_name_lc,
             $lhs_type_part,
             $lhs_var_id
@@ -526,7 +585,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                     $class_template_params = ClassTemplateParamCollector::collect(
                         $codebase,
                         $codebase->methods->getClassLikeStorageForMethod($trait_method_id),
-                        $fq_class_name,
+                        $class_storage,
                         $method_name_lc,
                         $lhs_type_part,
                         $lhs_var_id
@@ -567,32 +626,23 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
         $class_storage_for_method = $codebase->methods->getClassLikeStorageForMethod($method_id);
         $plain_getter_property = null;
 
-        if ($lhs_var_id !== '$this'
-            && (isset($class_storage_for_method->methods[$method_name_lc]))
-            && !$class_storage_for_method->methods[$method_name_lc]->overridden_somewhere
-            && !$class_storage_for_method->methods[$method_name_lc]->overridden_downstream
-            && ($plain_getter_property = $class_storage_for_method->methods[$method_name_lc]->plain_getter)
-            && isset($context->vars_in_scope[$getter_var_id = $lhs_var_id . '->' . $plain_getter_property])
-        ) {
-            $return_type_candidate = clone $context->vars_in_scope[$getter_var_id];
-        } else {
-            $return_type_candidate = MethodCallReturnTypeFetcher::fetch(
-                $statements_analyzer,
-                $codebase,
-                $stmt,
-                $context,
-                $method_id,
-                $declaring_method_id,
-                $cased_method_id,
-                $lhs_type_part,
-                $static_type,
-                $args,
-                $result,
-                $template_result
-            );
-        }
+        $return_type_candidate = MethodCallReturnTypeFetcher::fetch(
+            $statements_analyzer,
+            $codebase,
+            $stmt,
+            $context,
+            $method_id,
+            $declaring_method_id,
+            $naive_method_id,
+            $cased_method_id,
+            $lhs_type_part,
+            $static_type,
+            $args,
+            $result,
+            $template_result
+        );
 
-        $in_call_map = CallMap::inCallMap((string) ($declaring_method_id ?: $method_id));
+        $in_call_map = InternalCallMapHandler::inCallMap((string) ($declaring_method_id ?: $method_id));
 
         if (!$in_call_map) {
             $name_code_location = new CodeLocation($statements_analyzer, $stmt->name);
@@ -644,6 +694,41 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
         }
 
         if ($method_storage) {
+            if (!$context->collect_mutations && !$context->collect_initializations) {
+                $can_memoize = MethodCallPurityAnalyzer::analyze(
+                    $statements_analyzer,
+                    $codebase,
+                    $stmt,
+                    $lhs_var_id,
+                    $cased_method_id,
+                    $method_id,
+                    $method_storage,
+                    $class_storage,
+                    $context,
+                    $config
+                );
+            }
+
+            if (!$can_memoize) {
+                if ($lhs_var_id !== '$this'
+                    && (isset($class_storage_for_method->methods[$method_name_lc]))
+                    && !$class_storage_for_method->methods[$method_name_lc]->overridden_somewhere
+                    && !$class_storage_for_method->methods[$method_name_lc]->overridden_downstream
+                ) {
+                    $plain_getter_property = $class_storage_for_method->methods[$method_name_lc]->plain_getter;
+
+                    if ($plain_getter_property) {
+                        $getter_var_id = $lhs_var_id . '->' . $plain_getter_property;
+
+                        if (isset($context->vars_in_scope[$getter_var_id])) {
+                            $return_type_candidate = clone $context->vars_in_scope[$getter_var_id];
+                        } else {
+                            $plain_getter_property = null;
+                        }
+                    }
+                }
+            }
+
             $has_packed_arg = false;
             foreach ($args as $arg) {
                 $has_packed_arg = $has_packed_arg || $arg->unpack;
@@ -675,27 +760,12 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                 }
             }
 
-            if (!$context->collect_mutations && !$context->collect_initializations) {
-                $can_memoize = MethodCallPurityAnalyzer::analyze(
-                    $statements_analyzer,
-                    $codebase,
-                    $stmt,
-                    $lhs_var_id,
-                    $cased_method_id,
-                    $method_id,
-                    $method_storage,
-                    $class_storage,
-                    $context,
-                    $config
-                );
-            }
-
             $class_template_params = $template_result->upper_bounds;
 
             if ($method_storage->assertions) {
                 self::applyAssertionsToContext(
                     $stmt->name,
-                    ExpressionAnalyzer::getArrayVarId($stmt->var, null, $statements_analyzer),
+                    ExpressionIdentifier::getArrayVarId($stmt->var, null, $statements_analyzer),
                     $method_storage->assertions,
                     $args,
                     $class_template_params,
@@ -746,7 +816,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
         }
 
         if (!$args && $lhs_var_id) {
-            if ($config->memoize_method_calls || $can_memoize) {
+            if (($config->memoize_method_calls || $can_memoize) && !$plain_getter_property) {
                 $method_var_id = $lhs_var_id . '->' . $method_name_lc . '()';
 
                 if (isset($context->vars_in_scope[$method_var_id])) {
@@ -756,7 +826,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                         /** @psalm-suppress UndefinedPropertyAssignment */
                         $stmt->pure = true;
                     }
-                } elseif ($return_type_candidate) {
+                } else {
                     $context->vars_in_scope[$method_var_id] = $return_type_candidate;
                 }
             }
@@ -925,7 +995,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                     }
                 }
 
-                if (self::checkFunctionArguments(
+                if (ArgumentsAnalyzer::analyze(
                     $statements_analyzer,
                     $stmt->args,
                     null,
@@ -1012,7 +1082,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                 $second_arg_type = $statements_analyzer->node_data->getType($stmt->args[1]->value);
 
                 if (isset($class_storage->pseudo_property_set_types['$' . $prop_name]) && $second_arg_type) {
-                    $pseudo_set_type = ExpressionAnalyzer::fleshOutType(
+                    $pseudo_set_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                         $codebase,
                         $class_storage->pseudo_property_set_types['$' . $prop_name],
                         $fq_class_name,

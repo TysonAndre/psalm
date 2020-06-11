@@ -8,6 +8,8 @@ use Psalm\Internal\Analyzer\CommentAnalyzer;
 use Psalm\Internal\Analyzer\ScopeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\AssignmentAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
+use Psalm\Internal\Analyzer\Statements\Expression\Fetch\VariableFetchAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
@@ -115,7 +117,7 @@ class ForeachAnalyzer
                 continue;
             }
 
-            $comment_type = ExpressionAnalyzer::fleshOutType(
+            $comment_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $var_comment->type,
                 $context->self,
@@ -148,7 +150,7 @@ class ForeachAnalyzer
             }
 
             if (isset($context->vars_in_scope[$var_comment->var_id])
-                || $statements_analyzer->isSuperGlobal($var_comment->var_id)
+                || VariableFetchAnalyzer::isSuperGlobal($var_comment->var_id)
             ) {
                 if ($codebase->find_unused_variables
                     && $doc_comment
@@ -190,7 +192,7 @@ class ForeachAnalyzer
         $value_type = null;
         $always_non_empty_array = true;
 
-        $var_id = ExpressionAnalyzer::getVarId(
+        $var_id = ExpressionIdentifier::getVarId(
             $stmt->expr,
             $statements_analyzer->getFQCLN(),
             $statements_analyzer
@@ -287,7 +289,7 @@ class ForeachAnalyzer
                 continue;
             }
 
-            $comment_type = ExpressionAnalyzer::fleshOutType(
+            $comment_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $var_comment->type,
                 $context->self,

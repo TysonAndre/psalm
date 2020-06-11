@@ -3,6 +3,7 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Fetch;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\CodeLocation;
@@ -56,6 +57,7 @@ use function strtolower;
 use function in_array;
 use function is_int;
 use function preg_match;
+use Psalm\Internal\Taint\TaintNode;
 use Psalm\Internal\Taint\Source;
 use Psalm\Internal\Type\TemplateResult;
 
@@ -64,19 +66,12 @@ use Psalm\Internal\Type\TemplateResult;
  */
 class ArrayFetchAnalyzer
 {
-    /**
-     * @param   StatementsAnalyzer                   $statements_analyzer
-     * @param   PhpParser\Node\Expr\ArrayDimFetch   $stmt
-     * @param   Context                             $context
-     *
-     * @return  false|null
-     */
     public static function analyze(
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr\ArrayDimFetch $stmt,
         Context $context
-    ) {
-        $array_var_id = ExpressionAnalyzer::getArrayVarId(
+    ) : bool {
+        $array_var_id = ExpressionIdentifier::getArrayVarId(
             $stmt->var,
             $statements_analyzer->getFQCLN(),
             $statements_analyzer
@@ -86,7 +81,7 @@ class ArrayFetchAnalyzer
             return false;
         }
 
-        $keyed_array_var_id = ExpressionAnalyzer::getArrayVarId(
+        $keyed_array_var_id = ExpressionIdentifier::getArrayVarId(
             $stmt,
             $statements_analyzer->getFQCLN(),
             $statements_analyzer
@@ -98,7 +93,7 @@ class ArrayFetchAnalyzer
         if ($stmt->dim) {
             $used_key_type = $statements_analyzer->node_data->getType($stmt->dim) ?: Type::getMixed();
 
-            $dim_var_id = ExpressionAnalyzer::getArrayVarId(
+            $dim_var_id = ExpressionIdentifier::getArrayVarId(
                 $stmt->dim,
                 $statements_analyzer->getFQCLN(),
                 $statements_analyzer
@@ -117,23 +112,35 @@ class ArrayFetchAnalyzer
 
         $stmt_var_type = $statements_analyzer->node_data->getType($stmt->var);
 
+        $codebase = $statements_analyzer->getCodebase();
+
         if ($keyed_array_var_id
             && $context->hasVariable($keyed_array_var_id)
             && !$context->vars_in_scope[$keyed_array_var_id]->possibly_undefined
             && $stmt_var_type
             && !$stmt_var_type->hasClassStringMap()
         ) {
+            $stmt_type = clone $context->vars_in_scope[$keyed_array_var_id];
+
             $statements_analyzer->node_data->setType(
                 $stmt,
-                clone $context->vars_in_scope[$keyed_array_var_id]
+                $stmt_type
             );
 
-            return;
+            if ($array_var_id) {
+                self::taintArrayType(
+                    $statements_analyzer,
+                    $codebase,
+                    $stmt,
+                    $stmt_type,
+                    $array_var_id
+                );
+            }
+
+            return true;
         }
 
         $can_store_result = false;
-
-        $codebase = $statements_analyzer->getCodebase();
 
         if ($stmt_var_type) {
             if ($stmt_var_type->isNull()) {
@@ -158,7 +165,7 @@ class ArrayFetchAnalyzer
                     $statements_analyzer->node_data->setType($stmt, Type::getNull());
                 }
 
-                return;
+                return true;
             }
 
             $stmt_type = self::getArrayAccessTypeGivenOffset(
@@ -196,16 +203,14 @@ class ArrayFetchAnalyzer
 
             $statements_analyzer->node_data->setType($stmt, $stmt_type);
 
-            if ($array_var_id === '$_GET' || $array_var_id === '$_POST' || $array_var_id === '$_COOKIE') {
-                $stmt_type->tainted = (int) Type\Union::TAINTED_INPUT;
-                $stmt_type->sources = [
-                    new Source(
-                        $array_var_id,
-                        $array_var_id,
-                        new CodeLocation($statements_analyzer->getSource(), $stmt),
-                        (int) Type\Union::TAINTED_INPUT
-                    )
-                ];
+            if ($array_var_id) {
+                self::taintArrayType(
+                    $statements_analyzer,
+                    $codebase,
+                    $stmt,
+                    $stmt_type,
+                    $array_var_id
+                );
             }
 
             if ($context->inside_isset
@@ -305,21 +310,15 @@ class ArrayFetchAnalyzer
 
         if ($codebase->taint && ($stmt_var_type = $statements_analyzer->node_data->getType($stmt->var))) {
             $sources = [];
-            $either_tainted = 0;
 
-            $sources = \array_merge($sources, $stmt_var_type->sources ?: []);
-            $either_tainted = $either_tainted | $stmt_var_type->tainted;
+            $sources = \array_merge($sources, $stmt_var_type->parent_nodes ?: []);
 
             if ($sources) {
-                $stmt_type->sources = $sources;
-            }
-
-            if ($either_tainted) {
-                $stmt_type->tainted = $either_tainted;
+                $stmt_type->parent_nodes = $sources;
             }
         }
 
-        return null;
+        return true;
     }
 
     /**
@@ -534,7 +533,7 @@ class ArrayFetchAnalyzer
                 if ($in_assignment
                     && $type instanceof TArray
                     && (($type->type_params[0]->isEmpty() && $type->type_params[1]->isEmpty())
-                        || ($type->type_params[1]->isMixed() && \is_string($key_value)))
+                        || ($type->type_params[1]->hasMixed() && \is_string($key_value)))
                 ) {
                     $from_empty_array = $type->type_params[0]->isEmpty() && $type->type_params[1]->isEmpty();
 
@@ -561,6 +560,13 @@ class ArrayFetchAnalyzer
                         $array_type->addType(new Type\Atomic\TNonEmptyList($replacement_type));
                         continue;
                     }
+                } elseif ($in_assignment
+                    && $type instanceof ObjectLike
+                    && $type->previous_value_type
+                    && $type->previous_value_type->isMixed()
+                    && $key_value !== null
+                ) {
+                    $type->properties[$key_value] = Type::getMixed();
                 }
 
                 $offset_type = self::replaceOffsetTypeWithInts($offset_type);
@@ -1578,5 +1584,33 @@ class ArrayFetchAnalyzer
         }
 
         return $offset_type;
+    }
+
+    private static function taintArrayType(
+        StatementsAnalyzer $statements_analyzer,
+        \Psalm\Codebase $codebase,
+        PhpParser\Node\Expr $stmt,
+        Type\Union $stmt_type,
+        string $array_var_id
+    ) : void {
+        if ($codebase->taint && $codebase->config->trackTaintsInPath($statements_analyzer->getFilePath())) {
+            if ($array_var_id === '$_GET' || $array_var_id === '$_POST' || $array_var_id === '$_COOKIE') {
+                $taint_location = new CodeLocation($statements_analyzer->getSource(), $stmt);
+
+                $server_taint_source = new Source(
+                    $array_var_id . ':' . $taint_location->file_name . ':' . $taint_location->raw_file_start,
+                    $array_var_id,
+                    $taint_location,
+                    null,
+                    Type\TaintKindGroup::ALL_INPUT
+                );
+
+                $codebase->taint->addSource($server_taint_source);
+
+                $stmt_type->parent_nodes = [
+                    $server_taint_source
+                ];
+            }
+        }
     }
 }

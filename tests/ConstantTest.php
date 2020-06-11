@@ -678,6 +678,41 @@ class ConstantTest extends TestCase
                     A::foo(3);
                     A::foo(A::D_4);',
             ],
+            'wildcardEnumAnyTemplateExtendConstant' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface AInterface
+                    {
+                        /**
+                         * @param T $i
+                         * @return T
+                         */
+                        public function foo($i);
+                    }
+
+                    /**
+                     * @implements AInterface<A::*>
+                     */
+                    class A implements AInterface {
+                        const C_1 = 1;
+                        const C_2 = 2;
+                        const C_3 = 3;
+                        const D_4 = 4;
+
+                        public function foo($i)
+                        {
+                            return $i;
+                        }
+                    }
+
+                    $a = new A();
+                    $a->foo(1);
+                    $a->foo(2);
+                    $a->foo(3);
+                    $a->foo(A::D_4);',
+            ],
             'wildcardVarAndReturn' => [
                 '<?php
                     class Numbers {
@@ -799,6 +834,91 @@ class ConstantTest extends TestCase
                     }
 
                     echo B::VALUES["there"];'
+            ],
+            'constantArrayKeyExistsWithClassConstant' => [
+                '<?php
+                    class Foo {
+                        public const F = "key";
+                    }
+
+                    /** @param array{key?: string} $a */
+                    function one(array $a): void {
+                        if (array_key_exists(Foo::F, $a)) {
+                            echo $a[Foo::F];
+                        }
+                    }'
+            ],
+            'internalConstWildcard' => [
+                '<?php
+                    /**
+                     * @psalm-param \PDO::PARAM_* $type
+                     */
+                    function param(int $type): void {}'
+            ],
+            'templatedConstantInType' => [
+                '<?php
+                    /**
+                     * @template T of (self::READ_UNCOMMITTED|self::READ_COMMITTED|self::REPEATABLE_READ|self::SERIALIZABLE)
+                     */
+                    final class TransactionIsolationLevel {
+                        private const READ_UNCOMMITTED = \'read uncommitted\';
+                        private const READ_COMMITTED = \'read committed\';
+                        private const REPEATABLE_READ = \'repeatable read\';
+                        private const SERIALIZABLE = \'serializable\';
+
+                        /**
+                         * @psalm-var T
+                         */
+                        private string $level;
+
+                        /**
+                         * @psalm-param T $level
+                         */
+                        private function __construct(string $level)
+                        {
+                            $this->level = $level;
+                        }
+
+                        /**
+                         * @psalm-return self<self::READ_UNCOMMITTED>
+                         */
+                        public static function readUncommitted(): self
+                        {
+                            return new self(self::READ_UNCOMMITTED);
+                        }
+
+                        /**
+                         * @psalm-return self<self::READ_COMMITTED>
+                         */
+                        public static function readCommitted(): self
+                        {
+                            return new self(self::READ_COMMITTED);
+                        }
+
+                        /**
+                         * @psalm-return self<self::REPEATABLE_READ>
+                         */
+                        public static function repeatableRead(): self
+                        {
+                            return new self(self::REPEATABLE_READ);
+                        }
+
+                        /**
+                         * @psalm-return self<self::SERIALIZABLE>
+                         */
+                        public static function serializable(): self
+                        {
+                            return new self(self::SERIALIZABLE);
+                        }
+
+                        /**
+                         * @psalm-return T
+                         */
+                        public function toString(): string
+                        {
+                            return $this->level;
+                        }
+                    }'
             ],
         ];
     }
@@ -983,6 +1103,40 @@ class ConstantTest extends TestCase
                     }
 
                     A::foo(A::D_4);',
+                'error_message' => 'InvalidArgument'
+            ],
+            'wildcardEnumAnyTemplateExtendConstantBadValue' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface AInterface
+                    {
+                        /**
+                         * @param T $i
+                         * @return T
+                         */
+                        public function foo($i);
+                    }
+
+                    /**
+                     * @implements AInterface<A::*>
+                     */
+                    class A implements AInterface {
+                        const C_1 = 1;
+                        const C_2 = 2;
+                        const C_3 = 3;
+                        const D_4 = 4;
+
+                        public function foo($i)
+                        {
+                            return $i;
+                        }
+                    }
+
+                    $a = new A();
+                    $a->foo(5);
+                    ',
                 'error_message' => 'InvalidArgument'
             ],
         ];

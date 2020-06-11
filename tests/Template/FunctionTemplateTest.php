@@ -1254,6 +1254,64 @@ class FunctionTemplateTest extends TestCase
 
                     createProxy(A::class, \'Ns\foo\')->bar();',
             ],
+            'compareToEmptyArray' => [
+                '<?php
+                    /**
+                     * @template T
+                     *
+                     * @param T $a
+                     * @return T
+                     */
+                    function ex($a) {
+                        if($a === []) {}
+                        return $a;
+                    }'
+            ],
+            'refineTemplateTypeNotEmpty' => [
+                '<?php
+                    /**
+                     * @template T of Iterator|null
+                     * @param T $iterator
+                     */
+                    function toArray($iterator): array
+                    {
+                        if ($iterator) {
+                            return iterator_to_array($iterator);
+                        }
+
+                        return [];
+                    }'
+            ],
+            'manyGenericParams' => [
+                '<?php
+                    /**
+                     * @template TArg1
+                     * @template TArg2
+                     * @template TRes
+                     *
+                     * @psalm-param Closure(TArg1, TArg2): TRes $func
+                     * @psalm-param TArg1 $arg1
+                     *
+                     * @psalm-return Closure(TArg2): TRes
+                     */
+                    function partial(Closure $func, $arg1): Closure {
+                        return fn($arg2) => $func($arg1, $arg2);
+                    }
+
+                    /**
+                     * @template TArg1
+                     * @template TArg2
+                     * @template TRes
+                     *
+                     * @template T as (Closure(): TRes | Closure(TArg1): TRes | Closure(TArg1, TArg2): TRes)
+                     *
+                     * @psalm-param T $fn
+                     * @psalm-param TArg1 $arg
+                     */
+                    function foo(Closure $fn, $arg): void {
+                        $a = partial($fn, $arg);
+                    }'
+            ],
         ];
     }
 

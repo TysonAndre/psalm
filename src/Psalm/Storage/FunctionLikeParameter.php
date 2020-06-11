@@ -69,9 +69,9 @@ class FunctionLikeParameter
     public $is_variadic;
 
     /**
-     * @var int
+     * @var array<string>|null
      */
-    public $sink = 0;
+    public $sinks;
 
     /**
      * @var bool
@@ -110,13 +110,6 @@ class FunctionLikeParameter
         $this->type_location = $type_location;
         $this->signature_type_location = $type_location;
         $this->default_type = $default_type;
-    }
-
-    public function __toString()
-    {
-        return ($this->type ?: 'mixed')
-            . ($this->is_variadic ? '...' : '')
-            . ($this->is_optional ? '=' : '');
     }
 
     public function getId() : string

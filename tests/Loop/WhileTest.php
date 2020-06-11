@@ -394,7 +394,37 @@ class WhileTest extends \Psalm\Tests\TestCase
                             $i++;
                         }
                     }'
-            ]
+            ],
+            'possiblyUndefinedInWhile' => [
+                '<?php
+                    function getRenderersForClass(string $a): void {
+                        /** @psalm-suppress MixedArgument */
+                        while ($b = getString($b ?? $a)) {
+                            $c = "hello";
+                        }
+                    }
+
+                    function getString(string $s) : ?string {
+                        return rand(0, 1) ? $s : null;
+                    }'
+            ],
+            'thornyLoop' => [
+                '<?php
+
+                    function searchCode(string $content, array &$tmp) : void {
+                        // separer les balises du texte
+                        $tmp = [];
+                        $reg = \'/(<[^>]+>)|([^<]+)+/isU\';
+
+                        // pour chaque element trouve :
+                        $str    = "";
+                        $offset = 0;
+                        while (preg_match($reg, $content, $parse, PREG_OFFSET_CAPTURE, $offset)) {
+                            $str .= "hello";
+                            unset($parse);
+                        }
+                    }'
+            ],
         ];
     }
 

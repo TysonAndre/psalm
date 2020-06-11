@@ -25,8 +25,8 @@ class MagicMethodAnnotationTest extends TestCase
                  * @method  void setInteger(int $integer)
                  * @method setString(int $integer)
                  * @method  getBool(string $foo) : bool
-                 * @method (string|int)[] getArray() : array
-                 * @method (callable() : string) getCallable() : callable
+                 * @method (string|int)[] getArray()
+                 * @method (callable() : string) getCallable()
                  */
                 class Child {}
 
@@ -174,8 +174,8 @@ class MagicMethodAnnotationTest extends TestCase
                      * @method setAnotherImplicitMixed( $foo, $bar,$baz) dsa sada
                      * @method setYetAnotherImplicitMixed( $foo  ,$bar,  $baz    ) dsa sada
                      * @method  getBool(string $foo)  :   bool dsa sada
-                     * @method (string|int)[] getArray() : array with some text dsa sada
-                     * @method (callable() : string) getCallable() : callable dsa sada
+                     * @method (string|int)[] getArray() with some text dsa sada
+                     * @method (callable() : string) getCallable() dsa sada
                      */
                     class Child extends ParentClass {}
 
@@ -598,6 +598,23 @@ class MagicMethodAnnotationTest extends TestCase
                     /** @psalm-suppress UndefinedMagicMethod */
                     $child->foo();'
             ],
+            'allowFinalOverrider' => [
+                '<?php
+                    class A {
+                        /**
+                         * @return static
+                         */
+                        public static function foo()
+                        {
+                            return new static();
+                        }
+                    }
+
+                    /**
+                     * @method static B foo()
+                     */
+                    final class B extends A {}'
+            ],
         ];
     }
 
@@ -746,6 +763,29 @@ class MagicMethodAnnotationTest extends TestCase
                      */
                     abstract class TestClassA {}',
                 'error_message' => 'InvalidDocblock',
+            ],
+            'methodWithAmpersandAndSpace' => [
+                '<?php
+                    /**
+                     * @method void alloc(string & $result)
+                     */
+                    class Foo {}',
+                'error_message' => 'InvalidDocblock',
+            ],
+            'inheritSealedMethods' => [
+                '<?php
+                    /**
+                     * @psalm-seal-methods
+                     */
+                    class A {
+                        public function __call(string $method, array $args) {}
+                    }
+
+                    class B extends A {}
+
+                    $b = new B();
+                    $b->foo();',
+                'error_message' => 'UndefinedMagicMethod',
             ],
         ];
     }

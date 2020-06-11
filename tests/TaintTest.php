@@ -9,7 +9,7 @@ class TaintTest extends TestCase
     /**
      * @return void
      */
-    public function testTaintedInputFromReturnType()
+    public function testTaintedInputFromReturnTypeSimple()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
         $this->expectExceptionMessage('TaintedInput');
@@ -33,6 +33,47 @@ class TaintTest extends TestCase
                         $pdo->exec("delete from users where user_id = " . $userId);
                     }
                 }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testTaintedInputFromReturnToInclude()
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                $a = (string) $_GET["file"];
+                $b = "hello" . $a;
+                include str_replace("a", "b", $b);'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testTaintedInputFromReturnToEval()
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                $a = $_GET["file"];
+                eval("<?php" . $a);'
         );
 
         $this->analyzeFile('somefile.php', new Context());
@@ -105,8 +146,8 @@ class TaintTest extends TestCase
             'somefile.php',
             '<?php
                 class A {
-                    /** @psalm-suppress TaintedInput */
                     public function deleteUser(PDO $pdo) : void {
+                        /** @psalm-taint-remove sql */
                         $userId = (string) $_GET["user_id"];
                         $pdo->exec("delete from users where user_id = " . $userId);
                     }
@@ -127,8 +168,10 @@ class TaintTest extends TestCase
             'somefile.php',
             '<?php
                 class A {
-                    /** @psalm-suppress TaintedInput */
                     public function deleteUser(PDOWrapper $pdo) : void {
+                        /**
+                         * @psalm-taint-remove sql
+                         */
                         $userId = (string) $_GET["user_id"];
                         $pdo->exec("delete from users where user_id = " . $userId);
                     }
@@ -145,7 +188,7 @@ class TaintTest extends TestCase
 
                 class PDOWrapper {
                     /**
-                     * @psalm-taint-sink $sql
+                     * @psalm-taint-sink sql $sql
                      */
                     public function exec(string $sql) : void {}
                 }'
@@ -224,7 +267,7 @@ class TaintTest extends TestCase
 
                 class PDOWrapper {
                     /**
-                     * @psalm-taint-sink $sql
+                     * @psalm-taint-sink sql $sql
                      */
                     public function exec(string $sql) : void {}
                 }'
@@ -239,7 +282,7 @@ class TaintTest extends TestCase
     public function testTaintedInputFromParam()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
-        $this->expectExceptionMessage('path: $_GET (somefile.php:4:41) -> A::getUserId (somefile.php:3:37) -> A::getAppendedUserId (somefile.php:7:37) -> A::getAppendedUserId (somefile.php:12:42) -> A::deleteUser#2 (somefile.php:16:65) -> PDO::exec#1 (somefile.php:17:36)');
+        $this->expectExceptionMessage('TaintedInput - somefile.php:17:36 - Detected tainted sql in path: $_GET (somefile.php:4:41) -> A::getUserId (somefile.php:8:41) -> concat (somefile.php:8:32) -> A::getAppendedUserId (somefile.php:12:35) -> $userId (somefile.php:12:25) -> A::deleteUser#2 (somefile.php:13:49) -> concat (somefile.php:17:36) -> PDO::exec#1 (somefile.php:17:36)');
 
         $this->project_analyzer->trackTaintedInputs();
 
@@ -376,7 +419,7 @@ class TaintTest extends TestCase
     public function testTaintedInputToParamAlternatePath()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
-        $this->expectExceptionMessage('TaintedInput - somefile.php:23:40 - path: $_GET (somefile.php:7:63) -> A::getAppendedUserId#1 (somefile.php:7:54) -> A::getAppendedUserId (somefile.php:11:37) -> A::getAppendedUserId (somefile.php:7:36) -> A::deleteUser#3 (somefile.php:19:81) -> PDO::exec#1 (somefile.php:23:40)');
+        $this->expectExceptionMessage('TaintedInput - somefile.php:23:40 - Detected tainted sql in path: $_GET (somefile.php:7:63) -> A::getAppendedUserId#1 (somefile.php:7:54) -> concat (somefile.php:12:32) -> A::getAppendedUserId (somefile.php:11:37) -> A::deleteUser#3 (somefile.php:7:29) -> concat (somefile.php:23:40) -> PDO::exec#1 (somefile.php:23:40)');
 
         $this->project_analyzer->trackTaintedInputs();
 
@@ -419,7 +462,7 @@ class TaintTest extends TestCase
     public function testTaintedInParentLoader()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
-        $this->expectExceptionMessage('TaintedInput - somefile.php:16:40 - path: $_GET (somefile.php:28:39) -> C::foo#1 (somefile.php:28:30) -> AGrandChild::loadFull#1 (somefile.php:24:47) -> AGrandChild::loadFull#1 (somefile.php:6:45) -> A::loadPartial#1 (somefile.php:16:40) -> PDO::exec#1 (somefile.php:16:40)');
+        $this->expectExceptionMessage('TaintedInput - somefile.php:16:40 - Detected tainted sql in path: $_GET (somefile.php:28:39) -> C::foo#1 (somefile.php:28:30) -> AGrandChild::loadFull#1 (somefile.php:24:47) -> A::loadFull#1 (somefile.php:24:47) -> A::loadPartial#1 (somefile.php:6:45) -> AChild::loadPartial#1 (somefile.php:6:45) -> concat (somefile.php:16:40) -> PDO::exec#1 (somefile.php:16:40)');
 
         $this->project_analyzer->trackTaintedInputs();
 
@@ -567,6 +610,85 @@ class TaintTest extends TestCase
     /**
      * @return void
      */
+    public function testSpecializedCoreFunctionCall()
+    {
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                $a = (string) $_GET["user_id"];
+
+                echo print_r([], true);
+
+                $b = print_r($a, true);'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testTaintedInputFromPropertyViaMixin()
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A {
+                    public string $userId;
+
+                    public function __construct() {
+                        $this->userId = (string) $_GET["user_id"];
+                    }
+                }
+
+                /** @mixin A */
+                class B {
+                    private A $a;
+
+                    public function __construct(A $a) {
+                        $this->a = $a;
+                    }
+
+                    public function __get(string $name) {
+                        return $this->a->$name;
+                    }
+                }
+
+                class C {
+                    private B $b;
+
+                    public function __construct(B $b) {
+                        $this->b = $b;
+                    }
+
+                    public function getAppendedUserId() : string {
+                        return "aaaa" . $this->b->userId;
+                    }
+
+                    public function doDelete(PDO $pdo) : void {
+                        $userId = $this->getAppendedUserId();
+                        $this->deleteUser($pdo, $userId);
+                    }
+
+                    public function deleteUser(PDO $pdo, string $userId) : void {
+                        $pdo->exec("delete from users where user_id = " . $userId);
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
     public function testTaintedInputViaStaticFunction()
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
@@ -611,7 +733,7 @@ class TaintTest extends TestCase
                      * @psalm-pure
                      */
                     public static function shorten(string $str) : string {
-                        return $str;
+                        return substr($str, 0, 100);
                     }
                 }
 
@@ -897,7 +1019,7 @@ class TaintTest extends TestCase
         $this->analyzeFile('somefile.php', new Context());
     }
 
-    public function testTaintOnStrReplaceCall() : void
+    public function testTaintOnStrReplaceCallSimple() : void
     {
         $this->expectException(\Psalm\Exception\CodeException::class);
         $this->expectExceptionMessage('TaintedInput');
@@ -934,7 +1056,7 @@ class TaintTest extends TestCase
         $this->analyzeFile('somefile.php', new Context());
     }
 
-    public function testTaintOnStrReplaceCallRemoved() : void
+    public function testTaintOnStrReplaceCallRemovedInFunction() : void
     {
         $this->project_analyzer->trackTaintedInputs();
 
@@ -944,7 +1066,7 @@ class TaintTest extends TestCase
                 class U {
                     /**
                      * @psalm-pure
-                     * @psalm-remove-taint
+                     * @psalm-taint-remove html
                      */
                     public static function shorten(string $s) : string {
                         return str_replace("foo", "bar", $s);
@@ -991,7 +1113,7 @@ class TaintTest extends TestCase
                 class V1 extends V {
                     public function foo(O1 $o) : void {
                         /**
-                         * @psalm-remove-taint
+                         * @psalm-taint-remove html
                          */
                         $a = str_replace("foo", "bar", $o->s);
                         echo $a;
@@ -1086,6 +1208,82 @@ class TaintTest extends TestCase
                         echo U::shorten(U::escape($o->t));
                     }
                 }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testIndirectGetAssignment() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class InputFilter {
+                    public string $name;
+
+                    public function __construct(string $name) {
+                        $this->name = $name;
+                    }
+
+                    /**
+                     * @psalm-specialize-call
+                     */
+                    public function getArg(string $method, string $type)
+                    {
+                        $arg = null;
+
+                        switch ($method) {
+                            case "post":
+                                if (isset($_POST[$this->name])) {
+                                    $arg = $_POST[$this->name];
+                                }
+                                break;
+
+                            case "get":
+                                if (isset($_GET[$this->name])) {
+                                    $arg = $_GET[$this->name];
+                                }
+                                break;
+                        }
+
+                        return $this->filterInput($type, $arg);
+                    }
+
+                    protected function filterInput(string $type, $arg)
+                    {
+                        // input is null
+                        if ($arg === null) {
+                            return null;
+                        }
+
+                        // set to null if sanitize clears arg
+                        if ($arg === "") {
+                            $arg = null;
+                        }
+
+                        // type casting
+                        if ($arg !== null) {
+                            $arg = $this->typeCastInput($type, $arg);
+                        }
+
+                        return $arg;
+                    }
+
+                    protected function typeCastInput(string $type, $arg) {
+                        if ($type === "string") {
+                            return (string) $arg;
+                        }
+
+                        return null;
+                    }
+                }
+
+                echo (new InputFilter("hello"))->getArg("get", "string");'
         );
 
         $this->analyzeFile('somefile.php', new Context());

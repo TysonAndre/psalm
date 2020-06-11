@@ -98,7 +98,7 @@ return [
         's' => 'integer',
         'f' => 'float', // only present from 7.1 onwards
         'invert' => 'integer',
-        'days' => 'mixed',
+        'days' => 'false|int',
     ],
     'tokyotyrantexception' => [
         'code' => 'int',
@@ -260,12 +260,11 @@ return [
         'field_count' => 'int',
         'host_info' => 'string',
         'info' => 'string',
-        'insert_id' => 'mixed',
+        'insert_id' => 'int',
         'protocol_version' => 'string',
         'server_info' => 'string',
         'server_version' => 'int',
         'sqlstate' => 'string',
-        'stat' => 'mixed',
         'thread_id' => 'int',
         'warning_count' => 'int',
     ],
@@ -302,7 +301,7 @@ return [
     'mysqli_warning' => [
         'errno' => 'int',
         'message' => 'string',
-        'sqlstate' => 'mixed',
+        'sqlstate' => 'string',
     ],
     'eventlistener' => [
         'fd' => 'int',
@@ -461,6 +460,9 @@ return [
     'phpparser\\node\\expr\\staticcall' => [
         'args' => 'array<int, PhpParser\Node\Arg>',
     ],
+    'phpparser\\node\\name' => [
+        'parts' => 'non-empty-array<non-empty-string>',
+    ],
     'phpparser\\node\\stmt\\namespace_' => [
         'stmts' => 'array<int, PhpParser\Node\Stmt>',
     ],
@@ -505,5 +507,15 @@ return [
     ],
     'phpparser\\node\\stmt\\interface_' => [
         'stmts' => 'array<int, PhpParser\Node\Stmt>',
+    ],
+    'rdkafka\\message' => [
+        'err' => 'int',
+        'topic_name' => 'string',
+        'partition' => 'int',
+        'payload' => 'string',
+        'key' => 'string|null',
+        'offset' => 'int',
+        'timestamp' => 'int',
+        'headers' => 'array<string, string>|null',
     ],
 ];

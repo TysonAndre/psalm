@@ -28,6 +28,7 @@ use function is_dir;
 use function is_file;
 use function json_decode;
 use function libxml_clear_errors;
+use const GLOB_NOSORT;
 use const LIBXML_ERR_ERROR;
 use const LIBXML_ERR_FATAL;
 use function libxml_get_errors;
@@ -40,6 +41,7 @@ use function preg_quote;
 use function preg_replace;
 use Psalm\Config\IssueHandler;
 use Psalm\Config\ProjectFileFilter;
+use Psalm\Config\TaintAnalysisFileFilter;
 use Psalm\Exception\ConfigException;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\FileAnalyzer;
@@ -75,6 +77,7 @@ use function chdir;
 use function simplexml_import_dom;
 use const LIBXML_NONET;
 use function is_a;
+use const SCANDIR_SORT_NONE;
 
 /**
  * @psalm-suppress PropertyNotSetInConstructor
@@ -557,6 +560,11 @@ class Config
      */
     public $max_string_length = 1000;
 
+    /**
+     * @var TaintAnalysisFileFilter|null
+     */
+    protected $taint_analysis_ignored_files;
+
     protected function __construct()
     {
         self::$instance = $this;
@@ -899,6 +907,14 @@ class Config
 
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
+        }
+
+        if (isset($config_xml->taintAnalysis->ignoreFiles)) {
+            $config->taint_analysis_ignored_files = TaintAnalysisFileFilter::loadFromXMLElement(
+                $config_xml->taintAnalysis->ignoreFiles,
+                $base_dir,
+                false
+            );
         }
 
         if (isset($config_xml->fileExtensions)) {
@@ -1352,6 +1368,12 @@ class Config
         return $this->project_files && $this->project_files->forbids($file_path);
     }
 
+    public function trackTaintsInPath(string $file_path) : bool
+    {
+        return !$this->taint_analysis_ignored_files
+            || $this->taint_analysis_ignored_files->allows($file_path);
+    }
+
     public function getReportingLevelForIssue(CodeIssue $e) : string
     {
         $fqcn_parts = explode('\\', get_class($e));
@@ -1712,7 +1734,7 @@ class Config
         } elseif (is_dir($phpstorm_meta_path)) {
             $phpstorm_meta_path = realpath($phpstorm_meta_path);
 
-            foreach (glob($phpstorm_meta_path . '/*.meta.php') as $glob) {
+            foreach (glob($phpstorm_meta_path . '/*.meta.php', GLOB_NOSORT) as $glob) {
                 if (is_file($glob) && realpath(dirname($glob)) === $phpstorm_meta_path) {
                     $stub_files[] = $glob;
                 }
@@ -1860,8 +1882,9 @@ class Config
 
         $autoload_files_files = array_unique($autoload_files_files);
 
+        $codebase = $project_analyzer->getCodebase();
+
         if ($autoload_files_files) {
-            $codebase = $project_analyzer->getCodebase();
             $codebase->register_autoload_files = true;
 
             foreach ($autoload_files_files as $file_path) {
@@ -1879,6 +1902,10 @@ class Config
         }
 
         if ($this->autoloader) {
+            // somee classes that we think are missing may not actually be missing
+            // as they might be autoloadable once we require the autoloader below
+            $codebase->classlikes->forgetMissingClassLikes();
+
             // do this in a separate method so scope does not leak
             $this->requireAutoloader($this->autoloader);
 
@@ -1950,7 +1977,7 @@ class Config
     public static function removeCacheDirectory($dir)
     {
         if (is_dir($dir)) {
-            $objects = scandir($dir);
+            $objects = scandir($dir, SCANDIR_SORT_NONE);
 
             if ($objects === false) {
                 throw new \UnexpectedValueException('Not expecting false here');

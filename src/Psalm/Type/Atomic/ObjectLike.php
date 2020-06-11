@@ -74,9 +74,13 @@ class ObjectLike extends \Psalm\Type\Atomic
 
     public function __toString()
     {
-        $union_type_parts = array_map(
+        $property_strings = array_map(
             function ($name, Union $type) {
-                if (\is_string($name) && \preg_match('/[ "\'\\\\.\n]/', $name)) {
+                if ($this->is_list && $this->sealed) {
+                    return (string) $type;
+                }
+
+                if (\is_string($name) && \preg_match('/[ "\'\\\\.\n:]/', $name)) {
                     $name = '\'' . \str_replace("\n", '\n', \addslashes($name)) . '\'';
                 }
 
@@ -85,16 +89,24 @@ class ObjectLike extends \Psalm\Type\Atomic
             array_keys($this->properties),
             $this->properties
         );
-        sort($union_type_parts);
+
+        if (!$this->is_list) {
+            sort($property_strings);
+        }
+
         /** @psalm-suppress MixedOperand */
-        return static::KEY . '{' . implode(', ', $union_type_parts) . '}';
+        return static::KEY . '{' . implode(', ', $property_strings) . '}';
     }
 
     public function getId(bool $nested = false)
     {
-        $union_type_parts = array_map(
+        $property_strings = array_map(
             function ($name, Union $type) {
-                if (\is_string($name) && \preg_match('/[ "\'\\\\.\n]/', $name)) {
+                if ($this->is_list && $this->sealed) {
+                    return $type->getId();
+                }
+
+                if (\is_string($name) && \preg_match('/[ "\'\\\\.\n:]/', $name)) {
                     $name = '\'' . \str_replace("\n", '\n', \addslashes($name)) . '\'';
                 }
 
@@ -103,10 +115,14 @@ class ObjectLike extends \Psalm\Type\Atomic
             array_keys($this->properties),
             $this->properties
         );
-        sort($union_type_parts);
+
+        if (!$this->is_list) {
+            sort($property_strings);
+        }
+
         /** @psalm-suppress MixedOperand */
         return static::KEY . '{' .
-                implode(', ', $union_type_parts) .
+                implode(', ', $property_strings) .
                 '}'
                 . ($this->previous_value_type
                     ? '<' . ($this->previous_key_type ? $this->previous_key_type->getId() . ', ' : '')
@@ -148,7 +164,7 @@ class ObjectLike extends \Psalm\Type\Atomic
                             $this_class,
                             $use_phpdoc_format
                         ) {
-                            if (\is_string($name) && \preg_match('/[ "\'\\\\.\n]/', $name)) {
+                            if (\is_string($name) && \preg_match('/[ "\'\\\\.\n:]/', $name)) {
                                 $name = '\'' . \str_replace("\n", '\n', \addslashes($name)) . '\'';
                             }
 

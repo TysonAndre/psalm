@@ -3,7 +3,6 @@ namespace Psalm\Internal\Analyzer\Statements\Block;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\ScopeAnalyzer;
-use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Clause;
 use Psalm\Context;
@@ -177,10 +176,6 @@ class DoAnalyzer
                 array_merge($context->clauses, $negated_while_clauses)
             )
         );
-
-        $inner_loop_context->inside_conditional = true;
-        ExpressionAnalyzer::analyze($statements_analyzer, $stmt->cond, $inner_loop_context);
-        $inner_loop_context->inside_conditional = false;
 
         if ($negated_while_types) {
             $changed_var_ids = [];

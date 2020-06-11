@@ -155,6 +155,140 @@ class TypeAnnotationTest extends TestCase
                         return $r;
                     }',
             ],
+            'classTypeAlias' => [
+                '<?php
+                    /** @psalm-type PhoneType = array{phone: string} */
+                    class Phone {
+                        /** @psalm-return PhoneType */
+                        public function toArray(): array {
+                            return ["phone" => "Nokia"];
+                        }
+                    }
+
+                    /** @psalm-type NameType = array{name: string} */
+                    class Name {
+                        /** @psalm-return NameType */
+                        function toArray(): array {
+                            return ["name" => "Matt"];
+                        }
+                    }
+
+                    /**
+                     * @psalm-import-type PhoneType from Phone as PhoneType2
+                     * @psalm-import-type NameType from Name as NameType2
+                     *
+                     * @psalm-type UserType = PhoneType2&NameType2
+                     */
+                    class User {
+                        /** @psalm-return UserType */
+                        function toArray(): array {
+                            return array_merge(
+                                (new Name)->toArray(),
+                                (new Phone)->toArray()
+                            );
+                        }
+                    }'
+            ],
+            'classTypeAliasImportWithAlias' => [
+                '<?php
+                    /** @psalm-type PhoneType = array{phone: string} */
+                    class Phone {
+                        /** @psalm-return PhoneType */
+                        public function toArray(): array {
+                            return ["phone" => "Nokia"];
+                        }
+                    }
+
+                    /**
+                     * @psalm-import-type PhoneType from Phone as TPhone
+                     */
+                    class User {
+                        /** @psalm-return TPhone */
+                        function toArray(): array {
+                            return array_merge([], (new Phone)->toArray());
+                        }
+                    }'
+            ],
+            'classTypeAliasDirectUsage' => [
+                '<?php
+                    /** @psalm-type PhoneType = array{phone: string} */
+                    class Phone {
+                        /** @psalm-return PhoneType */
+                        public function toArray(): array {
+                            return ["phone" => "Nokia"];
+                        }
+                    }
+
+                    /**
+                     * @psalm-import-type PhoneType from Phone
+                     */
+                    class User {
+                        /** @psalm-return PhoneType */
+                        function toArray(): array {
+                            return array_merge([], (new Phone)->toArray());
+                        }
+                    }'
+            ],
+            'classTypeAliasFromExternalNamespace' => [
+                '<?php
+                namespace Foo {
+                    /** @psalm-type PhoneType = array{phone: string} */
+                    class Phone {
+                        /** @psalm-return PhoneType */
+                        public function toArray(): array {
+                            return ["phone" => "Nokia"];
+                        }
+                    }
+                }
+
+                namespace Bar {
+                    /**
+                     * @psalm-import-type PhoneType from \Foo\Phone
+                     */
+                    class User {
+                        /** @psalm-return PhoneType */
+                        function toArray(): array {
+                            return (new \Foo\Phone)->toArray();
+                        }
+                    }
+                }'
+            ],
+            'importTypeForParam' => [
+                '<?php
+                    /**
+                     * @psalm-type Type = self::NULL|self::BOOL|self::INT|self::STRING
+                     */
+                    interface I
+                    {
+                        public const NULL = 0;
+                        public const BOOL = 1;
+                        public const INT = 2;
+                        public const STRING = 3;
+
+                        /**
+                         * @psalm-param Type $type
+                         */
+                        public function a(int $type): void;
+                    }
+
+                    /**
+                     * @psalm-import-type Type from I as Type2
+                     */
+                    abstract class C implements I
+                    {
+                        public function a(int $type): void
+                        {
+                            $this->b($type);
+                        }
+
+                        /**
+                         * @psalm-param Type2 $type
+                         */
+                        private function b(int $type): void
+                        {
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -184,6 +318,73 @@ class TypeAnnotationTest extends TestCase
                         return [(bool)rand(0,1), rand(0,1) ? "z" : null];
                     }',
                 'error_message' => 'InvalidReturnStatement',
+            ],
+            'classTypeAliasInvalidReturn' => [
+                '<?php
+                    /** @psalm-type PhoneType = array{phone: string} */
+                    class Phone {
+                        /** @psalm-return PhoneType */
+                        public function toArray(): array {
+                            return ["phone" => "Nokia"];
+                        }
+                    }
+
+                    /** @psalm-type NameType = array{name: string} */
+                    class Name {
+                        /** @psalm-return NameType */
+                        function toArray(): array {
+                            return ["name" => "Matt"];
+                        }
+                    }
+
+                    /**
+                     * @psalm-import-type PhoneType from Phone as PhoneType2
+                     * @psalm-import-type NameType from Name as NameType2
+                     *
+                     * @psalm-type UserType = PhoneType2&NameType2
+                     */
+                    class User {
+                        /** @psalm-return UserType */
+                        function toArray(): array {
+                            return array_merge(
+                                (new Name)->toArray(),
+                                ["foo" => "bar"]
+                            );
+                        }
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+            ],
+            'classTypeInvalidAlias' => [
+                '<?php
+                class Phone {
+                    function toArray(): array {
+                        return ["name" => "Matt"];
+                    }
+                }
+
+                /**
+                 * @psalm-import-type PhoneType from Phone
+                 */
+                class User {
+                    /** @psalm-return UserType */
+                    function toArray(): array {
+                        return (new Phone)->toArray();
+                    }
+                }',
+                'error_message' => 'UndefinedDocblockClass',
+            ],
+            'classTypeAliasFromInvalidClass' => [
+                '<?php
+                /**
+                 * @psalm-import-type PhoneType from Phone
+                 */
+                class User {
+                    /** @psalm-return UserType */
+                    function toArray(): array {
+                        return [];
+                    }
+                }',
+                'error_message' => 'UndefinedDocblockClass',
             ],
         ];
     }

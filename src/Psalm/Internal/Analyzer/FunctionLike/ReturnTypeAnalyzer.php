@@ -12,7 +12,6 @@ use Psalm\Internal\Analyzer\InterfaceAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\ScopeAnalyzer;
 use Psalm\Internal\Analyzer\SourceAnalyzer;
-use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
@@ -243,7 +242,7 @@ class ReturnTypeAnalyzer
 
         $inferred_return_type = TypeAnalyzer::simplifyUnionType(
             $codebase,
-            ExpressionAnalyzer::fleshOutType(
+            \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $inferred_return_type,
                 $source->getFQCLN(),
@@ -376,7 +375,7 @@ class ReturnTypeAnalyzer
         }
 
         // passing it through fleshOutTypes eradicates errant $ vars
-        $declared_return_type = ExpressionAnalyzer::fleshOutType(
+        $declared_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $return_type,
             $self_fq_class_name,
@@ -395,7 +394,7 @@ class ReturnTypeAnalyzer
                 return null;
             }
 
-            if (ScopeAnalyzer::onlyThrowsOrExits($function_stmts)) {
+            if (ScopeAnalyzer::onlyThrowsOrExits($type_provider, $function_stmts)) {
                 // if there's a single throw statement, it's presumably an exception saying this method is not to be
                 // used
                 return null;
@@ -737,7 +736,7 @@ class ReturnTypeAnalyzer
                 }
             }
 
-            $fleshed_out_return_type = ExpressionAnalyzer::fleshOutType(
+            $fleshed_out_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $storage->return_type,
                 $classlike_storage ? $classlike_storage->name : null,
@@ -756,7 +755,7 @@ class ReturnTypeAnalyzer
             return;
         }
 
-        $fleshed_out_signature_type = ExpressionAnalyzer::fleshOutType(
+        $fleshed_out_signature_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $storage->signature_return_type,
             $classlike_storage ? $classlike_storage->name : null,
@@ -778,7 +777,7 @@ class ReturnTypeAnalyzer
             return;
         }
 
-        $fleshed_out_return_type = ExpressionAnalyzer::fleshOutType(
+        $fleshed_out_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $storage->return_type,
             $classlike_storage ? $classlike_storage->name : null,
@@ -803,7 +802,7 @@ class ReturnTypeAnalyzer
             $class_template_params = ClassTemplateParamCollector::collect(
                 $codebase,
                 $classlike_storage,
-                $context->self,
+                $codebase->classlike_storage_provider->get($context->self),
                 strtolower($function->name->name),
                 new Type\Atomic\TNamedObject($context->self),
                 '$this'

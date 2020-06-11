@@ -28,7 +28,13 @@ use function array_diff_key;
 use function array_values;
 
 /**
- * @psalm-type  TaggedCodeType = array<int, array{0: int, 1: string}>
+ * @psalm-type  TaggedCodeType = array<int, array{0: int, 1: non-empty-string}>
+ *
+ * @psalm-type  FileMapType = array{
+ *      0: TaggedCodeType,
+ *      1: TaggedCodeType,
+ *      2: array<int, array{0: int, 1: non-empty-string, 2: int}>
+ * }
  *
  * @psalm-type  WorkerData = array{
  *      issues: array<string, list<IssueData>>,
@@ -44,14 +50,7 @@ use function array_values;
  *      method_references_to_missing_class_members: array<string, array<string,bool>>,
  *      method_param_uses: array<string, array<int, array<string, bool>>>,
  *      analyzed_methods: array<string, array<string, int>>,
- *      file_maps: array<
- *          string,
- *          array{
- *              0: TaggedCodeType,
- *              1: TaggedCodeType,
- *              2: array<int, array{0: int, 1: string, 2: int}>
- *         }
- *      >,
+ *      file_maps: array<string, FileMapType>,
  *      class_locations: array<string, array<int, \Psalm\CodeLocation>>,
  *      class_method_locations: array<string, array<int, \Psalm\CodeLocation>>,
  *      class_property_locations: array<string, array<int, \Psalm\CodeLocation>>,
@@ -141,17 +140,17 @@ class Analyzer
     private $existing_issues = [];
 
     /**
-     * @var array<string, array<int, array{0: int, 1: string}>>
+     * @var array<string, array<int, array{0: int, 1: non-empty-string}>>
      */
     private $reference_map = [];
 
     /**
-     * @var array<string, array<int, array{0: int, 1: string}>>
+     * @var array<string, array<int, array{0: int, 1: non-empty-string}>>
      */
     private $type_map = [];
 
     /**
-     * @var array<string, array<int, array{0: int, 1: string, 2: int}>>
+     * @var array<string, array<int, array{0: int, 1: non-empty-string, 2: int}>>
      */
     private $argument_map = [];
 
@@ -278,40 +277,24 @@ class Analyzer
         $scanned_files = $codebase->scanner->getScannedFiles();
 
         if ($codebase->taint) {
-            $i = 0;
-            while ($codebase->taint->hasNewSinksAndSources() && ++$i <= 4) {
-                $project_analyzer->progress->write("\n\n" . 'Found tainted inputs, reanalysing' . "\n\n");
-
-                $this->files_to_analyze = $codebase->taint->getFilesToAnalyze(
-                    $codebase->file_reference_provider,
-                    $codebase->file_storage_provider,
-                    $codebase->classlike_storage_provider,
-                    $codebase->config
-                );
-
-                $codebase->taint->clearNewSinksAndSources();
-
-                $this->doAnalysis($project_analyzer, $pool_size, true);
-            }
-
-            $this->progress->finish();
-        } else {
-            $this->progress->finish();
-
-            if ($consolidate_analyzed_data) {
-                $project_analyzer->consolidateAnalyzedData();
-            }
-
-            foreach (IssueBuffer::getIssuesData() as $file_path => $file_issues) {
-                $codebase->file_reference_provider->clearExistingIssuesForFile($file_path);
-
-                foreach ($file_issues as $issue_data) {
-                    $codebase->file_reference_provider->addIssue($file_path, $issue_data);
-                }
-            }
-
-            $codebase->file_reference_provider->updateReferenceCache($codebase, $scanned_files);
+            $codebase->taint->connectSinksAndSources();
         }
+
+        $this->progress->finish();
+
+        if ($consolidate_analyzed_data) {
+            $project_analyzer->consolidateAnalyzedData();
+        }
+
+        foreach (IssueBuffer::getIssuesData() as $file_path => $file_issues) {
+            $codebase->file_reference_provider->clearExistingIssuesForFile($file_path);
+
+            foreach ($file_issues as $issue_data) {
+                $codebase->file_reference_provider->addIssue($file_path, $issue_data);
+            }
+        }
+
+        $codebase->file_reference_provider->updateReferenceCache($codebase, $scanned_files);
 
         if ($codebase->track_unused_suppressions) {
             IssueBuffer::processUnusedSuppressions($codebase->file_provider);
@@ -436,6 +419,10 @@ class Analyzer
                     $codebase = $project_analyzer->getCodebase();
 
                     $file_reference_provider = $codebase->file_reference_provider;
+
+                    if ($codebase->taint) {
+                        $codebase->taint = new \Psalm\Internal\Codebase\Taint();
+                    }
 
                     $file_reference_provider->setNonMethodReferencesToClasses([]);
                     $file_reference_provider->setCallingMethodReferencesToClassMembers([]);
@@ -1169,6 +1156,10 @@ class Analyzer
         string $node_type,
         PhpParser\Node $parent_node = null
     ) {
+        if (!$node_type) {
+            throw new \UnexpectedValueException('non-empty node_type expected');
+        }
+
         $this->type_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
             ($parent_node ? (int)$parent_node->getAttribute('endFilePos') : (int)$node->getAttribute('endFilePos')) + 1,
             $node_type,
@@ -1182,6 +1173,10 @@ class Analyzer
         string $reference,
         int $argument_number
     ): void {
+        if (!$reference) {
+            throw new \UnexpectedValueException('non-empty node_type expected');
+        }
+
         $this->argument_map[$file_path][$start_position] = [
             $end_position,
             $reference,
@@ -1194,6 +1189,10 @@ class Analyzer
      */
     public function addNodeReference(string $file_path, PhpParser\Node $node, string $reference)
     {
+        if (!$reference) {
+            throw new \UnexpectedValueException('non-empty node_type expected');
+        }
+
         $this->reference_map[$file_path][(int)$node->getAttribute('startFilePos')] = [
             (int)$node->getAttribute('endFilePos') + 1,
             $reference,
@@ -1205,6 +1204,10 @@ class Analyzer
      */
     public function addOffsetReference(string $file_path, int $start, int $end, string $reference)
     {
+        if (!$reference) {
+            throw new \UnexpectedValueException('non-empty node_type expected');
+        }
+
         $this->reference_map[$file_path][$start] = [
             $end,
             $reference,
@@ -1468,14 +1471,7 @@ class Analyzer
     }
 
     /**
-     * @return array<
-     *      string,
-     *      array{
-     *          0: TaggedCodeType,
-     *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: string, 2: int}>
-     *      }
-     * >
+     * @return array<string, FileMapType>
      */
     public function getFileMaps()
     {
@@ -1505,11 +1501,7 @@ class Analyzer
     }
 
     /**
-     * @return array{
-     *     0: TaggedCodeType,
-     *     1: TaggedCodeType,
-     *     2: array<int, array{0: int, 1: string, 2: int}>
-     * }
+     * @return FileMapType
      */
     public function getMapsForFile(string $file_path)
     {

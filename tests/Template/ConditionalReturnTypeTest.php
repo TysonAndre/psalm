@@ -461,6 +461,94 @@ class ConditionalReturnTypeTest extends TestCase
                     '$c' => 'string',
                 ]
             ],
+            'namespaceFuncNumArgs' => [
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @return (func_num_args() is 0 ? false : string)
+                     */
+                    function zeroArgsFalseOneArgString(string $s = "") {
+                        if (func_num_args() === 0) {
+                            return false;
+                        }
+
+                        return $s;
+                    }
+
+                    $a = zeroArgsFalseOneArgString("hello");',
+            ],
+            'nullableReturnType' => [
+                '<?php
+                    /**
+                     * @psalm-return ($name is "foo" ? string : null)
+                     */
+                    function get(string $name) : ?string {
+                        if ($name === "foo") {
+                            return "hello";
+                        }
+                        return null;
+                    }'
+            ],
+            'conditionalOrDefault' => [
+                '<?php
+                    /**
+                     * @template TKey
+                     * @template TValue
+                     */
+                    interface C {
+                        /**
+                         * @template TDefault
+                         * @param TKey $key
+                         * @param TDefault $default
+                         * @return (
+                         *     func_num_args() is 1
+                         *     ? TValue
+                         *     : TValue|TDefault
+                         * )
+                         */
+                        public function get($key, $default = null);
+                    }
+
+                    /** @param C<string, DateTime> $c */
+                    function getDateTime(C $c) : DateTime {
+                        return $c->get("t");
+                    }
+
+                    /** @param C<string, DateTime> $c */
+                    function getNullableDateTime(C $c) : ?DateTime {
+                        return $c->get("t", null);
+                    }'
+            ],
+            'literalStringIsNotAClassString' => [
+                '<?php
+                    interface SerializerInterface
+                    {
+                        /**
+                         * Deserializes the given data to the specified type.
+                         *
+                         * @psalm-template TClass
+                         * @psalm-template TType as \'array\'|class-string<TClass>
+                         * @psalm-param TType $type
+                         * @psalm-return (
+                         *     TType is \'array\'
+                         *     ? array
+                         *     : TClass
+                         * )
+                         *
+                         * @return mixed
+                         */
+                        public function deserialize(string $data, string $type);
+                    }
+
+                    function foo(SerializerInterface $i, string $data): Exception {
+                        return $i->deserialize($data, Exception::class);
+                    }
+
+                    function bar(SerializerInterface $i, string $data): array {
+                        return $i->deserialize($data, \'array\');
+                    }'
+            ],
         ];
     }
 }

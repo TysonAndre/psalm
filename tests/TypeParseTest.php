@@ -192,6 +192,14 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testStaticAndStatic()
+    {
+        $this->assertSame('static', (string) Type::parseString('static&static'));
+    }
+
+    /**
+     * @return void
+     */
     public function testTraversableAndIteratorOrNull()
     {
         $this->assertSame(
@@ -289,7 +297,7 @@ class TypeParseTest extends TestCase
 
     public function testIterableContainingObjectLike() : void
     {
-        $this->assertSame('iterable<string, array{0: int}>', Type::parseString('iterable<string, array{int}>')->getId());
+        $this->assertSame('iterable<string, array{int}>', Type::parseString('iterable<string, array{int}>')->getId());
     }
 
     /**
@@ -429,6 +437,23 @@ class TypeParseTest extends TestCase
     /**
      * @return void
      */
+    public function testObjectLikeWithClassConstantKey()
+    {
+        $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
+        Type::parseString('array{self::FOO: string}');
+    }
+
+    /**
+     * @return void
+     */
+    public function testObjectLikeWithQuotedClassConstantKey()
+    {
+        $this->assertSame('array{\'self::FOO\': string}', (string) Type:: parseString('array{"self::FOO": string}'));
+    }
+
+    /**
+     * @return void
+     */
     public function testObjectLikeWithoutClosingBracket()
     {
         $this->expectException(\Psalm\Exception\TypeParseTreeException::class);
@@ -488,7 +513,7 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithIntKeysAndUnionArgs()
     {
         $this->assertSame(
-            'array{0: null|stdClass}',
+            'array{null|stdClass}',
             (string)Type::parseString('array{stdClass|null}')
         );
     }
@@ -499,12 +524,12 @@ class TypeParseTest extends TestCase
     public function testObjectLikeWithIntKeysAndGenericArgs()
     {
         $this->assertSame(
-            'array{0: array<array-key, mixed>}',
+            'array{array<array-key, mixed>}',
             (string)Type::parseString('array{array}')
         );
 
         $this->assertSame(
-            'array{0: array<int, string>}',
+            'array{array<int, string>}',
             (string)Type::parseString('array{array<int, string>}')
         );
     }
@@ -1212,7 +1237,7 @@ class TypeParseTest extends TestCase
      */
     public function testValidCallMapType()
     {
-        $callmap_types = \Psalm\Internal\Codebase\CallMap::getCallMap();
+        $callmap_types = \Psalm\Internal\Codebase\InternalCallMapHandler::getCallMap();
 
         foreach ($callmap_types as $signature) {
             $return_type = $signature[0] ?? null;

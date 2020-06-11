@@ -718,7 +718,23 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, string>',
+                    '$res' => 'iterable<mixed, numeric-string>',
+                ],
+            ],
+            'infersArrowClosureReturnTypes' => [
+                '<?php
+                    /**
+                     * @param Closure(int, int): bool $op
+                     * @return Closure(int): bool
+                     */
+                    function reflexive(Closure $op): Closure {
+                        return fn ($x) => $op($x, $x) === true;
+                    }
+
+                    $res = reflexive(fn(int $a, int $b): bool => $a === $b);
+                ',
+                'assertions' => [
+                    '$res' => 'Closure(int):bool',
                 ],
             ],
             'infersClosureReturnTypesWithPartialTypehinting' => [
@@ -740,7 +756,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, string>',
+                    '$res' => 'iterable<mixed, numeric-string>',
                 ],
             ],
             'infersCallableReturnTypes' => [
@@ -762,7 +778,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, string>',
+                    '$res' => 'iterable<mixed, numeric-string>',
                 ],
             ],
             'infersCallableReturnTypesWithPartialTypehinting' => [
@@ -784,7 +800,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, string>',
+                    '$res' => 'iterable<mixed, numeric-string>',
                 ],
             ],
             'mixedAssignmentWithUnderscore' => [
@@ -796,6 +812,35 @@ class ReturnTypeTest extends TestCase
 
                     foreach ($gen as $k => $_) {
                         echo "$k\n";
+                    }'
+            ],
+            'allowImplicitNever' => [
+                '<?php
+                    class TestCase
+                    {
+                        /** @psalm-return never-return */
+                        public function markAsSkipped(): void
+                        {
+                            throw new \Exception();
+                        }
+                    }
+                    class A extends TestCase
+                    {
+                        /**
+                         * @return string[]
+                         */
+                        public function foo(): array
+                        {
+                            $this->markAsSkipped();
+                        }
+                    }
+
+                    class B extends A
+                    {
+                        public function foo(): array
+                        {
+                            return ["foo"];
+                        }
                     }'
             ],
         ];

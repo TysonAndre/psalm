@@ -10,7 +10,7 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
-use Psalm\Internal\Codebase\CallMap;
+use Psalm\Internal\Codebase\InternalCallMapHandler;
 use Psalm\Internal\Type\ArrayType;
 use Psalm\StatementsSource;
 use Psalm\Type;
@@ -275,7 +275,7 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
         PhpParser\Node\Arg $function_call_arg,
         ?\Psalm\Internal\Type\ArrayType $array_arg_type
     ) : Type\Union {
-        $call_map = CallMap::getCallMap();
+        $call_map = InternalCallMapHandler::getCallMap();
 
         $mapping_return_type = null;
         $closure_param_type = null;
@@ -313,7 +313,7 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
                             continue;
                         }
 
-                        if (!$codebase->classlikes->classExists($callable_fq_class_name)) {
+                        if (!$codebase->classlikes->classOrInterfaceExists($callable_fq_class_name)) {
                             continue;
                         }
 
@@ -363,7 +363,7 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
                             $static_class = $class_storage->name;
                         }
 
-                        $return_type = ExpressionAnalyzer::fleshOutType(
+                        $return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                             $codebase,
                             $return_type,
                             $self_class,
@@ -380,10 +380,11 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
                             $function_id_return_type = $return_type;
                         }
                     } else {
-                        if (!$codebase->functions->functionExists(
-                            $statements_source,
-                            $mapping_function_id_part
-                        )
+                        if (!$mapping_function_id_part
+                            || !$codebase->functions->functionExists(
+                                $statements_source,
+                                $mapping_function_id_part
+                            )
                         ) {
                             $function_id_return_type = Type::getMixed();
                             continue;

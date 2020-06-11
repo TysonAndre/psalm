@@ -98,14 +98,14 @@ class ClassLikeStorage
     public $psalm_internal = null;
 
     /**
-     * @var null|string
-     */
-    public $mixin_fqcln = null;
-
-    /**
      * @var null|Type\Atomic\TTemplateParam|Type\Atomic\TNamedObject
      */
     public $mixin = null;
+
+    /**
+     * @var ?string
+     */
+    public $mixin_declaring_fqcln = null;
 
     /**
      * @var array<string, bool>
@@ -397,6 +397,11 @@ class ClassLikeStorage
      * @var list<\Psalm\Issue\CodeIssue>
      */
     public $docblock_issues = [];
+
+    /**
+     * @var array<string, \Psalm\Internal\Type\TypeAlias\ClassTypeAlias>
+     */
+    public $type_aliases = [];
 
     /**
      * @param string $name

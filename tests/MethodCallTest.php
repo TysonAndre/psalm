@@ -30,6 +30,116 @@ class MethodCallTest extends TestCase
     }
 
     /**
+     * @return void
+     */
+    public function testMethodCallMemoize()
+    {
+        $this->project_analyzer->getConfig()->memoize_method_calls = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A {
+                    function getFoo() : ?Foo {
+                        return rand(0, 1) ? new Foo : null;
+                    }
+                }
+                class Foo {
+                    function getBar() : ?Bar {
+                        return rand(0, 1) ? new Bar : null;
+                    }
+                }
+                class Bar {
+                    public function bat() : void {}
+                };
+
+                $a = new A();
+
+                if ($a->getFoo()) {
+                    if ($a->getFoo()->getBar()) {
+                        $a->getFoo()->getBar()->bat();
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testPropertyMethodCallMemoize()
+    {
+        $this->project_analyzer->getConfig()->memoize_method_calls = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class Foo
+                {
+                    private ?string $bar;
+
+                    public function __construct(?string $bar) {
+                        $this->bar = $bar;
+                    }
+
+                    public function getBar(): ?string {
+                        return $this->bar;
+                    }
+                }
+
+                function doSomething(Foo $foo): string {
+                    if ($foo->getBar() !== null){
+                        return $foo->getBar();
+                    }
+
+                    return "hello";
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+
+
+
+    /**
+     * @return void
+     */
+    public function testUnchainedMethodCallMemoize()
+    {
+        $this->project_analyzer->getConfig()->memoize_method_calls = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class SomeClass {
+                    private ?int $int;
+
+                    public function __construct() {
+                        $this->int = 1;
+                    }
+
+                    public function getInt(): ?int {
+                        return $this->int;
+                    }
+                }
+
+                function printInt(int $int): void {
+                    echo $int;
+                }
+
+                $obj = new SomeClass();
+
+                if ($obj->getInt()) {
+                    printInt($obj->getInt());
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
+    /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
     public function providerValidCodeParse()

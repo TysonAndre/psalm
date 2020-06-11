@@ -1007,7 +1007,6 @@ class ArrayAccessTest extends TestCase
                 '<?php
                     /**
                      * @return array<int,array<string,float>>|string
-                     * @return string
                      */
                     function return_array() {
                         return rand() % 5 > 3 ? [["key" => 3.5]] : "key:3.5";
@@ -1236,6 +1235,18 @@ class ArrayAccessTest extends TestCase
 
                     ["key" => $a] = maybeReturnArray();',
                 'error_message' => 'PossiblyNullArrayAccess',
+            ],
+            'destructureTuple' => [
+                '<?php
+                    /**
+                     * @return array{int, int}
+                     */
+                    function size(): array {
+                        return [10, 20];
+                    }
+
+                    [$width, $height, $depth] = size();',
+                'error_message' => 'InvalidArrayOffset',
             ],
         ];
     }

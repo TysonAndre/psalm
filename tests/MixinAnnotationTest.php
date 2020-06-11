@@ -8,6 +8,7 @@ use Psalm\Context;
 class MixinAnnotationTest extends TestCase
 {
     use Traits\ValidCodeAnalysisTestTrait;
+    use Traits\InvalidCodeAnalysisTestTrait;
 
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
@@ -19,6 +20,7 @@ class MixinAnnotationTest extends TestCase
                 '<?php
                     class ParentClass {
                         public function __call(string $name, array $args) {}
+                        public static function __callStatic(string $name, array $args) {}
                     }
 
                     class Provider {
@@ -27,6 +29,10 @@ class MixinAnnotationTest extends TestCase
                         }
 
                         public function setInteger(int $i) : void {}
+
+                        public static function getInt() : int {
+                            return 5;
+                        }
                     }
 
                     /** @mixin Provider */
@@ -35,9 +41,10 @@ class MixinAnnotationTest extends TestCase
                     $child = new Child();
 
                     $a = $child->getString();
-                    $child->setInteger(4);',
+                    $b = $child::getInt();',
                 'assertions' => [
                     '$a' => 'string',
+                    '$b' => 'int',
                 ],
             ],
             'anotherSimpleExample' => [
@@ -207,21 +214,276 @@ class MixinAnnotationTest extends TestCase
                     /**
                      * @property string $foo
                      */
-                    class A {
+                    class A {}
+
+                    /**
+                     * @mixin A
+                     */
+                    class B {
                         /** @return mixed */
                         public function __get(string $s) {
                             return 5;
                         }
                     }
 
-                    /**
-                     * @mixin A
-                     */
-                    class B {}
-
                     function toArray(B $b) : string {
                         return $b->foo;
                     }'
+            ],
+            'inheritTemplatedMixinWithStatic' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Mixin {
+                        /**
+                         * @psalm-var T
+                         */
+                        private $var;
+
+                        /**
+                         * @psalm-param T $var
+                         */
+                        public function __construct ($var) {
+                            $this->var = $var;
+                        }
+
+                        /**
+                         * @psalm-return T
+                         */
+                        public function type() {
+                            return $this->var;
+                        }
+                    }
+
+                    /**
+                     * @template T as object
+                     * @mixin Mixin<T>
+                     */
+                    abstract class Foo {
+                        /** @var Mixin<T> */
+                        public object $obj;
+
+                        public function __call(string $name, array $args) {
+                            return $this->obj->$name(...$args);
+                        }
+                    }
+
+                    /**
+                     * @extends Foo<static>
+                     */
+                    abstract class FooChild extends Foo{}
+
+                    /**
+                     * @psalm-suppress MissingConstructor
+                     */
+                    final class FooGrandChild extends FooChild {}
+
+                    function test() : FooGrandChild {
+                        return (new FooGrandChild)->type();
+                    }'
+            ],
+            'inheritTemplatedMixinWithStaticAndFinalClass' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Mixin {
+                        /**
+                         * @psalm-var T
+                         */
+                        private $var;
+
+                        /**
+                         * @psalm-param T $var
+                         */
+                        public function __construct ($var) {
+                            $this->var = $var;
+                        }
+
+                        /**
+                         * @psalm-return self<T>
+                         */
+                        public function getMixin() {
+                            return $this;
+                        }
+                    }
+
+                    /**
+                     * @template T as object
+                     * @mixin Mixin<T>
+                     */
+                    abstract class Foo {
+                        /** @var Mixin<T> */
+                        public object $obj;
+
+                        public function __call(string $name, array $args) {
+                            return $this->obj->$name(...$args);
+                        }
+                    }
+
+                    /**
+                     * @extends Foo<static>
+                     */
+                    abstract class FooChild extends Foo{}
+
+                    /**
+                     * @psalm-suppress MissingConstructor
+                     */
+                    final class FooGrandChild extends FooChild {}
+
+                    /**
+                    * @psalm-return Mixin<FooGrandChild>
+                    */
+                    function test() : Mixin {
+                        return (new FooGrandChild)->getMixin();
+                    }'
+            ],
+            'mixinParseWithTextAfter' => [
+                '<?php
+                    class M {}
+
+                    /**
+                     * @mixin M
+                     * Hello
+                     */
+                    class C {}'
+            ],
+            'templatedMixinWithTemplateWithStatic' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     * @mixin T
+                     */
+                    class Builder {
+                        private $t;
+
+                        /** @param T $t */
+                        public function __construct(object $t) {
+                            $this->t = $t;
+                        }
+
+                        public function __call(string $method, array $parameters) {
+                            /** @psalm-suppress MixedMethodCall */
+                            return $this->t->$method($parameters);
+                        }
+                    }
+
+                    /**
+                     * @method self active()
+                     */
+                    class Model {
+                        /**
+                         * @return Builder<static>
+                         */
+                        public function query(): Builder {
+                            return new Builder($this);
+                        }
+
+                        public function __call(string $method, array $parameters) {
+                            if ($method === "active") {
+                                return new Model();
+                            }
+                        }
+                    }
+
+                    /** @param Builder<Model> $b */
+                    function foo(Builder $b) : Model {
+                        return $b->active();
+                    }'
+            ],
+        ];
+    }
+
+    /**
+     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     */
+    public function providerInvalidCodeParse()
+    {
+        return [
+            'undefinedMixinClass' => [
+                '<?php
+                    /** @mixin B */
+                    class A {}',
+                'error_message' => 'UndefinedDocblockClass'
+            ],
+            'undefinedMixinClassWithPropertyFetch' => [
+                '<?php
+                    /** @mixin B */
+                    class A {}
+
+                    (new A)->foo;',
+                'error_message' => 'UndefinedPropertyFetch'
+            ],
+            'undefinedMixinClassWithPropertyAssignment' => [
+                '<?php
+                    /** @mixin B */
+                    class A {}
+
+                    (new A)->foo = "bar";',
+                'error_message' => 'UndefinedPropertyAssignment'
+            ],
+            'undefinedMixinClassWithMethodCall' => [
+                '<?php
+                    /** @mixin B */
+                    class A {}
+
+                    (new A)->foo();',
+                'error_message' => 'UndefinedMethod'
+            ],
+            'inheritTemplatedMixinWithSelf' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    class Mixin {
+                        /**
+                         * @psalm-var T
+                         */
+                        private $var;
+
+                        /**
+                         * @psalm-param T $var
+                         */
+                        public function __construct ($var) {
+                            $this->var = $var;
+                        }
+
+                        /**
+                         * @psalm-return T
+                         */
+                        public function type() {
+                            return $this->var;
+                        }
+                    }
+
+                    /**
+                     * @template T as object
+                     * @mixin Mixin<T>
+                     */
+                    abstract class Foo {
+                        /** @var Mixin<T> */
+                        public object $obj;
+
+                        public function __call(string $name, array $args) {
+                            return $this->obj->$name(...$args);
+                        }
+                    }
+
+                    /**
+                     * @extends Foo<self>
+                     */
+                    abstract class FooChild extends Foo{}
+
+                    /**
+                     * @psalm-suppress MissingConstructor
+                     */
+                    final class FooGrandChild extends FooChild {}
+
+                    function test() : FooGrandChild {
+                        return (new FooGrandChild)->type();
+                    }',
+                'error_message' => 'LessSpecificReturnStatement'
             ],
         ];
     }

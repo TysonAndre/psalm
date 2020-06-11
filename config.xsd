@@ -10,6 +10,7 @@
     <xs:complexType name="PsalmType">
         <xs:choice maxOccurs="unbounded">
             <xs:element name="projectFiles" type="ProjectFilesType" minOccurs="1" maxOccurs="1" />
+            <xs:element name="taintAnalysis" type="TaintAnalysisType" minOccurs="0" maxOccurs="1" />
             <xs:element name="fileExtensions" type="FileExtensionsType" minOccurs="0" maxOccurs="1" />
             <xs:element name="mockClasses" type="MockClassesType" minOccurs="0" maxOccurs="1" />
             <xs:element name="stubs" type="StubsType" minOccurs="0" maxOccurs="1" />
@@ -43,7 +44,7 @@
         <xs:attribute name="forbidEcho" type="xs:boolean" default="false" />
         <xs:attribute name="hideExternalErrors" type="xs:boolean" default="false" />
         <xs:attribute name="hoistConstants" type="xs:boolean" default="false" />
-        <xs:attribute name="ignoreInternalFunctionFalseReturn" type="xs:boolean" default="false" />
+        <xs:attribute name="ignoreInternalFunctionFalseReturn" type="xs:boolean" default="true" />
         <xs:attribute name="ignoreInternalFunctionNullReturn" type="xs:boolean" default="true" />
         <xs:attribute name="includePhpVersionsInErrorBaseline" type="xs:boolean" default="false" />
         <xs:attribute name="loadXdebugStub" type="xs:boolean">
@@ -80,6 +81,12 @@
     </xs:complexType>
 
 	<!-- TODO: Add phpdoc renaming to xsd -->
+    <xs:complexType name="TaintAnalysisType">
+        <xs:choice maxOccurs="unbounded">
+            <xs:element name="ignoreFiles" minOccurs="0" maxOccurs="1" type="IgnoreFilesType" />
+        </xs:choice>
+    </xs:complexType>
+
     <xs:complexType name="NameAttributeType">
         <xs:attribute name="name" type="xs:string" use="required" />
     </xs:complexType>
@@ -261,6 +268,7 @@
             <xs:element name="MixedArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedArrayTypeCoercion" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedAssignment" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="MixedClone" type="ArgumentIssueHandlerType" minOccurs="0" />
             <xs:element name="MixedFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedInferredReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MixedMethodCall" type="IssueHandlerType" minOccurs="0" />
@@ -303,6 +311,7 @@
             <xs:element name="PossiblyInvalidArrayAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidCast" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidClone" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidIterator" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidMethodCall" type="IssueHandlerType" minOccurs="0" />

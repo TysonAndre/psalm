@@ -3,39 +3,19 @@
 namespace Psalm\Internal\Type;
 
 use function count;
-use function get_class;
-use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Issue\DocblockTypeContradiction;
-use Psalm\Issue\ParadoxicalCondition;
-use Psalm\Issue\RedundantCondition;
 use Psalm\Issue\TypeDoesNotContainType;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic;
-use Psalm\Type\Atomic\ObjectLike;
-use Psalm\Type\Atomic\Scalar;
 use Psalm\Type\Atomic\TArray;
-use Psalm\Type\Atomic\TArrayKey;
-use Psalm\Type\Atomic\TBool;
-use Psalm\Type\Atomic\TCallable;
-use Psalm\Type\Atomic\TClassString;
-use Psalm\Type\Atomic\TEmpty;
 use Psalm\Type\Atomic\TFalse;
-use Psalm\Type\Atomic\TFloat;
-use Psalm\Type\Atomic\TInt;
-use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
-use Psalm\Type\Atomic\TNull;
-use Psalm\Type\Atomic\TNumeric;
-use Psalm\Type\Atomic\TObject;
-use Psalm\Type\Atomic\TResource;
-use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
-use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Reconciler;
 use function strpos;
@@ -140,6 +120,8 @@ class NegatedAssertionReconciler extends Reconciler
                 return Type::getEmpty();
             } elseif (substr($assertion, 0, 9) === 'in-array-') {
                 return $existing_var_type;
+            } elseif (substr($assertion, 0, 14) === 'has-array-key-') {
+                return $existing_var_type;
             }
         }
 
@@ -198,7 +180,9 @@ class NegatedAssertionReconciler extends Reconciler
             $existing_var_type->removeType('iterable');
             $existing_var_type->addType(new TArray(
                 [
-                    $iterable->type_params[0]->isMixed() ? Type::getArrayKey() : clone $iterable->type_params[0],
+                    $iterable->type_params[0]->hasMixed()
+                        ? Type::getArrayKey()
+                        : clone $iterable->type_params[0],
                     clone $iterable->type_params[1],
                 ]
             ));
@@ -358,6 +342,8 @@ class NegatedAssertionReconciler extends Reconciler
 
                         $did_remove_type = true;
                     }
+                } elseif ($assertion === 'string()') {
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyString());
                 }
             } elseif ($scalar_type === 'string') {
                 $scalar_value = substr($assertion, $bracket_pos + 1, -1);

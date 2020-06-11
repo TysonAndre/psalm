@@ -3,7 +3,6 @@ namespace Psalm\Internal\Analyzer;
 
 use Psalm\Codebase;
 use Psalm\CodeLocation;
-use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\MethodIdentifier;
 use Psalm\Issue\ImplementedParamTypeMismatch;
 use Psalm\Issue\ImplementedReturnTypeMismatch;
@@ -421,7 +420,7 @@ class MethodComparator
         array $suppressed_issues
     ) : void {
         $guide_param_signature_type = $guide_param->signature_type
-            ? ExpressionAnalyzer::fleshOutType(
+            ? \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $guide_param->signature_type,
                 $guide_classlike_storage->is_trait && $guide_method_storage->abstract
@@ -436,7 +435,7 @@ class MethodComparator
             )
             : null;
 
-        $implementer_param_signature_type = ExpressionAnalyzer::fleshOutType(
+        $implementer_param_signature_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $implementer_param_signature_type,
             $implementer_classlike_storage->name,
@@ -521,7 +520,7 @@ class MethodComparator
         CodeLocation $code_location,
         array $suppressed_issues
     ) : void {
-        $implementer_method_storage_param_type = ExpressionAnalyzer::fleshOutType(
+        $implementer_method_storage_param_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $implementer_param_type,
             $implementer_classlike_storage->name,
@@ -529,7 +528,7 @@ class MethodComparator
             $implementer_classlike_storage->parent_class
         );
 
-        $guide_method_storage_param_type = ExpressionAnalyzer::fleshOutType(
+        $guide_method_storage_param_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $guide_param_type,
             $guide_classlike_storage->is_trait && $guide_method_storage->abstract
@@ -676,7 +675,7 @@ class MethodComparator
         CodeLocation $code_location,
         array $suppressed_issues
     ) : void {
-        $guide_signature_return_type = ExpressionAnalyzer::fleshOutType(
+        $guide_signature_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $guide_signature_return_type,
             $guide_classlike_storage->is_trait && $guide_method_storage->abstract
@@ -695,7 +694,7 @@ class MethodComparator
         );
 
         $implementer_signature_return_type = $implementer_method_storage->signature_return_type
-            ? ExpressionAnalyzer::fleshOutType(
+            ? \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $implementer_method_storage->signature_return_type,
                 $implementer_classlike_storage->is_trait
@@ -767,7 +766,7 @@ class MethodComparator
         CodeLocation $code_location,
         array $suppressed_issues
     ) : void {
-        $implementer_method_storage_return_type = ExpressionAnalyzer::fleshOutType(
+        $implementer_method_storage_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $implementer_return_type,
             $implementer_classlike_storage->name,
@@ -775,7 +774,7 @@ class MethodComparator
             $implementer_classlike_storage->parent_class
         );
 
-        $guide_method_storage_return_type = ExpressionAnalyzer::fleshOutType(
+        $guide_method_storage_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $codebase,
             $guide_return_type,
             $guide_classlike_storage->is_trait

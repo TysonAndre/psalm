@@ -58,7 +58,7 @@ class Functions
     }
 
     /**
-     * @param lowercase-string $function_id
+     * @param non-empty-lowercase-string $function_id
      */
     public function getStorage(
         ?StatementsAnalyzer $statements_analyzer,
@@ -216,19 +216,21 @@ class Functions
     }
 
     /**
-     * @param  string                   $function_name
+     * @param  non-empty-string         $function_name
      * @param  StatementsSource         $source
      *
-     * @return string
+     * @return non-empty-string
      */
-    public function getFullyQualifiedFunctionNameFromString($function_name, StatementsSource $source)
+    public function getFullyQualifiedFunctionNameFromString(string $function_name, StatementsSource $source)
     {
-        if (empty($function_name)) {
-            throw new \InvalidArgumentException('$function_name cannot be empty');
-        }
-
         if ($function_name[0] === '\\') {
-            return substr($function_name, 1);
+            $function_name = substr($function_name, 1);
+
+            if ($function_name === '') {
+                throw new \UnexpectedValueException('Malformed function name');
+            }
+
+            return $function_name;
         }
 
         $function_name_lcase = strtolower($function_name);
@@ -298,6 +300,7 @@ class Functions
             'fopen', 'fread', 'fwrite', 'fclose', 'touch', 'fpassthru', 'fputs', 'fscanf', 'fseek',
             'ftruncate', 'fprintf', 'symlink', 'mkdir', 'unlink', 'rename', 'rmdir', 'popen', 'pclose',
             'fputcsv', 'umask', 'finfo_close', 'readline_add_history', 'stream_set_timeout', 'fflush',
+            'move_uploaded_file',
 
             // stream/socket io
             'stream_context_set_option', 'socket_write', 'stream_set_blocking', 'socket_close',
@@ -399,7 +402,7 @@ class Functions
             return true;
         }
 
-        $function_callable = \Psalm\Internal\Codebase\CallMap::getCallableFromCallMapById(
+        $function_callable = \Psalm\Internal\Codebase\InternalCallMapHandler::getCallableFromCallMapById(
             $codebase,
             $function_id,
             $args ?: [],

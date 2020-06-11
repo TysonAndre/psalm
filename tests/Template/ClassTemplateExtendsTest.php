@@ -4031,6 +4031,113 @@ class ClassTemplateExtendsTest extends TestCase
                         return $cheese->getTypes();
                     }'
             ],
+            'unwrapExtendedTypeWhileInferring' => [
+                '<?php
+                    /** @template T1 */
+                    interface I {}
+
+                    /** @template T2 */
+                    interface J {}
+
+                    /**
+                     * @template T3
+                     * @template-implements I<J<T3>>
+                     */
+                    final class IC implements I {
+                        /** @var T3 */
+                        public $var;
+
+                        /** @param T3 $var */
+                        public function __construct($var) {
+                            $this->var = $var;
+                        }
+                    }
+
+                    /** @template T4 */
+                    final class Container
+                    {
+                        /** @var I<T4> $var */
+                        public I $var;
+
+                        /** @param I<T4> $var */
+                        public function __construct(I $var) {
+                            $this->var = $var;
+                        }
+                    }
+
+                    final class Obj {}
+
+                    final class B {
+                        /** @return Container<J<int>> */
+                        public function foo(int $i): Container
+                        {
+                            $ic = new IC($i);
+
+                            $container = new Container($ic);
+
+                            return $container;
+                        }
+                    }'
+            ],
+            'extendIteratorIterator' => [
+                '<?php
+                    /**
+                     * @template-covariant TKey
+                     * @template-covariant TValue
+                     *
+                     * @template-extends IteratorIterator<TKey, TValue, Traversable<TKey, TValue>>
+                     */
+                    abstract class MyFilterIterator extends IteratorIterator {
+                         /** @return bool */
+                         public abstract function accept () {}
+                    }'
+            ],
+            'extendedIntoIterable' => [
+                '<?php
+                    interface ISubject {}
+
+                    /**
+                     * @extends \IteratorAggregate<int, ISubject>
+                     */
+                    interface SubjectCollection extends \IteratorAggregate
+                    {
+                        /**
+                         * @return \Iterator<int, ISubject>
+                         */
+                        public function getIterator(): \Iterator;
+                    }
+
+                    /** @param iterable<int, ISubject> $_ */
+                    function takesSubjects(iterable $_): void {}
+
+                    function givesSubjects(SubjectCollection $subjects): void {
+                        takesSubjects($subjects);
+                    }'
+            ],
+            'implementMixedReturnNull' => [
+                '<?php
+                    /** @template T */
+                    interface Templated {
+                        /** @return T */
+                        public function foo();
+                    }
+
+                    class Concrete implements Templated {
+                        private array $t;
+
+                        public function __construct(array $t) {
+                            $this->t = $t;
+                        }
+
+                        public function foo() {
+                            if (rand(0, 1)) {
+                                return null;
+                            }
+
+                            return $this->t;
+                        }
+                    }'
+            ],
         ];
     }
 

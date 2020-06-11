@@ -1156,6 +1156,13 @@ class AnnotationTest extends TestCase
                      */
                     function foo($c) : void {}'
             ],
+            'throwsAnnotationWithBarAndSpace' => [
+                '<?php
+                    /**
+                     * @throws \Exception| \InvalidArgumentException
+                     */
+                    function bar() : void {}'
+            ],
         ];
     }
 
@@ -1666,6 +1673,24 @@ class AnnotationTest extends TestCase
                         return false;
                     }',
                 'error_message' => 'FalsableReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:32',
+            ],
+            'DuplicatedParam' => [
+                '<?php
+                    /**
+                     * @psalm-param array $arr
+                     * @psalm-param array $arr
+                     */
+                    function bar(array $arr): void {}',
+                'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:21 - Found duplicated @param or prefixed @param tag in docblock for bar',
+            ],
+            'DuplicatedReturn' => [
+                '<?php
+                    /**
+                     * @return void
+                     * @return void
+                     */
+                    function bar(array $arr): void {}',
+                'error_message' => 'InvalidDocblock - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:21 - Found duplicated @return or prefixed @return tag in docblock for bar',
             ],
         ];
     }

@@ -47,9 +47,9 @@ class FakeFileReferenceCacheProvider extends \Psalm\Internal\Provider\FileRefere
      * @var array<
      *      string,
      *      array{
-     *          0: array<int, array{0: int, 1: string}>,
-     *          1: array<int, array{0: int, 1: string}>,
-     *          2: array<int, array{0: int, 1: string, 2: int}>
+     *          0: array<int, array{0: int, 1: non-empty-string}>,
+     *          1: array<int, array{0: int, 1: non-empty-string}>,
+     *          2: array<int, array{0: int, 1: non-empty-string, 2: int}>
      *      }
      *  >
      */
@@ -57,7 +57,7 @@ class FakeFileReferenceCacheProvider extends \Psalm\Internal\Provider\FileRefere
 
     public function __construct()
     {
-        $this->config_changed = false;
+        $this->config = \Psalm\Config::getInstance();
     }
 
     /**
@@ -258,9 +258,9 @@ class FakeFileReferenceCacheProvider extends \Psalm\Internal\Provider\FileRefere
      * @return array<
      *      string,
      *      array{
-     *          0: array<int, array{0: int, 1: string}>,
-     *          1: array<int, array{0: int, 1: string}>,
-     *          2: array<int, array{0: int, 1: string, 2: int}>
+     *          0: array<int, array{0: int, 1: non-empty-string}>,
+     *          1: array<int, array{0: int, 1: non-empty-string}>,
+     *          2: array<int, array{0: int, 1: non-empty-string, 2: int}>
      *      }
      *  >
      */
@@ -273,9 +273,9 @@ class FakeFileReferenceCacheProvider extends \Psalm\Internal\Provider\FileRefere
      * @param array<
      *      string,
      *      array{
-     *          0: array<int, array{0: int, 1: string}>,
-     *          1: array<int, array{0: int, 1: string}>,
-     *          2: array<int, array{0: int, 1: string, 2: int}>
+     *          0: array<int, array{0: int, 1: non-empty-string}>,
+     *          1: array<int, array{0: int, 1: non-empty-string}>,
+     *          2: array<int, array{0: int, 1: non-empty-string, 2: int}>
      *      }
      *  > $file_maps
      *
@@ -284,5 +284,14 @@ class FakeFileReferenceCacheProvider extends \Psalm\Internal\Provider\FileRefere
     public function setFileMapCache(array $file_maps)
     {
         $this->cached_file_maps = $file_maps;
+    }
+
+    /**
+     * @param array<string, array{int, int}> $mixed_counts
+     *
+     * @return void
+     */
+    public function setTypeCoverage(array $mixed_counts)
+    {
     }
 }

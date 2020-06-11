@@ -683,6 +683,34 @@ class ValueTest extends TestCase
                         if ($test === PaymentFailure::NO_CLIENT) {}
                     }'
             ],
+            'removeNullAfterLessThanZero' => [
+                '<?php
+                    function fcn(?int $val): int {
+                        if ($val < 0) {
+                            return $val;
+                        }
+
+                        return 5;
+                    }',
+            ],
+            'numericStringCastFromInt' => [
+                '<?php
+                    /**
+                     * @return numeric-string
+                     */
+                    function makeNumStringFromInt(int $v) {
+                        return (string) $v;
+                    }',
+            ],
+            'numericStringCastFromFloat' => [
+                '<?php
+                    /**
+                     * @return numeric-string
+                     */
+                    function makeNumStringFromFloat(float $v) {
+                        return (string) $v;
+                    }'
+                ],
         ];
     }
 
@@ -862,6 +890,18 @@ class ValueTest extends TestCase
                 '<?php
                     if ("C" === "c") {}',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'numericStringCoerceToLiteral' => [
+                '<?php
+                    /** @param "0"|"1" $s */
+                    function foo(string $s) : void {}
+
+                    function bar(string $s) : void {
+                        if (is_numeric($s)) {
+                            foo($s);
+                        }
+                    }',
+                'error_message' => 'ArgumentTypeCoercion'
             ],
         ];
     }

@@ -2,17 +2,10 @@
 
 namespace Psalm\Internal\Type;
 
-use function count;
 use function get_class;
-use Psalm\Codebase;
 use Psalm\CodeLocation;
-use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TraitAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
-use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\ParadoxicalCondition;
 use Psalm\Issue\RedundantCondition;
-use Psalm\Issue\TypeDoesNotContainType;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use Psalm\Type\Atomic;
@@ -22,24 +15,16 @@ use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TBool;
 use Psalm\Type\Atomic\TCallable;
-use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
-use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\TInt;
-use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
-use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
-use Psalm\Type\Atomic\TObject;
-use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Reconciler;
-use function strpos;
-use function strtolower;
 use function substr;
 
 class SimpleNegatedAssertionReconciler extends Reconciler
@@ -215,7 +200,7 @@ class SimpleNegatedAssertionReconciler extends Reconciler
     ) : Type\Union {
         foreach ($existing_var_type->getAtomicTypes() as $atomic_key => $type) {
             if ($type instanceof Type\Atomic\TLiteralString
-                && \Psalm\Internal\Codebase\CallMap::inCallMap($type->value)
+                && \Psalm\Internal\Codebase\InternalCallMapHandler::inCallMap($type->value)
             ) {
                 $existing_var_type->removeType($atomic_key);
             }
@@ -478,7 +463,11 @@ class SimpleNegatedAssertionReconciler extends Reconciler
             if (isset($existing_var_atomic_types['string'])) {
                 $existing_var_type->removeType('string');
 
-                $existing_var_type->addType(new Type\Atomic\TNonEmptyString);
+                if ($existing_var_atomic_types['string'] instanceof Type\Atomic\TLowercaseString) {
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyLowercaseString);
+                } else {
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyString);
+                }
             }
 
             self::removeFalsyNegatedLiteralTypes(
@@ -582,9 +571,12 @@ class SimpleNegatedAssertionReconciler extends Reconciler
         if (isset($existing_var_atomic_types['string'])) {
             if (!$existing_var_atomic_types['string'] instanceof Type\Atomic\TNonEmptyString) {
                 $did_remove_type = true;
-                if (!$existing_var_atomic_types['string'] instanceof Type\Atomic\TLowercaseString) {
-                    $existing_var_type->removeType('string');
 
+                $existing_var_type->removeType('string');
+
+                if ($existing_var_atomic_types['string'] instanceof Type\Atomic\TLowercaseString) {
+                    $existing_var_type->addType(new Type\Atomic\TNonEmptyLowercaseString);
+                } else {
                     $existing_var_type->addType(new Type\Atomic\TNonEmptyString);
                 }
             } elseif ($existing_var_type->isSingle() && !$is_equality) {
@@ -623,6 +615,33 @@ class SimpleNegatedAssertionReconciler extends Reconciler
             $did_remove_type = true;
             $existing_var_type->removeType('bool');
             $existing_var_type->addType(new TTrue);
+        }
+
+        foreach ($existing_var_atomic_types as $existing_var_atomic_type) {
+            if ($existing_var_atomic_type instanceof Type\Atomic\TTemplateParam) {
+                if (!$is_equality && !$existing_var_atomic_type->as->isMixed()) {
+                    $template_did_fail = 0;
+
+                    $existing_var_atomic_type = clone $existing_var_atomic_type;
+
+                    $existing_var_atomic_type->as = self::reconcileFalsyOrEmpty(
+                        $assertion,
+                        $existing_var_atomic_type->as,
+                        $key,
+                        $code_location,
+                        $suppressed_issues,
+                        $template_did_fail,
+                        $is_equality,
+                        $is_strict_equality
+                    );
+
+                    $did_remove_type = true;
+
+                    if (!$template_did_fail) {
+                        $existing_var_type->addType($existing_var_atomic_type);
+                    }
+                }
+            }
         }
 
         self::removeFalsyNegatedLiteralTypes(

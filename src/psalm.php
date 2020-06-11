@@ -69,6 +69,7 @@ $valid_long_options = [
     'long-progress',
     'no-suggestions',
     'include-php-versions', // used for baseline
+    'pretty-print', // used for JSON reports
     'track-tainted-input',
     'find-unused-psalm-suppress',
     'error-level:',
@@ -137,7 +138,7 @@ array_map(
 );
 
 if (!array_key_exists('use-ini-defaults', $options)) {
-    ini_set('display_errors', '1');
+    ini_set('display_errors', 'stderr');
     ini_set('display_startup_errors', '1');
     ini_set('memory_limit', (string) (8 * 1024 * 1024 * 1024));
 }
@@ -518,6 +519,7 @@ $stdout_report_options->show_suggestions = !array_key_exists('no-suggestions', $
  */
 $stdout_report_options->format = $output_format;
 $stdout_report_options->show_snippet = !isset($options['show-snippet']) || $options['show-snippet'] !== "false";
+$stdout_report_options->pretty = isset($options['pretty-print']) && $options['pretty-print'] !== "false";
 
 $project_analyzer = new ProjectAnalyzer(
     $config,

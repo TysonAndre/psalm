@@ -147,12 +147,22 @@ class ArrayFunctionCallTest extends TestCase
                     '$c' => 'array<string, int>|false',
                 ],
             ],
-            'arrayMerge' => [
+            'arrayMergeIntArrays' => [
                 '<?php
                     $d = array_merge(["a", "b", "c"], [1, 2, 3]);',
                 'assertions' => [
                     '$d' => 'array{0: string, 1: string, 2: string, 3: int, 4: int, 5: int}',
                 ],
+            ],
+            'arrayMergePossiblyUndefined' => [
+                '<?php
+                    /**
+                     * @param array{host?:string} $opts
+                     * @return array{host:string|int}
+                     */
+                    function b(array $opts): array {
+                        return array_merge(["host" => 5], $opts);
+                    }',
             ],
             'arrayMergeListResult' => [
                 '<?php
@@ -459,7 +469,7 @@ class ArrayFunctionCallTest extends TestCase
                     '$vars' => 'array{x: string, y: string}',
                     '$c' => 'string',
                     '$d' => 'string',
-                    '$more_vars' => 'array{0: string, 1: string}',
+                    '$more_vars' => 'array{string, string}',
                     '$e' => 'int',
                 ],
             ],
@@ -570,7 +580,35 @@ class ArrayFunctionCallTest extends TestCase
                 '<?php
                     $foo = array_sum([]) + 1;',
                 'assertions' => [
+                    '$foo' => 'int',
+                ],
+            ],
+            'arraySumOnlyInt' => [
+                '<?php
+                    $foo = array_sum([5,18]);',
+                'assertions' => [
+                    '$foo' => 'int',
+                ],
+            ],
+            'arraySumOnlyFloat' => [
+                '<?php
+                    $foo = array_sum([5.1,18.2]);',
+                'assertions' => [
+                    '$foo' => 'float',
+                ],
+            ],
+            'arraySumNumeric' => [
+                '<?php
+                    $foo = array_sum(["5","18"]);',
+                'assertions' => [
                     '$foo' => 'float|int',
+                ],
+            ],
+            'arraySumMix' => [
+                '<?php
+                    $foo = array_sum([5,18.5]);',
+                'assertions' => [
+                    '$foo' => 'float',
                 ],
             ],
             'arrayMapWithArrayAndCallable' => [
@@ -714,6 +752,15 @@ class ArrayFunctionCallTest extends TestCase
             'implodeMultiDimensionalArray' => [
                 '<?php
                     $urls = array_map("implode", [["a", "b"]]);',
+            ],
+            'implodeNonEmptyArrayAndString' => [
+                '<?php
+                    /** @var non-empty-array<non-empty-string> */
+                    $l = ["a", "b"];
+                    $a = implode(":", $l);',
+                [
+                    '$a===' => 'non-empty-string',
+                ]
             ],
             'key' => [
                 '<?php
@@ -909,11 +956,12 @@ class ArrayFunctionCallTest extends TestCase
                     $b = ["a", "b", "c"];
                     array_splice($a, -1, 1, $b);
                     $d = [1, 2, 3];
-                    array_splice($d, -1, 1);',
+                    $e = array_splice($d, -1, 1);',
                 'assertions' => [
                     '$a' => 'non-empty-list<int|string>',
-                    '$b' => 'array{0: string, 1: string, 2: string}',
-                    '$c' => 'array{0: int, 1: int, 2: int}',
+                    '$b' => 'array{string, string, string}',
+                    '$c' => 'array{int, int, int}',
+                    '$e' => 'array<array-key, mixed>'
                 ],
             ],
             'arraySpliceOtherType' => [
@@ -921,7 +969,7 @@ class ArrayFunctionCallTest extends TestCase
                     $d = [["red"], ["green"], ["blue"]];
                     array_splice($d, -1, 1, "foo");',
                 'assertions' => [
-                    '$d' => 'array<int, array{0: string}|string>',
+                    '$d' => 'array<int, array{string}|string>',
                 ],
             ],
             'ksortPreserveShape' => [
@@ -1347,6 +1395,20 @@ class ArrayFunctionCallTest extends TestCase
 
                 $a = [42, "A" => 42];
                 echo array_change_key_case($a, CASE_LOWER)[0];'
+            ],
+            'mapInterfaceMethod' => [
+                '<?php
+                    interface MapperInterface {
+                        public function map(string $s): int;
+                    }
+
+                    /**
+                     * @param list<string> $strings
+                     * @return list<int>
+                     */
+                    function mapList(MapperInterface $m, array $strings): array {
+                        return array_map([$m, "map"], $strings);
+                    }'
             ],
         ];
     }

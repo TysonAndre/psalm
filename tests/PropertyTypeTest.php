@@ -326,7 +326,7 @@ class PropertyTypeTest extends TestCase
                     class Foo {
                     }
 
-                    $a = new \ReflectionMethod("Foo", "__construct");
+                    $a = new \ReflectionMethod(Foo::class, "__construct");
 
                     echo $a->name . " - " . $a->class;',
             ],
@@ -1955,6 +1955,18 @@ class PropertyTypeTest extends TestCase
                             }
                         }
                     }'
+            ],
+            'useVariableAccessInStatic' => [
+                '<?php
+                    class A2 {
+                        public static string $title = "foo";
+                        public static string $label = "bar";
+                    }
+
+                    $model = new A2();
+                    $message = $model::$title;
+                    $message .= $model::$label;
+                    echo $message;'
             ],
         ];
     }

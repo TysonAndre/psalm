@@ -2755,6 +2755,24 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         return [$type];
                     }'
             ],
+            'nonEmptyStringAfterLiteralCheck' => [
+                '<?php
+                    /**
+                     * @param non-empty-string $greeting
+                     */
+                    function sayHi(string $greeting): void {
+                        echo $greeting;
+                    }
+
+                    /** @var string */
+                    $hello = "foo";
+
+                    if ($hello === "") {
+                        throw new \Exception("an empty string is not a greeting");
+                    }
+
+                    sayHi($hello);',
+            ],
         ];
     }
 
@@ -2818,8 +2836,8 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                 '<?php
                     $a = mt_rand(0, 1) ? mt_rand(-10, 10): null;
 
-                    if ($a < 0) {
-                      echo $a + 3;
+                    if ($a < -1) {
+                        echo $a + 3;
                     }',
                 'error_message' => 'PossiblyNullOperand',
             ],

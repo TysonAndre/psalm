@@ -44,7 +44,7 @@ use function strpos;
 use function array_search;
 use function array_keys;
 use function end;
-use Psalm\Internal\Taint\Source;
+use Psalm\Internal\Taint\TaintNode;
 
 /**
  * @internal
@@ -334,7 +334,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             );
         } else { // Closure
             if ($storage->return_type) {
-                $closure_return_type = ExpressionAnalyzer::fleshOutType(
+                $closure_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                     $codebase,
                     $storage->return_type,
                     $context->self,
@@ -613,16 +613,21 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 true
             );
 
-            if ($closure_return_types) {
-                $closure_return_type = \Psalm\Internal\Type\TypeCombination::combineTypes(
+            $closure_return_type = $closure_return_types
+                ? \Psalm\Internal\Type\TypeCombination::combineTypes(
                     $closure_return_types,
                     $codebase
-                );
+                )
+                : null;
 
-                $closure_yield_type = $closure_yield_types
-                    ? \Psalm\Internal\Type\TypeCombination::combineTypes($closure_yield_types)
-                    : null;
+            $closure_yield_type = $closure_yield_types
+                ? \Psalm\Internal\Type\TypeCombination::combineTypes(
+                    $closure_yield_types,
+                    $codebase
+                )
+                : null;
 
+            if ($closure_return_type || $closure_yield_type) {
                 if ($closure_yield_type) {
                     $closure_return_type = $closure_yield_type;
                 }
@@ -962,7 +967,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             }
 
             if ($signature_type) {
-                $signature_type = ExpressionAnalyzer::fleshOutType(
+                $signature_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                     $codebase,
                     $signature_type,
                     $context->self,
@@ -984,7 +989,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $param_type = clone $function_param->type;
                 }
 
-                $param_type = ExpressionAnalyzer::fleshOutType(
+                $param_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                     $codebase,
                     $param_type,
                     $context->self,
@@ -1010,7 +1015,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 if (!$non_null_param_types && isset($implemented_docblock_param_types[$offset])) {
                     $param_type = clone $implemented_docblock_param_types[$offset];
 
-                    $param_type = ExpressionAnalyzer::fleshOutType(
+                    $param_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                         $codebase,
                         $param_type,
                         $context->self,
@@ -1040,19 +1045,14 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             }
 
             if ($cased_method_id && $codebase->taint) {
-                $type_source = Source::getForMethodArgument(
+                $type_source = TaintNode::getForMethodArgument(
                     $cased_method_id,
                     $cased_method_id,
                     $offset,
                     $function_param->location,
                     null
                 );
-                $var_type->sources = [$type_source];
-
-                if ($tainted_source = $codebase->taint->hasExistingSource($type_source)) {
-                    $var_type->tainted = $tainted_source->taint;
-                    $type_source->taint = $tainted_source->taint;
-                }
+                $var_type->parent_nodes = [$type_source];
             }
 
             $context->vars_in_scope['$' . $function_param->name] = $var_type;
@@ -1305,7 +1305,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             && $storage->return_type_location
             && $storage->return_type_location !== $storage->signature_return_type_location
         ) {
-            $replace_type = ExpressionAnalyzer::fleshOutType(
+            $replace_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                 $codebase,
                 $storage->return_type,
                 $context->self,
@@ -1329,7 +1329,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 && $function_param->type_location !== $function_param->signature_type_location
                 && $function_param->type_location->file_path === $this->getFilePath()
             ) {
-                $replace_type = ExpressionAnalyzer::fleshOutType(
+                $replace_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                     $codebase,
                     $function_param->type,
                     $context->self,
@@ -1590,9 +1590,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             throw new \UnexpectedValueException('This is weird');
         }
 
-        return $codebase->functions->getStorage($statements_analyzer, strtolower($function_id));
+        return $codebase->functions->getStorage($statements_analyzer, $function_id);
     }
 
+    /** @return non-empty-string */
     public function getId() : string
     {
         if ($this instanceof MethodAnalyzer) {
@@ -1770,7 +1771,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             return $this->local_return_type;
         }
 
-        $this->local_return_type = ExpressionAnalyzer::fleshOutType(
+        $this->local_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
             $this->codebase,
             $storage_return_type,
             $this->getFQCLN(),

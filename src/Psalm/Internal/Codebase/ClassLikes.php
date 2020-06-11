@@ -18,6 +18,7 @@ use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Exception\UnpopulatedClasslikeException;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ConstFetchAnalyzer;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileReferenceProvider;
@@ -952,7 +953,7 @@ class ClassLikes
                 ) {
                     $bounds = $source_property_storage->type_location->getSelectionBounds();
 
-                    $replace_type = \Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer::fleshOutType(
+                    $replace_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                         $codebase,
                         $source_property_storage->type,
                         $source_classlike_storage->name,
@@ -1777,7 +1778,8 @@ class ClassLikes
 
         if ($c instanceof UnresolvedConstant\Constant) {
             if ($statements_analyzer) {
-                $found_type = $statements_analyzer->getConstType(
+                $found_type = ConstFetchAnalyzer::getConstType(
+                    $statements_analyzer,
                     $c->name,
                     $c->is_fully_qualified,
                     null
@@ -1866,7 +1868,18 @@ class ClassLikes
             );
 
             if (!$method_referenced
-                && (substr($method_name, 0, 2) !== '__' || $method_name === '__construct')
+                && $method_name !== '__destruct'
+                && $method_name !== '__clone'
+                && $method_name !== '__invoke'
+                && $method_name !== '__unset'
+                && $method_name !== '__isset'
+                && $method_name !== '__sleep'
+                && $method_name !== '__wakeup'
+                && $method_name !== '__serialize'
+                && $method_name !== '__unserialize'
+                && $method_name !== '__set_state'
+                && $method_name !== '__debuginfo'
+                && $method_name !== '__tostring' // can be called in array_unique
                 && $method_storage->location
             ) {
                 $method_location = $method_storage->location;
@@ -2188,7 +2201,6 @@ class ClassLikes
             }
 
             if ((!$property_referenced || $property_constructor_referenced)
-                && (substr($property_name, 0, 2) !== '__' || $property_name === '__construct')
                 && $property_storage->location
             ) {
                 $property_id = $classlike_storage->name . '::$' . $property_name;
@@ -2313,6 +2325,11 @@ class ClassLikes
     {
         return isset($this->existing_classlikes_lc[$fq_classlike_name_lc])
             && $this->existing_classlikes_lc[$fq_classlike_name_lc];
+    }
+
+    public function forgetMissingClassLikes() : void
+    {
+        $this->existing_classlikes_lc = \array_filter($this->existing_classlikes_lc);
     }
 
     /**

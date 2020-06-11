@@ -13,9 +13,8 @@ use function serialize;
 use function unserialize;
 
 /**
- * @psalm-type  TaggedCodeType = array<int, array{0: int, 1: string}>
- */
-/**
+ * @psalm-import-type  FileMapType from \Psalm\Internal\Codebase\Analyzer
+ *
  * Used to determine which files reference other files, necessary for using the --diff
  * option from the command line.
  */
@@ -40,18 +39,18 @@ class FileReferenceCacheProvider
     /**
      * @var Config
      */
-    private $config;
-
-    /**
-     * @var bool
-     */
-    public $config_changed;
+    protected $config;
 
     public function __construct(Config $config)
     {
         $this->config = $config;
-        $this->config_changed = $config->hash !== $this->getConfigHashCache();
-        $this->setConfigHashCache($config->hash);
+    }
+
+    public function hasConfigChanged() : bool
+    {
+        $has_changed = $this->config->hash !== $this->getConfigHashCache();
+        $this->setConfigHashCache($this->config->hash);
+        return $has_changed;
     }
 
     /**
@@ -63,7 +62,7 @@ class FileReferenceCacheProvider
     {
         $cache_directory = $this->config->getCacheDirectory();
 
-        if (!$cache_directory || $this->config_changed) {
+        if (!$cache_directory) {
             return null;
         }
 
@@ -91,7 +90,7 @@ class FileReferenceCacheProvider
     {
         $cache_directory = $this->config->getCacheDirectory();
 
-        if (!$cache_directory || $this->config_changed) {
+        if (!$cache_directory) {
             return null;
         }
 
@@ -550,7 +549,6 @@ class FileReferenceCacheProvider
 
         if ($cache_directory
             && file_exists($analyzed_methods_cache_location)
-            && !$this->config_changed
         ) {
             /** @var array<string, array<string, int>> */
             return unserialize(file_get_contents($analyzed_methods_cache_location));
@@ -581,14 +579,7 @@ class FileReferenceCacheProvider
     }
 
     /**
-     * @return array<
-     *      string,
-     *      array{
-     *          0: TaggedCodeType,
-     *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: string, 2: int}>
-     *      }
-     *  >|false
+     * @return array<string, FileMapType>|false
      */
     public function getFileMapCache()
     {
@@ -598,17 +589,9 @@ class FileReferenceCacheProvider
 
         if ($cache_directory
             && file_exists($file_maps_cache_location)
-            && !$this->config_changed
         ) {
             /**
-             * @var array<
-             *      string,
-             *      array{
-             *          0: TaggedCodeType,
-             *          1: TaggedCodeType,
-             *          2: array<int, array{0: int, 1: string, 2: int}>
-             *      }
-             *  >
+             * @var array<string, FileMapType>
              */
             $file_maps_cache = unserialize(file_get_contents($file_maps_cache_location));
 
@@ -619,14 +602,7 @@ class FileReferenceCacheProvider
     }
 
     /**
-     * @param array<
-     *      string,
-     *      array{
-     *          0: TaggedCodeType,
-     *          1: TaggedCodeType,
-     *          2: array<int, array{0: int, 1: string, 2: int}>
-     *      }
-     *  > $file_maps
+     * @param array<string, FileMapType> $file_maps
      *
      * @return void
      */
@@ -655,7 +631,6 @@ class FileReferenceCacheProvider
 
         if ($cache_directory
             && file_exists($type_coverage_cache_location)
-            && !$this->config_changed
         ) {
             /** @var array<string, array{int, int}> */
             $type_coverage_cache = unserialize(file_get_contents($type_coverage_cache_location));
@@ -698,7 +673,7 @@ class FileReferenceCacheProvider
             && file_exists($config_hash_cache_location)
         ) {
             /** @var string */
-            $file_maps_cache = unserialize(file_get_contents($config_hash_cache_location));
+            $file_maps_cache = file_get_contents($config_hash_cache_location);
 
             return $file_maps_cache;
         }
@@ -722,7 +697,7 @@ class FileReferenceCacheProvider
 
             file_put_contents(
                 $config_hash_cache_location,
-                serialize($hash)
+                $hash
             );
         }
     }

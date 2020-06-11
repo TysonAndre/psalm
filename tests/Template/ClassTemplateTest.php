@@ -2699,6 +2699,88 @@ class ClassTemplateTest extends TestCase
                         $fn($o);
                     }'
             ],
+            'changePropertyTypeOfTemplate' => [
+                '<?php
+                    class A {
+                        public int $x = 0;
+                    }
+
+                    /**
+                     * @template T as A
+                     * @param T $obj
+                     * @param-out T $obj
+                     */
+                    function foo(A &$obj): void {
+                        $obj->x = 1;
+                    }'
+            ],
+            'multipleMatchingObjectsInUnion' => [
+                '<?php
+                    /** @template T */
+                    interface Container {
+                        /** @return T */
+                        public function get();
+                    }
+
+                    /**
+                     * @template T
+                     * @param array<Container<T>> $containers
+                     * @return T
+                     */
+                    function unwrap(array $containers) {
+                        return array_map(fn($container) => $container->get(), $containers)[0];
+                    }
+
+                    /**
+                     * @param array<Container<int>|Container<string>> $typed_containers
+                     */
+                    function takesDifferentTypes(array $typed_containers) : void {
+                        $ret = unwrap($typed_containers);
+
+                        if (is_string($ret)) {}
+                        if (is_int($ret)) {}
+                    }'
+            ],
+            'templateWithLateResolvedType' => [
+                '<?php
+                    /**
+                     * @template A of Enum::TYPE_*
+                     */
+                    class Foo {}
+
+                    class Enum
+                    {
+                        const TYPE_ONE = 1;
+                        const TYPE_TWO = 2;
+                    }
+
+                    /** @var Foo<Enum::TYPE_ONE> $foo */
+                    $foo = new Foo();'
+            ],
+            'SKIPPED-extendedPropertyTypeParameterised' => [
+                '<?php
+                    namespace App;
+
+                    use DateTimeImmutable;
+                    use Ds\Map;
+
+                    abstract class Z
+                    {
+                        public function test(): void
+                        {
+                            $map = $this->createMap();
+
+                            $date = $map->get("test");
+
+                            echo $date->format("Y");
+                        }
+
+                        /**
+                         * @return Map<string, DateTimeImmutable>
+                         */
+                        abstract protected function createMap(): Map;
+                    }'
+            ],
         ];
     }
 

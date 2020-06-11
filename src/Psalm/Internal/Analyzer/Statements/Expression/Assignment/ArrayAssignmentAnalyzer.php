@@ -3,6 +3,7 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Assignment;
 
 use PhpParser;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ArrayFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
@@ -46,7 +47,7 @@ class ArrayAssignmentAnalyzer
         Type\Union $assignment_value_type
     ) {
         $nesting = 0;
-        $var_id = ExpressionAnalyzer::getVarId(
+        $var_id = ExpressionIdentifier::getVarId(
             $stmt->var,
             $statements_analyzer->getFQCLN(),
             $statements_analyzer,
@@ -134,7 +135,7 @@ class ArrayAssignmentAnalyzer
         $reversed_child_stmts = [];
 
         // gets a variable id that *may* contain array keys
-        $root_var_id = ExpressionAnalyzer::getRootVarId(
+        $root_var_id = ExpressionIdentifier::getArrayVarId(
             $root_array_expr,
             $statements_analyzer->getFQCLN(),
             $statements_analyzer
@@ -149,15 +150,13 @@ class ArrayAssignmentAnalyzer
 
         $child_stmt = null;
 
-        $taint_sources = [];
-        $taint_type = 0;
+        $parent_taint_nodes = [];
 
         if ($codebase->taint
             && $assign_value
             && ($assign_value_type = $statements_analyzer->node_data->getType($assign_value))
         ) {
-            $taint_sources = $assign_value_type->sources;
-            $taint_type = $assign_value_type->tainted ?: 0;
+            $parent_taint_nodes = $assign_value_type->parent_nodes;
         }
 
         // First go from the root element up, and go as far as we can to figure out what
@@ -218,7 +217,7 @@ class ArrayAssignmentAnalyzer
                 } elseif ($child_stmt->dim instanceof PhpParser\Node\Expr\PropertyFetch
                     && $child_stmt->dim->name instanceof PhpParser\Node\Identifier
                 ) {
-                    $object_id = ExpressionAnalyzer::getArrayVarId(
+                    $object_id = ExpressionIdentifier::getArrayVarId(
                         $child_stmt->dim->var,
                         $statements_analyzer->getFQCLN(),
                         $statements_analyzer
@@ -671,9 +670,8 @@ class ArrayAssignmentAnalyzer
             $root_type = $new_child_type;
         }
 
-        if ($codebase->taint && $taint_sources) {
-            $root_type->sources = \array_merge($taint_sources, $root_type->sources ?: []);
-            $root_type->tainted = $taint_type | $root_type->tainted;
+        if ($codebase->taint && $parent_taint_nodes) {
+            $root_type->parent_nodes = \array_merge($parent_taint_nodes, $root_type->parent_nodes ?: []);
         }
 
         $statements_analyzer->node_data->setType($root_array_expr, $root_type);
