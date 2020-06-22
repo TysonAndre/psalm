@@ -7,7 +7,7 @@ use Psalm\CodeLocation;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Type;
 
-class FunctionLikeStorage
+abstract class FunctionLikeStorage
 {
     use CustomMetadataTrait;
 
@@ -188,6 +188,11 @@ class FunctionLikeStorage
      * @var bool
      */
     public $specialize_call = false;
+
+    /**
+     * @var array<string>
+     */
+    public $taint_source_types = [];
 
     /**
      * @var array<string>

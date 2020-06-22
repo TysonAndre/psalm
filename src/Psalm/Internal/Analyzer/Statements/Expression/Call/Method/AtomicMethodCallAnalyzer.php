@@ -10,7 +10,6 @@ use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ArgumentMapPopulator;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ArgumentsAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\Fetch\PropertyFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
@@ -422,6 +421,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                     $method_id,
                     $class_storage,
                     $context,
+                    $config,
                     $all_intersection_return_type,
                     $result
                 );
@@ -516,9 +516,9 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                 || !isset($class_storage->pseudo_methods[$method_name_lc])
             ) {
                 if ($is_interface) {
-                    $result->non_existent_interface_method_ids[] = $intersection_method_id ?: $method_id;
+                    $result->non_existent_interface_method_ids[] = $intersection_method_id ?: $cased_method_id;
                 } else {
-                    $result->non_existent_class_method_ids[] = $intersection_method_id ?: $method_id;
+                    $result->non_existent_class_method_ids[] = $intersection_method_id ?: $cased_method_id;
                 }
             }
 

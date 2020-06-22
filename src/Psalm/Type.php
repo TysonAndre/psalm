@@ -184,10 +184,29 @@ abstract class Type
      */
     public static function getString($value = null)
     {
-        $config = Config::getInstance();
-        if (is_string($value) && strlen($value) < $config->max_string_length) {
-            $type = new TLiteralString($value);
-        } else {
+        $type = null;
+
+        if ($value !== null) {
+            $config = \Psalm\Config::getInstance();
+
+            if ($config->string_interpreters) {
+                foreach ($config->string_interpreters as $string_interpreter) {
+                    if ($type = $string_interpreter::getTypeFromValue($value)) {
+                        break;
+                    }
+                }
+            }
+
+            if (!$type) {
+                if (strlen($value) < $config->max_string_length) {
+                    $type = new TLiteralString($value);
+                } else {
+                    $type = new Type\Atomic\TNonEmptyString();
+                }
+            }
+        }
+
+        if (!$type) {
             $type = new TString();
         }
 

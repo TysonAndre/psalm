@@ -524,6 +524,7 @@ class ReturnAnalyzer
                 $codebase->taint->addPath(
                     $parent_node,
                     $method_node,
+                    'return',
                     $storage->added_taints,
                     $storage->removed_taints
                 );

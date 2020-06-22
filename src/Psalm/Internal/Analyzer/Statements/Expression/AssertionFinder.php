@@ -970,8 +970,8 @@ class AssertionFinder
             if ($var_name && $var_type) {
                 $identical = $conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
                     || ($other_type
-                        && (($var_type->isString() && $other_type->isString())
-                            || ($var_type->isInt() && $other_type->isInt())
+                        && (($var_type->isString(true) && $other_type->isString(true))
+                            || ($var_type->isInt(true) && $other_type->isInt(true))
                             || ($var_type->isFloat() && $other_type->isFloat())
                         )
                     );
@@ -2367,7 +2367,7 @@ class AssertionFinder
      *
      * @return  int|null
      */
-    protected static function hasTrueVariable(PhpParser\Node\Expr\BinaryOp $conditional)
+    public static function hasTrueVariable(PhpParser\Node\Expr\BinaryOp $conditional)
     {
         if ($conditional->right instanceof PhpParser\Node\Expr\ConstFetch
             && strtolower($conditional->right->name->parts[0]) === 'true'

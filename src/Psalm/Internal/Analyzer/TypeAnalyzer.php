@@ -1979,6 +1979,7 @@ class TypeAnalyzer
 
                     $matching_callable->is_pure = $codebase->functions->isCallMapFunctionPure(
                         $codebase,
+                        $statements_analyzer ? $statements_analyzer->node_data : null,
                         $input_type_part->value,
                         null,
                         $must_use
@@ -2643,10 +2644,16 @@ class TypeAnalyzer
 
                 $all_types_contain = false;
             } else {
+                $input_return = $input_type_part->return_type;
+
+                if ($input_return->isVoid() && $container_type_part->return_type->isNullable()) {
+                    return;
+                }
+
                 if (!$container_type_part->return_type->isVoid()
                     && !self::isContainedBy(
                         $codebase,
-                        $input_type_part->return_type,
+                        $input_return,
                         $container_type_part->return_type,
                         false,
                         false,

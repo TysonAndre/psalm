@@ -58,6 +58,7 @@ use Psalm\Storage\ClassLikeStorage;
 use Psalm\Storage\FileStorage;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Storage\FunctionLikeStorage;
+use Psalm\Storage\FunctionStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Storage\PropertyStorage;
 use Psalm\Type;
@@ -66,6 +67,7 @@ use function strtolower;
 use function substr;
 use function trim;
 use function preg_split;
+use php_user_filter;
 
 /**
  * @internal
@@ -1311,6 +1313,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->deprecated = $docblock_info->deprecated;
                 $storage->internal = $docblock_info->internal;
                 $storage->psalm_internal = $docblock_info->psalm_internal;
+                $storage->final = $storage->final || $docblock_info->final;
 
                 if ($docblock_info->mixin) {
                     $mixin_type = TypeParser::parseTokens(
@@ -1348,6 +1351,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->mutation_free = $docblock_info->mutation_free;
                 $storage->external_mutation_free = $docblock_info->external_mutation_free;
+                $storage->specialize_instance = $docblock_info->taint_specialize;
 
                 $storage->override_property_visibility = $docblock_info->override_property_visibility;
                 $storage->override_method_visibility = $docblock_info->override_method_visibility;
@@ -1658,7 +1662,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $stmt->name->name;
             $function_id = strtolower($cased_function_id);
 
-            $storage = new FunctionLikeStorage();
+            $storage = new FunctionStorage();
 
             if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
                 if (isset($this->file_storage->functions[$function_id])
@@ -1839,12 +1843,24 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             } else {
                 $storage->visibility = ClassLikeAnalyzer::VISIBILITY_PUBLIC;
             }
-        } else {
+        } elseif ($stmt instanceof PhpParser\Node\Expr\Closure
+            || $stmt instanceof PhpParser\Node\Expr\ArrowFunction
+        ) {
             $function_id = $cased_function_id = strtolower($this->file_path)
                 . ':' . $stmt->getLine()
                 . ':' . (int) $stmt->getAttribute('startFilePos') . ':-:closure';
 
-            $storage = $this->file_storage->functions[$function_id] = new FunctionLikeStorage();
+            $storage = $this->file_storage->functions[$function_id] = new FunctionStorage();
+
+            if ($stmt instanceof PhpParser\Node\Expr\Closure) {
+                foreach ($stmt->uses as $closure_use) {
+                    if ($closure_use->byRef && \is_string($closure_use->var->name)) {
+                        $storage->byref_uses[$closure_use->var->name] = true;
+                    }
+                }
+            }
+        } else {
+            throw new \UnexpectedValueException('Unrecognized functionlike');
         }
 
         $this->functionlike_storages[] = $storage;
@@ -2483,6 +2499,17 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 if ($param_storage->name === $param_name) {
                     $param_storage->sinks[] = $taint_sink_param['taint'];
                 }
+            }
+        }
+
+        foreach ($docblock_info->taint_source_types as $taint_source_type) {
+            if ($taint_source_type === 'input') {
+                $storage->taint_source_types = array_merge(
+                    $storage->taint_source_types,
+                    \Psalm\Type\TaintKindGroup::ALL_INPUT
+                );
+            } else {
+                $storage->taint_source_types[] = $taint_source_type;
             }
         }
 

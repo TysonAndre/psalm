@@ -811,6 +811,23 @@ class CallableTest extends TestCase
                         }
                     }',
             ],
+            'returnsVoidAcceptableForNullable' => [
+                '<?php
+                    /** @param callable():?bool $c */
+                    function takesCallable(callable $c) : void {}
+
+                    takesCallable(function() { return; });',
+            ],
+            'byRefUsesAlwaysMixed' => [
+                '<?php
+                    $callback = function() use (&$isCalled) : void {
+                        $isCalled = true;
+                    };
+                    $isCalled = false;
+                    $callback();
+
+                    if ($isCalled === true) {}'
+            ],
         ];
     }
 

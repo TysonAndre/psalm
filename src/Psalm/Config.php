@@ -184,6 +184,11 @@ class Config
     protected $project_files;
 
     /**
+     * @var ProjectFileFilter|null
+     */
+    protected $extra_files;
+
+    /**
      * The base directory of this config file
      *
      * @var string
@@ -233,7 +238,7 @@ class Config
     private $mock_classes = [];
 
     /**
-     * @var array<int, string>
+     * @var array<string, string>
      */
     private $stub_files = [];
 
@@ -298,6 +303,11 @@ class Config
      * @var bool
      */
     public $skip_checks_on_unresolvable_includes = true;
+
+    /**
+     * @var bool
+     */
+    public $seal_all_methods = false;
 
     /**
      * @var bool
@@ -792,7 +802,8 @@ class Config
             'ensureArrayStringOffsetsExist' => 'ensure_array_string_offsets_exist',
             'ensureArrayIntOffsetsExist' => 'ensure_array_int_offsets_exist',
             'reportMixedIssues' => 'show_mixed_issues',
-            'skipChecksOnUnresolvableIncludes' => 'skip_checks_on_unresolvable_includes'
+            'skipChecksOnUnresolvableIncludes' => 'skip_checks_on_unresolvable_includes',
+            'sealAllMethods' => 'seal_all_methods'
         ];
 
         foreach ($booleanAttributes as $xmlName => $internalName) {
@@ -907,6 +918,10 @@ class Config
 
         if (isset($config_xml->projectFiles)) {
             $config->project_files = ProjectFileFilter::loadFromXMLElement($config_xml->projectFiles, $base_dir, true);
+        }
+
+        if (isset($config_xml->extraFiles)) {
+            $config->extra_files = ProjectFileFilter::loadFromXMLElement($config_xml->extraFiles, $base_dir, true);
         }
 
         if (isset($config_xml->taintAnalysis->ignoreFiles)) {
@@ -1363,6 +1378,16 @@ class Config
      *
      * @return  bool
      */
+    public function isInExtraDirs($file_path)
+    {
+        return $this->extra_files && $this->extra_files->allows($file_path);
+    }
+
+    /**
+     * @param   string $file_path
+     *
+     * @return  bool
+     */
     public function mustBeIgnored($file_path)
     {
         return $this->project_files && $this->project_files->forbids($file_path);
@@ -1625,6 +1650,18 @@ class Config
         }
 
         return $this->project_files->getFiles();
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getExtraDirectories()
+    {
+        if (!$this->extra_files) {
+            return [];
+        }
+
+        return $this->extra_files->getDirectories();
     }
 
     /**
@@ -2009,11 +2046,16 @@ class Config
     /** @return void */
     public function addStubFile(string $stub_file)
     {
-        $this->stub_files[] = $stub_file;
+        $this->stub_files[$stub_file] = $stub_file;
+    }
+
+    public function hasStubFile(string $stub_file) : bool
+    {
+        return isset($this->stub_files[$stub_file]);
     }
 
     /**
-     * @return array<int, string>
+     * @return array<string, string>
      */
     public function getStubFiles(): array
     {

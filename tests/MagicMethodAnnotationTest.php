@@ -615,6 +615,57 @@ class MagicMethodAnnotationTest extends TestCase
                      */
                     final class B extends A {}'
             ],
+            'namespacedMethod' => [
+                '<?php
+                    declare(strict_types = 1);
+
+                    namespace App;
+
+                    interface FooInterface {}
+
+                    /**
+                     * @method \IteratorAggregate<int, FooInterface> getAll():\IteratorAggregate
+                     */
+                    class Foo
+                    {
+                        private \IteratorAggregate $items;
+
+                        /**
+                         * @psalm-suppress MixedReturnTypeCoercion
+                         */
+                        public function getAll(): \IteratorAggregate
+                        {
+                            return $this->items;
+                        }
+
+                        public function __construct(\IteratorAggregate $foos)
+                        {
+                            $this->items = $foos;
+                        }
+                    }
+
+                    /**
+                     * @psalm-suppress MixedReturnTypeCoercion
+                     * @method \IteratorAggregate<int, FooInterface> getAll():\IteratorAggregate
+                     */
+                    class Bar
+                    {
+                        private \IteratorAggregate $items;
+
+                        /**
+                         * @psalm-suppress MixedReturnTypeCoercion
+                         */
+                        public function getAll(): \IteratorAggregate
+                        {
+                            return $this->items;
+                        }
+
+                        public function __construct(\IteratorAggregate $foos)
+                        {
+                            $this->items = $foos;
+                        }
+                    }'
+            ],
         ];
     }
 
@@ -788,5 +839,132 @@ class MagicMethodAnnotationTest extends TestCase
                 'error_message' => 'UndefinedMagicMethod',
             ],
         ];
+    }
+
+    /**
+     * @return void
+     */
+    public function testSealAllMethodsWithoutFoo()
+    {
+        Config::getInstance()->seal_all_methods = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+              class A {
+                public function __call(string $method, array $args) {}
+              }
+
+              class B extends A {}
+
+              $b = new B();
+              $b->foo();
+              '
+        );
+
+        $error_message = 'UndefinedMagicMethod';
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage($error_message);
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testSealAllMethodsWithFoo()
+    {
+        Config::getInstance()->seal_all_methods = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+              class A {
+                public function __call(string $method, array $args) {}
+                public function foo(): void {}
+              }
+
+              class B extends A {}
+
+              $b = new B();
+              $b->foo();
+              '
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testSealAllMethodsWithFooInSubclass()
+    {
+        Config::getInstance()->seal_all_methods = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+              class A {
+                public function __call(string $method, array $args) {}
+              }
+
+              class B extends A {
+                public function foo(): void {}
+              }
+
+              $b = new B();
+              $b->foo();
+              '
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testSealAllMethodsWithFooAnnotated()
+    {
+        Config::getInstance()->seal_all_methods = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+              /** @method foo(): int */
+              class A {
+                public function __call(string $method, array $args) {}
+              }
+
+              class B extends A {}
+
+              $b = new B();
+              $b->foo();
+              '
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    /**
+     * @return void
+     */
+    public function testSealAllMethodsSetToFalse()
+    {
+        Config::getInstance()->seal_all_methods = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+              class A {
+                public function __call(string $method, array $args) {}
+              }
+
+              class B extends A {}
+
+              $b = new B();
+              $b->foo();
+              '
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
     }
 }
