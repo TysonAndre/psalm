@@ -156,7 +156,7 @@ class VariableFetchAnalyzer
         // FIXME Hack: TODO replace with Superglobal config
         if ($stmt->name === '_TAG') {
             $stmt->inferredType = Type::parseString('tag_global');
-            return null;
+            return true;
         }
 
         if ($passed_by_reference && $by_ref_type) {
