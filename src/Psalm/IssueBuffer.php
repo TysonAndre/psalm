@@ -206,6 +206,13 @@ class IssueBuffer
             return false;
         }
 
+        if ($config->debug_emitted_issues) {
+            ob_start();
+            debug_print_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS );
+            $trace = ob_get_clean();
+            fwrite(STDERR, "\nEmitting {$e->getShortLocation()} $issue_type {$e->getMessage()}\n$trace\n");
+        }
+
         $emitted_key = $issue_type . '-' . $e->getShortLocation() . ':' . $e->getLocation()->getColumn();
 
         if ($reporting_level === Config::REPORT_INFO) {

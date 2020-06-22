@@ -75,6 +75,7 @@ $valid_long_options = [
     'security-analysis',
     'find-unused-psalm-suppress',
     'error-level:',
+    'debug-emitted-issues',
 ];
 
 gc_collect_cycles();
@@ -389,6 +390,10 @@ $ini_handler->check();
 
 if (is_null($config->load_xdebug_stub) && '' !== $ini_handler->getSkippedVersion()) {
     $config->load_xdebug_stub = true;
+}
+
+if (isset($options['debug-emitted-issues'])) {
+    $config->debug_emitted_issues = true;
 }
 
 setlocale(LC_CTYPE, 'C');
