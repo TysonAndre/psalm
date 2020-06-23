@@ -30,6 +30,7 @@ $valid_long_options = [
     'config:',
     'debug',
     'debug-by-line',
+    'debug-emitted-issues',
     'diff',
     'diff-methods',
     'disable-extension:',
@@ -247,6 +248,7 @@ if (isset($options['i'])) {
                 && $arg !== '--init'
                 && $arg !== '--debug'
                 && $arg !== '--debug-by-line'
+                && $arg !== '--debug-emitted-issues'
                 && strpos($arg, '--disable-extension=') !== 0
                 && strpos($arg, '--root=') !== 0
                 && strpos($arg, '--r=') !== 0;

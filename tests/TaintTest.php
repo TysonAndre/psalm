@@ -1698,4 +1698,55 @@ class TaintTest extends TestCase
 
         $this->analyzeFile('somefile.php', new Context());
     }
+
+    public function testImplodeExplode() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                $a = $_GET["name"];
+                $b = explode(" ", $a);
+                $c = implode(" ", $b);
+                echo $c;'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testSpecializeStaticMethod() : void
+    {
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                StringUtility::foo($_GET["c"]);
+
+                class StringUtility {
+                    /**
+                     * @psalm-taint-specialize
+                     */
+                    public static function foo(string $str) : string
+                    {
+                        return $str;
+                    }
+
+                    /**
+                     * @psalm-taint-specialize
+                     */
+                    public static function slugify(string $url) : string {
+                        return self::foo($url);
+                    }
+                }
+
+                echo StringUtility::slugify("hello");'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
 }
