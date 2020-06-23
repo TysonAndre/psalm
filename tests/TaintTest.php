@@ -1520,4 +1520,26 @@ class TaintTest extends TestCase
 
         $this->analyzeFile('somefile.php', new Context());
     }
+
+    public function testNamespacedFunction() : void
+    {
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('TaintedInput');
+
+        $this->project_analyzer->trackTaintedInputs();
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                namespace ns;
+
+                function identity(string $s) : string {
+                    return $s;
+                }
+
+                echo identity($_GET[\'userinput\']);'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
 }
