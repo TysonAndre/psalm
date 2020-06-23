@@ -371,4 +371,42 @@ class Taint
             }
         );
     }
+
+    public function dumpDebugRepresentation()
+    {
+        $get_label = function (Taintable $t) : string {
+            return $t->id;
+            /*$result = $t->label;
+            if ($t->code_location) {
+                $result .= ' @ ' . $t->code_location->file_path . ':' . $t->code_location->raw_line_number;
+            }
+            return (string)$result;
+             */
+        };
+        echo "Sources:\n";
+        foreach ($this->sources as $source) {
+            echo $get_label($source) . "\n";
+            // echo "$source->label {$source->code_location->file_path}:{$source->code_location->raw_line_number}\n";
+        }
+        echo "Edges:\n";
+        foreach ($this->forward_edges as $from_id => $edge_list) {
+            echo "From $from_id\n";
+            foreach ($edge_list as $to_id => $path) {
+                echo "-> $to_id";
+                if ($path->escaped_taints) {
+                    echo '(escape ' . implode($path->escaped_taints) . ')';
+                }
+                if ($path->unescaped_taints) {
+                    echo '(unescape ' . implode($path->unescaped_taints) . ')';
+                }
+                echo "\n";
+            }
+        }
+        echo "Sinks:\n";
+        foreach ($this->sinks as $sink) {
+            echo $get_label($sink) . "\n";
+        }
+
+    }
+
 }

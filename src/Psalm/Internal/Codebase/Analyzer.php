@@ -278,6 +278,7 @@ class Analyzer
 
         if ($codebase->taint) {
             $codebase->taint->connectSinksAndSources();
+            $codebase->taint->dumpDebugRepresentation();
         }
 
         $this->progress->finish();
