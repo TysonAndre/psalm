@@ -668,3 +668,533 @@ function realpath(string $path) {}
  * @return ($right_operand is "0" ? null : numeric-string)
  */
 function bcdiv(string $left_operand, string $right_operand, int $scale = 0): ?string {}
+
+/**
+ * @psalm-pure
+ * @psalm-flow ($message) -> return
+ */
+function _(string $message) : string {}
+// prefer htmlentities/escapeshellarg()
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function addcslashes(string $str, string $charlist) : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function addslashes(string $str) : string {}
+// Taint checking probably won't be able to check if keys are tainted.
+// /** @return associative-array<mixed, mixed> */
+// function array_change_key_case(array $input, int $case = 0) : associative-array<mixed,mixed> {}
+// function array_chunk(array $input, int $size, bool $preserve_keys = false) : list<array> {}
+// function array_column(array $array, $column_key, $index_key = null) : array {}
+// function array_combine(int[]|string[] $keys, array $values) : associative-array<mixed,mixed> {}
+// function array_count_values(array $input) : associative-array<mixed,int> {}
+// function array_diff_assoc(array $arr1, array $arr2, array ...$args) : associative-array<mixed,mixed> {}
+// function array_diff_key(array $arr1, array $arr2, array ...$args) : associative-array<mixed,mixed> {}
+// function array_diff(array $arr1, array $arr2, array ...$args) : associative-array<mixed,mixed> {}
+// function array_fill_keys(array $keys, $val) : array {}
+// function array_fill(int $start_key, int $num, $val) : array<int,mixed> {}
+// function array_filter(array $input, callable(mixed):bool|callable(mixed,mixed):bool $callback = null, int $flag = 0) : associative-array<mixed,mixed> {}
+// function array_flip(array $input) : associative-array<mixed,int>|associative-array<mixed,string> {}
+// function array_intersect_assoc(array $arr1, array $arr2, array ...$args) : associative-array<mixed,mixed> {}
+// function array_intersect_key(array $arr1, array $arr2, array ...$args) : associative-array<mixed,mixed> {}
+// function array_intersect(array $arr1, array $arr2, array ...$args) : associative-array<mixed,mixed> {}
+// function array_key_first(array $array) : int|null|string {}
+// function array_key_last(array $array) : int|null|string {}
+// function array_keys(array $input, $search_value = unknown, bool $strict = false) : list<int>|list<string> {}
+// function array_map(?callable $callback, array $input1, array ...$args) : array {}
+// function array_merge_recursive(array $arr1, array ...$args) : array {}
+// function array_merge(array $arr1, array ...$args) : array {}
+// function array_pad(array $input, int $pad_size, $pad_value) : array {}
+// function array_rand(array $input, int $num_req) : array<int,int>|array<int,string>|int|string {}
+// function array_reduce(array $input, callable(mixed,mixed):$callback, $initial = null) : mixed {}
+// function array_replace_recursive(array $arr1, array $arr2, array ...$args) : array {}
+// function array_replace(array $arr1, array $arr2, array ...$args) : array {}
+// function array_reverse(array $input, bool $preserve = false) : array {}
+// function array_search($needle, array $haystack, bool $strict = false) : false|int|string {}
+// function array_slice(array $input, int $offset, ?int $length = null, bool $preserve_keys = false) : array {}
+// function array_unique(array $input, int $sort_flags = 2) : associative-array<mixed,mixed> {}
+// function array_values(array $input) : list<mixed> {}
+/**
+ * @psalm-pure
+ *
+ * @return string|false
+ *
+ * @psalm-flow ($str) -> return
+ */
+function base64_decode(string $str, bool $strict = false) {}
+// function base64_encode(string $str) : string {}
+// function base_convert(string $number, int $frombase, int $tobase) : string {}
+
+/**
+ * @psalm-pure
+ * @psalm-flow ($path) -> return
+ */
+function basename(string $path, string $suffix = '') : string {}
+// function bin2hex(string $data) : string {}
+/**
+ * @return int|string
+ * @psalm-pure
+ * @psalm-flow ($source) -> return
+ */
+function bzcompress(string $source, int $blocksize100k = 4, int $workfactor = 0) {}
+/**
+ * @return int|string
+ * @psalm-pure
+ * @psalm-flow ($source) -> return
+ */
+function bzdecompress(string $source, int $small = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function chop(string $str, string $character_mask = '
+	' . "\0" . '') : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str, $ending) -> return
+ */
+function chunk_split(string $str, int $chunklen = 76, string $ending = '
+') : string {}
+// function class_implements(object|string $what, bool $autoload = unknown) : array<string,class-string>|false {}
+// function class_parents(object|string $instance, bool $autoload = unknown) : array<string,class-string>|false {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($var_name, $var_names) -> return
+ */
+function compact($var_name, ...$var_names) : array {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function convert_cyr_string(string $str, string $from, string $to) : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ */
+function convert_uudecode(string $data) : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ */
+function convert_uuencode(string $data) : string {}
+// function count_chars(string $input, int $mode = unknown) : array<int,int>|false|string {}
+/**
+ * @param object|array $array_arg
+ * @psalm-pure
+ * @psalm-flow ($array_arg) -> return
+ */
+function current($array_arg) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($path) -> return
+ */
+function dirname(string $path, int $levels = 1) : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($arr) -> return
+ */
+function each(array &$arr) : array {}
+// eval safe?
+/**
+ * @psalm-pure
+ * @psalm-flow ($arg) -> return
+ * @psalm-taint-escape shell
+ */
+function escapeshellarg(string $arg) : string {}
+// function fgetcsv(resource $fp, int $length = unknown, string $delimiter = unknown, string $enclosure = unknown, string $escape = unknown) : false|list<?string> {}
+// function file(string $filename, int $flags = unknown, resource $context = unknown) : false|list<string> {}
+
+// filter_input filter types depends on $type/$filter
+// function filter_input_array(int $type, array|int $definition = unknown, bool $add_empty = unknown) : false|mixed {}
+// function filter_input(int $type, string $variable_name, int $filter = unknown, array|int $options = unknown) : false|mixed {}
+// function filter_var($variable, int $filter = unknown, $options = unknown) : false|mixed {}
+// function filter_var_array
+// function get_cfg_var(string $option_name) : array[]|false|string|string[] {}
+// function get_class_methods($class) : list<string> {}
+// function getenv(string $varname, bool $local_only = unknown) : false|string {}
+// function getimagesize(string $imagefile, array &$info = unknown) : false|int[]|string[] {}
+// function get_parent_class($object = unknown) : class-string|false {}
+function gettext(string $msgid) : string {}
+// function gettype($var) : string {}
+// Can unescape $format with backslashes if user controlled
+function gmdate(string $format, int $timestamp = null) : string {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function gzcompress(string $data, int $level = -1, int $encoding = 15) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function gzdecode(string $data, int $length = 0) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function gzdeflate(string $data, int $level = -1, int $encoding = -15) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function gzencode(string $data, int $level = -1, int $encoding_mode = 31) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function gzinflate(string $data, int $length = 0) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function gzuncompress(string $data, int $length = 0) {}
+// unsafe with $raw_output = true
+// function hash_hmac(string $algo, string $data, string $key, bool $raw_output = unknown) : string {}
+// function hash_pbkdf2(string $algo, string $password, string $salt, int $iterations, int $length = unknown, bool $raw_output = unknown) : string {}
+// function hash(string $algo, string $data, bool $raw_output = unknown) : string {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($data) -> return
+ */
+function hex2bin(string $data) {}
+/**
+ * @psalm-pure
+ * @param array|object $querydata
+ * @psalm-flow ($querydata) -> return
+ */
+function http_build_query($querydata, string $prefix = '', string $arg_separator = '', int $enc_type = 1) : string {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($str) -> return
+ */
+function iconv(string $in_charset, string $out_charset, string $str) {}
+//function inet_ntop(string $in_addr) {}
+//function inet_pton(string $ip_address) {}
+// function ini_get(string $varname) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($glue, $pieces) -> return
+ */
+function join(string $glue, array $pieces) : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ * TODO What taints does this unescape? (\uxxxx can quote)
+ */
+function json_decode(string $json, bool $assoc = null, int $depth = 512, int $options = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ * @psalm-taint-escape html
+ * @return false|string
+ */
+function json_encode($data, int $options = 0, int $depth = 512) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function lcfirst(string $str) : string {}
+// function long2ip(int|string $proper_address) : string {}
+// already done
+// max() also works on strings.
+/**
+ * @psalm-pure
+ * @psalm-flow ($arg1) -> return
+ */
+function max(array $arg1) : mixed {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($sourcestring) -> return
+ */
+function mb_convert_case(string $sourcestring, int $mode, string $encoding = null) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($str) -> return
+ */
+function mb_convert_encoding(string $str, string $to_encoding, $from_encoding = false) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($str) -> return
+ */
+function mb_detect_encoding(string $str, $encoding_list = null, bool $strict = false) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($str) -> return
+ */
+function mb_strtolower(string $str, string $encoding = null) {}
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($str) -> return
+ */
+function mb_substr(string $str, int $start, ?int $length = null, string $encoding = '') {}
+// Probably unrealistically wrong if $raw_output = true and sent to a sink
+// function md5_file(string $filename, bool $raw_output = unknown) {}
+// function md5(string $str, bool $raw_output = unknown) : string {}
+
+// metaphone filters out non-letters?
+// function metaphone(string $text, int $phones = unknown) {}
+
+/**
+ * @psalm-pure
+ * @return false|string
+ * @psalm-flow ($arg1) -> return
+ */
+function min(array $arg1) : mixed {}
+/**
+ * @psalm-pure
+ * @return string
+ * @psalm-flow ($str) -> return
+ */
+function ngettext(string $msgid1, string $msgid2, int $n) : string {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function nl2br(string $str, bool $is_xhtml = false) : string {}
+// $key is probably secret from application
+// function openssl_encrypt(string $data, string $method, string $key, int $options = unknown, string $iv = unknown, string &$tag = unknown, string $aad = unknown, int $tag_length = unknown) {}
+// function pack(string $format, mixed ...$args) : string {}
+// function parse_ini_file(string $filename, bool $process_sections = unknown, int $scanner_mode = unknown) {}
+// depends on arguments
+// function parse_url(string $url, int $url_component = unknown) : array{scheme?:string,host?:string,port?:int,user?:string,pass?:string,path?:string,query?:string,fragment?:string}|false|int|null|string {}
+// function pathinfo(string $path, int $options = unknown) {}
+// function php_uname(string $mode = unknown) : string {}
+// function phpversion(string $extension = unknown) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($subject) -> return
+ */
+function preg_filter($regex, $replace, $subject, int $limit = -1, int &$count = null) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($subject) -> return
+ */
+function preg_replace_callback_array(array $pattern, $subject, int $limit = -1, int &$count = null) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($subject) -> return
+ */
+function preg_split(string $pattern, string $subject, ?int $limit = -1, int $flags = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function quoted_printable_decode(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function quoted_printable_encode(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function quotemeta(string $str) {}
+// function range($low, $high, float|int $step = unknown) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ * @psalm-taint-unescape html
+ */
+function rawurldecode(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ * @psalm-taint-escape html
+ */
+function rawurlencode(string $str) {}
+// not pure
+// function readlink(string $filename) {}
+// already done
+/**
+ * @psalm-pure depending on definition
+ * @psalm-flow ($variable) -> return
+ */
+function serialize($variable) {}
+// depends on raw_output, but impractical
+// function sha1(string $str, bool $raw_output = unknown) {}
+// function soundex(string $str) {}
+// function stat(string $filename) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($needle) -> return
+ * TODO support before_needle
+ */
+function strchr(string $haystack, $needle, bool $before_needle = false) {}
+// function stream_resolve_include_path(string $filename) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($format) -> return
+ * Backslashes can be used for special characters
+ */
+function strftime(string $format, int $timestamp = null) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function stripcslashes(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function stripslashes(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($replace, $subject) -> return
+ */
+function str_ireplace($search, $replace, $subject, int &$replace_count = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($needle) -> return
+ */
+function stristr(string $haystack, $needle, bool $before_needle = false) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($input, $pad_string) -> return
+ */
+function str_pad(string $input, int $pad_length, string $pad_string = '', int $pad_type = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($haystack) -> return
+ */
+function strpbrk(string $haystack, string $char_list) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($haystack, $needle) -> return
+ */
+function strrchr(string $haystack, $needle) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($input) -> return
+ */
+function str_repeat(string $input, int $multiplier) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function strrev(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function str_rot13(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function str_split(string $str, int $split_length = 1) {}
+// depends on $needle (and $haystack if $before_needle)
+/**
+ * @psalm-pure
+ * @psalm-flow ($needle) -> return
+ * TODO support before_needle=true
+ */
+function strstr(string $haystack, string $needle, bool $before_needle = false) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function strtr(string $str, string $from, string $to) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($var) -> return
+ */
+function strval($var) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($string) -> return
+ */
+function str_word_count(string $string, int $format = 0, string $charlist = '') {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str, $repl) -> return
+ */
+function substr_replace($str, $repl, $start, $length = 0) {}
+// mostly html safe but can contain " and >?
+/**
+ * @psalm-pure
+ * @psalm-flow ($dir, $prefix) -> return
+ */
+function tempnam(string $dir, string $prefix) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($source) -> return
+ */
+function token_get_all(string $source, int $flags = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function ucfirst(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function ucwords(string $str, string $delims = ' 	
+') {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($prefix) -> return
+ */
+function uniqid(string $prefix = '', bool $more_entropy = false) {}
+/**
+ * @psalm-pure
+ * TODO
+ */
+function unpack(string $format, string $data, int $offset = 0) {}
+/**
+ * TODO: This also may add taints other than html?
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ * @psalm-taint-unescape html
+ */
+function urldecode(string $str) {}
+// mostly safe
+// function urlencode(string $str) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ */
+function utf8_decode(string $data) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ */
+function utf8_encode(string $data) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($format, $args) -> return
+ */
+function vsprintf(string $format, array $args) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($str) -> return
+ */
+function wordwrap(string $str, int $width = 75, string $break = '
+', bool $cut = false) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ */
+function zlib_decode(string $data, int $max_decoded_len = 0) {}
+/**
+ * @psalm-pure
+ * @psalm-flow ($data) -> return
+ */
+function zlib_encode(string $data, int $encoding, $level = -1) {}
