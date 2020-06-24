@@ -653,6 +653,15 @@ function sprintf(string $format, ...$args) : string {}
 /**
  * @psalm-pure
  *
+ * @param string|int|float $args
+ *
+ * @psalm-flow ($format, $args) -> return
+ */
+function sprintf(string $format, ...$args) : string {}
+
+/**
+ * @psalm-pure
+ *
  * @return string|false
  * @psalm-ignore-falsable-return
  *
@@ -710,7 +719,7 @@ function addslashes(string $str) : string {}
 // function array_merge(array $arr1, array ...$args) : array {}
 // function array_pad(array $input, int $pad_size, $pad_value) : array {}
 // function array_rand(array $input, int $num_req) : array<int,int>|array<int,string>|int|string {}
-// function array_reduce(array $input, callable(mixed,mixed):$callback, $initial = null) : mixed {}
+// function array_reduce(array $input, callable(mixed,mixed):$callback, $initial = null) {}
 // function array_replace_recursive(array $arr1, array $arr2, array ...$args) : array {}
 // function array_replace(array $arr1, array $arr2, array ...$args) : array {}
 // function array_reverse(array $input, bool $preserve = false) : array {}
@@ -913,7 +922,7 @@ function lcfirst(string $str) : string {}
  * @psalm-pure
  * @psalm-flow ($arg1) -> return
  */
-function max(array $arg1) : mixed {}
+function max(array $arg1) {}
 /**
  * @psalm-pure
  * @psalm-flow ($sourcestring) -> return
@@ -955,7 +964,7 @@ function mb_substr(string $str, int $start, ?int $length = null, string $encodin
  * @return false|string
  * @psalm-flow ($arg1) -> return
  */
-function min(array $arg1) : mixed {}
+function min(array $arg1) {}
 /**
  * @psalm-pure
  * @return string
@@ -1198,3 +1207,21 @@ function zlib_decode(string $data, int $max_decoded_len = 0) {}
  * @psalm-flow ($data) -> return
  */
 function zlib_encode(string $data, int $encoding, $level = -1) {}
+
+
+// Custom sinks
+/**
+ * @psalm-taint-sink html $format
+ * @psalm-taint-sink html $args
+ */
+function printf(string $format, ...$args): int {}
+/**
+ * @psalm-taint-sink html $format
+ * @psalm-taint-sink html $args
+ */
+function vprintf(string $format, array $args): int {}
+/**
+ * @psalm-taint-sink html $var
+ * @psalm-taint-sink html $args
+ */
+function var_dump($var, ...$args): void {}
