@@ -513,7 +513,6 @@ class ArgumentsAnalyzer
                     $cased_method_id,
                     $last_param,
                     $function_params,
-                    $function_storage,
                     $argument_offset,
                     $arg,
                     $context,
@@ -692,7 +691,6 @@ class ArgumentsAnalyzer
      * @param  string|null $cased_method_id
      * @param  FunctionLikeParameter|null $last_param
      * @param  array<int, FunctionLikeParameter> $function_params
-     * @param  FunctionLikeStorage|null $function_storage
      * @return false|null
      */
     private static function handlePossiblyMatchingByRefParam(
@@ -702,7 +700,6 @@ class ArgumentsAnalyzer
         $cased_method_id,
         $last_param,
         $function_params,
-        $function_storage,
         int $argument_offset,
         PhpParser\Node\Arg $arg,
         Context $context,
@@ -761,14 +758,7 @@ class ArgumentsAnalyzer
                 }
 
                 $by_ref_type = $function_param->type;
-
-                if (isset($function_storage->param_out_types[$argument_offset])) {
-                    $by_ref_out_type = $function_storage->param_out_types[$argument_offset];
-                } elseif ($argument_offset >= count($function_params)
-                    && isset($function_storage->param_out_types[count($function_params) - 1])
-                ) {
-                    $by_ref_out_type = $function_storage->param_out_types[count($function_params) - 1];
-                }
+                $by_ref_out_type = $function_param->out_type;
 
                 if ($by_ref_type && $by_ref_type->isNullable()) {
                     $check_null_ref = false;
