@@ -434,6 +434,13 @@ class TaintTest extends TestCase
 
                     echo $a[0]["b"];',
             ],
+            'intUntainted' => [
+                '<?php
+                    $input = $_GET[\'input\'];
+                    if (is_int($input)) {
+                        echo "$input";
+                    }',
+            ],
         ];
     }
 
@@ -1290,6 +1297,55 @@ class TaintTest extends TestCase
                     $a[] = ["a" => $_GET["name"], "b" => "foo"];
 
                     echo $a[0]["a"];',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintThroughArrayMapExplicitClosure' => [
+                '<?php
+                    $get = array_map(function($str) { return trim($str);}, $_GET);
+                    echo $get["test"];',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintThroughArrayMapExplicitTypedClosure' => [
+                '<?php
+                    $get = array_map(function(string $str) : string { return trim($str);}, $_GET);
+                    echo $get["test"];',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintThroughArrayMapExplicitArrowFunction' => [
+                '<?php
+                    $get = array_map(fn($str) => trim($str), $_GET);
+                    echo $get["test"];',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintThroughArrayMapImplicitFunctionCall' => [
+                '<?php
+                    $a = ["test" => $_GET["name"]];
+                    $get = array_map("trim", $a);
+                    echo $get["test"];',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintFilterVar' => [
+                '<?php
+                    $get = filter_var($_GET, FILTER_CALLBACK, ["options" => "trim"]);
+
+                    echo $get["test"];',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintAfterReconciledType' => [
+                '<?php
+                    $input = $_GET[\'input\'];
+                    if (is_string($input)) {
+                        echo "$input";
+                    }',
+                'error_message' => 'TaintedInput',
+            ],
+            'taintExit' => [
+                '<?php
+                    if (rand(0, 1)) {
+                        exit($_GET[\'a\']);
+                    } else {
+                        die($_GET[\'b\']);
+                    }',
                 'error_message' => 'TaintedInput',
             ],
         ];
