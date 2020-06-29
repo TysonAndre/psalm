@@ -819,7 +819,10 @@ function escapeshellarg(string $arg) : string {}
 
 // filter_input filter types depends on $type/$filter
 // function filter_input_array(int $type, array|int $definition = unknown, bool $add_empty = unknown) : false|mixed {}
-// function filter_input(int $type, string $variable_name, int $filter = unknown, array|int $options = unknown) : false|mixed {}
+/**
+ * @psalm-taint-source input
+ */
+function filter_input(int $type, string $variable_name, int $filter, array|int $options = 0) : {}
 // function filter_var($variable, int $filter = unknown, $options = unknown) : false|mixed {}
 // function filter_var_array
 // function get_cfg_var(string $option_name) : array[]|false|string|string[] {}

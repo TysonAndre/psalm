@@ -256,6 +256,19 @@ class Generator implements Traversable {
     public function throw(Throwable $exception) {}
 }
 
+class Exception implements \Throwable {
+    /**
+     * @psalm-taint-source input
+     * @return string
+     */
+    final public function getTraceAsString() {}
+    /**
+     * @psalm-taint-source input
+     * @return string
+     */
+    public function __toString() {}
+}
+
 /**
  * Interface to provide accessing objects as arrays.
  * @link http://php.net/manual/en/class.arrayaccess.php
