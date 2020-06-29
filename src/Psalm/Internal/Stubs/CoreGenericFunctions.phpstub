@@ -822,7 +822,7 @@ function escapeshellarg(string $arg) : string {}
 /**
  * @psalm-taint-source input
  */
-function filter_input(int $type, string $variable_name, int $filter, array|int $options = 0) : {}
+function filter_input(int $type, string $variable_name, int $filter, $options = 0) {}
 // function filter_var($variable, int $filter = unknown, $options = unknown) : false|mixed {}
 // function filter_var_array
 // function get_cfg_var(string $option_name) : array[]|false|string|string[] {}
@@ -1228,3 +1228,17 @@ function vprintf(string $format, array $args): int {}
  * @psalm-taint-sink html $args
  */
 function var_dump($var, ...$args): void {}
+
+/**
+ * @return mixed
+ *
+ * @psalm-taint-sink text $var
+ */
+function unserialize(string $var, array $allowed_classes = []) {}
+
+/**
+ * @return mixed
+ *
+ * @psalm-taint-sink text $var
+ */
+function igbinary_unserialize(string $var) {}
