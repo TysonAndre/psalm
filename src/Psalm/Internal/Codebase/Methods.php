@@ -119,6 +119,14 @@ class Methods
             return false;
         }
 
+        $source_file_path = $source ? $source->getFilePath() : $source_file_path;
+
+        $calling_class_name = $source ? $source->getFQCLN() : null;
+
+        if (!$calling_class_name && $calling_method_id) {
+            $calling_class_name = explode('::', $calling_method_id)[0];
+        }
+
         if (isset($class_storage->declaring_method_ids[$method_name])) {
             $declaring_method_id = $class_storage->declaring_method_ids[$method_name];
 
@@ -128,15 +136,15 @@ class Methods
 
             $declaring_fq_class_name = strtolower($declaring_method_id->fq_class_name);
 
-            if ($source && $declaring_fq_class_name !== strtolower((string) $source->getFQCLN())) {
+            if ($declaring_fq_class_name !== strtolower((string) $calling_class_name)) {
                 if ($calling_method_id) {
                     $this->file_reference_provider->addMethodReferenceToClass(
                         $calling_method_id,
                         $declaring_fq_class_name
                     );
-                } else {
+                } elseif ($source_file_path) {
                     $this->file_reference_provider->addNonMethodReferenceToClass(
-                        $source->getFilePath(),
+                        $source_file_path,
                         $declaring_fq_class_name
                     );
                 }
@@ -237,7 +245,7 @@ class Methods
             return true;
         }
 
-        if ($source && $fq_class_name !== strtolower((string) $source->getFQCLN())) {
+        if ($source_file_path && $fq_class_name !== strtolower((string) $calling_class_name)) {
             if ($calling_method_id) {
                 $this->file_reference_provider->addMethodReferenceToClass(
                     $calling_method_id,
@@ -245,7 +253,7 @@ class Methods
                 );
             } else {
                 $this->file_reference_provider->addNonMethodReferenceToClass(
-                    $source->getFilePath(),
+                    $source_file_path,
                     $fq_class_name
                 );
             }
@@ -1056,5 +1064,25 @@ class Methods
         }
 
         return $class_storage->methods[$method_name];
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasStorage(MethodIdentifier $method_id)
+    {
+        try {
+            $class_storage = $this->classlike_storage_provider->get($method_id->fq_class_name);
+        } catch (\InvalidArgumentException $e) {
+            return false;
+        }
+
+        $method_name = $method_id->method_name;
+
+        if (!isset($class_storage->methods[$method_name])) {
+            return false;
+        }
+
+        return true;
     }
 }

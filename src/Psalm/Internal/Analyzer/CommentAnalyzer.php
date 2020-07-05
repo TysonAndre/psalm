@@ -497,6 +497,21 @@ class CommentAnalyzer
             }
         }
 
+        if (isset($parsed_docblock->tags['psalm-self-out'])) {
+            foreach ($parsed_docblock->tags['psalm-self-out'] as $offset => $param) {
+                $line_parts = self::splitDocLine($param);
+
+                if (count($line_parts) > 0) {
+                    $line_parts[0] = str_replace("\n", '', preg_replace('@^[ \t]*\*@m', '', $line_parts[0]));
+
+                    $info->self_out = [
+                        'type' => str_replace("\n", '', $line_parts[0]),
+                        'line_number' => $comment->getLine() + substr_count($comment_text, "\n", 0, $offset),
+                    ];
+                }
+            }
+        }
+
         if (isset($parsed_docblock->tags['psalm-flow'])) {
             foreach ($parsed_docblock->tags['psalm-flow'] as $param) {
                 $info->flows[] = trim($param);
@@ -546,10 +561,8 @@ class CommentAnalyzer
                     $info->taint_source_types[] = $param_parts[0];
                 }
             }
-        }
-
-        // support for MediaWiki taint plugin
-        if (isset($parsed_docblock->tags['return-taint'])) {
+        } elseif (isset($parsed_docblock->tags['return-taint'])) {
+            // support for MediaWiki taint plugin
             foreach ($parsed_docblock->tags['return-taint'] as $param) {
                 $param_parts = preg_split('/\s+/', trim($param));
 
@@ -1057,6 +1070,10 @@ class CommentAnalyzer
 
                 // replace array bracket contents
                 $method_entry = preg_replace('/\[([0-9a-zA-Z_\'\" ]+,)*([0-9a-zA-Z_\'\" ]+)\]/', '[]', $method_entry);
+
+                if (!$method_entry) {
+                    throw new DocblockParseException('No @method entry specified');
+                }
 
                 try {
                     $parse_tree_creator = new ParseTreeCreator(

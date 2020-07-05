@@ -90,12 +90,16 @@ class InstancePropertyAssignmentAnalyzer
 
             $property_exists = true;
 
-            $class_property_type = $codebase->properties->getPropertyType(
-                $property_id,
-                true,
-                $statements_analyzer,
-                $context
-            );
+            try {
+                $class_property_type = $codebase->properties->getPropertyType(
+                    $property_id,
+                    true,
+                    $statements_analyzer,
+                    $context
+                );
+            } catch (\UnexpectedValueException $e) {
+                return false;
+            }
 
             if ($class_property_type) {
                 $class_storage = $codebase->classlike_storage_provider->get($context->self);
@@ -1106,7 +1110,9 @@ class InstancePropertyAssignmentAnalyzer
     ) : void {
         $codebase = $statements_analyzer->getCodebase();
 
-        if (!$codebase->taint || !$codebase->config->trackTaintsInPath($statements_analyzer->getFilePath())) {
+        if (!$codebase->taint
+            || !$codebase->config->trackTaintsInPath($statements_analyzer->getFilePath())
+        ) {
             return;
         }
 
@@ -1127,6 +1133,11 @@ class InstancePropertyAssignmentAnalyzer
             );
 
             if ($var_id) {
+                if (\in_array('TaintedInput', $statements_analyzer->getSuppressedIssues())) {
+                    $context->vars_in_scope[$var_id]->parent_nodes = [];
+                    return;
+                }
+
                 $var_node = TaintNode::getForAssignment(
                     $var_id,
                     $var_location
@@ -1167,6 +1178,12 @@ class InstancePropertyAssignmentAnalyzer
                 $context->vars_in_scope[$var_id] = $stmt_var_type;
             }
         } else {
+            if (\in_array('TaintedInput', $statements_analyzer->getSuppressedIssues())) {
+                $assignment_value_type->parent_nodes = [];
+                return;
+            }
+
+
             $code_location = new CodeLocation($statements_analyzer->getSource(), $stmt);
 
             $localized_property_node = new TaintNode(
