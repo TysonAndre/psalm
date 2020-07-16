@@ -5,6 +5,7 @@ use Psalm\ErrorBaseline;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Provider;
 use Psalm\Config;
+use Psalm\Internal\IncludeCollector;
 use Psalm\IssueBuffer;
 use Psalm\Progress\DebugProgress;
 use Psalm\Progress\DefaultProgress;
@@ -215,7 +216,14 @@ $path_to_config = get_path_to_config($options);
 
 $vendor_dir = getVendorDir($current_dir);
 
-$first_autoloader = requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
+require_once __DIR__ . '/' . 'Psalm/Internal/IncludeCollector.php';
+
+$include_collector = new IncludeCollector();
+$first_autoloader = $include_collector->runAndCollect(
+    function () use ($current_dir, $options, $vendor_dir) {
+        return requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
+    }
+);
 
 
 if (array_key_exists('v', $options)) {
@@ -313,6 +321,8 @@ if (isset($options['i'])) {
         $config->level = $config_level;
     }
 }
+
+$config->setIncludeCollector($include_collector);
 
 if ($config->resolve_from_config_file) {
     $current_dir = $config->base_dir;
@@ -531,6 +541,7 @@ $stdout_report_options->format = $output_format;
 $stdout_report_options->show_snippet = !isset($options['show-snippet']) || $options['show-snippet'] !== "false";
 $stdout_report_options->pretty = isset($options['pretty-print']) && $options['pretty-print'] !== "false";
 
+/** @var list<string>|string $report_file_paths type guaranteed by argument to getopt() */
 $report_file_paths = $options['report'] ?? [];
 if (is_string($report_file_paths)) {
     $report_file_paths = [$report_file_paths];
@@ -588,9 +599,9 @@ if ($config->find_unused_variables || $find_unused_variables) {
     $project_analyzer->getCodebase()->reportUnusedVariables();
 }
 
-if (isset($options['track-tainted-input'])
+if ($config->run_taint_analysis || (isset($options['track-tainted-input'])
     || isset($options['security-analysis'])
-    || isset($options['taint-analysis'])
+    || isset($options['taint-analysis']))
 ) {
     $project_analyzer->trackTaintedInputs();
 }

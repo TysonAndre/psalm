@@ -765,31 +765,85 @@ class ArrayFunctionCallTest extends TestCase
             'key' => [
                 '<?php
                     $a = ["one" => 1, "two" => 3];
-                    $b = key($a);
-                    $c = $a[$b];',
+                    $b = key($a);',
                 'assertions' => [
-                    '$b' => 'null|string',
-                    '$c' => 'int',
+                    '$b' => 'string',
                 ],
             ],
-            'array_key_first' => [
+            'keyNonEmptyArray' => [
+                '<?php
+                    /**
+                     * @param non-empty-array $arr
+                     * @return array-key
+                     */
+                    function foo(array $arr) {
+                        return key($arr);
+                    }',
+            ],
+            'arrayKeyFirst' => [
+                '<?php
+                    /** @return array<string, int> */
+                    function makeArray(): array { return ["one" => 1, "two" => 3]; }
+                    $a = makeArray();
+                    $b = array_key_first($a);
+                    $c = null;
+                    if ($b !== null) {
+                        $c = $a[$b];
+                    }',
+                'assertions' => [
+                    '$b' => 'null|string',
+                    '$c' => 'int|null',
+                ],
+            ],
+            'arrayKeyFirstNonEmpty' => [
                 '<?php
                     $a = ["one" => 1, "two" => 3];
                     $b = array_key_first($a);
                     $c = $a[$b];',
                 'assertions' => [
-                    '$b' => 'null|string',
+                    '$b' => 'string',
                     '$c' => 'int',
                 ],
             ],
-            'array_key_last' => [
+            'arrayKeyFirstEmpty' => [
+                '<?php
+                    $a = [];
+                    $b = array_key_first($a);',
+                'assertions' => [
+                    '$b' => 'null'
+                ],
+            ],
+            'arrayKeyLast' => [
+                '<?php
+                    /** @return array<string, int> */
+                    function makeArray(): array { return ["one" => 1, "two" => 3]; }
+                    $a = makeArray();
+                    $b = array_key_last($a);
+                    $c = null;
+                    if ($b !== null) {
+                        $c = $a[$b];
+                    }',
+                'assertions' => [
+                    '$b' => 'null|string',
+                    '$c' => 'int|null',
+                ],
+            ],
+            'arrayKeyLastNonEmpty' => [
                 '<?php
                     $a = ["one" => 1, "two" => 3];
                     $b = array_key_last($a);
                     $c = $a[$b];',
                 'assertions' => [
-                    '$b' => 'null|string',
+                    '$b' => 'string',
                     '$c' => 'int',
+                ],
+            ],
+            'arrayKeyLastEmpty' => [
+                '<?php
+                    $a = [];
+                    $b = array_key_last($a);',
+                'assertions' => [
+                    '$b' => 'null'
                 ],
             ],
             'arrayColumnInference' => [
@@ -811,11 +865,12 @@ class ArrayFunctionCallTest extends TestCase
                     $h = array_column(makeGenericArray(), 0);
                     $i = array_column(makeShapeArray(), 0);
                     $j = array_column(makeUnionArray(), 0);
+                    $k = array_column([[0 => "test"]], 0);
                 ',
                 'assertions' => [
-                    '$a' => 'list<int>',
-                    '$b' => 'list<int>',
-                    '$c' => 'array<string, int>',
+                    '$a' => 'non-empty-list<int>',
+                    '$b' => 'non-empty-list<int>',
+                    '$c' => 'non-empty-array<string, int>',
                     '$d' => 'list<mixed>',
                     '$e' => 'list<mixed>',
                     '$f' => 'array<array-key, mixed>',
@@ -823,6 +878,7 @@ class ArrayFunctionCallTest extends TestCase
                     '$h' => 'list<mixed>',
                     '$i' => 'list<string>',
                     '$j' => 'list<mixed>',
+                    '$k' => 'non-empty-list<string>',
                 ],
             ],
             'splatArrayIntersect' => [

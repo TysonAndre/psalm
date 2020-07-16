@@ -923,6 +923,42 @@ class SwitchTypeTest extends TestCase
                         return 4;
                     }'
             ],
+            'suppressParadox' => [
+                '<?php
+                    /** @psalm-var 1|2|3 $i */
+                    $i = rand(1, 3);
+
+                    /** @psalm-suppress ParadoxicalCondition */
+                    switch($i) {
+                        case 1: break;
+                        case 2: break;
+                        case 3: break;
+                        default:
+                            echo "bar";
+                    }'
+            ],
+            'switchGetClassProperty' => [
+                '<?php
+                    class A {}
+                    class B {}
+
+                    class C {
+                        /** @var mixed */
+                        public $a;
+
+                        function foo() : void {
+                            if (rand(0, 1)) {
+                                $this->a = new A();
+                            }
+
+                            /** @psalm-suppress MixedArgument */
+                            switch (get_class($this->a)) {
+                                case B::class:
+                                    echo "here";
+                            }
+                        }
+                    }',
+            ],
         ];
     }
 
@@ -1174,7 +1210,25 @@ class SwitchTypeTest extends TestCase
                                 break;
                         }
                     }',
-                'error_message' => 'TypeDoesNotContainType - src' . DIRECTORY_SEPARATOR . 'somefile.php:5:34 - string(InvalidArgumentException) cannot be identical to class-string',
+                'error_message' => 'TypeDoesNotContainType',
+            ],
+            'paradoxInFunctionCall' => [
+                '<?php
+                    /** @psalm-return 1|2|3 */
+                    function foo() {
+                        /** @psalm-var 1|2|3 $bar */
+                        $bar = rand(1, 3);
+                        return $bar;
+                    }
+
+                    switch(foo()) {
+                        case 1: break;
+                        case 2: break;
+                        case 3: break;
+                        default:
+                            echo "bar";
+                    }',
+                'error_message' => 'ParadoxicalCondition'
             ],
         ];
     }

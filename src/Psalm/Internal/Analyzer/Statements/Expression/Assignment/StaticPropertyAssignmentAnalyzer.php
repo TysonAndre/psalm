@@ -192,8 +192,7 @@ class StaticPropertyAssignmentAnalyzer
 
             $prop_name_name = $prop_name->name;
 
-            if (!$assignment_value_type->hasMixed()
-                && $source_analyzer instanceof ClassAnalyzer
+            if ($source_analyzer instanceof ClassAnalyzer
                 && $fq_class_name === $source_analyzer->getFQCLN()
             ) {
                 if (isset($source_analyzer->inferred_property_types[$prop_name_name])) {
@@ -202,10 +201,7 @@ class StaticPropertyAssignmentAnalyzer
                         $source_analyzer->inferred_property_types[$prop_name_name]
                     );
                 } else {
-                    $source_analyzer->inferred_property_types[$prop_name_name] = Type::combineUnionTypes(
-                        Type::getNull(),
-                        $assignment_value_type
-                    );
+                    $source_analyzer->inferred_property_types[$prop_name_name] = $assignment_value_type;
                 }
             }
         } else {

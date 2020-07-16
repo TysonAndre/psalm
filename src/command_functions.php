@@ -2,7 +2,6 @@
 
 use Composer\Autoload\ClassLoader;
 use Psalm\Config;
-use Psalm\Exception\ConfigException;
 
 /**
  * @param  string $current_dir
@@ -103,7 +102,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
         exit(1);
     }
 
-    define('PSALM_VERSION', \PackageVersions\Versions::getVersion('vimeo/psalm'));
+    define('PSALM_VERSION', (string)\PackageVersions\Versions::getVersion('vimeo/psalm'));
     define('PHP_PARSER_VERSION', \PackageVersions\Versions::getVersion('nikic/php-parser'));
 
     return $first_autoloader;

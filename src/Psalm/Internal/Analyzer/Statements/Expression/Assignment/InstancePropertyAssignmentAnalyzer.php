@@ -750,6 +750,12 @@ class InstancePropertyAssignmentAnalyzer
                             }
                         }
                     }
+
+                    if ($property_storage->getter_method) {
+                        $getter_id = $lhs_var_id . '->' . $property_storage->getter_method . '()';
+
+                        unset($context->vars_in_scope[$getter_id]);
+                    }
                 }
 
                 $class_property_type = $codebase->properties->getPropertyType(
@@ -759,13 +765,17 @@ class InstancePropertyAssignmentAnalyzer
                     $context
                 );
 
-                if (!$class_property_type) {
-                    $class_property_type = Type::getMixed();
+                if (!$class_property_type
+                    || (isset($declaring_class_storage->properties[$prop_name])
+                        && !$declaring_class_storage->properties[$prop_name]->type_location)
+                ) {
+                    if (!$class_property_type) {
+                        $class_property_type = Type::getMixed();
+                    }
 
                     $source_analyzer = $statements_analyzer->getSource()->getSource();
 
-                    if (!$assignment_value_type->hasMixed()
-                        && $lhs_var_id === '$this'
+                    if ($lhs_var_id === '$this'
                         && $source_analyzer instanceof ClassAnalyzer
                     ) {
                         if (isset($source_analyzer->inferred_property_types[$prop_name])) {
@@ -774,13 +784,12 @@ class InstancePropertyAssignmentAnalyzer
                                 $source_analyzer->inferred_property_types[$prop_name]
                             );
                         } else {
-                            $source_analyzer->inferred_property_types[$prop_name] =
-                                ($context->inside_constructor || $context->collect_initializations)
-                                    ? $assignment_value_type
-                                    : Type::combineUnionTypes(Type::getNull(), $assignment_value_type);
+                            $source_analyzer->inferred_property_types[$prop_name] = $assignment_value_type;
                         }
                     }
-                } else {
+                }
+
+                if (!$class_property_type->isMixed()) {
                     $class_property_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
                         $codebase,
                         clone $class_property_type,

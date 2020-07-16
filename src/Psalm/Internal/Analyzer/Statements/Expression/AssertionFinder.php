@@ -45,7 +45,8 @@ class AssertionFinder
         FileSource $source,
         Codebase $codebase = null,
         bool $inside_negation = false,
-        bool $cache = true
+        bool $cache = true,
+        bool $inside_conditional = true
     ) {
         $if_types = [];
 
@@ -130,14 +131,17 @@ class AssertionFinder
                 $source
             );
 
-            $candidate_if_types = self::scrapeAssertions(
-                $conditional->expr,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
+            $candidate_if_types = $inside_conditional
+                ? self::scrapeAssertions(
+                    $conditional->expr,
+                    $this_class_name,
+                    $source,
+                    $codebase,
+                    $inside_negation,
+                    $cache,
+                    $inside_conditional
+                )
+                : [];
 
             if ($var_name) {
                 if ($candidate_if_types) {
@@ -180,7 +184,8 @@ class AssertionFinder
                     $source,
                     $codebase,
                     !$inside_negation,
-                    $cache
+                    $cache,
+                    $inside_conditional
                 );
 
                 if ($cache && $source instanceof StatementsAnalyzer) {
@@ -192,7 +197,12 @@ class AssertionFinder
                 throw new \UnexpectedValueException('Assertions should be set');
             }
 
+            if (count($expr_assertions) !== 1) {
+                return [];
+            }
+
             $if_types = \Psalm\Type\Algebra::negateTypes($expr_assertions);
+
             return $if_types;
         }
 
@@ -205,7 +215,8 @@ class AssertionFinder
                 $source,
                 $codebase,
                 false,
-                $cache
+                $cache,
+                $inside_conditional
             );
 
             return $if_types;
@@ -220,7 +231,8 @@ class AssertionFinder
                 $source,
                 $codebase,
                 false,
-                $cache
+                $cache,
+                $inside_conditional
             );
 
             return $if_types;
@@ -438,7 +450,8 @@ class AssertionFinder
                 $source,
                 $codebase,
                 $inside_negation,
-                false
+                false,
+                $inside_conditional
             );
         }
 
@@ -457,7 +470,8 @@ class AssertionFinder
         FileSource $source,
         Codebase $codebase = null,
         bool $inside_negation = false,
-        bool $cache = true
+        bool $cache = true,
+        bool $inside_conditional = true
     ) {
         $if_types = [];
 
@@ -687,7 +701,8 @@ class AssertionFinder
                             $source,
                             $codebase,
                             $inside_negation,
-                            $cache
+                            $cache,
+                            $inside_conditional
                         );
 
                         if ($source instanceof StatementsAnalyzer && $cache) {
@@ -995,7 +1010,10 @@ class AssertionFinder
             if ($codebase
                 && $other_type
                 && $var_type
-                && $conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
+                && ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
+                    || ($other_type->isString()
+                        && $var_type->isString())
+                )
             ) {
                 $parent_source = $source->getSource();
 
@@ -1074,7 +1092,8 @@ class AssertionFinder
         FileSource $source,
         Codebase $codebase = null,
         bool $inside_negation = false,
-        bool $cache = true
+        bool $cache = true,
+        bool $inside_conditional = true
     ) {
         $if_types = [];
 
@@ -1190,7 +1209,8 @@ class AssertionFinder
                         $source,
                         $codebase,
                         $inside_negation,
-                        $cache
+                        $cache,
+                        $inside_conditional
                     );
 
                     if ($source instanceof StatementsAnalyzer && $cache) {
@@ -1297,7 +1317,8 @@ class AssertionFinder
                             $source,
                             $codebase,
                             $inside_negation,
-                            $cache
+                            $cache,
+                            $inside_conditional
                         );
 
                         if ($source instanceof StatementsAnalyzer && $cache) {

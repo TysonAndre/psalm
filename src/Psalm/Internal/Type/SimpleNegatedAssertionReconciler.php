@@ -390,6 +390,7 @@ class SimpleNegatedAssertionReconciler extends Reconciler
                     $is_equality
                 );
 
+                $did_remove_type = true;
                 $existing_var_type->bustCache();
             }
         }
@@ -452,6 +453,7 @@ class SimpleNegatedAssertionReconciler extends Reconciler
                     $is_equality
                 );
 
+                $did_remove_type = true;
                 $existing_var_type->bustCache();
             }
         }

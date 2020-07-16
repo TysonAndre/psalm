@@ -199,7 +199,8 @@ class VariableFetchAnalyzer
                         if (IssueBuffer::accepts(
                             new UndefinedGlobalVariable(
                                 'Cannot find referenced variable ' . $var_name . ' in global scope',
-                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                new CodeLocation($statements_analyzer->getSource(), $stmt),
+                                $var_name
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -249,7 +250,8 @@ class VariableFetchAnalyzer
                         new PossiblyUndefinedGlobalVariable(
                             'Possibly undefined global variable ' . $var_name . ', first seen on line ' .
                                 $first_appearance->getLineNumber(),
-                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            new CodeLocation($statements_analyzer->getSource(), $stmt),
+                            $var_name
                         ),
                         $statements_analyzer->getSuppressedIssues(),
                         (bool) $statements_analyzer->getBranchPoint($var_name)
@@ -307,7 +309,8 @@ class VariableFetchAnalyzer
                     if (IssueBuffer::accepts(
                         new PossiblyUndefinedGlobalVariable(
                             'Possibly undefined global variable ' . $var_name . ' defined in try block',
-                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            new CodeLocation($statements_analyzer->getSource(), $stmt),
+                            $var_name
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {

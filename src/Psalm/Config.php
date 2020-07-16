@@ -2,13 +2,14 @@
 namespace Psalm;
 
 use Composer\Semver\Semver;
+use Psalm\Issue\VariableIssue;
 use Webmozart\PathUtil\Path;
 use function array_merge;
 use function array_pop;
-use function array_unique;
 use function class_exists;
 use Composer\Autoload\ClassLoader;
 use DOMDocument;
+use LogicException;
 
 use function count;
 use const DIRECTORY_SEPARATOR;
@@ -46,6 +47,7 @@ use Psalm\Exception\ConfigException;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\IncludeCollector;
 use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Issue\ArgumentIssue;
 use Psalm\Issue\ClassIssue;
@@ -400,6 +402,11 @@ class Config
     public $find_unused_variables = false;
 
     /**
+     * @var bool
+     */
+    public $run_taint_analysis = false;
+
+    /**
      * Whether to resolve file and directory paths from the location of the config file,
      * instead of the current working directory.
      *
@@ -569,6 +576,9 @@ class Config
      * @var int
      */
     public $max_string_length = 1000;
+
+    /** @var ?IncludeCollector */
+    private $include_collector;
 
     /**
      * @var TaintAnalysisFileFilter|null
@@ -808,7 +818,8 @@ class Config
             'ensureArrayIntOffsetsExist' => 'ensure_array_int_offsets_exist',
             'reportMixedIssues' => 'show_mixed_issues',
             'skipChecksOnUnresolvableIncludes' => 'skip_checks_on_unresolvable_includes',
-            'sealAllMethods' => 'seal_all_methods'
+            'sealAllMethods' => 'seal_all_methods',
+            'runTaintAnalysis' => 'run_taint_analysis',
         ];
 
         foreach ($booleanAttributes as $xmlName => $internalName) {
@@ -1065,18 +1076,6 @@ class Config
         }
 
         return $config;
-    }
-
-    /**
-     * @param  string $autoloader_path
-     *
-     * @return void
-     *
-     * @psalm-suppress UnresolvableInclude
-     */
-    private function requireAutoloader($autoloader_path)
-    {
-        require_once($autoloader_path);
     }
 
     /**
@@ -1421,6 +1420,8 @@ class Config
             $reporting_level = $this->getReportingLevelForProperty($issue_type, $e->property_id);
         } elseif ($e instanceof ArgumentIssue && $e->function_id) {
             $reporting_level = $this->getReportingLevelForArgument($issue_type, $e->function_id);
+        } elseif ($e instanceof VariableIssue) {
+            $reporting_level = $this->getReportingLevelForVariable($issue_type, $e->var_name);
         }
 
         if ($reporting_level === null) {
@@ -1634,6 +1635,19 @@ class Config
     }
 
     /**
+     * @param   string $issue_type
+     * @param   string $var_name
+     *
+     * @return  string|null
+     */
+    public function getReportingLevelForVariable(string $issue_type, string $var_name)
+    {
+        if (isset($this->issue_handlers[$issue_type])) {
+            return $this->issue_handlers[$issue_type]->getReportingLevelForVariable($var_name);
+        }
+    }
+
+    /**
      * @return array<string>
      */
     public function getProjectDirectories()
@@ -1795,7 +1809,7 @@ class Config
 
         foreach ($stub_files as $file_path) {
             $file_path = \str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file_path);
-            $codebase->scanner->addFileToShallowScan($file_path);
+            $codebase->scanner->addFileToDeepScan($file_path);
         }
 
         $progress->debug('Registering stub files' . "\n");
@@ -1867,6 +1881,11 @@ class Config
         }
     }
 
+    public function setIncludeCollector(IncludeCollector $include_collector): void
+    {
+        $this->include_collector = $include_collector;
+    }
+
     /**
      * @return void
      *
@@ -1879,80 +1898,62 @@ class Config
             $progress = new VoidProgress();
         }
 
+        if (!$this->include_collector) {
+            throw new LogicException("IncludeCollector should be set at this point");
+        }
+
         $this->collectPredefinedConstants();
         $this->collectPredefinedFunctions();
 
-        $composer_json_path = $this->base_dir . 'composer.json'; // this should ideally not be hardcoded
+        $vendor_autoload_files_path
+            = $this->base_dir . DIRECTORY_SEPARATOR . 'vendor'
+                . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'autoload_files.php';
 
-        $autoload_files_files = [];
-
-        if ($this->autoloader) {
-            $autoload_files_files[] = $this->autoloader;
-        }
-
-        if (file_exists($composer_json_path)) {
-            if (!$composer_json = json_decode(file_get_contents($composer_json_path), true)) {
-                throw new \UnexpectedValueException('Invalid composer.json at ' . $composer_json_path);
-            }
-
-            if (isset($composer_json['autoload']['files'])) {
-                /** @var string[] */
-                $composer_autoload_files = $composer_json['autoload']['files'];
-
-                foreach ($composer_autoload_files as $file) {
-                    $file_path = realpath($this->base_dir . $file);
-
-                    if ($file_path && file_exists($file_path)) {
-                        $autoload_files_files[] = $file_path;
-                    }
+        if (file_exists($vendor_autoload_files_path)) {
+            $this->include_collector->runAndCollect(
+                function () use ($vendor_autoload_files_path) {
+                    /**
+                     * @psalm-suppress UnresolvableInclude
+                     * @var string[]
+                     */
+                    return require $vendor_autoload_files_path;
                 }
-            }
-
-            $vendor_autoload_files_path
-                = $this->base_dir . DIRECTORY_SEPARATOR . 'vendor'
-                    . DIRECTORY_SEPARATOR . 'composer' . DIRECTORY_SEPARATOR . 'autoload_files.php';
-
-            if (file_exists($vendor_autoload_files_path)) {
-                /**
-                 * @var string[]
-                 */
-                $vendor_autoload_files = require $vendor_autoload_files_path;
-
-                $autoload_files_files = array_merge($autoload_files_files, $vendor_autoload_files);
-            }
+            );
         }
-
-        $autoload_files_files = array_unique($autoload_files_files);
 
         $codebase = $project_analyzer->getCodebase();
-
-        if ($autoload_files_files) {
-            $codebase->register_autoload_files = true;
-
-            foreach ($autoload_files_files as $file_path) {
-                $file_path = \str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file_path);
-                $codebase->scanner->addFileToDeepScan($file_path);
-            }
-
-            $progress->debug('Registering autoloaded files' . "\n");
-
-            $codebase->scanner->scanFiles($codebase->classlikes);
-
-            $progress->debug('Finished registering autoloaded files' . "\n");
-
-            $codebase->register_autoload_files = false;
-        }
 
         if ($this->autoloader) {
             // somee classes that we think are missing may not actually be missing
             // as they might be autoloadable once we require the autoloader below
             $codebase->classlikes->forgetMissingClassLikes();
 
-            // do this in a separate method so scope does not leak
-            $this->requireAutoloader($this->autoloader);
+            $this->include_collector->runAndCollect(
+                function () {
+                    // do this in a separate method so scope does not leak
+                    /** @psalm-suppress UnresolvableInclude */
+                    require $this->autoloader;
+                }
+            );
+        }
 
-            $this->collectPredefinedConstants();
-            $this->collectPredefinedFunctions();
+        $autoload_included_files = $this->include_collector->getFilteredIncludedFiles();
+
+        if ($autoload_included_files) {
+            $codebase->register_autoload_files = true;
+
+            $progress->debug('Registering autoloaded files' . "\n");
+            foreach ($autoload_included_files as $file_path) {
+                $file_path = \str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file_path);
+                $progress->debug('   ' . $file_path . "\n");
+                $codebase->scanner->addFileToDeepScan($file_path);
+            }
+
+            $codebase->scanner->scanFiles($codebase->classlikes);
+
+            $progress->debug('Finished registering autoloaded files' . "\n");
+
+            $codebase->register_autoload_files = false;
         }
     }
 
