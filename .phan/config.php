@@ -159,7 +159,6 @@ return [
     // A list of plugin files to execute
     'plugins' => [
         'AlwaysReturnPlugin',
-        'DemoPlugin',
         'DollarDollarPlugin',
         'UnreachableCodePlugin',
         // NOTE: src/Phan/Language/Internal/FunctionSignatureMap.php mixes value without keys (as return type) with values having keys deliberately.
@@ -168,9 +167,27 @@ return [
         'PrintfCheckerPlugin',
         'DuplicateExpressionPlugin',
         'UseReturnValuePlugin',
+        'DuplicateExpressionPlugin',
+        // warns about carriage returns("\r"), trailing whitespace, and tabs in PHP files.
+        'WhitespacePlugin',
+        // Warn about inline HTML anywhere in the files.
+        'InlineHTMLPlugin',
+
+        // Warns about the usage of assert()
+        'NoAssertPlugin',
+        'PossiblyStaticMethodPlugin',
+
+        'HasPHPDocPlugin',
+        'PHPDocToRealTypesPlugin',  // suggests replacing (at)return void with `: void` in the declaration, etc.
+        'PHPDocRedundantPlugin',
+        'PreferNamespaceUsePlugin',
+        'EmptyStatementListPlugin',
         'LoopVariableReusePlugin',
         'RedundantAssignmentPlugin',
         'StrictComparisonPlugin',
+        'ShortArrayPlugin',
+        'DeprecateAliasPlugin',
+        'PHPDocInWrongCommentPlugin',
     ],
 
     'plugin_config' => [
