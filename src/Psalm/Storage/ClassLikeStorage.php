@@ -88,14 +88,9 @@ class ClassLikeStorage
     public $deprecated = false;
 
     /**
-     * @var bool
+     * @var string
      */
-    public $internal = false;
-
-    /**
-     * @var null|string
-     */
-    public $psalm_internal = null;
+    public $internal = '';
 
     /**
      * @var null|Type\Atomic\TTemplateParam|Type\Atomic\TNamedObject
@@ -225,6 +220,11 @@ class ClassLikeStorage
      * @var array<lowercase-string, lowercase-string>
      */
     public $trait_alias_map = [];
+
+    /**
+     * @var array<lowercase-string, bool>
+     */
+    public $trait_final_map = [];
 
     /**
      * @var array<string, int>

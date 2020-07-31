@@ -67,11 +67,6 @@ class PropertyStorage
     /**
      * @var bool
      */
-    public $internal = false;
-
-    /**
-     * @var bool
-     */
     public $readonly = false;
 
     /**
@@ -82,9 +77,9 @@ class PropertyStorage
     public $allow_private_mutation = false;
 
     /**
-     * @var null|string
+     * @var string
      */
-    public $psalm_internal = null;
+    public $internal = '';
 
     /**
      * @var ?string

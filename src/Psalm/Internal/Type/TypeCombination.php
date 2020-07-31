@@ -48,6 +48,7 @@ use Psalm\Type\Atomic\TNonEmptyMixed;
 use Psalm\Type\Atomic\TNonEmptyString;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TObject;
+use Psalm\Type\Atomic\TPositiveInt;
 use Psalm\Type\Atomic\TScalar;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTemplateParam;
@@ -451,10 +452,19 @@ class TypeCombination
                     && $overwrite_empty_array)
             ) {
                 if ($combination->all_arrays_lists) {
-                    $array_type = new TNonEmptyList($generic_type_params[1]);
+                    if ($combination->objectlike_entries
+                        && $combination->objectlike_sealed
+                    ) {
+                        $array_type = new ObjectLike([$generic_type_params[1]]);
+                        $array_type->previous_key_type = Type::getInt();
+                        $array_type->previous_value_type = $combination->array_type_params[1];
+                        $array_type->is_list = true;
+                    } else {
+                        $array_type = new TNonEmptyList($generic_type_params[1]);
 
-                    if ($combination->array_counts && count($combination->array_counts) === 1) {
-                        $array_type->count = array_keys($combination->array_counts)[0];
+                        if ($combination->array_counts && count($combination->array_counts) === 1) {
+                            $array_type->count = array_keys($combination->array_counts)[0];
+                        }
                     }
                 } else {
                     $array_type = new TNonEmptyArray($generic_type_params);
@@ -1235,16 +1245,65 @@ class TypeCombination
                 return null;
             }
 
+            $had_zero = isset($combination->ints['int(0)']);
+
             if ($type instanceof TLiteralInt) {
+                if ($type->value === 0) {
+                    $had_zero = true;
+                }
+
                 if ($combination->ints !== null && count($combination->ints) < $literal_limit) {
                     $combination->ints[$type_key] = $type;
                 } else {
+                    $combination->ints[$type_key] = $type;
+
+                    $all_nonnegative = !array_filter(
+                        $combination->ints,
+                        function ($int) {
+                            return $int->value < 0;
+                        }
+                    );
+
                     $combination->ints = null;
-                    $combination->value_types['int'] = new TInt();
+
+                    if (!isset($combination->value_types['int'])) {
+                        $combination->value_types['int'] = $all_nonnegative ? new TPositiveInt() : new TInt();
+                    } elseif ($combination->value_types['int'] instanceof TPositiveInt
+                        && !$all_nonnegative
+                    ) {
+                        $combination->value_types['int'] = new TInt();
+                    }
                 }
             } else {
+                if ($type instanceof TPositiveInt) {
+                    if ($combination->ints) {
+                        $all_nonnegative = !array_filter(
+                            $combination->ints,
+                            function ($int) {
+                                return $int->value < 0;
+                            }
+                        );
+
+                        if ($all_nonnegative) {
+                            $combination->value_types['int'] = $type;
+                        } else {
+                            $combination->value_types['int'] = new TInt();
+                        }
+                    } elseif (!isset($combination->value_types['int'])) {
+                        $combination->value_types['int'] = $type;
+                    }
+                } else {
+                    $combination->value_types['int'] = $type;
+                }
+
                 $combination->ints = null;
-                $combination->value_types['int'] = $type;
+            }
+
+            if ($had_zero
+                && isset($combination->value_types['int'])
+                && $combination->value_types['int'] instanceof TPositiveInt
+            ) {
+                $combination->ints = ['int(0)' => new TLiteralInt(0)];
             }
 
             return null;

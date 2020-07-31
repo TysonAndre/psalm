@@ -6,6 +6,7 @@ use Psalm\Aliases;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\FileManipulation\PropertyDocblockManipulator;
 use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Config;
@@ -302,33 +303,11 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
 
-                if ($parent_class_storage->internal) {
-                    $code_location = new CodeLocation(
-                        $this,
-                        $class->extends,
-                        $class_context ? $class_context->include_location : null,
-                        true
-                    );
-                    if (! NamespaceAnalyzer::nameSpaceRootsMatch($fq_class_name, $parent_fq_class_name)) {
-                        if (IssueBuffer::accepts(
-                            new InternalClass(
-                                $parent_fq_class_name . ' is marked internal',
-                                $code_location,
-                                $parent_fq_class_name
-                            ),
-                            $storage->suppressed_issues + $this->getSuppressedIssues()
-                        )) {
-                            // fall through
-                        }
-                    }
-                }
-
-                if ($parent_class_storage->psalm_internal &&
-                    ! NamespaceAnalyzer::isWithin($fq_class_name, $parent_class_storage->psalm_internal)
-                ) {
+                if (! NamespaceAnalyzer::isWithin($fq_class_name, $parent_class_storage->internal)) {
                     if (IssueBuffer::accepts(
                         new InternalClass(
-                            $parent_fq_class_name . ' is internal to ' . $parent_class_storage->psalm_internal,
+                            $parent_fq_class_name . ' is internal to ' . $parent_class_storage->internal
+                                . ' but called from ' . $fq_class_name,
                             $code_location,
                             $parent_fq_class_name
                         ),
@@ -1066,14 +1045,17 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $property_type,
                     $fq_class_name,
                     $fq_class_name,
-                    $parent_fq_class_name
+                    $parent_fq_class_name,
+                    true,
+                    false,
+                    $storage->final
                 )
                 : $property_type;
 
             $class_template_params = ClassTemplateParamCollector::collect(
                 $codebase,
                 $property_class_storage,
-                $codebase->classlike_storage_provider->get($fq_class_name),
+                $storage,
                 null,
                 new Type\Atomic\TNamedObject($fq_class_name),
                 '$this'
@@ -1368,7 +1350,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $method_context->self = $fq_class_name;
 
             $this_atomic_object_type = new Type\Atomic\TNamedObject($fq_class_name);
-            $this_atomic_object_type->was_static = true;
+            $this_atomic_object_type->was_static = !$storage->final;
 
             $method_context->vars_in_scope['$this'] = new Type\Union([$this_atomic_object_type]);
             $method_context->vars_possibly_in_scope['$this'] = true;
@@ -1484,7 +1466,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         ClassLikeStorage $storage,
         Context $class_context,
         Context $global_context = null,
-        MethodAnalyzer &$constructor_analyzer = null
+        MethodAnalyzer &$constructor_analyzer = null,
+        TraitAnalyzer $previous_trait_analyzer = null
     ) {
         $codebase = $this->getCodebase();
 
@@ -1503,7 +1486,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 if (IssueBuffer::accepts(
                     new UndefinedTrait(
                         'Trait ' . $fq_trait_name . ' does not exist',
-                        new CodeLocation($this, $trait_name)
+                        new CodeLocation($previous_trait_analyzer ?: $this, $trait_name)
                     ),
                     $storage->suppressed_issues + $this->getSuppressedIssues()
                 )) {
@@ -1514,7 +1497,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     if (IssueBuffer::accepts(
                         new UndefinedTrait(
                             'Trait ' . $fq_trait_name . ' has wrong casing',
-                            new CodeLocation($this, $trait_name)
+                            new CodeLocation($previous_trait_analyzer ?: $this, $trait_name)
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
@@ -1531,7 +1514,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     if (IssueBuffer::accepts(
                         new DeprecatedTrait(
                             'Trait ' . $fq_trait_name . ' is deprecated',
-                            new CodeLocation($this, $trait_name)
+                            new CodeLocation($previous_trait_analyzer ?: $this, $trait_name)
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
@@ -1543,7 +1526,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     if (IssueBuffer::accepts(
                         new MutableDependency(
                             $storage->name . ' is marked immutable but ' . $fq_trait_name . ' is not',
-                            new CodeLocation($this, $trait_name)
+                            new CodeLocation($previous_trait_analyzer ?: $this, $trait_name)
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
                     )) {
@@ -1586,7 +1569,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $storage,
                             $class_context,
                             $global_context,
-                            $constructor_analyzer
+                            $constructor_analyzer,
+                            $trait_analyzer
                         ) === false) {
                             return false;
                         }
@@ -2167,7 +2151,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                 null
                             );
 
-                            if (!TypeAnalyzer::isContainedBy($codebase, $extended_type, $template_type_copy)) {
+                            if (!UnionTypeComparator::isContainedBy($codebase, $extended_type, $template_type_copy)) {
                                 if (IssueBuffer::accepts(
                                     new InvalidTemplateParam(
                                         'Extended template param ' . $template_name

@@ -67,14 +67,9 @@ abstract class FunctionLikeStorage
     public $deprecated;
 
     /**
-     * @var ?bool
+     * @var string
      */
-    public $internal;
-
-    /**
-     * @var null|string
-     */
-    public $psalm_internal;
+    public $internal = '';
 
     /**
      * @var bool

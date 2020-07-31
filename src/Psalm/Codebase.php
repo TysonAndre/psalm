@@ -19,7 +19,7 @@ use PhpParser;
 use function preg_match;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Internal\Codebase\InternalCallMapHandler;
 use Psalm\Internal\Provider\ClassLikeStorageProvider;
 use Psalm\Internal\Provider\FileProvider;
@@ -1668,7 +1668,7 @@ class Codebase
         Type\Union $input_type,
         Type\Union $container_type
     ): bool {
-        return TypeAnalyzer::isContainedBy($this, $input_type, $container_type);
+        return UnionTypeComparator::isContainedBy($this, $input_type, $container_type);
     }
 
     /**
@@ -1688,7 +1688,7 @@ class Codebase
         Type\Union $input_type,
         Type\Union $container_type
     ): bool {
-        return TypeAnalyzer::canBeContainedBy($this, $input_type, $container_type);
+        return UnionTypeComparator::canBeContainedBy($this, $input_type, $container_type);
     }
 
     /**
@@ -1759,5 +1759,30 @@ class Codebase
         $expr_type->parent_nodes = [
             $source,
         ];
+    }
+
+    /**
+     * @param array<string> $taints
+     *
+     * @psalm-suppress PossiblyUnusedMethod
+     */
+    public function addTaintSink(
+        string $taint_id,
+        array $taints = \Psalm\Type\TaintKindGroup::ALL_INPUT,
+        ?CodeLocation $code_location = null
+    ) : void {
+        if (!$this->taint) {
+            return;
+        }
+
+        $sink = new \Psalm\Internal\Taint\Sink(
+            $taint_id,
+            $taint_id,
+            $code_location,
+            null,
+            $taints
+        );
+
+        $this->taint->addSink($sink);
     }
 }

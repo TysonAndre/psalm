@@ -435,7 +435,7 @@ class SimpleNegatedAssertionReconciler extends Reconciler
         bool $is_equality
     ) : Type\Union {
         $old_var_type_string = $existing_var_type->getId();
-        $did_remove_type = false;
+        $did_remove_type = $existing_var_type->hasScalar();
 
         if ($existing_var_type->hasType('false')) {
             $did_remove_type = true;
@@ -644,7 +644,10 @@ class SimpleNegatedAssertionReconciler extends Reconciler
         }
 
         if (isset($existing_var_atomic_types['string'])) {
-            if (!$existing_var_atomic_types['string'] instanceof Type\Atomic\TNonEmptyString) {
+            if (!$existing_var_atomic_types['string'] instanceof Type\Atomic\TNonEmptyString
+                && !$existing_var_atomic_types['string'] instanceof Type\Atomic\TClassString
+                && !$existing_var_atomic_types['string'] instanceof Type\Atomic\GetClassT
+            ) {
                 $did_remove_type = true;
 
                 $existing_var_type->removeType('string');

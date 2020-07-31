@@ -70,6 +70,28 @@ class AssertAnnotationTest extends TestCase
                         return $s;
                     }',
             ],
+            'dropInReplacementForAntiAssert' => [
+                '<?php
+                    /**
+                     * @param mixed $foo
+                     * @psalm-assert falsy $foo
+                     */
+                    function abort_if($foo): void
+                    {
+                        if ($foo) {
+                            throw new \RuntimeException();
+                        }
+                    }
+
+                    /**
+                     * @param string|null $foo
+                     */
+                    function removeNullable($foo): string
+                    {
+                        abort_if(is_null($foo));
+                        return $foo;
+                    }'
+            ],
             'sortOfReplacementForAssert' => [
                 '<?php
                     namespace Bar;
@@ -1063,9 +1085,36 @@ class AssertAnnotationTest extends TestCase
                      *
                      * @psalm-return non-empty-list<mixed>
                      */
-                    function consume($value): array {
+                    function consume1($value): array {
                         isNonEmptyList($value);
                         return $value;
+                    }
+
+                    /**
+                     * @psalm-param list<string> $values
+                     */
+                    function consume2(array $values): void {
+                        isNonEmptyList($values);
+                        foreach ($values as $str) {}
+                        echo $str;
+                    }'
+            ],
+            'nonEmptyListOfStrings' => [
+                '<?php
+                    /**
+                     * @psalm-assert non-empty-list<string> $array
+                     *
+                     * @param mixed  $array
+                     */
+                    function isNonEmptyListOfStrings($array): void {}
+
+                    /**
+                     * @psalm-param list<string> $values
+                     */
+                    function consume2(array $values): void {
+                        isNonEmptyListOfStrings($values);
+                        foreach ($values as $str) {}
+                        echo $str;
                     }'
             ],
             'assertResource' => [

@@ -4308,6 +4308,68 @@ class ClassTemplateExtendsTest extends TestCase
                 [],
                 '7.4'
             ],
+            'allowNestedInterfaceDefinitions' => [
+                '<?php
+                    class A {}
+
+                    /** @template T as object */
+                    interface Container {
+                        /** @return T */
+                        public function get();
+                    }
+
+                    /** @extends Container<A> */
+                    interface AContainer extends Container {
+                        public function get(): A;
+                    }
+
+                    interface AContainer2 extends AContainer {}
+
+                    class ConcreteAContainer implements AContainer2 {
+                        public function get(): A {
+                            return new A();
+                        }
+                    }'
+            ],
+            'paramTypeInheritedWithTemplate' => [
+                '<?php
+                    /**
+                     * @template T1
+                     */
+                    interface Container {}
+
+                    /**
+                     * @template T2
+                     */
+                    abstract class SimpleClass {
+                        /**
+                         * @psalm-param T2 $param
+                         */
+                        abstract public function foo($param): void;
+                    }
+
+                    /**
+                     * @template T3
+                     *
+                     * @extends SimpleClass<Container<T3>>
+                     */
+                    abstract class ContainerClass extends SimpleClass {
+                        /**
+                         * @psalm-param Container<T3> $param
+                         */
+                        abstract public function foo($param): void;
+                    }
+
+                    /**
+                     * @extends ContainerClass<int>
+                     */
+                    abstract class Complex extends ContainerClass {
+                        /**
+                         * @psalm-param Container<int> $param
+                         */
+                        abstract public function foo($param): void;
+                    }'
+            ],
         ];
     }
 

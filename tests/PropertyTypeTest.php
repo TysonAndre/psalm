@@ -1968,6 +1968,79 @@ class PropertyTypeTest extends TestCase
                     $message .= $model::$label;
                     echo $message;'
             ],
+            'staticPropertyInFinalMethod' => [
+                '<?php
+                    abstract class Foo {
+                        /** @var static */
+                        protected Foo $foo;
+                    }
+
+                    final class Bar extends Foo {
+                        public function __construct(Bar $bar) {
+                            $this->foo = $bar;
+                        }
+
+                        public function baz(): Bar {
+                            return $this->foo;
+                        }
+                    }'
+            ],
+            'aliasedFinalMethod' => [
+                '<?php
+                    trait A {
+                        private int $prop;
+                        public final function setProp(int $prop): void {
+                            $this->prop = $prop;
+                        }
+                    }
+
+                    class B {
+                        use A {
+                            setProp as setPropFinal;
+                        }
+
+                        public function __construct() {
+                            $this->setPropFinal(1);
+                        }
+                    }'
+            ],
+            'aliasedAsFinalMethod' => [
+                '<?php
+                    trait A {
+                        private int $prop;
+                        public function setProp(int $prop): void {
+                            $this->prop = $prop;
+                        }
+                    }
+
+                    class B {
+                        use A {
+                            setProp as final setPropFinal;
+                        }
+
+                        public function __construct() {
+                            $this->setPropFinal(1);
+                        }
+                    }'
+            ],
+            'staticPropertyAssertion' => [
+                '<?php
+                    class Foo {
+                        /** @var int */
+                        private static $transactionDepth;
+
+                        function bar(): void {
+                            if (self::$transactionDepth === 0) {
+                            } else {
+                                --self::$transactionDepth;
+
+                                if (self::$transactionDepth === 0) {
+
+                                }
+                            }
+                        }
+                    }'
+            ],
         ];
     }
 

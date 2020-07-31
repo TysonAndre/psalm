@@ -10,6 +10,8 @@ use Psalm\Codebase;
 use Psalm\Internal\Analyzer\FunctionLike\ReturnTypeAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLike\ReturnTypeCollector;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
+use Psalm\Internal\Type\Comparator\TypeComparisonResult;
+use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
@@ -210,10 +212,10 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                         $context->self,
                         $template_params
                     );
-                    $this_object_type->was_static = true;
+                    $this_object_type->was_static = !$storage->final;
                 } else {
                     $this_object_type = new TNamedObject($context->self);
-                    $this_object_type->was_static = true;
+                    $this_object_type->was_static = !$storage->final;
                 }
 
                 $context->vars_in_scope['$this'] = new Type\Union([$this_object_type]);
@@ -559,7 +561,28 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             ]);
         }
 
+        $time = \microtime(true);
+
+        $project_analyzer = $statements_analyzer->getProjectAnalyzer();
+
         $statements_analyzer->analyze($function_stmts, $context, $global_context, true);
+
+        if (!$context->collect_initializations
+            && !$context->collect_mutations
+            && $project_analyzer->debug_performance
+            && $cased_method_id
+        ) {
+            $traverser = new PhpParser\NodeTraverser;
+
+            $node_counter = new \Psalm\Internal\PhpVisitor\NodeCounterVisitor();
+            $traverser->addVisitor($node_counter);
+            $traverser->traverse($function_stmts);
+
+            if ($node_counter->count > 5) {
+                $time_taken = \microtime(true) - $time;
+                $codebase->analyzer->addFunctionTiming($cased_method_id, $time_taken / $node_counter->count);
+            }
+        }
 
         $this->examineParamTypes($statements_analyzer, $context, $codebase);
 
@@ -636,7 +659,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 if (($storage->return_type === $storage->signature_return_type)
                     && (!$storage->return_type
                         || $storage->return_type->hasMixed()
-                        || TypeAnalyzer::isContainedBy(
+                        || UnionTypeComparator::isContainedBy(
                             $codebase,
                             $closure_return_type,
                             $storage->return_type
@@ -691,7 +714,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $input_type = new Type\Union([new TNamedObject($expected_exception)]);
                     $container_type = new Type\Union([new TNamedObject('Exception'), new TNamedObject('Throwable')]);
 
-                    if (!TypeAnalyzer::isContainedBy($codebase, $input_type, $container_type)) {
+                    if (!UnionTypeComparator::isContainedBy($codebase, $input_type, $container_type)) {
                         if (IssueBuffer::accepts(
                             new \Psalm\Issue\InvalidThrow(
                                 'Class supplied for @throws ' . $expected_exception
@@ -1110,7 +1133,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
             if ($signature_type) {
                 $union_comparison_result = new TypeComparisonResult();
 
-                if (!TypeAnalyzer::isContainedBy(
+                if (!UnionTypeComparator::isContainedBy(
                     $codebase,
                     $param_type,
                     $signature_type,
@@ -1160,7 +1183,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
                 if ($default_type
                     && !$default_type->hasMixed()
-                    && !TypeAnalyzer::isContainedBy(
+                    && !UnionTypeComparator::isContainedBy(
                         $codebase,
                         $default_type,
                         $param_type,
@@ -1517,7 +1540,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                 $param_out_type = $param->out_type ?: $param->type;
 
                 if ($param_out_type && !$actual_type->hasMixed() && $param->location) {
-                    if (!TypeAnalyzer::isContainedBy(
+                    if (!UnionTypeComparator::isContainedBy(
                         $codebase,
                         $actual_type,
                         $param_out_type,

@@ -1,9 +1,18 @@
 <?php
 namespace Psalm;
 
+use function array_merge;
+use function array_pop;
+use function array_shift;
+use function array_values;
+use function explode;
+use function implode;
+use function preg_quote;
+use function preg_replace;
 use Psalm\Exception\TypeParseTreeException;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Type\Comparator\AtomicTypeComparator;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Internal\Type\TypeParser;
 use Psalm\Internal\Type\TypeTokenizer;
@@ -162,6 +171,20 @@ abstract class Type
             $union = new Union([new TInt()]);
         }
 
+        $union->from_calculation = $from_calculation;
+
+        return $union;
+    }
+
+    /**
+     * @param bool $from_calculation
+     * @param int|null $value
+     *
+     * @return Type\Union
+     */
+    public static function getPositiveInt(bool $from_calculation = false)
+    {
+        $union = new Union([new TInt()]);
         $union->from_calculation = $from_calculation;
 
         return $union;
@@ -395,6 +418,16 @@ abstract class Type
     /**
      * @return Type\Union
      */
+    public static function getNonEmptyList()
+    {
+        $type = new Type\Atomic\TNonEmptyList(new Type\Union([new TMixed]));
+
+        return new Union([$type]);
+    }
+
+    /**
+     * @return Type\Union
+     */
     public static function getVoid()
     {
         $type = new TVoid;
@@ -586,7 +619,7 @@ abstract class Type
                         if ($type_1_atomic instanceof TNamedObject
                             && $type_2_atomic instanceof TNamedObject
                         ) {
-                            if (TypeAnalyzer::isAtomicContainedBy(
+                            if (AtomicTypeComparator::isContainedBy(
                                 $codebase,
                                 $type_2_atomic,
                                 $type_1_atomic
@@ -594,7 +627,7 @@ abstract class Type
                                 $combined_type->removeType($t1_key);
                                 $combined_type->addType(clone $type_2_atomic);
                                 $intersection_performed = true;
-                            } elseif (TypeAnalyzer::isAtomicContainedBy(
+                            } elseif (AtomicTypeComparator::isContainedBy(
                                 $codebase,
                                 $type_1_atomic,
                                 $type_2_atomic

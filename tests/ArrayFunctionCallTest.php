@@ -107,6 +107,26 @@ class ArrayFunctionCallTest extends TestCase
                         return array_filter($a, "is_object");
                     }',
             ],
+            'arrayFilterFleshOutType' => [
+                '<?php
+                    class Baz {
+                        public const STATUS_FOO = "foo";
+                        public const STATUS_BAR = "bar";
+                        public const STATUS_QUX = "qux";
+
+                        /**
+                         * @psalm-param self::STATUS_* $role
+                         */
+                        public static function isStatus(string $role): bool
+                        {
+                            return !\in_array($role, [self::STATUS_BAR, self::STATUS_QUX], true);
+                        }
+                    }
+
+                    /** @psalm-var array<Baz::STATUS_*> $statusList */
+                    $statusList = [Baz::STATUS_FOO, Baz::STATUS_QUX];
+                    $statusList = array_filter($statusList, [Baz::class, "isStatus"]);'
+            ],
             'arrayKeysNonEmpty' => [
                 '<?php
                     $a = array_keys(["a" => 1, "b" => 2]);',
@@ -291,6 +311,17 @@ class ArrayFunctionCallTest extends TestCase
 
                         return 0;
                     }',
+            ],
+            'arrayShiftFunkyObjectLikeList' => [
+                '<?php
+                    /**
+                     * @param non-empty-list<string>|array{null} $arr
+                     * @return array<int, string>
+                     */
+                    function foo(array $arr) {
+                        array_shift($arr);
+                        return $arr;
+                    }'
             ],
             'arrayPopNonEmptyAfterCountEqualsOne' => [
                 '<?php
@@ -767,14 +798,22 @@ class ArrayFunctionCallTest extends TestCase
                     $a = ["one" => 1, "two" => 3];
                     $b = key($a);',
                 'assertions' => [
-                    '$b' => 'string',
+                    '$b' => 'null|string',
+                ],
+            ],
+            'keyEmptyArray' => [
+                '<?php
+                    $a = [];
+                    $b = key($a);',
+                'assertions' => [
+                    '$b' => 'null',
                 ],
             ],
             'keyNonEmptyArray' => [
                 '<?php
                     /**
                      * @param non-empty-array $arr
-                     * @return array-key
+                     * @return null|array-key
                      */
                     function foo(array $arr) {
                         return key($arr);
@@ -1005,18 +1044,23 @@ class ArrayFunctionCallTest extends TestCase
                 'assertions' => [],
                 'error_levels' => ['MissingClosureReturnType', 'MixedAssignment'],
             ],
-            'arraySplice' => [
+            'arraySpliceArray' => [
                 '<?php
                     $a = [1, 2, 3];
                     $c = $a;
                     $b = ["a", "b", "c"];
-                    array_splice($a, -1, 1, $b);
-                    $d = [1, 2, 3];
-                    $e = array_splice($d, -1, 1);',
+                    array_splice($a, rand(-10, 0), rand(0, 10), $b);',
                 'assertions' => [
                     '$a' => 'non-empty-list<int|string>',
                     '$b' => 'array{string, string, string}',
                     '$c' => 'array{int, int, int}',
+                ],
+            ],
+            'arraySpliceReturn' => [
+                '<?php
+                    $d = [1, 2, 3];
+                    $e = array_splice($d, -1, 1);',
+                'assertions' => [
                     '$e' => 'array<array-key, mixed>'
                 ],
             ],

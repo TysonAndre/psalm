@@ -728,7 +728,7 @@ class ReturnTypeTest extends TestCase
                      * @return Closure(int): bool
                      */
                     function reflexive(Closure $op): Closure {
-                        return fn ($x) => $op($x, $x) === true;
+                        return fn ($x) => $op($x, $x);
                     }
 
                     $res = reflexive(fn(int $a, int $b): bool => $a === $b);
@@ -842,6 +842,16 @@ class ReturnTypeTest extends TestCase
                             return ["foo"];
                         }
                     }'
+            ],
+            'compareObjectLikeToPotentiallyUnfilledArray' => [
+                '<?php
+                    /**
+                     * @param array<"from"|"to", bool> $a
+                     * @return array{from?: bool, to?: bool}
+                     */
+                    function foo(array $a) : array {
+                        return $a;
+                    }',
             ],
         ];
     }
@@ -1034,7 +1044,7 @@ class ReturnTypeTest extends TestCase
                       }
                       return $arr;
                     }',
-                'error_message' => 'InvalidReturnStatement',
+                'error_message' => 'LessSpecificReturnStatement',
             ],
             'invalidVoidStatementWhenMixedInferred' => [
                 '<?php
@@ -1288,6 +1298,17 @@ class ReturnTypeTest extends TestCase
                 $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'error_message' => 'InvalidReturnStatement - src/somefile.php:8:28 - The inferred type \'Closure(B):void\' does not match the declared return type \'callable(A):void\' for map',
+            ],
+            'compareObjectLikeToAlwaysFilledArray' => [
+                '<?php
+                    /**
+                     * @param array<"from"|"to", bool> $a
+                     * @return array{from: bool, to: bool}
+                     */
+                    function foo(array $a) : array {
+                        return $a;
+                    }',
+                'error_message' => 'LessSpecificReturnStatement',
             ],
         ];
     }

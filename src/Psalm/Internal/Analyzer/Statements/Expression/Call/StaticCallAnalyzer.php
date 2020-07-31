@@ -763,38 +763,17 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     }
                 }
 
-                if ($class_storage->psalm_internal
-                    && $context->self
-                    && ! NamespaceAnalyzer::isWithin($context->self, $class_storage->psalm_internal)
-                ) {
+                if ($context->self && ! NamespaceAnalyzer::isWithin($context->self, $class_storage->internal)) {
                     if (IssueBuffer::accepts(
                         new InternalClass(
-                            $fq_class_name . ' is marked internal to ' . $class_storage->psalm_internal,
+                            $fq_class_name . ' is internal to ' . $class_storage->internal
+                                . ' but called from ' . $context->self,
                             new CodeLocation($statements_analyzer->getSource(), $stmt),
                             $fq_class_name
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
                         // fall through
-                    }
-                }
-
-                if ($class_storage->internal
-                    && $context->self
-                    && !$context->collect_initializations
-                    && !$context->collect_mutations
-                ) {
-                    if (! NamespaceAnalyzer::nameSpaceRootsMatch($context->self, $fq_class_name)) {
-                        if (IssueBuffer::accepts(
-                            new InternalClass(
-                                $fq_class_name . ' is marked internal',
-                                new CodeLocation($statements_analyzer->getSource(), $stmt),
-                                $fq_class_name
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
-                        }
                     }
                 }
 
@@ -870,6 +849,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     $codebase,
                     $context,
                     $method_id,
+                    $statements_analyzer->getNamespace(),
                     new CodeLocation($statements_analyzer->getSource(), $stmt),
                     $statements_analyzer->getSuppressedIssues()
                 ) === false) {
@@ -1085,7 +1065,7 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                     if ($method_storage->abstract
                         && $stmt->class instanceof PhpParser\Node\Name
                         && (!$context->self
-                            || !\Psalm\Internal\Analyzer\TypeAnalyzer::isContainedBy(
+                            || !\Psalm\Internal\Type\Comparator\UnionTypeComparator::isContainedBy(
                                 $codebase,
                                 $context->vars_in_scope['$this']
                                     ?? new Type\Union([

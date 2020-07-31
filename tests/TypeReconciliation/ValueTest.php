@@ -233,12 +233,14 @@ class ValueTest extends TestCase
                 '<?php
                     $i = 0;
                     $a = function() use (&$i) : void {
-                      if (rand(0, 1)) $i++;
+                        if (rand(0, 1)) {
+                            $i++;
+                        }
                     };
                     $a();
                     if ($i === 0) {}',
                 'assertions' => [],
-                'error_levels' => ['MixedOperand'],
+                'error_levels' => ['MixedOperand', 'MixedAssignment'],
             ],
             'incrementMixedCall' => [
                 '<?php
@@ -250,7 +252,7 @@ class ValueTest extends TestCase
                         if ($i === 0) {}
                     }',
                 'assertions' => [],
-                'error_levels' => ['MissingParamType', 'MixedMethodCall', 'MixedOperand'],
+                'error_levels' => ['MissingParamType', 'MixedMethodCall', 'MixedOperand', 'MixedAssignment'],
             ],
             'regularValueReconciliation' => [
                 '<?php
@@ -710,7 +712,28 @@ class ValueTest extends TestCase
                     function makeNumStringFromFloat(float $v) {
                         return (string) $v;
                     }'
-                ],
+            ],
+            'compareNegatedValue' => [
+                '<?php
+                    $i = rand(-1, 5);
+
+                    if (!($i > 0)) {
+                        echo $i;
+                    }',
+            ],
+            'refinePositiveInt' => [
+                '<?php
+                    $f = rand(0, 1) ? -1 : 1;
+                    if ($f > 0) {}'
+            ],
+            'assignOpThenCheck' => [
+                '<?php
+                    $data = ["e" => 0];
+                    if (rand(0, 1)) {
+                        $data["e"]++;
+                    }
+                    if ($data["e"] > 0) {}'
+            ],
         ];
     }
 
@@ -890,6 +913,13 @@ class ValueTest extends TestCase
                 '<?php
                     if ("C" === "c") {}',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'compareValueTwice' => [
+                '<?php
+                    $i = rand(-1, 5);
+
+                    if ($i > 0 && $i > 0) {}',
+                'error_message' => 'RedundantCondition',
             ],
             'numericStringCoerceToLiteral' => [
                 '<?php

@@ -12,7 +12,7 @@ use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollect
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ArgumentsAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Internal\Codebase\InternalCallMapHandler;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
@@ -668,6 +668,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                 $codebase,
                 $context,
                 $method_id,
+                $statements_analyzer->getNamespace(),
                 $name_code_location,
                 $statements_analyzer->getSuppressedIssues()
             );
@@ -844,7 +845,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                         (string) $appearing_method_id,
                         (string) $declaring_method_id,
                         $context,
-                        $source,
+                        $statements_analyzer,
                         $codebase,
                         $file_manipulations,
                         $return_type_candidate
@@ -1067,9 +1068,9 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                         $class_storage->parent_class
                     );
 
-                    $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+                    $union_comparison_results = new \Psalm\Internal\Type\Comparator\TypeComparisonResult();
 
-                    $type_match_found = TypeAnalyzer::isContainedBy(
+                    $type_match_found = UnionTypeComparator::isContainedBy(
                         $codebase,
                         $second_arg_type,
                         $pseudo_set_type,
@@ -1107,7 +1108,7 @@ class AtomicMethodCallAnalyzer extends CallAnalyzer
                     }
 
                     if (!$type_match_found && !$union_comparison_results->type_coerced_from_mixed) {
-                        if (TypeAnalyzer::canBeContainedBy(
+                        if (UnionTypeComparator::canBeContainedBy(
                             $codebase,
                             $second_arg_type,
                             $pseudo_set_type

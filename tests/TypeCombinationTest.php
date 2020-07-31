@@ -585,6 +585,72 @@ class TypeCombinationTest extends TestCase
                     'numeric-string',
                 ],
             ],
+            'combineNonEmptyListWithObjectLikeList' => [
+                'array{0: null|string}<int, string>',
+                [
+                    'non-empty-list<string>',
+                    'array{null}'
+                ],
+            ],
+            'combineZeroAndPositiveInt' => [
+                'int(0)|positive-int',
+                [
+                    '0',
+                    'positive-int',
+                ],
+            ],
+            'combinePositiveIntAndZero' => [
+                'int(0)|positive-int',
+                [
+                    'positive-int',
+                    '0',
+                ],
+            ],
+            'combinePositiveIntAndMinusOne' => [
+                'int',
+                [
+                    'positive-int',
+                    '-1',
+                ],
+            ],
+            'combineMinusOneAndPositiveInt' => [
+                'int',
+                [
+                    '-1',
+                    'positive-int',
+                ],
+            ],
+            'combineZeroMinusOneAndPositiveInt' => [
+                'int',
+                [
+                    '0',
+                    '-1',
+                    'positive-int',
+                ],
+            ],
+            'combineZeroOneAndPositiveInt' => [
+                'int(0)|positive-int',
+                [
+                    '0',
+                    '1',
+                    'positive-int',
+                ],
+            ],
+            'combinePositiveIntOneAndZero' => [
+                'int(0)|positive-int',
+                [
+                    'positive-int',
+                    '1',
+                    '0',
+                ],
+            ],
+            'combinePositiveInts' => [
+                'positive-int',
+                [
+                    'positive-int',
+                    'positive-int',
+                ],
+            ],
         ];
     }
 

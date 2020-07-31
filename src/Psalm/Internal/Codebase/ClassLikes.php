@@ -13,7 +13,6 @@ use const PHP_EOL;
 use PhpParser;
 use function preg_match;
 use function preg_replace;
-use Psalm\Aliases;
 use Psalm\CodeLocation;
 use Psalm\Config;
 use Psalm\Exception\UnpopulatedClasslikeException;
@@ -40,7 +39,6 @@ use function strlen;
 use function strrpos;
 use function strtolower;
 use function substr;
-use Psalm\Internal\Scanner\UnresolvedConstantComponent;
 
 /**
  * @internal
@@ -342,7 +340,7 @@ class ClassLikes
         ) {
             if ((
                 !isset($this->existing_classes_lc[$fq_class_name_lc])
-                    || $this->existing_classes_lc[$fq_class_name_lc] === true
+                    || $this->existing_classes_lc[$fq_class_name_lc]
                 )
                 && !$this->classlike_storage_provider->has($fq_class_name_lc)
             ) {
@@ -391,7 +389,7 @@ class ClassLikes
         ) {
             if ((
                 !isset($this->existing_classes_lc[$fq_class_name_lc])
-                    || $this->existing_classes_lc[$fq_class_name_lc] === true
+                    || $this->existing_classes_lc[$fq_class_name_lc]
                 )
                 && !$this->classlike_storage_provider->has($fq_class_name_lc)
             ) {
@@ -681,10 +679,6 @@ class ClassLikes
      */
     public function interfaceHasCorrectCasing($fq_interface_name)
     {
-        if (isset($this->classlike_aliases[strtolower($fq_interface_name)])) {
-            return true;
-        }
-
         if (isset($this->classlike_aliases[strtolower($fq_interface_name)])) {
             return true;
         }

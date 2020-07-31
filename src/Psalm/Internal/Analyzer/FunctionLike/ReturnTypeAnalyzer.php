@@ -15,6 +15,7 @@ use Psalm\Internal\Analyzer\SourceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
+use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
@@ -36,7 +37,6 @@ use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
-use Psalm\Internal\Type\TypeCombination;
 use function strtolower;
 use function substr;
 use function count;
@@ -259,7 +259,7 @@ class ReturnTypeAnalyzer
 
         if ($is_to_string) {
             if (!$inferred_return_type->hasMixed() &&
-                !TypeAnalyzer::isContainedBy(
+                !UnionTypeComparator::isContainedBy(
                     $codebase,
                     $inferred_return_type,
                     Type::getString(),
@@ -455,9 +455,9 @@ class ReturnTypeAnalyzer
                 return null;
             }
 
-            $union_comparison_results = new \Psalm\Internal\Analyzer\TypeComparisonResult();
+            $union_comparison_results = new \Psalm\Internal\Type\Comparator\TypeComparisonResult();
 
-            if (!TypeAnalyzer::isContainedBy(
+            if (!UnionTypeComparator::isContainedBy(
                 $codebase,
                 $inferred_return_type,
                 $declared_return_type,
@@ -551,7 +551,7 @@ class ReturnTypeAnalyzer
                 && !in_array('LessSpecificReturnType', $suppressed_issues)
                 && !($function_like_storage instanceof MethodStorage && $function_like_storage->inheritdoc)
             ) {
-                if (!TypeAnalyzer::isContainedBy(
+                if (!UnionTypeComparator::isContainedBy(
                     $codebase,
                     $declared_return_type,
                     $inferred_return_type,
@@ -824,7 +824,7 @@ class ReturnTypeAnalyzer
             }
         }
 
-        if (!TypeAnalyzer::isContainedBy(
+        if (!UnionTypeComparator::isContainedBy(
             $codebase,
             $fleshed_out_return_type,
             $fleshed_out_signature_type

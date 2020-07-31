@@ -1,8 +1,8 @@
 <?php
 namespace Psalm\Internal\PhpVisitor;
 
+use Psalm\Internal\Analyzer\NamespaceAnalyzer;
 use function array_filter;
-use function array_key_exists;
 use function array_merge;
 use function array_pop;
 use function assert;
@@ -37,7 +37,6 @@ use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\ConstFetchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\IncludeAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\SimpleTypeInferer;
-use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Codebase\InternalCallMapHandler;
 use Psalm\Internal\Codebase\PropertyMap;
 use Psalm\Internal\Scanner\FileScanner;
@@ -67,7 +66,6 @@ use function strtolower;
 use function substr;
 use function trim;
 use function preg_split;
-use php_user_filter;
 use function strlen;
 
 /**
@@ -375,6 +373,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             $method_map = $storage->trait_alias_map ?: [];
             $visibility_map = $storage->trait_visibility_map ?: [];
+            $final_map = $storage->trait_final_map ?: [];
 
             foreach ($node->adaptations as $adaptation) {
                 if ($adaptation instanceof PhpParser\Node\Stmt\TraitUseAdaptation\Alias) {
@@ -402,6 +401,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                             case 4:
                                 $visibility_map[$new_name] = ClassLikeAnalyzer::VISIBILITY_PRIVATE;
                                 break;
+
+                            case 32:
+                                $final_map[$new_name] = true;
+                                break;
                         }
                     }
                 }
@@ -409,6 +412,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             $storage->trait_alias_map = $method_map;
             $storage->trait_visibility_map = $visibility_map;
+            $storage->trait_final_map = $final_map;
 
             foreach ($node->traits as $trait) {
                 $trait_fqcln = ClassLikeAnalyzer::getFQCLNFromNameObject($trait, $this->aliases);
@@ -1312,8 +1316,16 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
 
                 $storage->deprecated = $docblock_info->deprecated;
-                $storage->internal = $docblock_info->internal;
-                $storage->psalm_internal = $docblock_info->psalm_internal;
+
+                if ($docblock_info->internal
+                    && !$docblock_info->psalm_internal
+                    && $this->aliases->namespace
+                ) {
+                    $storage->internal = explode('\\', $this->aliases->namespace)[0];
+                } else {
+                    $storage->internal = $docblock_info->psalm_internal ?? '';
+                }
+
                 $storage->final = $storage->final || $docblock_info->final;
 
                 if ($docblock_info->mixin) {
@@ -1956,10 +1968,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 if (isset($class_storage->properties[$property_name])
                     && $class_storage->properties[$property_name]->type
-                    && ($class_storage->properties[$property_name]->type->isNullable()
-                        || $class_storage->properties[$property_name]->type->isFalsable()
-                        || $class_storage->properties[$property_name]->type->hasArray()
-                    )
                 ) {
                     $storage->mutation_free = true;
                     $storage->external_mutation_free = true;
@@ -2130,9 +2138,11 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         $doc_comment = $stmt->getDocComment();
 
 
-        if ($class_storage && ! $class_storage->is_trait) {
+        if ($class_storage
+            && !$class_storage->is_trait
+            && strlen($class_storage->internal) > strlen($storage->internal)
+        ) {
             $storage->internal = $class_storage->internal;
-            $storage->psalm_internal = $class_storage->psalm_internal;
         }
 
         if (!$doc_comment) {
@@ -2188,17 +2198,17 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $storage->deprecated = true;
         }
 
-        if ($docblock_info->internal) {
-            $storage->internal = true;
-        }
-
-        if (null === $class_storage ||
-            null === $class_storage->psalm_internal ||
-            (null !== $docblock_info->psalm_internal &&
-                strlen($docblock_info->psalm_internal) > strlen($class_storage->psalm_internal)
+        if ($docblock_info->internal
+            && !$docblock_info->psalm_internal
+            && $this->aliases->namespace
+        ) {
+            $storage->internal = explode('\\', $this->aliases->namespace)[0];
+        } elseif (!$class_storage
+            || ($docblock_info->psalm_internal
+                && strlen($docblock_info->psalm_internal) > strlen($class_storage->internal)
             )
         ) {
-            $storage->psalm_internal = $docblock_info->psalm_internal;
+            $storage->internal = $docblock_info->psalm_internal ?? '';
         }
 
         if ($docblock_info->variadic) {
@@ -2946,7 +2956,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         foreach ($namespaced_type->getAtomicTypes() as $namespaced_type_part) {
             if ($namespaced_type_part instanceof Type\Atomic\TAssertionFalsy
                 || ($namespaced_type_part instanceof Type\Atomic\TList
-                    && !$namespaced_type_part instanceof Type\Atomic\TNonEmptyList
                     && $namespaced_type_part->type_param->isMixed())
                 || ($namespaced_type_part instanceof Type\Atomic\TArray
                     && $namespaced_type_part->type_params[0]->isArrayKey()
@@ -3414,8 +3423,10 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             $property_storage->stmt_location = new CodeLocation($this->file_scanner, $stmt);
             $property_storage->has_default = $property->default ? true : false;
             $property_storage->deprecated = $var_comment ? $var_comment->deprecated : false;
-            $property_storage->internal = $var_comment ? $var_comment->internal : false;
-            $property_storage->psalm_internal = $var_comment ? $var_comment->psalm_internal : null;
+            $property_storage->internal = $var_comment ? $var_comment->psalm_internal ?? '' : '';
+            if (! $property_storage->internal && $var_comment && $var_comment->internal) {
+                $property_storage->internal = NamespaceAnalyzer::getNameSpaceRoot($fq_classlike_name);
+            }
             $property_storage->readonly = $var_comment ? $var_comment->readonly : false;
             $property_storage->allow_private_mutation = $var_comment ? $var_comment->allow_private_mutation : false;
 
