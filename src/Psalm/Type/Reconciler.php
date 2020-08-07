@@ -51,6 +51,8 @@ use function strpos;
 use function strtolower;
 use function substr;
 use Exception;
+use function preg_match;
+use function preg_quote;
 
 class Reconciler
 {
@@ -346,6 +348,18 @@ class Reconciler
                         $changed_var_ids,
                         $result_type
                     );
+                } elseif ($key !== '$this') {
+                    foreach ($existing_types as $new_key => $_) {
+                        if ($new_key === $key) {
+                            continue;
+                        }
+
+                        if (!isset($new_types[$new_key])
+                            && preg_match('/' . preg_quote($key, '/') . '[\]\[\-]/', $new_key)
+                        ) {
+                            unset($existing_types[$new_key]);
+                        }
+                    }
                 }
             } elseif (!$has_negation && !$has_falsyish && !$has_isset) {
                 $changed_var_ids[$key] = true;

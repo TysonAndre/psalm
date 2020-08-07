@@ -1328,10 +1328,29 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                 $storage->final = $storage->final || $docblock_info->final;
 
-                if ($docblock_info->mixin) {
+                $storage->preserve_constructor_signature = $docblock_info->consistent_constructor;
+
+                if ($storage->preserve_constructor_signature) {
+                    $has_constructor = false;
+
+                    foreach ($node->stmts as $stmt) {
+                        if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
+                            && $stmt->name->name === '__construct'
+                        ) {
+                            $has_constructor = true;
+                            break;
+                        }
+                    }
+
+                    if (!$has_constructor) {
+                        self::registerEmptyConstructor($storage);
+                    }
+                }
+
+                foreach ($docblock_info->mixins as $key => $mixin) {
                     $mixin_type = TypeParser::parseTokens(
                         TypeTokenizer::getFullyQualifiedTokens(
-                            $docblock_info->mixin,
+                            $mixin,
                             $this->aliases,
                             $this->class_template_types,
                             $this->type_aliases,
@@ -1353,11 +1372,23 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     if ($mixin_type->isSingle()) {
                         $mixin_type = \array_values($mixin_type->getAtomicTypes())[0];
 
+                        if ($mixin_type instanceof Type\Atomic\TNamedObject) {
+                            $storage->namedMixins[] = $mixin_type;
+                        }
+
+                        if ($mixin_type instanceof Type\Atomic\TTemplateParam) {
+                            $storage->templatedMixins[] = $mixin_type;
+                        }
+                    }
+
+                    if ($key === 0) {
+                        $storage->mixin_declaring_fqcln = $storage->name;
+
+                        // backwards compatibility
                         if ($mixin_type instanceof Type\Atomic\TNamedObject
-                            || $mixin_type instanceof Type\Atomic\TTemplateParam
-                        ) {
+                            || $mixin_type instanceof Type\Atomic\TTemplateParam) {
+                            /** @psalm-suppress DeprecatedProperty **/
                             $storage->mixin = $mixin_type;
-                            $storage->mixin_declaring_fqcln = $storage->name;
                         }
                     }
                 }
@@ -1651,6 +1682,36 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         }
     }
 
+    private static function registerEmptyConstructor(ClassLikeStorage $class_storage) : void
+    {
+        $method_name_lc = '__construct';
+
+        if (isset($class_storage->methods[$method_name_lc])) {
+            return;
+        }
+
+        $storage = $class_storage->methods['__construct'] = new MethodStorage();
+
+        $storage->cased_name = '__construct';
+        $storage->defining_fqcln = $class_storage->name;
+
+        $storage->mutation_free = $storage->external_mutation_free = true;
+        $storage->mutation_free_inferred = true;
+
+        $class_storage->declaring_method_ids['__construct'] = new \Psalm\Internal\MethodIdentifier(
+            $class_storage->name,
+            '__construct'
+        );
+
+        $class_storage->inheritable_method_ids['__construct']
+            = $class_storage->declaring_method_ids['__construct'];
+        $class_storage->appearing_method_ids['__construct']
+            = $class_storage->declaring_method_ids['__construct'];
+        $class_storage->overridden_method_ids['__construct'] = [];
+
+        $storage->visibility = ClassLikeAnalyzer::VISIBILITY_PUBLIC;
+    }
+
     /**
      * @param  PhpParser\Node\FunctionLike $stmt
      * @param  bool $fake_method in the case of @method annotations we do something a little strange
@@ -1849,6 +1910,11 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
             $storage->final = $class_storage->final || $stmt->isFinal();
 
+            if ($storage->final && $method_name_lc === '__construct') {
+                // a bit of a hack, but makes sure that `new static` works for these classes
+                $class_storage->preserve_constructor_signature = true;
+            }
+
             if ($stmt->isPrivate()) {
                 $storage->visibility = ClassLikeAnalyzer::VISIBILITY_PRIVATE;
             } elseif ($stmt->isProtected()) {
@@ -1948,14 +2014,14 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
         $storage->required_param_count = $required_param_count;
 
-        if (($stmt instanceof PhpParser\Node\Stmt\Function_
-                || $stmt instanceof PhpParser\Node\Stmt\ClassMethod)
-            && $stmt->stmts
+        if ($stmt instanceof PhpParser\Node\Stmt\Function_
+            || $stmt instanceof PhpParser\Node\Stmt\ClassMethod
         ) {
             if ($stmt instanceof PhpParser\Node\Stmt\ClassMethod
                 && $storage instanceof MethodStorage
                 && $class_storage
                 && !$class_storage->mutation_free
+                && $stmt->stmts
                 && count($stmt->stmts) === 1
                 && !count($stmt->params)
                 && $stmt->stmts[0] instanceof PhpParser\Node\Stmt\Return_
@@ -1975,7 +2041,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
 
                     $class_storage->properties[$property_name]->getter_method = strtolower($stmt->name->name);
                 }
-            } elseif (strpos($stmt->name->name, 'assert') === 0) {
+            } elseif (strpos($stmt->name->name, 'assert') === 0
+                && $stmt->stmts
+            ) {
                 $var_assertions = [];
 
                 foreach ($stmt->stmts as $function_stmt) {

@@ -1555,7 +1555,7 @@ class PropertyTypeTest extends TestCase
                          */
                         protected $a;
 
-                        private function __construct()
+                        final private function __construct()
                         {
                             $this->setA();
                         }
@@ -2038,6 +2038,24 @@ class PropertyTypeTest extends TestCase
 
                                 }
                             }
+                        }
+                    }'
+            ],
+            'dontMemoizePropertyTypeAfterRootVarAssertion' => [
+                '<?php
+                    class A {
+                        public string $i = "";
+                    }
+
+                    class B {
+                        public int $i = 0;
+                    }
+
+                    /** @param A|B $o */
+                    function takesAorB(object $o) : void {
+                        echo $o->i;
+                        if ($o instanceof A) {
+                            echo strlen($o->i);
                         }
                     }'
             ],

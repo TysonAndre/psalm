@@ -1192,7 +1192,10 @@ class ClassTemplateExtendsTest extends TestCase
             ],
             'templateExtendsOnceWithSpecificStaticCall' => [
                 '<?php
-                    /** @template T */
+                    /**
+                     * @template T
+                     * @psalm-consistent-constructor
+                     */
                     class Container {
                         /** @var T */
                         private $t;
@@ -1237,7 +1240,10 @@ class ClassTemplateExtendsTest extends TestCase
             ],
             'templateExtendsDifferentNameWithStaticCall' => [
                 '<?php
-                    /** @template T */
+                    /**
+                     * @template T
+                     * @psalm-consistent-constructor
+                     */
                     class Container {
                         /** @var T */
                         private $t;
@@ -1288,7 +1294,10 @@ class ClassTemplateExtendsTest extends TestCase
             ],
             'templateExtendsSameNameWithStaticCall' => [
                 '<?php
-                    /** @template T */
+                    /**
+                     * @template T
+                     * @psalm-consistent-constructor
+                     */
                     class Container {
                         /** @var T */
                         private $t;
@@ -1629,6 +1638,7 @@ class ClassTemplateExtendsTest extends TestCase
                      * @template T
                      * @template TKey of array-key
                      * @template-implements Collection<TKey, T>
+                     * @psalm-consistent-constructor
                      */
                     class ArrayCollection implements Collection
                     {
@@ -1678,6 +1688,7 @@ class ClassTemplateExtendsTest extends TestCase
                      * @template T
                      * @template TKey of array-key
                      * @template-implements Collection<TKey>
+                     * @psalm-consistent-constructor
                      */
                     class ArrayCollection implements Collection
                     {
@@ -2190,6 +2201,7 @@ class ClassTemplateExtendsTest extends TestCase
                      * @template T as object
                      * @param class-string<T> $t
                      * @return I<T>
+                     * @psalm-suppress MixedMethodCall
                      */
                     function f(string $t) {
                         return new C(new $t);
@@ -2492,6 +2504,7 @@ class ClassTemplateExtendsTest extends TestCase
                     /**
                      * @template TKey as array-key
                      * @template TValue
+                     * @psalm-consistent-constructor
                      */
                     class Collection
                     {
@@ -2947,6 +2960,7 @@ class ClassTemplateExtendsTest extends TestCase
                          * @template T2
                          * @param class-string<T2> $t
                          * @return ?T2
+                         * @psalm-suppress MixedMethodCall
                          */
                         public function get($t) {
                             return new $t;
@@ -2958,6 +2972,7 @@ class ClassTemplateExtendsTest extends TestCase
                          * @template T3
                          * @param class-string<T3> $t
                          * @return ?T3
+                         * @psalm-suppress MixedMethodCall
                          */
                         public function get($t) {
                             return new $t;
@@ -4016,6 +4031,9 @@ class ClassTemplateExtendsTest extends TestCase
                         public function __construct($item) {}
                     }
 
+                    /**
+                     * @psalm-consistent-constructor
+                     */
                     abstract class Food {
                         /**
                          * @return Collection<static>

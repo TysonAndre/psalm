@@ -375,10 +375,28 @@ class SwitchCaseAnalyzer
             }
         }
 
-        if ($case_clauses) {
+        if ($case_clauses && $case_equality_expr) {
+            try {
+                $negated_case_clauses = Algebra::negateFormula($case_clauses);
+            } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+                try {
+                    $negated_case_clauses = Algebra::getFormula(
+                        \spl_object_id($case_equality_expr),
+                        new PhpParser\Node\Expr\BooleanNot($case_equality_expr),
+                        $context->self,
+                        $statements_analyzer,
+                        $codebase,
+                        false,
+                        false
+                    );
+                } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+                    $negated_case_clauses = [];
+                }
+            }
+
             $switch_scope->negated_clauses = array_merge(
                 $switch_scope->negated_clauses,
-                Algebra::negateFormula($case_clauses)
+                $negated_case_clauses
             );
         }
 

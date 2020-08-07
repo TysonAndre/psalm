@@ -40,6 +40,7 @@ class ClassTemplateTest extends TestCase
 
                         /**
                          * @return T
+                         * @psalm-suppress MixedMethodCall
                          */
                         public function bar() {
                             $t = $this->T;
@@ -98,6 +99,7 @@ class ClassTemplateTest extends TestCase
 
                         /**
                          * @return T
+                         * @psalm-suppress MixedMethodCall
                          */
                         public function bar() {
                             $t = $this->T;
@@ -169,6 +171,7 @@ class ClassTemplateTest extends TestCase
 
                         /**
                          * @return T
+                         * @psalm-suppress MixedMethodCall
                          */
                         public function bar() {
                             $t = $this->T;
@@ -315,6 +318,7 @@ class ClassTemplateTest extends TestCase
                     /**
                      * @template TKey as array-key
                      * @template TValue
+                     * @psalm-consistent-constructor
                      */
                     class ArrayCollection {
                         /** @var array<TKey,TValue> */
@@ -1238,6 +1242,8 @@ class ClassTemplateTest extends TestCase
                          * @param class-string<Q> $obj2
                          *
                          * @return array<I, V|Q>
+                         *
+                         * @psalm-suppress MixedMethodCall
                          */
                         private function appender(string $obj2): array
                         {
@@ -1771,6 +1777,7 @@ class ClassTemplateTest extends TestCase
                 '<?php
                     /**
                      * @template T
+                     * @psalm-consistent-constructor
                      */
                     class Foo {
                         /** @var T */
@@ -2098,6 +2105,7 @@ class ClassTemplateTest extends TestCase
                 '<?php
                     /**
                      * @template T
+                     * @psalm-consistent-constructor
                      */
                     class ArrayCollection {
                         /** @var list<T> */
@@ -2169,6 +2177,9 @@ class ClassTemplateTest extends TestCase
             ],
             'mapStaticClassTemplatedFromClassString' => [
                 '<?php
+                    /**
+                     * @psalm-consistent-constructor
+                     */
                     class Base {
                         /** @return static */
                         public static function factory(): self {

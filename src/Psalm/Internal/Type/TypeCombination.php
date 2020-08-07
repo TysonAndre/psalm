@@ -57,6 +57,7 @@ use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Union;
 use function strpos;
 use function substr;
+use function is_string;
 
 /**
  * @internal
@@ -89,6 +90,9 @@ class TypeCombination
 
     /** @var array<string|int, Union> */
     private $objectlike_entries = [];
+
+    /** @var array<string, bool> */
+    private $objectlike_class_strings = [];
 
     /** @var bool */
     private $objectlike_sealed = true;
@@ -392,13 +396,11 @@ class TypeCombination
                     }
 
                     if (is_int($property_name)) {
-                        if (!isset($objectlike_keys['int'])) {
-                            $objectlike_keys['int'] = new TInt;
-                        }
+                        $objectlike_keys[$property_name] = new TLiteralInt($property_name);
+                    } elseif (isset($type->class_strings[$property_name])) {
+                        $objectlike_keys[$property_name] = new TLiteralClassString($property_name);
                     } else {
-                        if (!isset($objectlike_keys['string'])) {
-                            $objectlike_keys['string'] = new TString;
-                        }
+                        $objectlike_keys[$property_name] = new TLiteralString($property_name);
                     }
                 }
 
@@ -959,6 +961,12 @@ class TypeCombination
                     );
                 }
 
+                if (is_string($candidate_property_name)
+                    && isset($type->class_strings[$candidate_property_name])
+                ) {
+                    $combination->objectlike_class_strings[$candidate_property_name] = true;
+                }
+
                 if (!$type->previous_value_type) {
                     unset($possibly_undefined_entries[$candidate_property_name]);
                 }
@@ -1149,7 +1157,14 @@ class TypeCombination
                             $combination->class_string_types['object'] = new TObject();
                         }
                     } else {
-                        $combination->value_types['string'] = new TString();
+                        if (isset($combination->value_types['string'])
+                            && $combination->value_types['string'] instanceof Type\Atomic\TLowercaseString
+                            && \strtolower($type->value) === $type->value
+                        ) {
+                            // do nothing
+                        } else {
+                            $combination->value_types['string'] = new TString();
+                        }
                     }
                 }
             } else {
@@ -1168,6 +1183,23 @@ class TypeCombination
                             }
 
                             if ($has_non_numeric_string) {
+                                $combination->value_types['string'] = new TString();
+                            } else {
+                                $combination->value_types['string'] = $type;
+                            }
+
+                            $combination->strings = null;
+                        } elseif ($type instanceof Type\Atomic\TLowercaseString) {
+                            $has_non_lowercase_string = false;
+
+                            foreach ($combination->strings as $string_type) {
+                                if (\strtolower($string_type->value) !== $string_type->value) {
+                                    $has_non_lowercase_string = true;
+                                    break;
+                                }
+                            }
+
+                            if ($has_non_lowercase_string) {
                                 $combination->value_types['string'] = new TString();
                             } else {
                                 $combination->value_types['string'] = $type;

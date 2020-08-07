@@ -943,6 +943,10 @@ class CommentAnalyzer
             $info->final = true;
         }
 
+        if (isset($parsed_docblock->tags['psalm-consistent-constructor'])) {
+            $info->consistent_constructor = true;
+        }
+
         if (isset($parsed_docblock->tags['psalm-internal'])) {
             $psalm_internal = reset($parsed_docblock->tags['psalm-internal']);
             if ($psalm_internal) {
@@ -955,14 +959,22 @@ class CommentAnalyzer
         }
 
         if (isset($parsed_docblock->tags['mixin'])) {
-            $mixin = trim(reset($parsed_docblock->tags['mixin']));
-            $doc_line_parts = self::splitDocLine($mixin);
-            $mixin = $doc_line_parts[0];
+            foreach ($parsed_docblock->tags['mixin'] as $rawMixin) {
+                $mixin = trim($rawMixin);
+                $doc_line_parts = self::splitDocLine($mixin);
+                $mixin = $doc_line_parts[0];
 
-            if ($mixin) {
-                $info->mixin = $mixin;
-            } else {
-                throw new DocblockParseException('@mixin annotation used without specifying class');
+                if ($mixin) {
+                    $info->mixins[] = $mixin;
+                } else {
+                    throw new DocblockParseException('@mixin annotation used without specifying class');
+                }
+            }
+
+            // backwards compatibility
+            if ($info->mixins) {
+                /** @psalm-suppress DeprecatedProperty */
+                $info->mixin = reset($info->mixins);
             }
         }
 

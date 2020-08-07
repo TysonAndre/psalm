@@ -94,8 +94,19 @@ class ClassLikeStorage
 
     /**
      * @var null|Type\Atomic\TTemplateParam|Type\Atomic\TNamedObject
+     * @deprecated
      */
     public $mixin = null;
+
+    /**
+     * @var Type\Atomic\TTemplateParam[]
+     */
+    public $templatedMixins = [];
+
+    /**
+     * @var Type\Atomic\TNamedObject[]
+     */
+    public $namedMixins = [];
 
     /**
      * @var ?string
@@ -407,6 +418,11 @@ class ClassLikeStorage
      * @var array<string, \Psalm\Internal\Type\TypeAlias\ClassTypeAlias>
      */
     public $type_aliases = [];
+
+    /**
+     * @var bool
+     */
+    public $preserve_constructor_signature = false;
 
     /**
      * @param string $name

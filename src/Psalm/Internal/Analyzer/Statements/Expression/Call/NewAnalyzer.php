@@ -18,6 +18,7 @@ use Psalm\Issue\InternalClass;
 use Psalm\Issue\InvalidStringClass;
 use Psalm\Issue\MixedMethodCall;
 use Psalm\Issue\TooManyArguments;
+use Psalm\Issue\UnsafeInstantiation;
 use Psalm\Issue\UndefinedClass;
 use Psalm\IssueBuffer;
 use Psalm\Type;
@@ -133,9 +134,21 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                                 $lhs_type_part->param_name,
                                 $lhs_type_part->as_type
                                     ? new Type\Union([$lhs_type_part->as_type])
-                                    : Type::parseString($lhs_type_part->as),
+                                    : Type::getObject(),
                                 $lhs_type_part->defining_class
                             );
+
+                            if (!$lhs_type_part->as_type) {
+                                if (IssueBuffer::accepts(
+                                    new MixedMethodCall(
+                                        'Cannot call constructor on an unknown class',
+                                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                    ),
+                                    $statements_analyzer->getSuppressedIssues()
+                                )) {
+                                    // fall through
+                                }
+                            }
 
                             if ($new_type) {
                                 $new_type = Type::combineUnionTypes(
@@ -144,6 +157,28 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                                 );
                             } else {
                                 $new_type = new Type\Union([$new_type_part]);
+                            }
+
+                            if ($lhs_type_part->as_type
+                                && $codebase->classlikes->classExists($lhs_type_part->as_type->value)
+                            ) {
+                                $as_storage = $codebase->classlike_storage_provider->get(
+                                    $lhs_type_part->as_type->value
+                                );
+
+                                if (!$as_storage->preserve_constructor_signature) {
+                                    if (IssueBuffer::accepts(
+                                        new UnsafeInstantiation(
+                                            'Cannot safely instantiate class ' . $lhs_type_part->as_type->value
+                                                . ' with "new $class_name" as '
+                                                . ' its constructor might change in child classes',
+                                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                        ),
+                                        $statements_analyzer->getSuppressedIssues()
+                                    )) {
+                                        // fall through
+                                    }
+                                }
                             }
                         }
 
@@ -173,6 +208,28 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                                 $generated_type = $lhs_type_part->as_type
                                     ? clone $lhs_type_part->as_type
                                     : new Type\Atomic\TObject();
+
+                                if ($lhs_type_part->as_type
+                                    && $codebase->classlikes->classExists($lhs_type_part->as_type->value)
+                                ) {
+                                    $as_storage = $codebase->classlike_storage_provider->get(
+                                        $lhs_type_part->as_type->value
+                                    );
+
+                                    if (!$as_storage->preserve_constructor_signature) {
+                                        if (IssueBuffer::accepts(
+                                            new UnsafeInstantiation(
+                                                'Cannot safely instantiate class ' . $lhs_type_part->as_type->value
+                                                    . ' with "new $class_name" as '
+                                                    . ' its constructor might change in child classes',
+                                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                                            ),
+                                            $statements_analyzer->getSuppressedIssues()
+                                        )) {
+                                            // fall through
+                                        }
+                                    }
+                                }
                             } elseif ($lhs_type_part instanceof Type\Atomic\GetClassT) {
                                 $generated_type = new Type\Atomic\TObject();
 
@@ -382,6 +439,19 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                 $codebase->classlikes->classExists($fq_class_name)
             ) {
                 $storage = $codebase->classlike_storage_provider->get($fq_class_name);
+
+                if ($from_static && !$storage->preserve_constructor_signature) {
+                    if (IssueBuffer::accepts(
+                        new UnsafeInstantiation(
+                            'Cannot safely instantiate class ' . $fq_class_name . ' with "new static" as '
+                                . ' its constructor might change in child classes',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
 
                 // if we're not calling this constructor via new static()
                 if ($storage->abstract && !$can_extend) {

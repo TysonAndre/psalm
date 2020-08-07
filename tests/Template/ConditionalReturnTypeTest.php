@@ -278,6 +278,9 @@ class ConditionalReturnTypeTest extends TestCase
                             return new Application();
                         }
 
+                        /**
+                         * @psalm-suppress MixedMethodCall
+                         */
                         return new $className();
                     }
 
@@ -568,6 +571,7 @@ class ConditionalReturnTypeTest extends TestCase
                     /**
                      * @template E
                      * @implements AInterface<E>
+                     * @psalm-consistent-constructor
                      */
                     class BClass implements AInterface {
                         protected string $type;
