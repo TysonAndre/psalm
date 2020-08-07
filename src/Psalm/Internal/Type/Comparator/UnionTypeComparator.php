@@ -210,6 +210,8 @@ class UnionTypeComparator
                 // was a __toString cast
                 if ($all_to_string_cast && $type_match_found) {
                     $union_comparison_result->to_string_cast = true;
+                } else if ($type_match_found) {
+                    $union_comparison_result->has_partial_match = true;
                 }
 
                 if ($all_type_coerced) {
