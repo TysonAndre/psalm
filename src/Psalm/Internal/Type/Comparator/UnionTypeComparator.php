@@ -46,6 +46,7 @@ class UnionTypeComparator
         $container_has_template = $container_type->hasTemplateOrStatic();
 
         $input_atomic_types = \array_reverse($input_type->getAtomicTypes());
+        $final_comparison_result = true;
 
         while ($input_type_part = \array_pop($input_atomic_types)) {
             if ($input_type_part instanceof TNull && $ignore_null) {
@@ -210,7 +211,9 @@ class UnionTypeComparator
                 // was a __toString cast
                 if ($all_to_string_cast && $type_match_found) {
                     $union_comparison_result->to_string_cast = true;
-                } else if ($type_match_found) {
+                }
+
+                if ($type_match_found) {
                     $union_comparison_result->has_partial_match = true;
                 }
 
@@ -250,11 +253,11 @@ class UnionTypeComparator
                     }
                 }
 
-                return false;
+                $final_comparison_result = false;
             }
         }
 
-        return true;
+        return $final_comparison_result;
     }
 
     /**
