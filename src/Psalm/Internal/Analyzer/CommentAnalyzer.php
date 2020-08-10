@@ -786,6 +786,10 @@ class CommentAnalyzer
             $info->external_mutation_free = true;
         }
 
+        if (isset($parsed_docblock->tags['no-named-params'])) {
+            $info->no_named_params = true;
+        }
+
         $info->ignore_nullable_return = isset($parsed_docblock->tags['psalm-ignore-nullable-return']);
         $info->ignore_falsable_return = isset($parsed_docblock->tags['psalm-ignore-falsable-return']);
 
@@ -1149,7 +1153,10 @@ class CommentAnalyzer
                 $php_string = '<'.'?php class A { ' . $function_docblock . ' public ' . $function_string . '{} }';
 
                 try {
-                    $statements = \Psalm\Internal\Provider\StatementsProvider::parseStatements($php_string);
+                    $statements = \Psalm\Internal\Provider\StatementsProvider::parseStatements(
+                        $php_string,
+                        $codebase->php_major_version . '.' . $codebase->php_minor_version
+                    );
                 } catch (\Exception $e) {
                     throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
                 }

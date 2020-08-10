@@ -3,6 +3,8 @@ namespace Psalm\Internal\Analyzer;
 
 use PhpParser;
 use Psalm\Aliases;
+use Psalm\DocComment;
+use Psalm\Exception\DocblockParseException;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\FileManipulation\PropertyDocblockManipulator;
 use Psalm\Internal\Type\UnionTemplateHandler;
@@ -52,6 +54,7 @@ use function count;
 use function array_search;
 use function array_keys;
 use function array_merge;
+use function array_filter;
 
 /**
  * @internal
@@ -732,7 +735,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $storage,
             $class_context,
             $this->fq_class_name,
-            $this->parent_fq_class_name
+            $this->parent_fq_class_name,
+            $class->stmts
         );
 
         $constructor_analyzer = null;
@@ -981,7 +985,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         ClassLikeStorage $storage,
         Context $class_context,
         string $fq_class_name,
-        ?string $parent_fq_class_name
+        ?string $parent_fq_class_name,
+        array $stmts = []
     ) : void {
         $codebase = $statements_source->getCodebase();
 
@@ -1083,10 +1088,32 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
 
             if ($property_type_location && !$fleshed_out_type->isMixed()) {
+                $stmt = array_filter($stmts, function ($stmt) use ($property_name) {
+                    return $stmt instanceof PhpParser\Node\Stmt\Property
+                        && isset($stmt->props[0]->name->name)
+                        && $stmt->props[0]->name->name === $property_name;
+                });
+
+                $suppressed = [];
+                if (count($stmt) > 0) {
+                    /** @var PhpParser\Node\Stmt\Property $stmt */
+                    $stmt = array_pop($stmt);
+
+                    $docComment = $stmt->getDocComment();
+                    if ($docComment) {
+                        try {
+                            $docBlock = DocComment::parsePreservingLength($docComment);
+                            $suppressed = $docBlock->tags['psalm-suppress'] ?? [];
+                        } catch (DocblockParseException $e) {
+                            // do nothing to keep original behavior
+                        }
+                    }
+                }
+
                 $fleshed_out_type->check(
                     $statements_source,
                     $property_type_location,
-                    $storage->suppressed_issues + $statements_source->getSuppressedIssues(),
+                    $storage->suppressed_issues + $statements_source->getSuppressedIssues() + $suppressed,
                     [],
                     false
                 );

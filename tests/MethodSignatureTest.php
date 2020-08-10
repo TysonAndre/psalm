@@ -869,7 +869,7 @@ class MethodSignatureTest extends TestCase
                     }',
                 'error_message' => 'Method B::fooFoo has fewer parameters than parent method A::fooFoo',
             ],
-            'differentArguments' => [
+            'differentArgumentTypes' => [
                 '<?php
                     class A {
                         public function fooFoo(int $a, bool $b): void {
@@ -878,12 +878,27 @@ class MethodSignatureTest extends TestCase
                     }
 
                     class B extends A {
-                        public function fooFoo(bool $b, int $a): void {
+                        public function fooFoo(int $a, int $b): void {
 
                         }
                     }',
-                'error_message' => 'Argument 1 of B::fooFoo has wrong type \'bool\', expecting \'int\' as defined ' .
+                'error_message' => 'Argument 2 of B::fooFoo has wrong type \'int\', expecting \'bool\' as defined ' .
                     'by A::fooFoo',
+            ],
+            'differentArgumentNames' => [
+                '<?php
+                    class A {
+                        public function fooFoo(int $a, bool $b): void {
+
+                        }
+                    }
+
+                    class B extends A {
+                        public function fooFoo(int $a, bool $c): void {
+
+                        }
+                    }',
+                'error_message' => 'ParamNameMismatch',
             ],
             'nonNullableSubclassParam' => [
                 '<?php
@@ -1083,7 +1098,7 @@ class MethodSignatureTest extends TestCase
                     class Bar implements Foo {
                         public function __construct(bool $foo) {}
                     }',
-                'error_message' => 'MethodSignatureMismatch',
+                'error_message' => 'ConstructorSignatureMismatch',
             ],
             'enforceParameterInheritanceWithInheritDoc' => [
                 '<?php
@@ -1358,7 +1373,7 @@ class MethodSignatureTest extends TestCase
                 false,
                 '7.3'
             ],
-            'inconsistentConstructorExplicitParentConstructor' => [
+            'inconsistentConstructorExplicitParentConstructorArgCount' => [
                 '<?php
                     /**
                      * @psalm-consistent-constructor
@@ -1375,7 +1390,26 @@ class MethodSignatureTest extends TestCase
                     class BadAChild extends A {
                         public function __construct(string $s) {}
                     }',
-                'error_message' => 'MethodSignatureMismatch',
+                'error_message' => 'ConstructorSignatureMismatch',
+            ],
+            'inconsistentConstructorExplicitParentConstructorType' => [
+                '<?php
+                    /**
+                     * @psalm-consistent-constructor
+                     */
+                    class A {
+                        public function getInstance() : self
+                        {
+                            return new static(5);
+                        }
+
+                        public function __construct(int $s) {}
+                    }
+
+                    class BadAChild extends A {
+                        public function __construct(string $s) {}
+                    }',
+                'error_message' => 'ConstructorSignatureMismatch',
             ],
             'inconsistentConstructorImplicitParentConstructor' => [
                 '<?php
@@ -1391,7 +1425,7 @@ class MethodSignatureTest extends TestCase
                     class BadAChild extends A {
                         public function __construct(string $s) {}
                     }',
-                'error_message' => 'MethodSignatureMismatch',
+                'error_message' => 'ConstructorSignatureMismatch',
             ],
         ];
     }

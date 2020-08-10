@@ -522,10 +522,26 @@ class Config
     public $after_analysis = [];
 
     /**
-     * Static methods to be called after codebase has been populated
-     * @var class-string<Hook\BeforeAnalyzeFileInterface>[]
+     * Static methods to be called after a file has been analyzed
+     * @var class-string<Hook\AfterFileAnalysisInterface>[]
      */
-    public $before_analyze_file = [];
+    public $after_file_checks = [];
+
+    /**
+     * Static methods to be called before a file is analyzed
+     * @var class-string<Hook\BeforeFileAnalysisInterface>[]
+     */
+    public $before_file_checks = [];
+
+    /**
+     * @var bool
+     */
+    public $allow_internal_named_param_calls = true;
+
+    /**
+     * @var bool
+     */
+    public $allow_named_param_calls = true;
 
     /**
      * Static methods to be called after functionlike checks have completed
@@ -825,6 +841,8 @@ class Config
             'sealAllMethods' => 'seal_all_methods',
             'runTaintAnalysis' => 'run_taint_analysis',
             'usePhpStormMetaPath' => 'use_phpstorm_meta_path',
+            'allowInternalNamedParamCalls' => 'allow_internal_named_param_calls',
+            'allowNamedParamCalls' => 'allow_named_param_calls',
         ];
 
         foreach ($booleanAttributes as $xmlName => $internalName) {

@@ -74,6 +74,8 @@
         <xs:attribute name="sealAllMethods" type="xs:boolean" default="false" />
         <xs:attribute name="runTaintAnalysis" type="xs:boolean" default="false" />
         <xs:attribute name="usePhpStormMetaPath" type="xs:boolean" default="true" />
+        <xs:attribute name="allowInternalNamedParamCalls" type="xs:boolean" default="true" />
+        <xs:attribute name="allowNamedParamCalls" type="xs:boolean" default="true" />
     </xs:complexType>
 
     <xs:complexType name="ProjectFilesType">
@@ -175,6 +177,7 @@
             <xs:element name="CircularReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ContinueOutsideLoop" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ConflictingReferenceConstraint" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="ConstructorSignatureMismatch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedClass" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedConstant" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="DeprecatedFunction" type="FunctionIssueHandlerType" minOccurs="0" />
@@ -301,6 +304,7 @@
             <xs:element name="NullReference" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="OverriddenMethodAccess" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="OverriddenPropertyAccess" type="PropertyIssueHandlerType" minOccurs="0" />
+            <xs:element name="ParamNameMismatch" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ParadoxicalCondition" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="ParentNotFound" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossibleRawObjectIteration" type="IssueHandlerType" minOccurs="0" />

@@ -1246,12 +1246,17 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $pseudo_property_type_tokens = TypeTokenizer::getFullyQualifiedTokens(
                             $property['type'],
                             $this->aliases,
-                            null,
+                            $this->class_template_types,
                             $this->type_aliases
                         );
 
                         try {
-                            $pseudo_property_type = TypeParser::parseTokens($pseudo_property_type_tokens);
+                            $pseudo_property_type = TypeParser::parseTokens(
+                                $pseudo_property_type_tokens,
+                                null,
+                                $this->class_template_types,
+                                $this->type_aliases
+                            );
                             $pseudo_property_type->setFromDocblock();
                             $pseudo_property_type->queueClassLikesForScanning(
                                 $this->codebase,
@@ -2277,6 +2282,14 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
             )
         ) {
             $storage->internal = $docblock_info->psalm_internal ?? '';
+        }
+
+        if (($storage->internal || ($class_storage && $class_storage->internal))
+            && !$this->config->allow_internal_named_param_calls
+        ) {
+            $storage->allow_named_param_calls = false;
+        } elseif ($docblock_info->no_named_params) {
+            $storage->allow_named_param_calls = false;
         }
 
         if ($docblock_info->variadic) {

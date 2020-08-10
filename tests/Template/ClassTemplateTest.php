@@ -637,6 +637,53 @@ class ClassTemplateTest extends TestCase
                         if ($c->getType() === FooChild::class) {}
                     }',
             ],
+            'getMagicPropertyOnClass' => [
+                '<?php
+                   class A {}
+
+                   /**
+                    * @template T as A
+                    * @property ?T $x
+                    */
+                   class B {
+                       /** @var ?T */
+                       public $y;
+
+                       public function __get() {}
+                   }
+
+                   $b = new B();
+                   $b_x = $b->x;
+                   $b_y = $b->y;
+                ',
+                'assertions' => [
+                    '$b_x' => 'A|null',
+                    '$b_y' => 'A|null',
+                ],
+            ],
+            'getMagicPropertyOnThis' => [
+                '<?php
+                   abstract class A {}
+
+                   class X extends A {}
+
+                   /**
+                    * @template T as A
+                    * @property ?T $x
+                    */
+                   class B {
+                       /** @var ?T */
+                       public $y;
+
+                       public function __get() {}
+
+                       public function test(): void {
+                           if ($this->x instanceof X) {}
+                           if ($this->y instanceof X) {}
+                       }
+                   }
+                ',
+            ],
             'getEquateClass' => [
                 '<?php
                     class Foo {
@@ -2739,7 +2786,10 @@ class ClassTemplateTest extends TestCase
                      * @return T
                      */
                     function unwrap(array $containers) {
-                        return array_map(fn($container) => $container->get(), $containers)[0];
+                        return array_map(
+                            fn($container) => $container->get(),
+                            $containers
+                        )[0];
                     }
 
                     /**
@@ -2750,7 +2800,10 @@ class ClassTemplateTest extends TestCase
 
                         if (is_string($ret)) {}
                         if (is_int($ret)) {}
-                    }'
+                    }',
+                [],
+                [],
+                '7.4'
             ],
             'templateWithLateResolvedType' => [
                 '<?php
