@@ -17,12 +17,14 @@ use function implode;
 use function in_array;
 use function interface_exists;
 use function is_string;
+use function join;
 use PhpParser;
 use function preg_match;
 use function preg_replace;
 use Psalm\Aliases;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\CodeLocation\DocblockTypeLocation;
 use Psalm\Config;
 use Psalm\DocComment;
 use Psalm\Exception\DocblockParseException;
@@ -51,6 +53,7 @@ use Psalm\Issue\DuplicateFunction;
 use Psalm\Issue\DuplicateMethod;
 use Psalm\Issue\DuplicateParam;
 use Psalm\Issue\InvalidDocblock;
+use Psalm\Issue\InvalidTypeImport;
 use Psalm\Issue\MissingDocblockType;
 use Psalm\IssueBuffer;
 use Psalm\Storage\ClassLikeStorage;
@@ -166,7 +169,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     public function enterNode(PhpParser\Node $node)
     {
         foreach ($node->getComments() as $comment) {
-            if ($comment instanceof PhpParser\Comment\Doc) {
+            if ($comment instanceof PhpParser\Comment\Doc && !$node instanceof PhpParser\Node\Stmt\ClassLike) {
                 $self_fqcln = $node instanceof PhpParser\Node\Stmt\ClassLike
                     && $node->name !== null
                     ? ($this->aliases->namespace ? $this->aliases->namespace . '\\' : '') . $node->name->name
@@ -186,12 +189,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     }
 
                     $this->type_aliases += $type_aliases;
-
-                    if ($type_aliases
-                        && $node instanceof PhpParser\Node\Stmt\ClassLike
-                    ) {
-                        $this->classlike_type_aliases = $type_aliases;
-                    }
                 } catch (DocblockParseException $e) {
                     $this->file_storage->docblock_issues[] = new InvalidDocblock(
                         (string)$e->getMessage(),
@@ -609,23 +606,38 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 }
             }
 
-            $classlike_storage->type_aliases = \array_map(
+            $converted_aliases = \array_map(
                 function (TypeAlias\InlineTypeAlias $t) {
-                    $union = TypeParser::parseTokens(
-                        $t->replacement_tokens,
-                        null,
-                        [],
-                        $this->type_aliases
-                    );
+                    try {
+                        $union = TypeParser::parseTokens(
+                            $t->replacement_tokens,
+                            null,
+                            [],
+                            $this->type_aliases
+                        );
 
-                    $union->setFromDocblock();
+                        $union->setFromDocblock();
 
-                    return new TypeAlias\ClassTypeAlias(
-                        \array_values($union->getAtomicTypes())
-                    );
+                        return new TypeAlias\ClassTypeAlias(
+                            \array_values($union->getAtomicTypes())
+                        );
+                    } catch (\Exception $e) {
+                        return null;
+                    }
                 },
                 $this->classlike_type_aliases
             );
+
+            foreach ($converted_aliases as $key => $type) {
+                if (!$type) {
+                    $classlike_storage->docblock_issues[] = new InvalidDocblock(
+                        '@psalm-type ' . $key . ' contains invalid references',
+                        new CodeLocation($this->file_scanner, $node, null, true)
+                    );
+                }
+            }
+
+            $classlike_storage->type_aliases = \array_filter($converted_aliases);
 
             $this->classlike_type_aliases = [];
 
@@ -861,7 +873,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $this->file_storage->declaring_constants[$const_name] = $this->file_path;
                     }
 
-                    if ($this->codebase->register_stub_files || $this->codebase->register_autoload_files) {
+                    if (($this->codebase->register_stub_files || $this->codebase->register_autoload_files)
+                        && !\defined($const_name)
+                    ) {
                         $this->codebase->addGlobalConstantType($const_name, $const_type);
                     }
                 }
@@ -1295,29 +1309,78 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $storage->sealed_methods = true;
                 }
 
-                foreach ($docblock_info->imported_types as $imported_type_data) {
-                    if (count($imported_type_data) > 2 && $imported_type_data[1] === 'from') {
+                foreach ($docblock_info->imported_types as $import_type_entry) {
+                    $imported_type_data = $import_type_entry['parts'];
+                    $location = new DocblockTypeLocation(
+                        $this->file_scanner,
+                        $import_type_entry['start_offset'],
+                        $import_type_entry['end_offset'],
+                        $import_type_entry['line_number']
+                    );
+                    // There are two valid forms:
+                    // @psalm-import Thing from Something
+                    // @psalm-import Thing from Something as Alias
+                    // but there could be leftovers after that
+                    if (count($imported_type_data) < 3) {
+                        $storage->docblock_issues[] = new InvalidTypeImport(
+                            'Invalid import in docblock for ' . implode('.', $this->fq_classlike_names)
+                            . ', expecting "<TypeName> from <ClassName>",'
+                            . ' got "' . join(' ', $imported_type_data) . '" instead.',
+                            $location
+                        );
+                        continue;
+                    }
+
+                    if ($imported_type_data[1] === 'from'
+                        && !empty($imported_type_data[0])
+                        && !empty($imported_type_data[2])
+                    ) {
                         $type_alias_name = $as_alias_name = $imported_type_data[0];
                         $declaring_classlike_name = $imported_type_data[2];
+                    } else {
+                        $storage->docblock_issues[] = new InvalidTypeImport(
+                            'Invalid import in docblock for ' . implode('.', $this->fq_classlike_names)
+                            . ', expecting "<TypeName> from <ClassName>", got "'
+                            . join(
+                                ' ',
+                                [$imported_type_data[0], $imported_type_data[1], $imported_type_data[2]]
+                            ) . '" instead.',
+                            $location
+                        );
+                        continue;
+                    }
 
-                        if (count($imported_type_data) > 4 && $imported_type_data[3] === 'as') {
-                            $as_alias_name = $imported_type_data[4];
+                    if (count($imported_type_data) >= 4 && $imported_type_data[3] === 'as') {
+                        // long form
+                        if (empty($imported_type_data[4])) {
+                            $storage->docblock_issues[] = new InvalidTypeImport(
+                                'Invalid import in docblock for ' . implode('.', $this->fq_classlike_names)
+                                . ', expecting "as <TypeName>", got "'
+                                . $imported_type_data[3] . ' ' . ($imported_type_data[4] ?? '') . '" instead.',
+                                $location
+                            );
+                            continue;
                         }
 
-                        $declaring_fq_classlike_name = Type::getFQCLNFromString(
-                            $declaring_classlike_name,
-                            $this->aliases
-                        );
-
-                        $this->codebase->scanner->queueClassLikeForScanning($declaring_fq_classlike_name);
-                        $this->file_storage->referenced_classlikes[strtolower($declaring_fq_classlike_name)]
-                            = $declaring_fq_classlike_name;
-
-                        $this->type_aliases[$as_alias_name] = new TypeAlias\LinkableTypeAlias(
-                            $declaring_fq_classlike_name,
-                            $type_alias_name
-                        );
+                        $as_alias_name = $imported_type_data[4];
                     }
+
+                    $declaring_fq_classlike_name = Type::getFQCLNFromString(
+                        $declaring_classlike_name,
+                        $this->aliases
+                    );
+
+                    $this->codebase->scanner->queueClassLikeForScanning($declaring_fq_classlike_name);
+                    $this->file_storage->referenced_classlikes[strtolower($declaring_fq_classlike_name)]
+                        = $declaring_fq_classlike_name;
+
+                    $this->type_aliases[$as_alias_name] = new TypeAlias\LinkableTypeAlias(
+                        $declaring_fq_classlike_name,
+                        $type_alias_name,
+                        $import_type_entry['line_number'],
+                        $import_type_entry['start_offset'],
+                        $import_type_entry['end_offset']
+                    );
                 }
 
                 $storage->deprecated = $docblock_info->deprecated;
@@ -1406,6 +1469,42 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $storage->override_method_visibility = $docblock_info->override_method_visibility;
 
                 $storage->suppressed_issues = $docblock_info->suppressed_issues;
+            }
+        }
+
+        foreach ($node->getComments() as $comment) {
+            if (!$comment instanceof PhpParser\Comment\Doc) {
+                continue;
+            }
+
+            try {
+                $type_aliases = CommentAnalyzer::getTypeAliasesFromComment(
+                    $comment,
+                    $this->aliases,
+                    $this->type_aliases,
+                    $fq_classlike_name
+                );
+
+                foreach ($type_aliases as $type_alias) {
+                    // finds issues, if there are any
+                    TypeParser::parseTokens($type_alias->replacement_tokens);
+                }
+
+                $this->type_aliases += $type_aliases;
+
+                if ($type_aliases) {
+                    $this->classlike_type_aliases = $type_aliases;
+                }
+            } catch (DocblockParseException $e) {
+                $storage->docblock_issues[] = new InvalidDocblock(
+                    (string)$e->getMessage(),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                );
+            } catch (TypeParseTreeException $e) {
+                $storage->docblock_issues[] = new InvalidDocblock(
+                    (string)$e->getMessage(),
+                    new CodeLocation($this->file_scanner, $node, null, true)
+                );
             }
         }
 
@@ -2285,11 +2384,11 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
         }
 
         if (($storage->internal || ($class_storage && $class_storage->internal))
-            && !$this->config->allow_internal_named_param_calls
+            && !$this->config->allow_internal_named_arg_calls
         ) {
-            $storage->allow_named_param_calls = false;
-        } elseif ($docblock_info->no_named_params) {
-            $storage->allow_named_param_calls = false;
+            $storage->allow_named_arg_calls = false;
+        } elseif ($docblock_info->no_named_args) {
+            $storage->allow_named_arg_calls = false;
         }
 
         if ($docblock_info->variadic) {
@@ -2423,7 +2522,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $assertion_type_parts = $this->getAssertionParts(
                     $storage,
                     $assertion['type'],
-                    $stmt
+                    $stmt,
+                    $class_storage && !$class_storage->is_trait ? $class_storage->name : null
                 );
 
                 if (!$assertion_type_parts) {
@@ -2454,7 +2554,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $assertion_type_parts = $this->getAssertionParts(
                     $storage,
                     $assertion['type'],
-                    $stmt
+                    $stmt,
+                    $class_storage && !$class_storage->is_trait ? $class_storage->name : null
                 );
 
                 if (!$assertion_type_parts) {
@@ -2485,7 +2586,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                 $assertion_type_parts = $this->getAssertionParts(
                     $storage,
                     $assertion['type'],
-                    $stmt
+                    $stmt,
+                    $class_storage && !$class_storage->is_trait ? $class_storage->name : null
                 );
 
                 if (!$assertion_type_parts) {
@@ -2972,7 +3074,8 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
     private function getAssertionParts(
         FunctionLikeStorage $storage,
         string $assertion_type,
-        PhpParser\Node\FunctionLike $stmt
+        PhpParser\Node\FunctionLike $stmt,
+        ?string $self_fqcln
     ) : ?array {
         $prefix = '';
 
@@ -3002,7 +3105,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $this->aliases,
                     $this->function_template_types + $class_template_types,
                     $this->type_aliases,
-                    null,
+                    $self_fqcln,
                     null,
                     true
                 )

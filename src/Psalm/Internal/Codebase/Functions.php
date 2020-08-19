@@ -303,7 +303,7 @@ class Functions
             'fopen', 'fread', 'fwrite', 'fclose', 'touch', 'fpassthru', 'fputs', 'fscanf', 'fseek',
             'ftruncate', 'fprintf', 'symlink', 'mkdir', 'unlink', 'rename', 'rmdir', 'popen', 'pclose',
             'fgetcsv', 'fputcsv', 'umask', 'finfo_close', 'readline_add_history', 'stream_set_timeout',
-            'fflush', 'move_uploaded_file',
+            'fgets', 'fflush', 'move_uploaded_file',
 
             // stream/socket io
             'stream_context_set_option', 'socket_write', 'stream_set_blocking', 'socket_close',
@@ -354,6 +354,7 @@ class Functions
             'mt_rand', 'rand', 'random_int', 'random_bytes',
             'wincache_ucache_delete', 'wincache_ucache_set', 'wincache_ucache_inc',
             'class_alias',
+            'class_exists', // impure by virtue of triggering autoloader
 
             // php environment
             'ini_set', 'sleep', 'usleep', 'register_shutdown_function',

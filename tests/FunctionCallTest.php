@@ -873,7 +873,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $h = hash_init("sha256");',
                 [
-                    '$h' => 'HashContext',
+                    '$h' => 'HashContext|false',
                 ],
                 [],
                 '7.2',
@@ -882,7 +882,7 @@ class FunctionCallTest extends TestCase
                 '<?php
                     $h = hash_init("sha256");',
                 [
-                    '$h' => 'HashContext',
+                    '$h' => 'HashContext|false',
                 ],
                 [],
                 '7.3',
@@ -1595,18 +1595,6 @@ class FunctionCallTest extends TestCase
                 '<?php
                     function sort() : void {}',
                 'error_message' => 'DuplicateFunction',
-            ],
-            'usortInvalidComparison' => [
-                '<?php
-                    $arr = [["one"], ["two"], ["three"]];
-
-                    usort(
-                        $arr,
-                        function (string $a, string $b): int {
-                            return strcmp($a, $b);
-                        }
-                    );',
-                'error_message' => 'InvalidArgument',
             ],
             'functionCallOnMixed' => [
                 '<?php
