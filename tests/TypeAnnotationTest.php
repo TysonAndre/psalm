@@ -305,6 +305,37 @@ class TypeAnnotationTest extends TestCase
                         }
                     }'
             ],
+            'usedInVarForForeach' => [
+                '<?php
+                /** @psalm-type _B=array{p1:string} */
+                function e(array $a): void
+                {
+                    /** @var _B $elt */
+                    foreach ($a as $elt) {
+                        echo $elt["p1"];
+                    }
+                }'
+            ],
+            'objectWithPropertiesAlias' => [
+                '<?php
+                    /**
+                     * @psalm-type FooStruct=string
+                     */
+                    class A {}
+
+                    /**
+                     * @psalm-import-type FooStruct from A as F2
+                     */
+                    class B {
+                        /**
+                         * @param object{foo: F2} $a
+                         * @return object{foo: string}
+                         */
+                        public function bar($a) {
+                            return $a;
+                        }
+                    }'
+            ],
         ];
     }
 

@@ -1,15 +1,19 @@
 <?php
 namespace Psalm\Tests\Config;
 
+use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psalm\Config;
 use Psalm\Internal\PluginManager\ComposerLock;
 use Psalm\Internal\PluginManager\ConfigFile;
 use Psalm\Internal\PluginManager\PluginList;
+use Psalm\Internal\RuntimeCaches;
 
 /** @group PluginManager */
 class PluginListTest extends \Psalm\Tests\TestCase
 {
+    use ProphecyTrait;
+
     /** @var ObjectProphecy<ConfigFile> */
     private $config_file;
 
@@ -21,6 +25,8 @@ class PluginListTest extends \Psalm\Tests\TestCase
 
     public function setUp() : void
     {
+        RuntimeCaches::clearAll();
+
         $this->config = $this->prophesize(Config::class);
         $this->config->getPluginClasses()->willReturn([]);
 

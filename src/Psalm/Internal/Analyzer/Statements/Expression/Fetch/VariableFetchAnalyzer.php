@@ -9,6 +9,7 @@ use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Taint\Source;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Issue\ImpureVariable;
 use Psalm\Issue\InvalidScope;
 use Psalm\Issue\PossiblyUndefinedGlobalVariable;
 use Psalm\Issue\PossiblyUndefinedVariable;
@@ -104,6 +105,22 @@ class VariableFetchAnalyzer
                 );
             }
 
+            if ($context->pure) {
+                if (IssueBuffer::accepts(
+                    new ImpureVariable(
+                        'Cannot reference $this in a pure context',
+                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            } elseif ($statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                && $statements_analyzer->getSource()->track_mutations
+            ) {
+                $statements_analyzer->getSource()->inferred_impure = true;
+            }
+
             return true;
         }
 
@@ -150,6 +167,22 @@ class VariableFetchAnalyzer
         }
 
         if (!is_string($stmt->name)) {
+            if ($context->pure) {
+                if (IssueBuffer::accepts(
+                    new ImpureVariable(
+                        'Cannot reference an unknown variable in a pure context',
+                        new CodeLocation($statements_analyzer->getSource(), $stmt)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
+                }
+            } elseif ($statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                && $statements_analyzer->getSource()->track_mutations
+            ) {
+                $statements_analyzer->getSource()->inferred_impure = true;
+            }
+
             return ExpressionAnalyzer::analyze($statements_analyzer, $stmt->name, $context);
         }
 
@@ -397,6 +430,9 @@ class VariableFetchAnalyzer
         }
     }
 
+    /**
+     * @psalm-pure
+     */
     public static function isSuperGlobal(string $var_id) : bool
     {
         return in_array(

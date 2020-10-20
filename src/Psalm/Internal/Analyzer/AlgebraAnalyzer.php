@@ -49,15 +49,17 @@ class AlgebraAnalyzer
         $formula1_hashes = [];
 
         foreach ($formula1 as $formula1_clause) {
-            $formula1_hashes[$formula1_clause->getHash()] = true;
+            $formula1_hashes[$formula1_clause->hash] = true;
         }
 
         $formula2_hashes = [];
 
         foreach ($formula2 as $formula2_clause) {
-            $hash = $formula2_clause->getHash();
+            $hash = $formula2_clause->hash;
 
             if (!$formula2_clause->generated
+                && !$formula2_clause->wedge
+                && $formula2_clause->reconcilable
                 && (isset($formula1_hashes[$hash]) || isset($formula2_hashes[$hash]))
                 && !array_intersect_key($new_assigned_var_ids, $formula2_clause->possibilities)
             ) {

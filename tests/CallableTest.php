@@ -56,6 +56,9 @@ class CallableTest extends TestCase
                         fn(string $a) => $a . "blah",
                         $bar
                     );',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4',
             ],
             'varReturnType' => [
                 '<?php
@@ -76,6 +79,8 @@ class CallableTest extends TestCase
                 'assertions' => [
                     '$a' => 'int',
                 ],
+                'error_levels' => [],
+                '7.4',
             ],
             'varCallableParamReturnType' => [
                 '<?php
@@ -111,6 +116,9 @@ class CallableTest extends TestCase
                     function foo() {
                         return fn(string $a): string => $a . "blah";
                     }',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4',
             ],
             'callable' => [
                 '<?php
@@ -1138,6 +1146,42 @@ class CallableTest extends TestCase
                     $a();',
                 'error_message' => 'InvalidFunctionCall',
             ],
+            'ImpureFunctionCall' => [
+                '<?php
+                    /**
+                     * @psalm-template T
+                     *
+                     * @psalm-param array<int, T> $values
+                     * @psalm-param (callable(T): numeric) $num_func
+                     *
+                     * @psalm-return null|T
+                     *
+                     * @psalm-pure
+                     */
+                    function max_by(array $values, callable $num_func)
+                    {
+                        $max = null;
+                        $max_num = null;
+                        foreach ($values as $value) {
+                            $value_num = $num_func($value);
+                            if (null === $max_num || $value_num >= $max_num) {
+                                $max = $value;
+                                $max_num = $value_num;
+                            }
+                        }
+
+                        return $max;
+                    }
+
+                    $c = max_by([1, 2, 3], static function(int $a): int {
+                        return $a + mt_rand(0, $a);
+                    });
+
+                    echo $c;
+                ',
+                'error_message' => 'ImpureFunctionCall',
+                'error_levels' => [],
+            ]
         ];
     }
 }

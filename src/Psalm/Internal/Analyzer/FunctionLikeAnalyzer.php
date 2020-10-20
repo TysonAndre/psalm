@@ -100,6 +100,21 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
     protected static $no_effects_hashes = [];
 
     /**
+     * @var bool
+     */
+    public $track_mutations = false;
+
+    /**
+     * @var bool
+     */
+    public $inferred_impure = false;
+
+    /**
+     * @var bool
+     */
+    public $inferred_has_mutation = false;
+
+    /**
      * @var FunctionLikeStorage
      */
     protected $storage;
@@ -361,6 +376,7 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
             if ($storage instanceof FunctionStorage) {
                 $closure_type->byref_uses = $storage->byref_uses;
+                $closure_type->is_pure = $storage->pure;
             }
 
             $type_provider->setType(
@@ -571,7 +587,66 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
 
         $project_analyzer = $statements_analyzer->getProjectAnalyzer();
 
+        if ($codebase->alter_code
+            && (isset($project_analyzer->getIssuesToFix()['MissingPureAnnotation'])
+                || isset($project_analyzer->getIssuesToFix()['MissingImmutableAnnotation']))
+        ) {
+            $this->track_mutations = true;
+        } elseif ($this->function instanceof Closure
+            || $this->function instanceof ArrowFunction
+        ) {
+            $this->track_mutations = true;
+        }
+
         $statements_analyzer->analyze($function_stmts, $context, $global_context, true);
+
+        if ($codebase->alter_code
+            && isset($project_analyzer->getIssuesToFix()['MissingPureAnnotation'])
+            && !$this->inferred_impure
+            && ($this->function instanceof Function_
+                || $this->function instanceof ClassMethod)
+            && $storage->params
+            && !$overridden_method_ids
+        ) {
+            $manipulator = FunctionDocblockManipulator::getForFunction(
+                $project_analyzer,
+                $this->source->getFilePath(),
+                $this->function
+            );
+
+            $yield_types = [];
+
+            $inferred_return_types = ReturnTypeCollector::getReturnTypes(
+                $codebase,
+                $type_provider,
+                $function_stmts,
+                $yield_types,
+                true
+            );
+
+            $inferred_return_type = $inferred_return_types
+                ? \Psalm\Type::combineUnionTypeArray(
+                    $inferred_return_types,
+                    $codebase
+                )
+                : null;
+
+            if ($inferred_return_type
+                && !$inferred_return_type->isVoid()
+                && !$inferred_return_type->isFalse()
+                && !$inferred_return_type->isNull()
+                && !$inferred_return_type->isSingleIntLiteral()
+                && !$inferred_return_type->isSingleStringLiteral()
+                && !$inferred_return_type->isTrue()
+                && $inferred_return_type->getId() !== 'array<empty, empty>'
+            ) {
+                $manipulator->makePure();
+            }
+        }
+
+        if ($this->inferred_has_mutation && $context->self) {
+            $this->codebase->analyzer->addMutableClass($context->self);
+        }
 
         if (!$context->collect_initializations
             && !$context->collect_mutations
@@ -662,22 +737,25 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
                     $closure_return_type = $closure_yield_type;
                 }
 
-                if (($storage->return_type === $storage->signature_return_type)
-                    && (!$storage->return_type
-                        || $storage->return_type->hasMixed()
-                        || UnionTypeComparator::isContainedBy(
-                            $codebase,
-                            $closure_return_type,
-                            $storage->return_type
-                        ))
-                ) {
-                    if ($function_type = $statements_analyzer->node_data->getType($this->function)) {
-                        /**
-                         * @var Type\Atomic\TFn
-                         */
-                        $closure_atomic = \array_values($function_type->getAtomicTypes())[0];
+                if ($function_type = $statements_analyzer->node_data->getType($this->function)) {
+                    /**
+                     * @var Type\Atomic\TFn
+                     */
+                    $closure_atomic = \array_values($function_type->getAtomicTypes())[0];
+
+                    if (($storage->return_type === $storage->signature_return_type)
+                        && (!$storage->return_type
+                            || $storage->return_type->hasMixed()
+                            || UnionTypeComparator::isContainedBy(
+                                $codebase,
+                                $closure_return_type,
+                                $storage->return_type
+                            ))
+                    ) {
                         $closure_atomic->return_type = $closure_return_type;
                     }
+
+                    $closure_atomic->is_pure = !$this->inferred_impure;
                 }
             }
         }
@@ -1454,7 +1532,6 @@ abstract class FunctionLikeAnalyzer extends SourceAnalyzer
         $manipulator = FunctionDocblockManipulator::getForFunction(
             $project_analyzer,
             $this->source->getFilePath(),
-            $this->getId(),
             $this->function
         );
 

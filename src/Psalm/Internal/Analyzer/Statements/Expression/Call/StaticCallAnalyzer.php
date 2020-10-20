@@ -1140,6 +1140,16 @@ class StaticCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                             )) {
                                 // fall through
                             }
+                        } elseif ($statements_analyzer->getSource()
+                                instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                            && $statements_analyzer->getSource()->track_mutations
+                            && !$method_storage->pure
+                        ) {
+                            if (!$method_storage->mutation_free) {
+                                $statements_analyzer->getSource()->inferred_has_mutation = true;
+                            }
+
+                            $statements_analyzer->getSource()->inferred_impure = true;
                         }
                     }
 

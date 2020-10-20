@@ -136,7 +136,7 @@ class BinaryOperationTest extends TestCase
                     $c = 25 % 2.5;
                     $d = 25.5 % 2.5;',
                 'assertions' => [
-                    '$a' => 'int',
+                    '$a' => 'int|int',
                     '$b' => 'int',
                     '$c' => 'int',
                     '$d' => 'int',
@@ -253,7 +253,10 @@ class BinaryOperationTest extends TestCase
                     function foo(?string $s): string {
                         $s ??= "Hello";
                         return $s;
-                    }'
+                    }',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4',
             ],
             'nullCoalescingArrayAssignment' => [
                 '<?php
@@ -266,7 +269,10 @@ class BinaryOperationTest extends TestCase
                         foreach ($arr as $a) {
                             $b[0] ??= $a;
                         }
-                    }'
+                    }',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4',
             ],
             'addArrays' => [
                 '<?php
@@ -277,6 +283,21 @@ class BinaryOperationTest extends TestCase
                     function a(array $opts): array {
                         return $opts + ["host" => 5];
                     }'
+            ],
+            'addIntToZero' => [
+                '<?php
+                    $tick = 0;
+
+                    test($tick + 1);
+
+                    $tick++;
+
+                    test($tick);
+
+                    /**
+                     * @psalm-param positive-int $tickedTimes
+                     */
+                    function test(int $tickedTimes): void {}'
             ],
         ];
     }

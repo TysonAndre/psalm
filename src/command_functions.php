@@ -303,6 +303,9 @@ function getPathsToCheck($f_paths)
     return $paths_to_check;
 }
 
+/**
+ * @psalm-pure
+ */
 function getPsalmHelpText(): string
 {
     return <<<HELP
@@ -551,6 +554,9 @@ function get_path_to_config(array $options): ?string
     return $path_to_config;
 }
 
+/**
+ * @psalm-pure
+ */
 function getMemoryLimitInBytes(): int
 {
     $limit = ini_get('memory_limit');

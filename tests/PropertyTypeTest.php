@@ -3092,7 +3092,7 @@ class PropertyTypeTest extends TestCase
 
                     $a = new A();
                     $a->bar = "goodbye";',
-                'error_message' => 'InaccessibleProperty - src/somefile.php:19:21',
+                'error_message' => 'InaccessibleProperty - src' . DIRECTORY_SEPARATOR . 'somefile.php:19:21',
             ],
             'readonlyPublicPropertySetInConstructorAndAlsoOutsideClass' => [
                 '<?php
@@ -3113,7 +3113,7 @@ class PropertyTypeTest extends TestCase
 
                     $a = new A();
                     $a->bar = "goodbye";',
-                'error_message' => 'InaccessibleProperty - src/somefile.php:18:21',
+                'error_message' => 'InaccessibleProperty - src' . DIRECTORY_SEPARATOR . 'somefile.php:18:21',
             ],
             'addNullToMixedAfterNullablePropertyFetch' => [
                 '<?php

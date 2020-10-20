@@ -60,8 +60,11 @@ class AndAnalyzer
 
         $codebase = $statements_analyzer->getCodebase();
 
+        $left_cond_id = \spl_object_id($stmt->left);
+
         $left_clauses = Algebra::getFormula(
-            \spl_object_id($stmt->left),
+            $left_cond_id,
+            $left_cond_id,
             $stmt->left,
             $context->self,
             $statements_analyzer,
@@ -91,7 +94,7 @@ class AndAnalyzer
                 array_filter(
                     $context_clauses,
                     function ($c) use ($reconciled_expression_clauses) {
-                        return !\in_array($c->getHash(), $reconciled_expression_clauses);
+                        return !\in_array($c->hash, $reconciled_expression_clauses);
                     }
                 )
             );
@@ -110,7 +113,7 @@ class AndAnalyzer
 
         $left_type_assertions = Algebra::getTruthsFromFormula(
             $simplified_clauses,
-            \spl_object_id($stmt->left),
+            $left_cond_id,
             $left_referenced_var_ids,
             $active_left_assertions
         );
@@ -202,7 +205,7 @@ class AndAnalyzer
                 $if_context->reconciled_expression_clauses,
                 array_map(
                     function ($c) {
-                        return $c->getHash();
+                        return $c->hash;
                     },
                     $partitioned_clauses[1]
                 )

@@ -62,7 +62,7 @@ class ParsedDocblock
                 }
 
                 foreach ($lines as $line) {
-                    $doc_comment_text .= $left_padding . ' * @' . $type . ' ' . $line . "\n";
+                    $doc_comment_text .= $left_padding . ' * @' . $type . ($line !== '' ? ' ' . $line : '') . "\n";
                 }
 
                 $last_type = $type;
@@ -87,5 +87,10 @@ class ParsedDocblock
     public static function addNewLineBetweenAnnotations(bool $should = true): void
     {
         static::$shouldAddNewLineBetweenAnnotations = $should;
+    }
+
+    public static function resetNewlineBetweenAnnotations(): void
+    {
+        static::$shouldAddNewLineBetweenAnnotations = true;
     }
 }

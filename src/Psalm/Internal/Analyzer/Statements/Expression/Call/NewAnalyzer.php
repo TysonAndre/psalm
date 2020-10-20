@@ -546,13 +546,13 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                         return false;
                     }
 
-                    if ($context->pure) {
-                        $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
+                    $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
-                        if ($declaring_method_id) {
-                            $method_storage = $codebase->methods->getStorage($declaring_method_id);
+                    if ($declaring_method_id) {
+                        $method_storage = $codebase->methods->getStorage($declaring_method_id);
 
-                            if (!$method_storage->external_mutation_free && !$context->inside_throw) {
+                        if (!$method_storage->external_mutation_free && !$context->inside_throw) {
+                            if ($context->pure) {
                                 if (IssueBuffer::accepts(
                                     new ImpureMethodCall(
                                         'Cannot call an impure constructor from a pure context',
@@ -562,6 +562,12 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                                 )) {
                                     // fall through
                                 }
+                            } elseif ($statements_analyzer->getSource()
+                                    instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                                && $statements_analyzer->getSource()->track_mutations
+                            ) {
+                                $statements_analyzer->getSource()->inferred_has_mutation = true;
+                                $statements_analyzer->getSource()->inferred_impure = true;
                             }
                         }
                     }
@@ -569,8 +575,6 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                     $generic_param_types = null;
 
                     if ($storage->template_types) {
-                        $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
-
                         $declaring_fq_class_name = $declaring_method_id
                             ? $declaring_method_id->fq_class_name
                             : $fq_class_name;
@@ -587,7 +591,11 @@ class NewAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\CallAna
                                     $template_result->upper_bounds
                                 );
                             } else {
-                                $generic_param_type = array_values($base_type)[0][0];
+                                if ($fq_class_name === 'SplObjectStorage') {
+                                    $generic_param_type = Type::getEmpty();
+                                } else {
+                                    $generic_param_type = array_values($base_type)[0][0];
+                                }
                             }
 
                             $generic_param_type->had_template = true;

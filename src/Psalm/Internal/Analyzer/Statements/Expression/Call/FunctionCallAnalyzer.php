@@ -567,6 +567,18 @@ class FunctionCallAnalyzer extends CallAnalyzer
 
             foreach ($stmt_name_type->getAtomicTypes() as $var_type_part) {
                 if ($var_type_part instanceof Type\Atomic\TFn || $var_type_part instanceof Type\Atomic\TCallable) {
+                    if (!$var_type_part->is_pure && $context->pure) {
+                        if (IssueBuffer::accepts(
+                            new ImpureFunctionCall(
+                                'Cannot call an impure function from a mutation-free context',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            ),
+                            $statements_analyzer->getSuppressedIssues()
+                        )) {
+                            // fall through
+                        }
+                    }
+
                     $function_params = $var_type_part->params;
 
                     if (($stmt_type = $statements_analyzer->node_data->getType($real_stmt))
@@ -805,8 +817,11 @@ class FunctionCallAnalyzer extends CallAnalyzer
         PhpParser\Node\Arg $first_arg,
         Context $context
     ) : void {
+        $first_arg_value_id = \spl_object_id($first_arg->value);
+
         $assert_clauses = \Psalm\Type\Algebra::getFormula(
-            \spl_object_id($first_arg->value),
+            $first_arg_value_id,
+            $first_arg_value_id,
             $first_arg->value,
             $context->self,
             $statements_analyzer,
@@ -1139,6 +1154,9 @@ class FunctionCallAnalyzer extends CallAnalyzer
         }
     }
 
+    /**
+     * @psalm-pure
+     */
     private static function simpleExclusion(string $pattern, string $escape_char) : bool
     {
         $str_length = \strlen($pattern);
@@ -1226,7 +1244,9 @@ class FunctionCallAnalyzer extends CallAnalyzer
             && ($context->mutation_free
                 || $context->external_mutation_free
                 || $codebase->find_unused_variables
-                || !$config->remember_property_assignments_after_call)
+                || !$config->remember_property_assignments_after_call
+                || ($statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                    && $statements_analyzer->getSource()->track_mutations))
         ) {
             $must_use = true;
 
@@ -1255,6 +1275,11 @@ class FunctionCallAnalyzer extends CallAnalyzer
                     )) {
                         // fall through
                     }
+                } elseif ($statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                    && $statements_analyzer->getSource()->track_mutations
+                ) {
+                    $statements_analyzer->getSource()->inferred_has_mutation = true;
+                    $statements_analyzer->getSource()->inferred_impure = true;
                 }
 
                 if (!$config->remember_property_assignments_after_call) {

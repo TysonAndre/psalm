@@ -243,6 +243,9 @@ class CommentAnalyzer
         }
     }
 
+    /**
+     * @psalm-pure
+     */
     private static function sanitizeDocblockType(string $docblock_type) : string
     {
         $docblock_type = preg_replace('@^[ \t]*\*@m', '', $docblock_type);
@@ -1140,7 +1143,9 @@ class CommentAnalyzer
                                 'Badly-formatted @method string ' . $method_entry . ' - ' . $e
                             );
                         }
-                        $docblock_lines[] = '@param \\' . $param_type . ' '
+
+                        $param_type_string = $param_type->toNamespacedString('\\', [], null, false);
+                        $docblock_lines[] = '@param ' . $param_type_string . ' '
                             . ($method_tree_child->variadic ? '...' : '')
                             . $method_tree_child->name;
                     }
@@ -1271,11 +1276,13 @@ class CommentAnalyzer
     }
 
     /**
-     * @param  string $return_block
+     * @param string $return_block
      *
      * @throws DocblockParseException if an invalid string is found
      *
      * @return list<string>
+     *
+     * @psalm-pure
      */
     public static function splitDocLine($return_block)
     {
@@ -1441,6 +1448,8 @@ class CommentAnalyzer
      * @param array<int, string> $lines
      *
      * @return list<string>
+     *
+     * @psalm-pure
      */
     private static function extractAllParamNames(array $lines)
     {

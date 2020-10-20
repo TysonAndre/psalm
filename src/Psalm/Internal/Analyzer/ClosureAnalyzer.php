@@ -78,9 +78,6 @@ class ClosureAnalyzer extends FunctionLikeAnalyzer
         }
 
         $use_context = new Context($context->self);
-        $use_context->mutation_free = $context->mutation_free;
-        $use_context->external_mutation_free = $context->external_mutation_free;
-        $use_context->pure = $context->pure;
 
         $codebase = $statements_analyzer->getCodebase();
 
@@ -174,6 +171,18 @@ class ClosureAnalyzer extends FunctionLikeAnalyzer
         $use_context->calling_method_id = $context->calling_method_id;
 
         $closure_analyzer->analyze($use_context, $statements_analyzer->node_data, $context, false, $byref_uses);
+
+        if ($closure_analyzer->inferred_impure
+            && $statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+        ) {
+            $statements_analyzer->getSource()->inferred_impure = true;
+        }
+
+        if ($closure_analyzer->inferred_has_mutation
+            && $statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+        ) {
+            $statements_analyzer->getSource()->inferred_has_mutation = true;
+        }
 
         if (!$statements_analyzer->node_data->getType($stmt)) {
             $statements_analyzer->node_data->setType($stmt, Type::getClosure());

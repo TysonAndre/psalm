@@ -9,6 +9,7 @@ use Psalm\Type;
 use Psalm\Type\Atomic\ObjectLike;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TCallable;
+use Psalm\Type\Atomic\TFn;
 use Psalm\Type\Atomic\TList;
 use Psalm\Type\Atomic\TLiteralString;
 use Psalm\Type\Atomic\TNamedObject;
@@ -30,6 +31,14 @@ class CallableTypeComparator
         Type\Atomic $container_type_part,
         ?TypeComparisonResult $atomic_comparison_result
     ) : bool {
+        if ($container_type_part->is_pure && !$input_type_part->is_pure) {
+            if ($atomic_comparison_result) {
+                $atomic_comparison_result->type_coerced = $input_type_part->is_pure === null;
+            }
+
+            return false;
+        }
+
         if ($container_type_part->params !== null && $input_type_part->params === null) {
             if ($atomic_comparison_result) {
                 $atomic_comparison_result->type_coerced = true;
@@ -208,14 +217,18 @@ class CallableTypeComparator
     }
 
     /**
-     * @return ?TCallable
+     * @return TCallable|TFn|null
      */
     public static function getCallableFromAtomic(
         Codebase $codebase,
         Type\Atomic $input_type_part,
         ?TCallable $container_type_part = null,
         ?StatementsAnalyzer $statements_analyzer = null
-    ) : ?TCallable {
+    ) {
+        if ($input_type_part instanceof TCallable || $input_type_part instanceof TFn) {
+            return $input_type_part;
+        }
+
         if ($input_type_part instanceof TLiteralString && $input_type_part->value) {
             try {
                 $function_storage = $codebase->functions->getStorage(
@@ -291,7 +304,8 @@ class CallableTypeComparator
                     return new TCallable(
                         'callable',
                         $method_storage->params,
-                        $converted_return_type
+                        $converted_return_type,
+                        $method_storage->pure
                     );
                 } catch (\UnexpectedValueException $e) {
                     // do nothing
@@ -306,13 +320,24 @@ class CallableTypeComparator
             );
 
             if ($codebase->methods->methodExists($invoke_id)) {
+                $method_storage = $codebase->methods->getStorage($invoke_id);
+                $method_fqcln = $invoke_id->fq_class_name;
+                $converted_return_type = null;
+                if ($method_storage->return_type) {
+                    $converted_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
+                        $codebase,
+                        $method_storage->return_type,
+                        $method_fqcln,
+                        $method_fqcln,
+                        null
+                    );
+                }
+
                 return new TCallable(
                     'callable',
-                    $codebase->methods->getMethodParams($invoke_id),
-                    $codebase->methods->getMethodReturnType(
-                        $invoke_id,
-                        $input_type_part->value
-                    )
+                    $method_storage->params,
+                    $converted_return_type,
+                    $method_storage->pure
                 );
             }
         }

@@ -16,6 +16,7 @@ use Psalm\FileManipulation;
 use Psalm\Internal\Analyzer\IssueData;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\FileManipulation\ClassDocblockManipulator;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
 use Psalm\Internal\FileManipulation\PropertyDocblockManipulator;
@@ -59,7 +60,9 @@ use function array_values;
  *      possible_method_param_types: array<string, array<int, \Psalm\Type\Union>>,
  *      taint_data: ?\Psalm\Internal\Codebase\Taint,
  *      unused_suppressions: array<string, array<int, int>>,
- *      used_suppressions: array<string, array<int, bool>>
+ *      used_suppressions: array<string, array<int, bool>>,
+ *      function_docblock_manipulators: array<string, array<int, FunctionDocblockManipulator>>,
+ *      mutable_classes: array<string, bool>,
  * }
  */
 
@@ -167,6 +170,11 @@ class Analyzer
      * @var array<string, array<int, \Psalm\Type\Union>>
      */
     public $possible_method_param_types = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    public $mutable_classes = [];
 
     public function __construct(
         Config $config,
@@ -475,6 +483,8 @@ class Analyzer
                         'taint_data' => $codebase->taint,
                         'unused_suppressions' => $codebase->track_unused_suppressions ? IssueBuffer::getUnusedSuppressions() : [],
                         'used_suppressions' => $codebase->track_unused_suppressions ? IssueBuffer::getUsedSuppressions() : [],
+                        'function_docblock_manipulators' => FunctionDocblockManipulator::getManipulators(),
+                        'mutable_classes' => $codebase->analyzer->mutable_classes,
                     ];
                     // @codingStandardsIgnoreEnd
                 },
@@ -538,6 +548,10 @@ class Analyzer
                 $codebase->file_reference_provider->addClassPropertyLocations(
                     $pool_data['class_property_locations']
                 );
+
+                $this->mutable_classes = array_merge($this->mutable_classes, $pool_data['mutable_classes']);
+
+                FunctionDocblockManipulator::addManipulators($pool_data['function_docblock_manipulators']);
 
                 $this->analyzed_methods = array_merge($pool_data['analyzed_methods'], $this->analyzed_methods);
 
@@ -1369,6 +1383,11 @@ class Analyzer
             PropertyDocblockManipulator::getManipulationsForFile($file_path)
         );
 
+        FileManipulationBuffer::add(
+            $file_path,
+            ClassDocblockManipulator::getManipulationsForFile($file_path)
+        );
+
         $file_manipulations = FileManipulationBuffer::getManipulationsForFile($file_path);
 
         if (!$file_manipulations) {
@@ -1549,6 +1568,11 @@ class Analyzer
     public function getPossibleMethodParamTypes()
     {
         return $this->possible_method_param_types;
+    }
+
+    public function addMutableClass(string $fqcln) : void
+    {
+        $this->mutable_classes[\strtolower($fqcln)] = true;
     }
 
     /**

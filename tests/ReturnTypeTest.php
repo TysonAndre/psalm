@@ -1,6 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
+use const DIRECTORY_SEPARATOR;
+
 class ReturnTypeTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -742,6 +744,8 @@ class ReturnTypeTest extends TestCase
                 'assertions' => [
                     '$res' => 'Closure(int):bool',
                 ],
+                'error_levels' => [],
+                '7.4'
             ],
             'infersClosureReturnTypesWithPartialTypehinting' => [
                 '<?php
@@ -1227,7 +1231,7 @@ class ReturnTypeTest extends TestCase
                     function f1(
                         int $a
                     ): string {}',
-                'error_message' => 'InvalidReturnType - src/somefile.php:4:24',
+                'error_message' => 'InvalidReturnType - src' . DIRECTORY_SEPARATOR . 'somefile.php:4:24',
             ],
             'cannotInferReturnClosureWithoutReturn' => [
                 '<?php
@@ -1248,7 +1252,7 @@ class ReturnTypeTest extends TestCase
 
                 $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
-                'error_message' => 'MixedAssignment - src/somefile.php:10:51 - Unable to determine the type that $value is being assigned to',
+                'error_message' => 'MixedAssignment - src' . DIRECTORY_SEPARATOR . 'somefile.php:10:51 - Unable to determine the type that $value is being assigned to',
             ],
             'cannotInferReturnClosureWithMoreSpecificTypes' => [
                 '<?php
@@ -1270,7 +1274,7 @@ class ReturnTypeTest extends TestCase
 
                 $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
-                'error_message' => 'InvalidArgument - src/somefile.php:13:54 - Argument 1 expects T:fn-map as mixed, int provided',
+                'error_message' => 'InvalidArgument - src' . DIRECTORY_SEPARATOR . 'somefile.php:13:54 - Argument 1 expects T:fn-map as mixed, int provided',
             ],
             'cannotInferReturnClosureWithDifferentReturnTypes' => [
                 '<?php
@@ -1284,11 +1288,8 @@ class ReturnTypeTest extends TestCase
                     return function($iter) use ($predicate): int {
                         return 1;
                     };
-                }
-
-                $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
-                ',
-                'error_message' => 'InvalidReturnStatement - src/somefile.php:9:28 - The inferred type \'Closure(iterable<mixed, T:fn-map as mixed>):int(1)\' does not match the declared return type \'callable(iterable<mixed, T:fn-map as mixed>):iterable<mixed, U:fn-map as mixed>\' for map',
+                }',
+                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:28 - The inferred type \'pure-Closure(iterable<mixed, T:fn-map as mixed>):int(1)\' does not match the declared return type \'callable(iterable<mixed, T:fn-map as mixed>):iterable<mixed, U:fn-map as mixed>\' for map',
             ],
             'cannotInferReturnClosureWithDifferentTypes' => [
                 '<?php
@@ -1299,11 +1300,8 @@ class ReturnTypeTest extends TestCase
                  */
                 function map(): callable {
                     return function(B $v): void {};
-                }
-
-                $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
-                ',
-                'error_message' => 'InvalidReturnStatement - src/somefile.php:8:28 - The inferred type \'Closure(B):void\' does not match the declared return type \'callable(A):void\' for map',
+                }',
+                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:28 - The inferred type \'impure-Closure(B):void\' does not match the declared return type \'callable(A):void\' for map',
             ],
             'compareObjectLikeToAlwaysFilledArray' => [
                 '<?php

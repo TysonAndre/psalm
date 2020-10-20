@@ -582,7 +582,7 @@ class ArrayFunctionCallTest extends TestCase
                         ARRAY_FILTER_USE_KEY
                     );',
                 'assertions' => [
-                    '$foo' => 'array<string, Closure():string(baz)>',
+                    '$foo' => 'array<string, pure-Closure():string(baz)>',
                 ],
             ],
             'ignoreFalsableCurrent' => [
@@ -1295,6 +1295,9 @@ class ArrayFunctionCallTest extends TestCase
                             $dateTimes
                         );
                     }',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4',
             ],
             'arrayPad' => [
                 '<?php
@@ -1576,6 +1579,8 @@ class ArrayFunctionCallTest extends TestCase
                     '$a' => 'array<int, B>',
                     '$b' => 'array<int, B>',
                 ],
+                'error_levels' => [],
+                '7.4',
             ],
             'arrayMergeTwoExplicitLists' => [
                 '<?php
@@ -1614,7 +1619,10 @@ class ArrayFunctionCallTest extends TestCase
                     $as = ["key"];
                     $bs = ["value"];
 
-                    return array_map(fn ($a, $b) => [$a => $b], $as, $bs);'
+                    return array_map(fn ($a, $b) => [$a => $b], $as, $bs);',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4',
             ],
             'allowUnpackWithArrayKey' => [
                 '<?php
@@ -1873,13 +1881,16 @@ class ArrayFunctionCallTest extends TestCase
                     function ints(array $ints) : void {}
                     $brr = array_filter([2,3,0,4,5]);
                     ints($brr);',
-                'error_message' => 'ArgumentTypeCoercion - src/somefile.php:5:26 - Argument 1 of ints expects list<int>, parent type array<int, int(2)|int(3)|int(4)|int(5)> provided',
+                'error_message' => 'ArgumentTypeCoercion - src' . DIRECTORY_SEPARATOR . 'somefile.php:5:26 - Argument 1 of ints expects list<int>, parent type array<int, int(2)|int(3)|int(4)|int(5)> provided',
             ],
             'usortOneParamInvalid' => [
                 '<?php
                     $list = [3, 2, 5, 9];
                     usort($list, fn(int $a, string $b): int => (int) ($a > $b));',
-                'error_message' => 'InvalidScalarArgument'
+                'error_message' => 'InvalidScalarArgument',
+                2 => [],
+                3 => false,
+                4 => '7.4',
             ],
             'usortInvalidComparison' => [
                 '<?php

@@ -18,9 +18,9 @@ use PhpParser;
 class AstDiffer
 {
     /**
-     * @param  \Closure(PhpParser\Node\Stmt, PhpParser\Node\Stmt, string, string, bool=) : bool $is_equal
-     * @param  array<int, PhpParser\Node\Stmt> $a
-     * @param  array<int, PhpParser\Node\Stmt> $b
+     * @param \Closure(PhpParser\Node\Stmt, PhpParser\Node\Stmt, string, string, bool=) : bool $is_equal
+     * @param array<int, PhpParser\Node\Stmt> $a
+     * @param array<int, PhpParser\Node\Stmt> $b
      *
      * @return array{0:array<int, array<int, int>>, 1: int, 2: int, 3: array<int, bool>}
      */
@@ -77,6 +77,8 @@ class AstDiffer
      * @param array<int, bool> $bc
      *
      * @return DiffElem[]
+     *
+     * @psalm-pure
      */
     protected static function extractDiff(array $trace, $x, $y, array $a, array $b, array $bc) : array
     {

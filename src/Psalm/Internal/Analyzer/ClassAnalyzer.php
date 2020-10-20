@@ -1700,7 +1700,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 self::addOrUpdatePropertyType(
                     $project_analyzer,
                     $stmt,
-                    $property_id,
                     $suggested_type,
                     $this,
                     $suggested_type->from_docblock
@@ -1724,7 +1723,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
     private static function addOrUpdatePropertyType(
         ProjectAnalyzer $project_analyzer,
         PhpParser\Node\Stmt\Property $property,
-        string $property_id,
         Type\Union $inferred_type,
         StatementsSource $source,
         bool $docblock_only = false
@@ -1732,7 +1730,6 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         $manipulator = PropertyDocblockManipulator::getForProperty(
             $project_analyzer,
             $source->getFilePath(),
-            $property_id,
             $property
         );
 

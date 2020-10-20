@@ -16,6 +16,7 @@ use Psalm\Internal\FileManipulation\FileManipulationBuffer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
+use Psalm\Issue\ImpureMethodCall;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidIterator;
 use Psalm\Issue\NullIterator;
@@ -60,6 +61,8 @@ class ForeachAnalyzer
         $doc_comment = $stmt->getDocComment();
 
         $codebase = $statements_analyzer->getCodebase();
+        $file_path = $statements_analyzer->getRootFilePath();
+        $type_aliases = $codebase->file_storage_provider->get($file_path)->type_aliases;
 
         if ($doc_comment) {
             try {
@@ -67,7 +70,8 @@ class ForeachAnalyzer
                     $doc_comment,
                     $statements_analyzer->getSource(),
                     $statements_analyzer->getSource()->getAliases(),
-                    $statements_analyzer->getTemplateTypeMap() ?: []
+                    $statements_analyzer->getTemplateTypeMap() ?: [],
+                    $type_aliases
                 );
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
@@ -498,6 +502,26 @@ class ForeachAnalyzer
                     $value_type,
                     Type::getMixed()
                 );
+
+                if (!$context->pure) {
+                    if ($statements_analyzer->getSource()
+                            instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                        && $statements_analyzer->getSource()->track_mutations
+                    ) {
+                        $statements_analyzer->getSource()->inferred_has_mutation = true;
+                        $statements_analyzer->getSource()->inferred_impure = true;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new ImpureMethodCall(
+                            'Cannot call a possibly-mutating iterator from a pure context',
+                            new CodeLocation($statements_analyzer, $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
             } elseif ($iterator_atomic_type instanceof Type\Atomic\TIterable) {
                 if ($iterator_atomic_type->extra_types) {
                     $iterator_atomic_type_copy = clone $iterator_atomic_type;
@@ -560,6 +584,26 @@ class ForeachAnalyzer
                 }
 
                 $has_valid_iterator = true;
+
+                if (!$context->pure) {
+                    if ($statements_analyzer->getSource()
+                            instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                        && $statements_analyzer->getSource()->track_mutations
+                    ) {
+                        $statements_analyzer->getSource()->inferred_has_mutation = true;
+                        $statements_analyzer->getSource()->inferred_impure = true;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new ImpureMethodCall(
+                            'Cannot call a possibly-mutating Traversable::getIterator from a pure context',
+                            new CodeLocation($statements_analyzer, $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
             } elseif ($iterator_atomic_type instanceof Type\Atomic\TNamedObject) {
                 if ($iterator_atomic_type->value !== 'Traversable' &&
                     $iterator_atomic_type->value !== $statements_analyzer->getClassName()
@@ -593,6 +637,26 @@ class ForeachAnalyzer
                     );
                 } else {
                     $raw_object_types[] = $iterator_atomic_type->value;
+                }
+
+                if (!$context->pure) {
+                    if ($statements_analyzer->getSource()
+                            instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                        && $statements_analyzer->getSource()->track_mutations
+                    ) {
+                        $statements_analyzer->getSource()->inferred_has_mutation = true;
+                        $statements_analyzer->getSource()->inferred_impure = true;
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new ImpureMethodCall(
+                            'Cannot call a possibly-mutating iterator from a pure context',
+                            new CodeLocation($statements_analyzer, $stmt)
+                        ),
+                        $statements_analyzer->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
                 }
             }
         }

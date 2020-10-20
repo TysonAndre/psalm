@@ -141,6 +141,7 @@ abstract class SourceAnalyzer implements StatementsSource
     }
 
     /**
+     * @psalm-mutation-free
      * @return StatementsSource
      */
     public function getSource()
@@ -194,16 +195,25 @@ abstract class SourceAnalyzer implements StatementsSource
         return $this->source->isStatic();
     }
 
+    /**
+     * @psalm-mutation-free
+     */
     public function getCodebase() : Codebase
     {
         return $this->source->getCodebase();
     }
 
+    /**
+     * @psalm-mutation-free
+     */
     public function getProjectAnalyzer() : ProjectAnalyzer
     {
         return $this->source->getProjectAnalyzer();
     }
 
+    /**
+     * @psalm-mutation-free
+     */
     public function getFileAnalyzer() : FileAnalyzer
     {
         return $this->source->getFileAnalyzer();

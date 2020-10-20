@@ -261,10 +261,12 @@ class BinaryOpAnalyzer
                 }
             }
 
+            $codebase = $statements_analyzer->getCodebase();
+
             if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Equal
                 && $stmt_left_type
                 && $stmt_right_type
-                && $context->mutation_free
+                && ($context->mutation_free || $codebase->alter_code)
             ) {
                 self::checkForImpureEqualityComparison(
                     $statements_analyzer,
@@ -309,15 +311,23 @@ class BinaryOpAnalyzer
                     }
 
                     if (!$storage->mutation_free) {
-                        if (IssueBuffer::accepts(
-                            new ImpureMethodCall(
-                                'Cannot call a possibly-mutating method '
-                                    . $atomic_type->value . '::__toString from a pure context',
-                                new CodeLocation($statements_analyzer, $stmt)
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
+                        if ($statements_analyzer->getSource()
+                                instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                            && $statements_analyzer->getSource()->track_mutations
+                        ) {
+                            $statements_analyzer->getSource()->inferred_has_mutation = true;
+                            $statements_analyzer->getSource()->inferred_impure = true;
+                        } else {
+                            if (IssueBuffer::accepts(
+                                new ImpureMethodCall(
+                                    'Cannot call a possibly-mutating method '
+                                        . $atomic_type->value . '::__toString from a pure context',
+                                    new CodeLocation($statements_analyzer, $stmt)
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
                         }
                     }
                 }
@@ -337,15 +347,22 @@ class BinaryOpAnalyzer
                     }
 
                     if (!$storage->mutation_free) {
-                        if (IssueBuffer::accepts(
-                            new ImpureMethodCall(
-                                'Cannot call a possibly-mutating method '
-                                    . $atomic_type->value . '::__toString from a pure context',
-                                new CodeLocation($statements_analyzer, $stmt)
-                            ),
-                            $statements_analyzer->getSuppressedIssues()
-                        )) {
-                            // fall through
+                        if ($statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+                            && $statements_analyzer->getSource()->track_mutations
+                        ) {
+                            $statements_analyzer->getSource()->inferred_has_mutation = true;
+                            $statements_analyzer->getSource()->inferred_impure = true;
+                        } else {
+                            if (IssueBuffer::accepts(
+                                new ImpureMethodCall(
+                                    'Cannot call a possibly-mutating method '
+                                        . $atomic_type->value . '::__toString from a pure context',
+                                    new CodeLocation($statements_analyzer, $stmt)
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                // fall through
+                            }
                         }
                     }
                 }

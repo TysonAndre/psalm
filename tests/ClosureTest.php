@@ -1,6 +1,8 @@
 <?php
 namespace Psalm\Tests;
 
+use const DIRECTORY_SEPARATOR;
+
 class ClosureTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -56,6 +58,9 @@ class ClosureTest extends TestCase
                         fn(string $a) => $a . "blah",
                         $bar
                     );',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4'
             ],
             'varReturnType' => [
                 '<?php
@@ -76,6 +81,8 @@ class ClosureTest extends TestCase
                 'assertions' => [
                     '$a' => 'int',
                 ],
+                'error_levels' => [],
+                '7.4'
             ],
             'correctParamType' => [
                 '<?php
@@ -165,6 +172,9 @@ class ClosureTest extends TestCase
                     function foo(Closure $f, Closure $g) : Closure {
                         return fn(int $x):int => $f($g($x));
                     }',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4'
             ],
             'returnsTypedClosureWithClasses' => [
                 '<?php
@@ -330,7 +340,7 @@ class ClosureTest extends TestCase
                     $a = function() : Closure { return function() : string { return "hello"; }; };
                     $b = $a()();',
                 'assertions' => [
-                    '$a' => 'Closure():Closure():string(hello)',
+                    '$a' => 'pure-Closure():pure-Closure():string(hello)',
                     '$b' => 'string',
                 ],
             ],
@@ -794,7 +804,7 @@ class ClosureTest extends TestCase
 
                     takesA($getAButReallyB());
                     takesB($getAButReallyB());',
-                'error_message' => 'ArgumentTypeCoercion - src/somefile.php:13:28 - Argument 1 of takesB expects B, parent type A provided',
+                'error_message' => 'ArgumentTypeCoercion - src' . DIRECTORY_SEPARATOR . 'somefile.php:13:28 - Argument 1 of takesB expects B, parent type A provided',
             ],
             'closureByRefUseToMixed' => [
                 '<?php

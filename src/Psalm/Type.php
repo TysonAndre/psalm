@@ -105,7 +105,9 @@ abstract class Type
     }
 
     /**
-     * @param  array<string, string> $aliased_classes
+     * @param array<string, string> $aliased_classes
+     *
+     * @psalm-pure
      */
     public static function getStringFromFQCLN(
         string $value,
@@ -184,7 +186,7 @@ abstract class Type
      */
     public static function getPositiveInt(bool $from_calculation = false)
     {
-        $union = new Union([new TInt()]);
+        $union = new Union([new Type\Atomic\TPositiveInt()]);
         $union->from_calculation = $from_calculation;
 
         return $union;

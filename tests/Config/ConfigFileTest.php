@@ -7,6 +7,8 @@ use function getcwd;
 use const PHP_EOL;
 use Psalm\Config;
 use Psalm\Internal\PluginManager\ConfigFile;
+use Psalm\Internal\RuntimeCaches;
+
 use function sys_get_temp_dir;
 use function tempnam;
 use function trim;
@@ -21,6 +23,7 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     /** @return void */
     public function setUp() : void
     {
+        RuntimeCaches::clearAll();
         $this->file_path = tempnam(sys_get_temp_dir(), 'psalm-test-config');
     }
 
@@ -214,6 +217,8 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
      * @param string $contents
      *
      * @return bool
+     *
+     * @psalm-pure
      */
     protected static function compareContentWithTemplateAndTrailingLineEnding($expected_template, $contents)
     {

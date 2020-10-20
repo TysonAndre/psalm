@@ -21,21 +21,20 @@ use function strlen;
 use function strpos;
 use function strrpos;
 use function substr;
+use function reset;
+use function array_merge;
 
 /**
  * @internal
  */
 class FunctionDocblockManipulator
 {
-    /** @var array<string, array<string, FunctionDocblockManipulator>> */
-    private static $manipulators = [];
-
     /**
      * Manipulators ordered by line number
      *
      * @var array<string, array<int, FunctionDocblockManipulator>>
      */
-    private static $ordered_manipulators = [];
+    private static $manipulators = [];
 
     /** @var Closure|Function_|ClassMethod|ArrowFunction */
     private $stmt;
@@ -91,9 +90,11 @@ class FunctionDocblockManipulator
     /** @var array<string, array{int, int}> */
     private $param_typehint_offsets = [];
 
+    /** @var bool */
+    private $is_pure = false;
+
     /**
      * @param  string $file_path
-     * @param  string $function_id
      * @param  Closure|Function_|ClassMethod|ArrowFunction $stmt
      *
      * @return self
@@ -101,16 +102,14 @@ class FunctionDocblockManipulator
     public static function getForFunction(
         ProjectAnalyzer $project_analyzer,
         $file_path,
-        $function_id,
         FunctionLike $stmt
     ) {
-        if (isset(self::$manipulators[$file_path][$function_id])) {
-            return self::$manipulators[$file_path][$function_id];
+        if (isset(self::$manipulators[$file_path][$stmt->getLine()])) {
+            return self::$manipulators[$file_path][$stmt->getLine()];
         }
 
         $manipulator
-            = self::$manipulators[$file_path][$function_id]
-            = self::$ordered_manipulators[$file_path][$stmt->getLine()]
+            = self::$manipulators[$file_path][$stmt->getLine()]
             = new self($file_path, $stmt, $project_analyzer);
 
         return $manipulator;
@@ -356,7 +355,12 @@ class FunctionDocblockManipulator
 
         $old_phpdoc_return_type = null;
         if (isset($parsed_docblock->tags['return'])) {
-            $old_phpdoc_return_type = array_shift($parsed_docblock->tags['return']);
+            $old_phpdoc_return_type = reset($parsed_docblock->tags['return']);
+        }
+
+        if ($this->is_pure) {
+            $modified_docblock = true;
+            $parsed_docblock->tags['psalm-pure'] = [''];
         }
 
         if ($this->new_phpdoc_return_type
@@ -371,7 +375,7 @@ class FunctionDocblockManipulator
 
         $old_psalm_return_type = null;
         if (isset($parsed_docblock->tags['psalm-return'])) {
-            $old_psalm_return_type = array_shift($parsed_docblock->tags['psalm-return']);
+            $old_psalm_return_type = reset($parsed_docblock->tags['psalm-return']);
         }
 
         if ($this->new_psalm_return_type
@@ -406,7 +410,7 @@ class FunctionDocblockManipulator
 
         $file_manipulations = [];
 
-        foreach (self::$ordered_manipulators[$file_path] as $manipulator) {
+        foreach (self::$manipulators[$file_path] as $manipulator) {
             if ($manipulator->new_php_return_type) {
                 if ($manipulator->return_typehint_start && $manipulator->return_typehint_end) {
                     $file_manipulations[$manipulator->return_typehint_start] = new FileManipulation(
@@ -437,6 +441,7 @@ class FunctionDocblockManipulator
             if (!$manipulator->new_php_return_type
                 || !$manipulator->return_type_is_php_compatible
                 || $manipulator->docblock_start !== $manipulator->docblock_end
+                || $manipulator->is_pure
             ) {
                 $file_manipulations[$manipulator->docblock_start] = new FileManipulation(
                     $manipulator->docblock_start,
@@ -483,12 +488,32 @@ class FunctionDocblockManipulator
         return $file_manipulations;
     }
 
+    public function makePure() : void
+    {
+        $this->is_pure = true;
+    }
+
     /**
      * @return void
      */
     public static function clearCache()
     {
         self::$manipulators = [];
-        self::$ordered_manipulators = [];
+    }
+
+    /**
+     * @param array<string, array<int, FunctionDocblockManipulator>> $manipulators
+     */
+    public static function addManipulators(array $manipulators) : void
+    {
+        self::$manipulators = array_merge($manipulators, self::$manipulators);
+    }
+
+    /**
+     * @return array<string, array<int, FunctionDocblockManipulator>>
+     */
+    public static function getManipulators()
+    {
+        return self::$manipulators;
     }
 }

@@ -41,6 +41,8 @@ class TypeTokenizer
         'class-string' => true,
         'callable-string' => true,
         'callable-array' => true,
+        'pure-callable' => true,
+        'pure-Closure' => true,
         'trait-string' => true,
         'mysql-escaped-string' => true,
         'html-escaped-string' => true,
@@ -280,10 +282,12 @@ class TypeTokenizer
     }
 
     /**
-     * @param  string $type_string
-     * @param  array{int,int}|null   $php_version
+     * @param string $type_string
+     * @param array{int,int}|null   $php_version
      *
      * @return string
+     *
+     * @psalm-pure
      */
     public static function fixScalarTerms(
         string $type_string,

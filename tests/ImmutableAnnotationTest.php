@@ -451,7 +451,6 @@ class ImmutableAnnotationTest extends TestCase
                         }
 
                         /**
-                         * @psalm-pure
                          * @return mixed
                          * @psalm-return T
                          */
@@ -473,6 +472,27 @@ class ImmutableAnnotationTest extends TestCase
                             && $e->getValue() === TestEnum::TEST
                         ) {}
                     }'
+            ],
+            'allowMutablePropertyFetch' => [
+                '<?php
+                    class B {
+                        public int $j = 5;
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     */
+                    class A {
+                        public int $i;
+
+                        public function __construct(int $i) {
+                            $this->i = $i;
+                        }
+
+                        public function getPlusOther(B $b) : int {
+                            return $this->i + $b->j;
+                        }
+                    }',
             ],
         ];
     }
@@ -750,6 +770,24 @@ class ImmutableAnnotationTest extends TestCase
                         }
                     }',
                 'error_message' => 'ImpurePropertyAssignment',
+            ],
+            'preventUnset' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class A {
+                        /** @var string */
+                        public $b;
+
+                        public function __construct(string $b) {
+                            $this->b = $b;
+                        }
+                    }
+
+                    $a = new A("hello");
+                    unset($a->b);',
+                'error_message' => 'InaccessibleProperty',
             ],
         ];
     }

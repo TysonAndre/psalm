@@ -186,6 +186,12 @@ class StaticPropertyFetchAnalyzer
             )) {
                 // fall through
             }
+        } elseif ($statements_analyzer->getSource()
+                instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
+            && $statements_analyzer->getSource()->track_mutations
+        ) {
+            $statements_analyzer->getSource()->inferred_has_mutation = true;
+            $statements_analyzer->getSource()->inferred_impure = true;
         }
 
         if ($var_id && $context->hasVariable($var_id, $statements_analyzer)) {

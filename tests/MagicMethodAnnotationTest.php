@@ -694,6 +694,21 @@ class MagicMethodAnnotationTest extends TestCase
                         (new \Foo\G)->randomInt();
                     }'
             ],
+            'namespacedUnion' => [
+                '<?php
+                    namespace Foo;
+
+                    /**
+                     * @method string bar(\DateTimeInterface|\DateInterval|self $a, Cache|\Exception $e)
+                     */
+                    class Cache {
+                        public function __call(string $method, array $args) {
+                            return $method;
+                        }
+                    }
+
+                    (new Cache)->bar(new \DateTime(), new Cache());'
+            ],
         ];
     }
 
@@ -804,7 +819,7 @@ class MagicMethodAnnotationTest extends TestCase
 
                     /** @method D foo(string $s) */
                     class B extends A {}',
-                'error_message' => 'ImplementedReturnTypeMismatch - src/somefile.php:11:33',
+                'error_message' => 'ImplementedReturnTypeMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:11:33',
             ],
             'magicMethodOverridesParentWithDifferentParamType' => [
                 '<?php
@@ -819,7 +834,7 @@ class MagicMethodAnnotationTest extends TestCase
 
                     /** @method D foo(int $s) */
                     class B extends A {}',
-                'error_message' => 'ImplementedParamTypeMismatch - src/somefile.php:11:21',
+                'error_message' => 'ImplementedParamTypeMismatch - src' . DIRECTORY_SEPARATOR . 'somefile.php:11:21',
             ],
             'parseBadMethodAnnotation' => [
                 '<?php

@@ -1,6 +1,8 @@
 <?php
 namespace Psalm\Tests\TypeReconciliation;
 
+use Psalm\Internal\RuntimeCaches;
+
 class ValueTest extends \Psalm\Tests\TestCase
 {
     use \Psalm\Tests\Traits\InvalidCodeAnalysisTestTrait;
@@ -8,7 +10,7 @@ class ValueTest extends \Psalm\Tests\TestCase
 
     public function setUp() : void
     {
-        \Psalm\Internal\Analyzer\FileAnalyzer::clearCache();
+        RuntimeCaches::clearAll();
 
         $this->file_provider = new \Psalm\Tests\Internal\Provider\FakeFileProvider();
 
@@ -733,6 +735,26 @@ class ValueTest extends \Psalm\Tests\TestCase
                         $data["e"]++;
                     }
                     if ($data["e"] > 0) {}'
+            ],
+            'compareToNullImplicitly' => [
+                '<?php
+                    final class Foo {
+                        public const VALUE_ANY = null;
+                        public const VALUE_ONE = "one";
+
+                        /** @return self::VALUE_* */
+                        public static function getValues() {
+                            return rand(0, 1) ? null : self::VALUE_ONE;
+                        }
+                    }
+
+                    $data = Foo::getValues();
+
+                    if ($data === Foo::VALUE_ANY) {
+                        $data = "default";
+                    }
+
+                    echo strlen($data);'
             ],
         ];
     }

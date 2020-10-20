@@ -705,7 +705,8 @@ class CallAnalyzer
                     );
 
                     $assert_clauses = \Psalm\Type\Algebra::getFormula(
-                        \spl_object_id($conditional),
+                        \mt_rand(0, 1000000),
+                        \mt_rand(0, 1000000),
                         $conditional,
                         $context->self,
                         $statements_analyzer,
@@ -713,6 +714,7 @@ class CallAnalyzer
                     );
                 } else {
                     $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                        \spl_object_id($arg_value),
                         \spl_object_id($arg_value),
                         $arg_value,
                         $context->self,
@@ -733,6 +735,7 @@ class CallAnalyzer
             } elseif ($arg_value && $assertion->rule === [['falsy']]) {
                 $assert_clauses = \Psalm\Type\Algebra::negateFormula(
                     \Psalm\Type\Algebra::getFormula(
+                        \spl_object_id($arg_value),
                         \spl_object_id($arg_value),
                         $arg_value,
                         $context->self,

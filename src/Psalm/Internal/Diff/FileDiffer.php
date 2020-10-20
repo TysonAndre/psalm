@@ -21,10 +21,12 @@ use function substr;
 class FileDiffer
 {
     /**
-     * @param  array<int, string>    $a
-     * @param  array<int, string>    $b
+     * @param array<int, string>    $a
+     * @param array<int, string>    $b
      *
      * @return array{0:array<int, array<int, int>>, 1: int, 2: int}
+     *
+     * @psalm-pure
      */
     private static function calculateTrace(
         array $a,
@@ -66,6 +68,8 @@ class FileDiffer
      * @param array<int, string> $b
      *
      * @return DiffElem[]
+     *
+     * @psalm-pure
      */
     private static function extractDiff(array $trace, int $x, int $y, array $a, array $b) : array
     {
@@ -113,6 +117,8 @@ class FileDiffer
 
     /**
      * @return array<int, array{0: int, 1: int, 2: int, 3: int, 4: int, 5: string}>
+     *
+     * @psalm-pure
      */
     public static function getDiff(string $a_code, string $b_code)
     {
@@ -261,6 +267,8 @@ class FileDiffer
      * @param DiffElem[] $diff
      *
      * @return DiffElem[]
+     *
+     * @psalm-pure
      */
     private static function coalesceReplacements(array $diff)
     {
