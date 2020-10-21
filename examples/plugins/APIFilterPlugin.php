@@ -21,7 +21,7 @@ use Psalm\Plugin\Hook\AfterClassLikeVisitInterface;
 use Psalm\Plugin\Hook\BeforeAnalyzeFilesInterface;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
-use Psalm\Type\Atomic\ObjectLike;
+use Psalm\Type\Atomic\TKeyedArray;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Union;
 
@@ -159,7 +159,7 @@ class APIFilterPlugin implements
         if ($old_type) {
             foreach ($old_type->getTypes() as $type) {
                 // If the phpdoc type explicitly contains @param {field:string} $param, don't run this plugin.
-                if ($type instanceof ObjectLike) {
+                if ($type instanceof TKeyedArray) {
                     // TODO: Could warn if field name is inconsistent or if the new type is more permissive?
                     return;
                 }
@@ -168,7 +168,7 @@ class APIFilterPlugin implements
         $param_storage->type = $new_union_type;
         $method_storage->param_types[$param_storage->name] = $new_union_type;
         // TODO: if ($type === null || $type is 'array' or a combination of generic array (i.e. almost always)
-        //       (Check if the Type with named array keys (ObjectLike) doesn't exist)
+        //       (Check if the Type with named array keys (TKeyedArray) doesn't exist)
     }
 
     /**
@@ -190,7 +190,7 @@ class APIFilterPlugin implements
             },
             $filters_for_method
         );
-        return new Union([new ObjectLike($union_type_properties)]);
+        return new Union([new TKeyedArray($union_type_properties)]);
     }
 }
 

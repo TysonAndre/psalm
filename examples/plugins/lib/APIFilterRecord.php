@@ -19,7 +19,7 @@ use Psalm\Internal\Scanner\FileScanner;
 use Psalm\Plugin\Hook\AfterClassLikeVisitInterface;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
-use Psalm\Type\Atomic\ObjectLike;
+use Psalm\Type\Atomic\TKeyedArray;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Union;
 
