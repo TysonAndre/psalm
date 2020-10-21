@@ -32,6 +32,7 @@ install:
 
 script:
   - vendor/bin/paratest --runner=WrapperRunner
+  - tests/integration/run_all_tests.sh
   - ./psalm
 
 # Additional stages

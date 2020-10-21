@@ -41,9 +41,17 @@ use function ini_get;
 use function preg_match;
 use function strtoupper;
 
-function requireAutoloaders(string $current_dir, bool $has_explicit_root, string $vendor_dir): ?ClassLoader
+/**
+ * @param  string $current_dir
+ * @param  bool   $has_explicit_root
+ * @param  string $vendor_dir
+ * @param  bool   $skip_autoloader_check
+ *
+ * @return ?\Composer\Autoload\ClassLoader
+ */
+function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, bool $skip_autoloader_check = false): ?ClassLoader
 {
-    $autoload_roots = [$current_dir];
+    $autoload_roots = $skip_autoloader_check ? [] : [$current_dir];
 
     $psalm_dir = dirname(__DIR__);
 
@@ -327,6 +335,9 @@ Basic configuration:
     --diff-methods
         Only checks methods that have changed since last run (and their dependents)
 
+    --diff-methods
+        Only checks methods that have changed since last run (and their dependents)
+
 Surfacing issues:
     --show-info[=BOOLEAN]
         Show non-exception parser findings (defaults to false).
@@ -420,6 +431,9 @@ Caching:
 Miscellaneous:
     -h, --help
         Display this help message
+
+    --no-vendor-autoloader
+        Set this option to allow Psalm to run when vendor/autoload.php doesn't exist (e.g. for analyzing standalone scripts).
 
     -v, --version
         Display the Psalm version

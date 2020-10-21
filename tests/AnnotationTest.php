@@ -418,6 +418,13 @@ class AnnotationTest extends TestCase
                         return $i;
                     }',
             ],
+            'allowEmptyObjectLikeFormat' => [
+                '<?php
+                    /**
+                     * @param array{} $arr
+                     */
+                    function bar(array $arr): void {}',
+            ],
             'doubleVar' => [
                 '<?php
                     function foo() : array {

@@ -89,6 +89,7 @@
         </xs:choice>
     </xs:complexType>
 
+	<!-- TODO: Add phpdoc renaming to xsd -->
     <xs:complexType name="TaintAnalysisType">
         <xs:choice maxOccurs="unbounded">
             <xs:element name="ignoreFiles" minOccurs="0" maxOccurs="1" type="IgnoreFilesType" />
@@ -250,6 +251,7 @@
             <xs:element name="InvalidReturnStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidScalarArgument" type="ArgumentIssueHandlerType" minOccurs="0" />
+            <xs:element name="InvalidScalarInComplexArgument" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidScope" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidStaticInvocation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidStringClass" type="IssueHandlerType" minOccurs="0" />
@@ -336,7 +338,9 @@
             <xs:element name="PossiblyInvalidOperand" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyAssignment" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidPropertyAssignmentValue" type="PropertyIssueHandlerType" minOccurs="0" />
-            <xs:element name="PossiblyInvalidPropertyFetch" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidPropertyFetch" type="PropertyIssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidReturnType" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidReturnStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyNullArgument" type="ArgumentIssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyNullArrayAccess" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyNullArrayAssignment" type="IssueHandlerType" minOccurs="0" />

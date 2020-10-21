@@ -19,6 +19,7 @@ class TypeAnalyzer
     /**
      * Does the input param type match the given param type
      *
+     * @return bool
      * @deprecated in favour of UnionTypeComparator
      * @psalm-suppress PossiblyUnusedMethod
      */

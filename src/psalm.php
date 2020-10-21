@@ -96,6 +96,7 @@ $valid_long_options = [
     'monochrome',
     'no-cache',
     'no-reflection-cache',
+    'no-vendor-autoloader',
     'no-file-cache',
     'output-format:',
     'plugin:',
@@ -128,6 +129,7 @@ $valid_long_options = [
     'security-analysis',
     'find-unused-psalm-suppress',
     'error-level:',
+    'debug-emitted-issues',
 ];
 
 $args = array_slice($argv, 1);
@@ -276,7 +278,7 @@ require_once __DIR__ . '/' . 'Psalm/Internal/IncludeCollector.php';
 $include_collector = new IncludeCollector();
 $first_autoloader = $include_collector->runAndCollect(
     function () use ($current_dir, $options, $vendor_dir): ?\Composer\Autoload\ClassLoader {
-        return requireAutoloaders($current_dir, isset($options['r']), $vendor_dir);
+        return requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
     }
 );
 

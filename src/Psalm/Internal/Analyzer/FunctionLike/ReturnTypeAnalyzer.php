@@ -30,6 +30,7 @@ use Psalm\Issue\MissingReturnType;
 use Psalm\Issue\MixedInferredReturnType;
 use Psalm\Issue\MixedReturnTypeCoercion;
 use Psalm\Issue\MoreSpecificReturnType;
+use Psalm\Issue\PossiblyInvalidReturnType;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeStorage;
@@ -511,19 +512,36 @@ class ReturnTypeAnalyzer
                         return null;
                     }
 
-                    if (IssueBuffer::accepts(
-                        new InvalidReturnType(
-                            'The declared return type \''
-                                . $declared_return_type->getId()
-                                . '\' for ' . $cased_method_id
-                                . ' is incorrect, got \''
-                                . $inferred_return_type->getId() . '\'',
-                            $return_type_location
-                        ),
-                        $suppressed_issues,
-                        true
-                    )) {
-                        return false;
+                    if ($union_comparison_results->has_partial_match) {
+                        if (IssueBuffer::accepts(
+                            new PossiblyInvalidReturnType(
+                                'The declared return type \''
+                                    . $declared_return_type->getId()
+                                    . '\' for ' . $cased_method_id
+                                    . ' is incorrect but has some compatible types, got \''
+                                    . $inferred_return_type->getId() . '\'',
+                                $return_type_location
+                            ),
+                            $suppressed_issues,
+                            true
+                        )) {
+                            return false;
+                        }
+                    } else {
+                        if (IssueBuffer::accepts(
+                            new InvalidReturnType(
+                                'The declared return type \''
+                                    . $declared_return_type->getId()
+                                    . '\' for ' . $cased_method_id
+                                    . ' is incorrect, got \''
+                                    . $inferred_return_type->getId() . '\'',
+                                $return_type_location
+                            ),
+                            $suppressed_issues,
+                            true
+                        )) {
+                            return false;
+                        }
                     }
                 }
             } elseif ($codebase->alter_code

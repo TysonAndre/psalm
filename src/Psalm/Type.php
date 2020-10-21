@@ -9,6 +9,9 @@ use function explode;
 use function implode;
 use function preg_quote;
 use function preg_replace;
+use Psalm\Exception\TypeParseTreeException;
+use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Type\Comparator\AtomicTypeComparator;
 use Psalm\Internal\Type\TypeCombination;
 use Psalm\Internal\Type\TypeParser;
@@ -44,8 +47,6 @@ use Psalm\Type\Union;
 use function stripos;
 use function strlen;
 use function strpos;
-use function strtolower;
-use function substr;
 
 abstract class Type
 {
@@ -54,6 +55,8 @@ abstract class Type
      *
      * @param  array{int,int}|null   $php_version
      * @param  array<string, array<string, array{Type\Union}>> $template_type_map
+     *
+     * @throws TypeParseTreeException
      */
     public static function parseString(
         string $type_string,

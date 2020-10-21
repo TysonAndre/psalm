@@ -24,6 +24,7 @@ use Psalm\Issue\MixedReturnStatement;
 use Psalm\Issue\MixedReturnTypeCoercion;
 use Psalm\Issue\NoValue;
 use Psalm\Issue\NullableReturnStatement;
+use Psalm\Issue\PossiblyInvalidReturnStatement;
 use Psalm\IssueBuffer;
 use Psalm\Type;
 use function explode;
@@ -202,7 +203,13 @@ class ReturnAnalyzer
 
             $source->examineParamTypes($statements_analyzer, $context, $codebase, $stmt);
 
-            $storage = $source->getFunctionLikeStorage($statements_analyzer);
+            // TODO: Undo this after https://github.com/vimeo/psalm/issues/797 is fixed in upstream
+            try {
+                $storage = $source->getFunctionLikeStorage($statements_analyzer);
+            } catch (\UnexpectedValueException $e) {
+                // Give up early, psalm would otherwise crash trying to analyze this return statement
+                return null;
+            }
 
             $cased_method_id = $source->getCorrectlyCasedMethodId();
 
@@ -441,6 +448,17 @@ class ReturnAnalyzer
                                         }
                                     }
                                 }
+                            }
+                        } elseif ($union_comparison_results->has_partial_match) {
+                            if (IssueBuffer::accepts(
+                                new PossiblyInvalidReturnStatement(
+                                    'The type \'' . $inferred_type . '\' does not match the declared return '
+                                        . 'type \'' . $local_return_type . '\' (but has some compatible types) for ' . $cased_method_id,
+                                    new CodeLocation($source, $stmt)
+                                ),
+                                $statements_analyzer->getSuppressedIssues()
+                            )) {
+                                return false;
                             }
                         } else {
                             if (IssueBuffer::accepts(

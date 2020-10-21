@@ -673,6 +673,7 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                         $file_manipulations
                     );
                 }
+                // TODO: use $file_manipulations?
             }
 
             if (!$this->file_storage->has_visitor_issues) {
@@ -3425,6 +3426,9 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements PhpParse
                     $docblock_type_location
                 );
 
+                continue;
+            } catch (\InvalidArgumentException $e) {
+                // FIXME warn
                 continue;
             }
 

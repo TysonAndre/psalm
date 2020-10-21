@@ -27,4 +27,7 @@ class TypeComparisonResult
 
     /** @var ?\Psalm\Type\Atomic */
     public $replacement_atomic_type = null;
+
+    /** @var ?bool */
+    public $has_partial_match = null;
 }

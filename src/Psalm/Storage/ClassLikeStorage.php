@@ -177,7 +177,7 @@ class ClassLikeStorage
     public $direct_interface_parents = [];
 
     /**
-     * Parent interfaces
+     * Parent interface names (normalized to be lowercase)
      *
      * @var  array<lowercase-string, string>
      */
@@ -191,7 +191,7 @@ class ClassLikeStorage
     public $parent_class;
 
     /**
-     * Parent classes
+     * Parent classes (normalized to lowercase)
      *
      * @var array<lowercase-string, string>
      */

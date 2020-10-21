@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<psalm
+    name="Psalm for Psalm"
+    useDocblockTypes="true"
+    totallyTyped="true"
+    strictBinaryOperands="false"
+    rememberPropertyAssignmentsAfterCall="true"
+    throwExceptionOnError="false"
+>
+    <projectFiles>
+        <directory name="src" />
+    </projectFiles>
+
+    <plugins>
+      <plugin filename="../../../examples/plugins/APIFilterPlugin.php" />
+      <plugin filename="../../../examples/plugins/ClassUnqualifier.php" />
+      <plugin filename="../../../examples/plugins/StringChecker.php" />
+      <!--<plugin filename="../../../examples/TemplateChecker.php" /> what does this do? N-->
+    </plugins>
+</psalm>

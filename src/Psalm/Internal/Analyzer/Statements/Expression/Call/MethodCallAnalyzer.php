@@ -131,7 +131,15 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             && $class_type->isNullable()
             && !$class_type->ignore_nullable_issues
         ) {
-            if (IssueBuffer::accepts(
+            // TODO: Make this more generic and configurable
+            $should_check = true;
+            foreach ($class_type->getTypes() as $type) {
+                if ($type instanceof TNamedObject && strcasecmp($type->value, 'User') === 0) {
+                    $should_check = false;
+                    break;
+                }
+            }
+            if ($should_check && IssueBuffer::accepts(
                 new PossiblyNullReference(
                     'Cannot call method ' . $stmt->name->name . ' on possibly null value',
                     new CodeLocation($statements_analyzer->getSource(), $stmt->name)

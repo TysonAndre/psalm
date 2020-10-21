@@ -13,6 +13,17 @@ It's able to find a [large number of issues](https://github.com/vimeo/psalm/blob
 
 [Try a live demo](https://psalm.dev/), or install it in your project by following the Quickstart Guide below.
 
+## Details about this fork
+
+This was customized for a narrow use case. It differs from the upstream repo psalm/psalm in the following ways:
+
+- Hardcoded support for [runkit/runkit7 superglobals](https://secure.php.net/manual/en/runkit.configuration.php#ini.runkit.superglobal).
+  Right now, it hardcodes the assumption that `$_TAG` is a superglobal of the union type `tag_global`
+  That can easily be changed to be configurable.
+- PossiblyNullReference is disabled for nullable union types containing `User`
+- Error tolerance. This will proceed with analysis in many cases, whether or not a previous error was suppressed.
+- It adds `--no-vendor-autoloader` (may be broadly useful)
+
 ## Psalm documentation
 
 Documentation is available on [Psalm’s website](https://psalm.dev/docs), generated from the [docs](https://github.com/vimeo/psalm/blob/master/docs) folder.

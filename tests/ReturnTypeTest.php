@@ -872,6 +872,53 @@ class ReturnTypeTest extends TestCase
     public function providerInvalidCodeParse(): iterable
     {
         return [
+            'switchReturnTypeWithFallthroughAndBreak' => [
+                '<?php
+                    class A {
+                        /** @return bool */
+                        public function fooFoo() {
+                            switch (rand(0,10)) {
+                                case 1:
+                                    break;
+                                default:
+                                    return true;
+                            }
+                        }
+                    }',
+                'error_message' => 'InvalidNullableReturnType',
+            ],
+            // TODO: return existence check?
+            'switchReturnTypeWithFallthroughAndConditionalBreak' => [
+                '<?php
+                    class A {
+                        /** @return bool */
+                        public function fooFoo() {
+                            switch (rand(0,10)) {
+                                case 1:
+                                    if (rand(0,10) === 5) {
+                                        break;
+                                    }
+                                default:
+                                    return true;
+                            }
+                        }
+                    }',
+                'error_message' => 'InvalidNullableReturnType',
+            ],
+            'switchReturnTypeWithNoDefault' => [
+                '<?php
+                    class A {
+                        /** @return bool */
+                        public function fooFoo() {
+                            switch (rand(0,10)) {
+                                case 1:
+                                case 2:
+                                    return true;
+                            }
+                        }
+                    }',
+                'error_message' => 'InvalidNullableReturnType',
+            ],
             'wrongReturnType1' => [
                 '<?php
                     function fooFoo(): string {

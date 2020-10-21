@@ -14,7 +14,16 @@ use Psalm\DocComment;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
 
-class TemplateAnalyzer extends Psalm\Internal\Analyzer\FileAnalyzer
+/**
+ * Things that TemplateChecker does
+ * - it allows you to scan files with a pre-filled Context.
+ *   e.g. that $this exists and is of a certain type for the entire folder
+ *
+ * TODO: Document usage, not clear how to use this.
+ *
+ * TODO: No unit tests or integration tests exist for TemplateChecker
+ */
+class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
 {
     const VIEW_CLASS = 'Your\\View\\Class';
 

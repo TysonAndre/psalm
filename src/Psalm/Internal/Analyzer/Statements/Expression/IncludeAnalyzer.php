@@ -174,6 +174,7 @@ class IncludeAnalyzer
                     $include_file_analyzer->addParentFilePath($parent_file_path);
                 }
 
+                $old_this_var = $context->vars_in_scope['$this'] ?? null;
                 try {
                     $include_file_analyzer->analyze(
                         $context,
@@ -186,6 +187,11 @@ class IncludeAnalyzer
                         $context->check_variables = false;
                         $context->check_functions = false;
                     }
+                }
+                if (is_object($old_this_var)) {
+                    $context->vars_in_scope['$this'] = $old_this_var;
+                } else {
+                    unset($context->vars_in_scope['$this']);
                 }
 
                 $included_return_type = $include_file_analyzer->getReturnType();

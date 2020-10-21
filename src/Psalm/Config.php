@@ -520,6 +520,13 @@ class Config
     public $after_visit_classlikes = [];
 
     /**
+     * Static methods to be called before the analyze phase begins.
+     *
+     * @var string[]
+     */
+    public $before_analyze_files = [];
+
+    /**
      * Static methods to be called after codebase has been populated
      *
      * @var class-string<Hook\AfterCodebasePopulatedInterface>[]
@@ -889,7 +896,7 @@ class Config
 
         $config->global_cache_directory = $config->cache_directory;
 
-        $config->cache_directory .= DIRECTORY_SEPARATOR . sha1($base_dir);
+        $config->cache_directory .= DIRECTORY_SEPARATOR . sha1($base_dir . '::' . PSALM_VERSION);
 
         if (is_dir($config->cache_directory) === false && @mkdir($config->cache_directory, 0777, true) === false) {
             trigger_error('Could not create cache directory: ' . $config->cache_directory, E_USER_ERROR);
@@ -1303,7 +1310,6 @@ class Config
                     count($declared_classes)
             );
         }
-
         $fq_class_name = reset($declared_classes);
 
         if (!$codebase->classlikes->classExtends(
@@ -1316,9 +1322,6 @@ class Config
             );
         }
 
-        /**
-         * @var class-string<T>
-         */
         return $fq_class_name;
     }
 
