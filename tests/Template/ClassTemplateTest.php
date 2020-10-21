@@ -13,9 +13,89 @@ class ClassTemplateTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
+            'cachingIterator' => [
+                '<?php
+
+                    $input = range("a", "z");
+
+                    $arrayIterator = new ArrayIterator($input);
+                    $decoratorIterator = new CachingIterator($arrayIterator);
+                    $next = $decoratorIterator->hasNext();
+                    $key = $decoratorIterator->key();
+                    $value = $decoratorIterator->current();
+                ',
+                'assertions' => [
+                    '$key' => 'int',
+                    '$value' => 'string',
+                    '$next' => 'bool',
+                ],
+            ],
+            'infiniteIterator' => [
+                '<?php
+
+                    $input = range("a", "z");
+
+                    $arrayIterator = new ArrayIterator($input);
+                    $decoratorIterator = new InfiniteIterator($arrayIterator);
+                    $key = $decoratorIterator->key();
+                    $value = $decoratorIterator->current();
+                ',
+                'assertions' => [
+                    '$key' => 'int',
+                    '$value' => 'string',
+                ],
+            ],
+            'limitIterator' => [
+                '<?php
+
+                    $input = range("a", "z");
+
+                    $arrayIterator = new ArrayIterator($input);
+                    $decoratorIterator = new LimitIterator($arrayIterator, 1, 1);
+                    $key = $decoratorIterator->key();
+                    $value = $decoratorIterator->current();
+                ',
+                'assertions' => [
+                    '$key' => 'int',
+                    '$value' => 'string',
+                ],
+            ],
+            'callbackFilterIterator' => [
+                '<?php
+
+                    $input = range("a", "z");
+
+                    $arrayIterator = new ArrayIterator($input);
+                    $decoratorIterator = new CallbackFilterIterator(
+                        $arrayIterator,
+                        static function (string $value): bool {return "a" === $value;}
+                    );
+                    $key = $decoratorIterator->key();
+                    $value = $decoratorIterator->current();
+                ',
+                'assertions' => [
+                    '$key' => 'int',
+                    '$value' => 'string',
+                ],
+            ],
+            'noRewindIterator' => [
+                '<?php
+
+                    $input = range("a", "z");
+
+                    $arrayIterator = new ArrayIterator($input);
+                    $decoratorIterator = new NoRewindIterator($arrayIterator);
+                    $key = $decoratorIterator->key();
+                    $value = $decoratorIterator->current();
+                ',
+                'assertions' => [
+                    '$key' => 'int',
+                    '$value' => 'string',
+                ],
+            ],
             'classTemplate' => [
                 '<?php
                     class A {}
@@ -31,8 +111,7 @@ class ClassTemplateTest extends TestCase
                         public $T;
 
                         /**
-                         * @param class-string $T
-                         * @template-typeof T $T
+                         * @param class-string<T> $T
                          */
                         public function __construct(string $T) {
                             $this->T = $T;
@@ -50,7 +129,10 @@ class ClassTemplateTest extends TestCase
 
                     $at = "A";
 
-                    /** @var Foo<A> */
+                    /**
+                     * @var Foo<A>
+                     * @psalm-suppress ArgumentTypeCoercion
+                     */
                     $afoo = new Foo($at);
                     $afoo_bar = $afoo->bar();
 
@@ -77,7 +159,6 @@ class ClassTemplateTest extends TestCase
                     'MixedReturnStatement',
                     'LessSpecificReturnStatement',
                     'DocblockTypeContradiction',
-                    'TypeCoercion',
                 ],
             ],
             'classTemplateSelfs' => [
@@ -90,8 +171,7 @@ class ClassTemplateTest extends TestCase
                         public $T;
 
                         /**
-                         * @param class-string $T
-                         * @template-typeof T $T
+                         * @param class-string<T> $T
                          */
                         public function __construct(string $T) {
                             $this->T = $T;
@@ -162,8 +242,7 @@ class ClassTemplateTest extends TestCase
                         public $T;
 
                         /**
-                         * @param class-string $T
-                         * @template-typeof T $T
+                         * @param class-string<T> $T
                          */
                         public function __construct(string $T) {
                             $this->T = $T;
@@ -911,7 +990,7 @@ class ClassTemplateTest extends TestCase
                     '$id' => 'array-key',
                 ],
             ],
-            'templateObjectLikeValues' => [
+            'templateTKeyedArrayValues' => [
                 '<?php
                     /**
                      * @template TKey
@@ -2926,13 +3005,99 @@ class ClassTemplateTest extends TestCase
                         }
                     }'
             ],
+            'flippedParamsMethodInside' => [
+                '<?php
+                    /**
+                     * @template A
+                     * @template B
+                     */
+                    abstract class Foo
+                    {
+                        /** @return Traversable<A, B> */
+                        public abstract function getTraversable() : Traversable;
+
+                        /**
+                         * @param Foo<B, A> $flipped
+                         * @return Traversable<B, A>
+                         */
+                        public function getFlippedTraversable(Foo $flipped): Traversable
+                        {
+                            return $flipped->getTraversable();
+                        }
+                    }'
+            ],
+            'flippedParamsMethodOutside' => [
+                '<?php
+                    /**
+                     * @template B
+                     * @template A
+                     * @param Foo<B, A> $flipped
+                     * @return Traversable<B, A>
+                     */
+                    function getFlippedTraversable(Foo $flipped): Traversable {
+                        return $flipped->getTraversable();
+                    }
+
+                    /**
+                     * @template A
+                     * @template B
+                     */
+                    abstract class Foo
+                    {
+                        /** @return Traversable<A, B> */
+                        public abstract function getTraversable() : Traversable;
+                    }'
+            ],
+            'flippedParamsPropertyInside' => [
+                '<?php
+                    /**
+                     * @template A
+                     * @template B
+                     */
+                    abstract class Foo
+                    {
+                        /** @var Traversable<A, B> */
+                        public $traversable;
+
+                        /**
+                         * @param Foo<B, A> $flipped
+                         * @return Traversable<B, A>
+                         */
+                        public function getFlippedTraversable(Foo $flipped): Traversable
+                        {
+                            return $flipped->traversable;
+                        }
+                    }'
+            ],
+            'flippedParamsPropertyOutside' => [
+                '<?php
+                    /**
+                     * @template B
+                     * @template A
+                     * @param Foo<B, A> $flipped
+                     * @return Traversable<B, A>
+                     */
+                    function getFlippedTraversable(Foo $flipped): Traversable {
+                        return $flipped->traversable;
+                    }
+
+                    /**
+                     * @template A
+                     * @template B
+                     */
+                    abstract class Foo
+                    {
+                        /** @var Traversable<A, B> */
+                        public $traversable;
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'restrictTemplateInputWithClassString' => [

@@ -336,6 +336,23 @@ echo Arithmetic::addCumulative(3); // outputs 3
 echo Arithmetic::addCumulative(3); // outputs 6
 ```
 
+### `@pure-callable`
+
+On the other hand, `pure-callable` can be used to denote a callable which needs to be pure.
+
+```php
+/**
+ * @param pure-callable(mixed): int $callback
+ */
+function foo(callable $callback) {...}
+
+// this fails since random_int is not pure
+foo(
+    /** @param mixed $p */
+    fn($p) => random_int(1, 2)
+);
+```
+
 ### `@psalm-allow-private-mutation`
 
 Used to annotate readonly properties that can be mutated in a private context. With this, public properties can be read from another class but only be mutated within a method of its own class.
@@ -402,6 +419,61 @@ $username = $_GET['username']; // prints something like "test.php:4 $username: m
 ### `@psalm-taint-*`
 
 See [Security Analysis annotations](../security_analysis/annotations.md).
+
+### `@psalm-type`
+
+This allows you to define an alias for another type.
+
+```php
+<?php
+/**
+ * @psalm-type PhoneType = array{phone: string}
+ */
+class Phone {
+    /**
+     * @psalm-return PhoneType
+     */
+    public function toArray(): array {
+        return ["phone" => "Nokia"];
+    }
+}
+```
+
+### `@psalm-import-type`
+
+You can use this annotation to import a type defined with [`@psalm-type`](#psalm-type) if it was defined somewhere else.
+
+```php
+<?php
+/**
+ * @psalm-import-type PhoneType from Phone
+ */
+class User {
+    /**
+     * @psalm-return PhoneType
+     */
+    public function toArray(): array {
+        return array_merge([], (new Phone())->toArray());
+    }
+}
+```
+
+You can also alias a type when you import it:
+
+```php
+<?php
+/**
+ * @psalm-import-type PhoneType from Phone as MyPhoneTypeAlias
+ */
+class User {
+    /**
+     * @psalm-return MyPhoneTypeAlias
+     */
+    public function toArray(): array {
+        return array_merge([], (new Phone())->toArray());
+    }
+}
+```
 
 ## Type Syntax
 

@@ -1,6 +1,7 @@
 <?php
 namespace Psalm\Internal\Type;
 
+use Psalm\Type\TypeNode;
 use function array_keys;
 use function array_map;
 use function array_shift;
@@ -17,13 +18,13 @@ use Psalm\Exception\TypeParseTreeException;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type\Atomic;
-use Psalm\Type\Atomic\ObjectLike;
+use Psalm\Type\Atomic\TKeyedArray;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TCallable;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TClassStringMap;
-use Psalm\Type\Atomic\TFn;
+use Psalm\Type\Atomic\TClosure;
 use Psalm\Type\Atomic\TGenericObject;
 use Psalm\Type\Atomic\TIterable;
 use Psalm\Type\Atomic\TList;
@@ -56,14 +57,13 @@ class TypeParser
      * @param  array<string, array<string, array{Union}>> $template_type_map
      * @param  array<string, TypeAlias> $type_aliases
      *
-     * @return Union
      */
     public static function parseTokens(
         array $type_tokens,
-        array $php_version = null,
+        ?array $php_version = null,
         array $template_type_map = [],
         array $type_aliases = []
-    ) {
+    ): Union {
         if (count($type_tokens) === 1) {
             $only_token = $type_tokens[0];
 
@@ -104,7 +104,6 @@ class TypeParser
     }
 
     /**
-     * @param  ParseTree $parse_tree
      * @param  array{int,int}|null   $php_version
      * @param  array<string, array<string, array{Union}>> $template_type_map
      * @param  array<string, TypeAlias> $type_aliases
@@ -114,10 +113,10 @@ class TypeParser
     public static function getTypeFromTree(
         ParseTree $parse_tree,
         Codebase $codebase,
-        array $php_version = null,
+        ?array $php_version = null,
         array $template_type_map = [],
         array $type_aliases = []
-    ) {
+    ): TypeNode {
         if ($parse_tree instanceof ParseTree\GenericTree) {
             $generic_type = $parse_tree->value;
 
@@ -153,8 +152,12 @@ class TypeParser
                 && count($generic_params) === 1
             ) {
                 array_unshift($generic_params, new Union([new TArrayKey]));
-            } elseif (in_array($generic_type_value, ['iterable', 'Traversable', 'Iterator', 'IteratorAggregate'], true)
-                && count($generic_params) === 1
+            } elseif (count($generic_params) === 1
+                && in_array(
+                    $generic_type_value,
+                    ['iterable', 'Traversable', 'Iterator', 'IteratorAggregate', 'arraylike-object'],
+                    true
+                )
             ) {
                 array_unshift($generic_params, new Union([new TMixed]));
             } elseif ($generic_type_value === 'Generator') {
@@ -177,6 +180,14 @@ class TypeParser
                 }
 
                 return new TArray($generic_params);
+            }
+
+            if ($generic_type_value === 'arraylike-object') {
+                $traversable = new TGenericObject('Traversable', $generic_params);
+                $array_acccess = new TGenericObject('ArrayAccess', $generic_params);
+                $traversable->extra_types[$array_acccess->getKey()] = $array_acccess;
+
+                return $traversable;
             }
 
             if ($generic_type_value === 'non-empty-array') {
@@ -413,18 +424,35 @@ class TypeParser
                 $parse_tree->children
             );
 
-            $onlyObjectLike = true;
+            $first_type = \reset($intersection_types);
+            $last_type = \end($intersection_types);
+
+            $onlyTKeyedArray = $first_type instanceof TKeyedArray
+                || $last_type instanceof TKeyedArray;
+
             foreach ($intersection_types as $intersection_type) {
-                if (!$intersection_type instanceof ObjectLike) {
-                    $onlyObjectLike = false;
+                if (!$intersection_type instanceof TKeyedArray
+                    && ($intersection_type !== $first_type
+                        || !$first_type instanceof TArray)
+                    && ($intersection_type !== $last_type
+                        || !$last_type instanceof TArray)
+                ) {
+                    $onlyTKeyedArray = false;
                     break;
                 }
             }
 
-            if ($onlyObjectLike) {
+            if ($onlyTKeyedArray) {
                 /** @var non-empty-array<string|int, Union> */
                 $properties = [];
-                /** @var ObjectLike $intersection_type */
+
+                if ($first_type instanceof TArray) {
+                    \array_shift($intersection_types);
+                } elseif ($last_type instanceof TArray) {
+                    \array_pop($intersection_types);
+                }
+
+                /** @var TKeyedArray $intersection_type */
                 foreach ($intersection_types as $intersection_type) {
                     foreach ($intersection_type->properties as $property => $property_type) {
                         if (!array_key_exists($property, $properties)) {
@@ -447,7 +475,18 @@ class TypeParser
                         $properties[$property] = $intersection_type;
                     }
                 }
-                return new ObjectLike($properties);
+
+                $keyed_array = new TKeyedArray($properties);
+
+                if ($first_type instanceof TArray) {
+                    $keyed_array->previous_key_type = $first_type->type_params[0];
+                    $keyed_array->previous_value_type = $first_type->type_params[1];
+                } elseif ($last_type instanceof TArray) {
+                    $keyed_array->previous_key_type = $last_type->type_params[0];
+                    $keyed_array->previous_value_type = $last_type->type_params[1];
+                }
+
+                return $keyed_array;
             }
 
             $keyed_intersection_types = [];
@@ -516,7 +555,7 @@ class TypeParser
             return $first_type;
         }
 
-        if ($parse_tree instanceof ParseTree\ObjectLikeTree) {
+        if ($parse_tree instanceof ParseTree\KeyedArrayTree) {
             $properties = [];
 
             $type = $parse_tree->value;
@@ -524,7 +563,7 @@ class TypeParser
             $is_tuple = true;
 
             foreach ($parse_tree->children as $i => $property_branch) {
-                if (!$property_branch instanceof ParseTree\ObjectLikePropertyTree) {
+                if (!$property_branch instanceof ParseTree\KeyedArrayPropertyTree) {
                     $property_type = self::getTypeFromTree(
                         $property_branch,
                         $codebase,
@@ -571,7 +610,7 @@ class TypeParser
             }
 
             if (!$properties) {
-                throw new TypeParseTreeException('No properties supplied for ObjectLike');
+                throw new TypeParseTreeException('No properties supplied for TKeyedArray');
             }
 
             if ($type === 'object') {
@@ -579,10 +618,10 @@ class TypeParser
             }
 
             if ($type === 'callable-array') {
-                return new Atomic\TCallableObjectLikeArray($properties);
+                return new Atomic\TCallableKeyedArray($properties);
             }
 
-            $object_like = new ObjectLike($properties);
+            $object_like = new TKeyedArray($properties);
 
             if ($is_tuple) {
                 $object_like->sealed = true;
@@ -601,7 +640,7 @@ class TypeParser
                 $type_aliases
             );
 
-            if (!$callable_type instanceof TCallable && !$callable_type instanceof TFn) {
+            if (!$callable_type instanceof TCallable && !$callable_type instanceof TClosure) {
                 throw new \InvalidArgumentException('Parsing callable tree node should return TCallable');
             }
 
@@ -627,18 +666,27 @@ class TypeParser
                 /**
                  * @return FunctionLikeParameter
                  */
-                function (ParseTree $child_tree) use ($codebase, $template_type_map, $type_aliases) {
+                function (ParseTree $child_tree) use (
+                    $codebase,
+                    $template_type_map,
+                    $type_aliases
+                ): FunctionLikeParameter {
                     $is_variadic = false;
                     $is_optional = false;
 
                     if ($child_tree instanceof ParseTree\CallableParamTree) {
-                        $tree_type = self::getTypeFromTree(
-                            $child_tree->children[0],
-                            $codebase,
-                            null,
-                            $template_type_map,
-                            $type_aliases
-                        );
+                        if (isset($child_tree->children[0])) {
+                            $tree_type = self::getTypeFromTree(
+                                $child_tree->children[0],
+                                $codebase,
+                                null,
+                                $template_type_map,
+                                $type_aliases
+                            );
+                        } else {
+                            $tree_type = new TMixed();
+                        }
+
                         $is_variadic = $child_tree->variadic;
                         $is_optional = $child_tree->has_default;
                     } else {
@@ -678,7 +726,7 @@ class TypeParser
             $pure = strpos($parse_tree->value, 'pure-') === 0 ? true : null;
 
             if (in_array(strtolower($parse_tree->value), ['closure', '\closure'], true)) {
-                return new TFn('Closure', $params, null, $pure);
+                return new TClosure('Closure', $params, null, $pure);
             }
 
             return new TCallable('callable', $params, null, $pure);
@@ -847,7 +895,7 @@ class TypeParser
         }
 
         if (strpos($parse_tree->value, '::')) {
-            list($fq_classlike_name, $const_name) = explode('::', $parse_tree->value);
+            [$fq_classlike_name, $const_name] = explode('::', $parse_tree->value);
 
             if (isset($template_type_map[$fq_classlike_name]) && $const_name === 'class') {
                 $first_class = array_keys($template_type_map[$fq_classlike_name])[0];

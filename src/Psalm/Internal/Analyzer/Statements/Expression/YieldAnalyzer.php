@@ -6,7 +6,7 @@ use Psalm\Internal\Analyzer\CommentAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\Fetch\InstancePropertyFetchAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Fetch\AtomicPropertyFetchAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
@@ -19,11 +19,6 @@ use Psalm\Type;
 
 class YieldAnalyzer
 {
-    /**
-     * @param   StatementsAnalyzer           $statements_analyzer
-     * @param   PhpParser\Node\Expr\Yield_  $stmt
-     * @param   Context                     $context
-     */
     public static function analyze(
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr\Yield_ $stmt,
@@ -109,6 +104,10 @@ class YieldAnalyzer
                     }
                 }
 
+                if (isset($context->vars_in_scope[$var_comment->var_id])) {
+                    $comment_type->parent_nodes = $context->vars_in_scope[$var_comment->var_id]->parent_nodes;
+                }
+
                 $context->vars_in_scope[$var_comment->var_id] = $comment_type;
             }
         }
@@ -147,7 +146,7 @@ class YieldAnalyzer
 
                 if ($classlike_storage->yield) {
                     if ($expression_atomic_type instanceof Type\Atomic\TGenericObject) {
-                        $yield_candidate_type = InstancePropertyFetchAnalyzer::localizePropertyType(
+                        $yield_candidate_type = AtomicPropertyFetchAnalyzer::localizePropertyType(
                             $codebase,
                             clone $classlike_storage->yield,
                             $expression_atomic_type,

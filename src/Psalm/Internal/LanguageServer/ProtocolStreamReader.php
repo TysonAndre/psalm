@@ -19,8 +19,8 @@ class ProtocolStreamReader implements ProtocolReader
 {
     use EmitterTrait;
 
-    const PARSE_HEADERS = 1;
-    const PARSE_BODY = 2;
+    private const PARSE_HEADERS = 1;
+    private const PARSE_BODY = 2;
 
     /**
      * This is checked by ProtocolStreamReader so that it will stop reading from streams in the forked process.
@@ -74,18 +74,12 @@ class ProtocolStreamReader implements ProtocolReader
 
         $this->on(
             'close',
-            /** @return void */
-            static function () use ($input) {
+            static function () use ($input): void {
                 $input->close();
             }
         );
     }
 
-    /**
-     * @param string $buffer
-     *
-     * @return int
-     */
     private function readMessages(string $buffer) : int
     {
         $emitted_messages = 0;
@@ -140,10 +134,7 @@ class ProtocolStreamReader implements ProtocolReader
         return $emitted_messages;
     }
 
-    /**
-     * @return void
-     */
-    private function emitClose()
+    private function emitClose(): void
     {
         if ($this->did_emit_close) {
             return;

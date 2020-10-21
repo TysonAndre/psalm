@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Tests\Template;
 
-use const DIRECTORY_SEPARATOR;
 use Psalm\Tests\TestCase;
 use Psalm\Tests\Traits;
 
@@ -12,7 +11,7 @@ class ConditionalReturnTypeTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'conditionalReturnType' => [
@@ -621,6 +620,39 @@ class ConditionalReturnTypeTest extends TestCase
                             return [""];
                         }
                     }'
+            ],
+            'stringOrClassStringT' => [
+                '<?php
+                    class A {}
+
+                    /**
+                     * @template T
+                     * @param string|class-string<T> $name
+                     * @return ($name is class-string ? T : mixed)
+                     */
+                    function get(string $name) {
+                        return;
+                    }
+
+                    $lowercase_a = "a";
+
+                    /** @var class-string $class_string */
+                    $class_string = "b";
+
+                    /** @psalm-suppress MixedAssignment */
+                    $expect_mixed = get($lowercase_a);
+                    $expect_object = get($class_string);
+
+                    $expect_a_object = get(A::class);
+
+                    /** @psalm-suppress MixedAssignment */
+                    $expect_mixed_from_literal = get("LiteralDirect");',
+                [
+                    '$expect_mixed' => 'mixed',
+                    '$expect_object' => 'object',
+                    '$expect_a_object' => 'A',
+                    '$expect_mixed_from_literal' => 'mixed',
+                ]
             ],
         ];
     }

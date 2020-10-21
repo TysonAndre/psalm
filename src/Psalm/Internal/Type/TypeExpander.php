@@ -19,11 +19,8 @@ use function array_values;
 class TypeExpander
 {
     /**
-     * @param  Type\Union   $return_type
-     * @param  string|null  $self_class
      * @param  string|Type\Atomic\TNamedObject|Type\Atomic\TTemplateParam|null $static_class_type
      *
-     * @return Type\Union
      */
     public static function expandUnion(
         Codebase $codebase,
@@ -34,7 +31,7 @@ class TypeExpander
         bool $evaluate_class_constants = true,
         bool $evaluate_conditional_types = false,
         bool $final = false
-    ) {
+    ): Type\Union {
         $return_type = clone $return_type;
 
         $new_return_type_parts = [];
@@ -74,6 +71,7 @@ class TypeExpander
         $fleshed_out_type->ignore_nullable_issues = $return_type->ignore_nullable_issues;
         $fleshed_out_type->ignore_falsable_issues = $return_type->ignore_falsable_issues;
         $fleshed_out_type->possibly_undefined = $return_type->possibly_undefined;
+        $fleshed_out_type->possibly_undefined_from_try = $return_type->possibly_undefined_from_try;
         $fleshed_out_type->by_ref = $return_type->by_ref;
         $fleshed_out_type->initialized = $return_type->initialized;
         $fleshed_out_type->had_template = $return_type->had_template;
@@ -83,11 +81,9 @@ class TypeExpander
     }
 
     /**
-     * @param  Type\Atomic  &$return_type
-     * @param  string|null  $self_class
      * @param  string|Type\Atomic\TNamedObject|Type\Atomic\TTemplateParam|null $static_class_type
      *
-     * @return Type\Atomic|non-empty-array<int, Type\Atomic>
+     * @return Type\Atomic|non-empty-list<Type\Atomic>
      */
     public static function expandAtomic(
         Codebase $codebase,
@@ -225,21 +221,14 @@ class TypeExpander
                 if (strpos($return_type->const_name, '*') !== false) {
                     $class_storage = $codebase->classlike_storage_provider->get($return_type->fq_classlike_name);
 
-                    $all_class_constants = $class_storage->public_class_constants
-                        + $class_storage->protected_class_constants
-                        + $class_storage->private_class_constants
-                        + $class_storage->public_class_constant_nodes
-                        + $class_storage->protected_class_constant_nodes
-                        + $class_storage->private_class_constant_nodes;
-
-                    $matching_constants = \array_keys($all_class_constants);
+                    $matching_constants = \array_keys($class_storage->constants);
 
                     $const_name_part = \substr($return_type->const_name, 0, -1);
 
                     if ($const_name_part) {
                         $matching_constants = \array_filter(
                             $matching_constants,
-                            function ($constant_name) use ($const_name_part) {
+                            function ($constant_name) use ($const_name_part): bool {
                                 return $constant_name !== $const_name_part
                                     && \strpos($constant_name, $const_name_part) === 0;
                             }
@@ -253,7 +242,7 @@ class TypeExpander
 
                 foreach ($matching_constants as $matching_constant) {
                     try {
-                        $class_constant = $codebase->classlikes->getConstantForClass(
+                        $class_constant = $codebase->classlikes->getClassConstantType(
                             $return_type->fq_classlike_name,
                             $matching_constant,
                             \ReflectionProperty::IS_PRIVATE
@@ -340,7 +329,7 @@ class TypeExpander
 
             if ($evaluate_class_constants && $codebase->classOrInterfaceExists($return_type->fq_classlike_name)) {
                 try {
-                    $class_constant_type = $codebase->classlikes->getConstantForClass(
+                    $class_constant_type = $codebase->classlikes->getClassConstantType(
                         $return_type->fq_classlike_name,
                         $return_type->const_name,
                         \ReflectionProperty::IS_PRIVATE
@@ -351,10 +340,10 @@ class TypeExpander
 
                 if ($class_constant_type) {
                     foreach ($class_constant_type->getAtomicTypes() as $const_type_atomic) {
-                        if ($const_type_atomic instanceof Type\Atomic\ObjectLike
+                        if ($const_type_atomic instanceof Type\Atomic\TKeyedArray
                             || $const_type_atomic instanceof Type\Atomic\TArray
                         ) {
-                            if ($const_type_atomic instanceof Type\Atomic\ObjectLike) {
+                            if ($const_type_atomic instanceof Type\Atomic\TKeyedArray) {
                                 $const_type_atomic = $const_type_atomic->getGenericArrayType();
                             }
 
@@ -388,7 +377,7 @@ class TypeExpander
                     $final
                 );
             }
-        } elseif ($return_type instanceof Type\Atomic\ObjectLike) {
+        } elseif ($return_type instanceof Type\Atomic\TKeyedArray) {
             foreach ($return_type->properties as &$property_type) {
                 $property_type = self::expandUnion(
                     $codebase,
@@ -430,7 +419,7 @@ class TypeExpander
         }
 
         if ($return_type instanceof Type\Atomic\TCallable
-            || $return_type instanceof Type\Atomic\TFn
+            || $return_type instanceof Type\Atomic\TClosure
         ) {
             if ($return_type->params) {
                 foreach ($return_type->params as $param) {

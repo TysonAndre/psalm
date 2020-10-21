@@ -4,7 +4,7 @@ namespace Psalm;
 
 use Composer\Autoload\ClassLoader;
 use Phar;
-use Psalm\Config;
+use Psalm\Internal\Composer;
 use function dirname;
 use function strpos;
 use function realpath;
@@ -41,13 +41,13 @@ use function strtoupper;
  * @param  string $current_dir
  * @param  bool   $has_explicit_root
  * @param  string $vendor_dir
- * @param  bool   $skipAutoloaderCheck
+ * @param  bool   $skip_autoloader_check
  *
  * @return ?\Composer\Autoload\ClassLoader
  */
-function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skipAutoloaderCheck = false)
+function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, bool $skip_autoloader_check = false): ?ClassLoader
 {
-    $autoload_roots = $skipAutoloaderCheck ? [] : [$current_dir];
+    $autoload_roots = $skip_autoloader_check ? [] : [$current_dir];
 
     $psalm_dir = dirname(__DIR__);
 
@@ -71,7 +71,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
     foreach ($autoload_roots as $autoload_root) {
         $has_autoloader = false;
 
-        $nested_autoload_file = dirname(dirname($autoload_root)) . DIRECTORY_SEPARATOR . 'autoload.php';
+        $nested_autoload_file = dirname($autoload_root, 2). DIRECTORY_SEPARATOR . 'autoload.php';
 
         // note: don't realpath $nested_autoload_file, or phar version will fail
         if (file_exists($nested_autoload_file)) {
@@ -92,7 +92,8 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
             $has_autoloader = true;
         }
 
-        if (!$has_autoloader && file_exists($autoload_root . '/composer.json')) {
+        $composer_json_file = Composer::getJsonFilePath($autoload_root);
+        if (!$has_autoloader && file_exists($composer_json_file)) {
             $error_message = 'Could not find any composer autoloaders in ' . $autoload_root;
 
             if (!$has_explicit_root) {
@@ -143,17 +144,13 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, $skip
 }
 
 /**
- * @param  string $current_dir
- *
- * @return string
- *
  * @psalm-suppress MixedArrayAccess
  * @psalm-suppress MixedAssignment
  * @psalm-suppress PossiblyUndefinedStringArrayOffset
  */
-function getVendorDir($current_dir)
+function getVendorDir(string $current_dir): string
 {
-    $composer_json_path = $current_dir . DIRECTORY_SEPARATOR . 'composer.json';
+    $composer_json_path = Composer::getJsonFilePath($current_dir);
 
     if (!file_exists($composer_json_path)) {
         return 'vendor';
@@ -179,7 +176,7 @@ function getVendorDir($current_dir)
 }
 
 /**
- * @return string[]
+ * @return list<string>
  */
 function getArguments() : array
 {
@@ -191,7 +188,7 @@ function getArguments() : array
 
     $filtered_input_paths = [];
 
-    for ($i = 0; $i < count($argv); ++$i) {
+    for ($i = 0, $iMax = count($argv); $i < $iMax; ++$i) {
         $input_path = $argv[$i];
 
         if (realpath($input_path) !== false) {
@@ -218,9 +215,9 @@ function getArguments() : array
 /**
  * @param  string|array|null|false $f_paths
  *
- * @return string[]|null
+ * @return list<string>|null
  */
-function getPathsToCheck($f_paths)
+function getPathsToCheck($f_paths): ?array
 {
     global $argv;
 
@@ -235,7 +232,7 @@ function getPathsToCheck($f_paths)
     if ($input_paths) {
         $filtered_input_paths = [];
 
-        for ($i = 0; $i < count($input_paths); ++$i) {
+        for ($i = 0, $iMax = count($input_paths); $i < $iMax; ++$i) {
             /** @var string */
             $input_path = $input_paths[$i];
 
@@ -328,8 +325,8 @@ Basic configuration:
     --threads=INT
         If greater than one, Psalm will run analysis on multiple threads, speeding things up.
 
-    --diff
-        Runs Psalm in diff mode, only checking files that have changed since last run (and their dependents)
+    --no-diff
+        Turns off Psalm’s diff mode, checks all files regardless of whether they've changed
 
     --diff-methods
         Only checks methods that have changed since last run (and their dependents)
@@ -385,7 +382,8 @@ Output:
 
     --output-format=console
         Changes the output format.
-        Available formats: compact, console, text, emacs, json, pylint, xml, checkstyle, junit, sonarqube, github
+        Available formats: compact, console, text, emacs, json, pylint, xml, checkstyle, junit, sonarqube, github,
+                           phpstorm
 
     --no-progress
         Disable the progress indicator

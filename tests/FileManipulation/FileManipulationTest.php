@@ -2,7 +2,6 @@
 namespace Psalm\Tests\FileManipulation;
 
 use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\RuntimeCaches;
 use Psalm\Tests\Internal\Provider;
 use Psalm\Tests\TestConfig;
@@ -28,9 +27,7 @@ abstract class FileManipulationTest extends \Psalm\Tests\TestCase
      * @param string $php_version
      * @param string[] $issues_to_fix
      * @param bool $safe_types
-     * @param bool $allow_backwards_incompatible_changes
      *
-     * @return void
      */
     public function testValidCode(
         $input_code,
@@ -39,7 +36,7 @@ abstract class FileManipulationTest extends \Psalm\Tests\TestCase
         array $issues_to_fix,
         $safe_types,
         bool $allow_backwards_incompatible_changes = true
-    ) {
+    ): void {
         $test_name = $this->getTestName();
         if (strpos($test_name, 'SKIPPED-') !== false) {
             $this->markTestSkipped('Skipped due to a bug.');
@@ -97,5 +94,5 @@ abstract class FileManipulationTest extends \Psalm\Tests\TestCase
     /**
      * @return array<string,array{string,string,string,string[],bool}>
      */
-    abstract public function providerValidCodeParse();
+    abstract public function providerValidCodeParse(): array;
 }

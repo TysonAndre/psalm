@@ -24,10 +24,12 @@ use Psalm\Internal\Provider\FileProvider;
 use Psalm\Internal\Provider\FileStorageProvider;
 use Psalm\IssueBuffer;
 use Psalm\Progress\Progress;
+use Psalm\Internal\Codebase\TaintFlowGraph;
 use function strpos;
 use function substr;
 use function usort;
 use function array_values;
+use const PATHINFO_EXTENSION;
 
 /**
  * @psalm-type  TaggedCodeType = array<int, array{0: int, 1: non-empty-string}>
@@ -58,7 +60,7 @@ use function array_values;
  *      class_method_locations: array<string, array<int, \Psalm\CodeLocation>>,
  *      class_property_locations: array<string, array<int, \Psalm\CodeLocation>>,
  *      possible_method_param_types: array<string, array<int, \Psalm\Type\Union>>,
- *      taint_data: ?\Psalm\Internal\Codebase\Taint,
+ *      taint_data: ?TaintFlowGraph,
  *      unused_suppressions: array<string, array<int, int>>,
  *      used_suppressions: array<string, array<int, bool>>,
  *      function_docblock_manipulators: array<string, array<int, FunctionDocblockManipulator>>,
@@ -191,9 +193,8 @@ class Analyzer
     /**
      * @param array<string, string> $files_to_analyze
      *
-     * @return void
      */
-    public function addFilesToAnalyze(array $files_to_analyze)
+    public function addFilesToAnalyze(array $files_to_analyze): void
     {
         $this->files_to_analyze += $files_to_analyze;
         $this->files_with_analysis_results += $files_to_analyze;
@@ -202,9 +203,8 @@ class Analyzer
     /**
      * @param array<string, string> $files_to_analyze
      *
-     * @return void
      */
-    public function addFilesToShowResults(array $files_to_analyze)
+    public function addFilesToShowResults(array $files_to_analyze): void
     {
         $this->files_with_analysis_results += $files_to_analyze;
     }
@@ -212,32 +212,26 @@ class Analyzer
     /**
      * @param array<string> $files_to_update
      *
-     * @return void
      */
-    public function setFilesToUpdate(array $files_to_update)
+    public function setFilesToUpdate(array $files_to_update): void
     {
         $this->files_to_update = $files_to_update;
     }
 
-    /**
-     * @param  string $file_path
-     *
-     * @return bool
-     */
-    public function canReportIssues($file_path)
+    public function canReportIssues(string $file_path): bool
     {
         return isset($this->files_with_analysis_results[$file_path]);
     }
 
     /**
-     * @param  string $file_path
      * @param  array<string, class-string<FileAnalyzer>> $filetype_analyzers
-     *
-     * @return FileAnalyzer
      */
-    private function getFileAnalyzer(ProjectAnalyzer $project_analyzer, $file_path, array $filetype_analyzers)
-    {
-        $extension = (string) (pathinfo($file_path)['extension'] ?? '');
+    private function getFileAnalyzer(
+        ProjectAnalyzer $project_analyzer,
+        string $file_path,
+        array $filetype_analyzers
+    ): FileAnalyzer {
+        $extension = pathinfo($file_path, PATHINFO_EXTENSION);
 
         $file_name = $this->config->shortenFileName($file_path);
 
@@ -253,19 +247,12 @@ class Analyzer
         return $file_analyzer;
     }
 
-    /**
-     * @param  ProjectAnalyzer $project_analyzer
-     * @param  int            $pool_size
-     * @param  bool           $alter_code
-     *
-     * @return void
-     */
     public function analyzeFiles(
         ProjectAnalyzer $project_analyzer,
         int $pool_size,
         bool $alter_code,
         bool $consolidate_analyzed_data = false
-    ) {
+    ): void {
         $this->loadCachedResults($project_analyzer);
 
         $codebase = $project_analyzer->getCodebase();
@@ -293,8 +280,8 @@ class Analyzer
 
         $scanned_files = $codebase->scanner->getScannedFiles();
 
-        if ($codebase->taint) {
-            $codebase->taint->connectSinksAndSources();
+        if ($codebase->taint_flow_graph) {
+            $codebase->taint_flow_graph->connectSinksAndSources();
         }
 
         $this->progress->finish();
@@ -353,12 +340,9 @@ class Analyzer
 
         $analysis_worker =
             /**
-             * @param int $_
-             * @param string $file_path
-             *
-             * @return array
+             * @return list<\Psalm\Internal\Analyzer\IssueData>
              */
-            function ($_, $file_path) use ($project_analyzer, $filetype_analyzers) {
+            function (int $_, string $file_path) use ($project_analyzer, $filetype_analyzers): array {
                 $file_analyzer = $this->getFileAnalyzer($project_analyzer, $file_path, $filetype_analyzers);
 
                 $this->progress->debug('Analyzing ' . $file_analyzer->getFilePath() . "\n");
@@ -421,7 +405,7 @@ class Analyzer
 
             $i = 0;
 
-            foreach ($file_paths as $file_path) {
+            foreach ($new_file_paths as $file_path) {
                 $process_file_paths[$i % $pool_size][] = $file_path;
                 ++$i;
             }
@@ -430,15 +414,14 @@ class Analyzer
             // files up among a given number of child processes.
             $pool = new \Psalm\Internal\Fork\Pool(
                 $process_file_paths,
-                /** @return void */
-                function () {
+                function (): void {
                     $project_analyzer = ProjectAnalyzer::getInstance();
                     $codebase = $project_analyzer->getCodebase();
 
                     $file_reference_provider = $codebase->file_reference_provider;
 
-                    if ($codebase->taint) {
-                        $codebase->taint = new \Psalm\Internal\Codebase\Taint();
+                    if ($codebase->taint_flow_graph) {
+                        $codebase->taint_flow_graph = new TaintFlowGraph();
                     }
 
                     $file_reference_provider->setNonMethodReferencesToClasses([]);
@@ -480,7 +463,7 @@ class Analyzer
                         'class_method_locations' => $file_reference_provider->getAllClassMethodLocations(),
                         'class_property_locations' => $file_reference_provider->getAllClassPropertyLocations(),
                         'possible_method_param_types' => $analyzer->getPossibleMethodParamTypes(),
-                        'taint_data' => $codebase->taint,
+                        'taint_data' => $codebase->taint_flow_graph,
                         'unused_suppressions' => $codebase->track_unused_suppressions ? IssueBuffer::getUnusedSuppressions() : [],
                         'used_suppressions' => $codebase->track_unused_suppressions ? IssueBuffer::getUsedSuppressions() : [],
                         'function_docblock_manipulators' => FunctionDocblockManipulator::getManipulators(),
@@ -510,8 +493,8 @@ class Analyzer
                     IssueBuffer::addUsedSuppressions($pool_data['used_suppressions']);
                 }
 
-                if ($codebase->taint && $pool_data['taint_data']) {
-                    $codebase->taint->addThreadData($pool_data['taint_data']);
+                if ($codebase->taint_flow_graph && $pool_data['taint_data']) {
+                    $codebase->taint_flow_graph->addGraph($pool_data['taint_data']);
                 }
 
                 $codebase->file_reference_provider->addNonMethodReferencesToClasses(
@@ -555,7 +538,7 @@ class Analyzer
 
                 $this->analyzed_methods = array_merge($pool_data['analyzed_methods'], $this->analyzed_methods);
 
-                foreach ($pool_data['mixed_counts'] as $file_path => list($mixed_count, $nonmixed_count)) {
+                foreach ($pool_data['mixed_counts'] as $file_path => [$mixed_count, $nonmixed_count]) {
                     if (!isset($this->mixed_counts[$file_path])) {
                         $this->mixed_counts[$file_path] = [$mixed_count, $nonmixed_count];
                     } else {
@@ -589,7 +572,7 @@ class Analyzer
                 }
 
                 foreach ($pool_data['file_maps'] as $file_path => $file_maps) {
-                    list($reference_map, $type_map, $argument_map) = $file_maps;
+                    [$reference_map, $type_map, $argument_map] = $file_maps;
                     $this->reference_map[$file_path] = $reference_map;
                     $this->type_map[$file_path] = $type_map;
                     $this->argument_map[$file_path] = $argument_map;
@@ -612,10 +595,7 @@ class Analyzer
         }
     }
 
-    /**
-     * @return void
-     */
-    public function loadCachedResults(ProjectAnalyzer $project_analyzer)
+    public function loadCachedResults(ProjectAnalyzer $project_analyzer): void
     {
         $codebase = $project_analyzer->getCodebase();
 
@@ -624,7 +604,7 @@ class Analyzer
             $this->existing_issues = $codebase->file_reference_provider->getExistingIssues();
             $file_maps = $codebase->file_reference_provider->getFileMaps();
 
-            foreach ($file_maps as $file_path => list($reference_map, $type_map, $argument_map)) {
+            foreach ($file_maps as $file_path => [$reference_map, $type_map, $argument_map]) {
                 $this->reference_map[$file_path] = $reference_map;
                 $this->type_map[$file_path] = $type_map;
                 $this->argument_map[$file_path] = $argument_map;
@@ -667,7 +647,7 @@ class Analyzer
                     continue;
                 }
 
-                list($base_class, $trait) = explode('&', $changed_member);
+                [$base_class, $trait] = explode('&', $changed_member);
 
                 foreach ($all_referencing_methods as $member_id => $_) {
                     if (strpos($member_id, $base_class . '::') !== 0) {
@@ -896,9 +876,8 @@ class Analyzer
     /**
      * @param array<string, array<int, array{int, int, int, int}>> $diff_map
      *
-     * @return void
      */
-    public function shiftFileOffsets(array $diff_map)
+    public function shiftFileOffsets(array $diff_map): void
     {
         foreach ($this->existing_issues as $file_path => &$file_issues) {
             if (!isset($this->analyzed_methods[$file_path])) {
@@ -922,7 +901,7 @@ class Analyzer
 
                 $matched = false;
 
-                foreach ($file_diff_map as list($from, $to, $file_offset, $line_offset)) {
+                foreach ($file_diff_map as [$from, $to, $file_offset, $line_offset]) {
                     if ($issue_data->from >= $from
                         && $issue_data->from <= $to
                         && !$matched
@@ -958,12 +937,12 @@ class Analyzer
             $first_diff_offset = $file_diff_map[0][0];
             $last_diff_offset = $file_diff_map[count($file_diff_map) - 1][1];
 
-            foreach ($reference_map as $reference_from => list($reference_to, $tag)) {
+            foreach ($reference_map as $reference_from => [$reference_to, $tag]) {
                 if ($reference_to < $first_diff_offset || $reference_from > $last_diff_offset) {
                     continue;
                 }
 
-                foreach ($file_diff_map as list($from, $to, $file_offset)) {
+                foreach ($file_diff_map as [$from, $to, $file_offset]) {
                     if ($reference_from >= $from && $reference_from <= $to) {
                         unset($reference_map[$reference_from]);
                         $reference_map[$reference_from += $file_offset] = [
@@ -990,12 +969,12 @@ class Analyzer
             $first_diff_offset = $file_diff_map[0][0];
             $last_diff_offset = $file_diff_map[count($file_diff_map) - 1][1];
 
-            foreach ($type_map as $type_from => list($type_to, $tag)) {
+            foreach ($type_map as $type_from => [$type_to, $tag]) {
                 if ($type_to < $first_diff_offset || $type_from > $last_diff_offset) {
                     continue;
                 }
 
-                foreach ($file_diff_map as list($from, $to, $file_offset)) {
+                foreach ($file_diff_map as [$from, $to, $file_offset]) {
                     if ($type_from >= $from && $type_from <= $to) {
                         unset($type_map[$type_from]);
                         $type_map[$type_from += $file_offset] = [
@@ -1022,12 +1001,12 @@ class Analyzer
             $first_diff_offset = $file_diff_map[0][0];
             $last_diff_offset = $file_diff_map[count($file_diff_map) - 1][1];
 
-            foreach ($argument_map as $argument_from => list($argument_to, $method_id, $argument_number)) {
+            foreach ($argument_map as $argument_from => [$argument_to, $method_id, $argument_number]) {
                 if ($argument_to < $first_diff_offset || $argument_from > $last_diff_offset) {
                     continue;
                 }
 
-                foreach ($file_diff_map as list($from, $to, $file_offset)) {
+                foreach ($file_diff_map as [$from, $to, $file_offset]) {
                     if ($argument_from >= $from && $argument_from <= $to) {
                         unset($argument_map[$argument_from]);
                         $argument_map[$argument_from += $file_offset] = [
@@ -1049,10 +1028,7 @@ class Analyzer
         return $this->mixed_member_names;
     }
 
-    /**
-     * @return void
-     */
-    public function addMixedMemberName(string $member_id, string $reference)
+    public function addMixedMemberName(string $member_id, string $reference): void
     {
         $this->mixed_member_names[$member_id][$reference] = true;
     }
@@ -1065,9 +1041,8 @@ class Analyzer
     /**
      * @param array<string, array<string, bool>> $names
      *
-     * @return void
      */
-    public function addMixedMemberNames(array $names)
+    public function addMixedMemberNames(array $names): void
     {
         foreach ($names as $key => $name) {
             if (isset($this->mixed_member_names[$key])) {
@@ -1082,11 +1057,9 @@ class Analyzer
     }
 
     /**
-     * @param  string $file_path
-     *
      * @return array{0:int, 1:int}
      */
-    public function getMixedCountsForFile($file_path)
+    public function getMixedCountsForFile(string $file_path): array
     {
         if (!isset($this->mixed_counts[$file_path])) {
             $this->mixed_counts[$file_path] = [0, 0];
@@ -1096,22 +1069,15 @@ class Analyzer
     }
 
     /**
-     * @param  string $file_path
      * @param  array{0:int, 1:int} $mixed_counts
      *
-     * @return void
      */
-    public function setMixedCountsForFile($file_path, array $mixed_counts)
+    public function setMixedCountsForFile(string $file_path, array $mixed_counts): void
     {
         $this->mixed_counts[$file_path] = $mixed_counts;
     }
 
-    /**
-     * @param  string $file_path
-     *
-     * @return void
-     */
-    public function incrementMixedCount($file_path)
+    public function incrementMixedCount(string $file_path): void
     {
         if (!$this->count_mixed) {
             return;
@@ -1124,12 +1090,7 @@ class Analyzer
         ++$this->mixed_counts[$file_path][0];
     }
 
-    /**
-     * @param  string $file_path
-     *
-     * @return void
-     */
-    public function decrementMixedCount($file_path)
+    public function decrementMixedCount(string $file_path): void
     {
         if (!$this->count_mixed) {
             return;
@@ -1142,12 +1103,7 @@ class Analyzer
         --$this->mixed_counts[$file_path][0];
     }
 
-    /**
-     * @param  string $file_path
-     *
-     * @return void
-     */
-    public function incrementNonMixedCount($file_path)
+    public function incrementNonMixedCount(string $file_path): void
     {
         if (!$this->count_mixed) {
             return;
@@ -1163,7 +1119,7 @@ class Analyzer
     /**
      * @return array<string, array{0: int, 1: int}>
      */
-    public function getMixedCounts()
+    public function getMixedCounts(): array
     {
         $all_deep_scanned_files = [];
 
@@ -1177,7 +1133,7 @@ class Analyzer
     /**
      * @return array<string, float>
      */
-    public function getFunctionTimings()
+    public function getFunctionTimings(): array
     {
         return $this->function_timings;
     }
@@ -1187,15 +1143,12 @@ class Analyzer
         $this->function_timings[$function_id] = $time_per_node;
     }
 
-    /**
-     * @return void
-     */
     public function addNodeType(
         string $file_path,
         PhpParser\Node $node,
         string $node_type,
         PhpParser\Node $parent_node = null
-    ) {
+    ): void {
         if (!$node_type) {
             throw new \UnexpectedValueException('non-empty node_type expected');
         }
@@ -1224,10 +1177,7 @@ class Analyzer
         ];
     }
 
-    /**
-     * @return void
-     */
-    public function addNodeReference(string $file_path, PhpParser\Node $node, string $reference)
+    public function addNodeReference(string $file_path, PhpParser\Node $node, string $reference): void
     {
         if (!$reference) {
             throw new \UnexpectedValueException('non-empty node_type expected');
@@ -1239,10 +1189,7 @@ class Analyzer
         ];
     }
 
-    /**
-     * @return void
-     */
-    public function addOffsetReference(string $file_path, int $start, int $end, string $reference)
+    public function addOffsetReference(string $file_path, int $start, int $end, string $reference): void
     {
         if (!$reference) {
             throw new \UnexpectedValueException('non-empty node_type expected');
@@ -1257,7 +1204,7 @@ class Analyzer
     /**
      * @return array{int, int}
      */
-    public function getTotalTypeCoverage(\Psalm\Codebase $codebase)
+    public function getTotalTypeCoverage(\Psalm\Codebase $codebase): array
     {
         $mixed_count = 0;
         $nonmixed_count = 0;
@@ -1267,7 +1214,7 @@ class Analyzer
                 continue;
             }
 
-            list($path_mixed_count, $path_nonmixed_count) = $counts;
+            [$path_mixed_count, $path_nonmixed_count] = $counts;
 
             if (isset($this->mixed_counts[$file_path])) {
                 $mixed_count += $path_mixed_count;
@@ -1278,10 +1225,7 @@ class Analyzer
         return [$mixed_count, $nonmixed_count];
     }
 
-    /**
-     * @return string
-     */
-    public function getTypeInferenceSummary(\Psalm\Codebase $codebase)
+    public function getTypeInferenceSummary(\Psalm\Codebase $codebase): string
     {
         $all_deep_scanned_files = [];
 
@@ -1293,7 +1237,7 @@ class Analyzer
             }
         }
 
-        list($mixed_count, $nonmixed_count) = $this->getTotalTypeCoverage($codebase);
+        [$mixed_count, $nonmixed_count] = $this->getTotalTypeCoverage($codebase);
 
         $total = $mixed_count + $nonmixed_count;
 
@@ -1313,10 +1257,7 @@ class Analyzer
             . ' of the codebase';
     }
 
-    /**
-     * @return string
-     */
-    public function getNonMixedStats()
+    public function getNonMixedStats(): string
     {
         $stats = '';
 
@@ -1336,7 +1277,7 @@ class Analyzer
 
         foreach ($all_deep_scanned_files as $file_path => $_) {
             if (isset($this->mixed_counts[$file_path])) {
-                list($path_mixed_count, $path_nonmixed_count) = $this->mixed_counts[$file_path];
+                [$path_mixed_count, $path_nonmixed_count] = $this->mixed_counts[$file_path];
 
                 if ($path_mixed_count + $path_nonmixed_count) {
                     $stats .= number_format(100 * $path_nonmixed_count / ($path_mixed_count + $path_nonmixed_count), 0)
@@ -1349,29 +1290,17 @@ class Analyzer
         return $stats;
     }
 
-    /**
-     * @return void
-     */
-    public function disableMixedCounts()
+    public function disableMixedCounts(): void
     {
         $this->count_mixed = false;
     }
 
-    /**
-     * @return void
-     */
-    public function enableMixedCounts()
+    public function enableMixedCounts(): void
     {
         $this->count_mixed = true;
     }
 
-    /**
-     * @param  string $file_path
-     * @param  bool $dry_run
-     *
-     * @return void
-     */
-    public function updateFile($file_path, $dry_run)
+    public function updateFile(string $file_path, bool $dry_run): void
     {
         FileManipulationBuffer::add(
             $file_path,
@@ -1396,10 +1325,7 @@ class Analyzer
 
         usort(
             $file_manipulations,
-            /**
-             * @return int
-             */
-            function (FileManipulation $a, FileManipulation $b) {
+            function (FileManipulation $a, FileManipulation $b): int {
                 if ($b->end === $a->end) {
                     if ($a->start === $b->start) {
                         return $b->insertion_text > $a->insertion_text ? 1 : -1;
@@ -1443,13 +1369,9 @@ class Analyzer
     }
 
     /**
-     * @param string $file_path
-     * @param int $start
-     * @param int $end
-     *
      * @return list<IssueData>
      */
-    public function getExistingIssuesForFile($file_path, $start, $end, ?string $issue_type = null)
+    public function getExistingIssuesForFile(string $file_path, int $start, int $end, ?string $issue_type = null): array
     {
         if (!isset($this->existing_issues[$file_path])) {
             return [];
@@ -1468,14 +1390,7 @@ class Analyzer
         return $applicable_issues;
     }
 
-    /**
-     * @param string $file_path
-     * @param int $start
-     * @param int $end
-     *
-     * @return void
-     */
-    public function removeExistingDataForFile($file_path, $start, $end, ?string $issue_type = null)
+    public function removeExistingDataForFile(string $file_path, int $start, int $end, ?string $issue_type = null): void
     {
         if (isset($this->existing_issues[$file_path])) {
             foreach ($this->existing_issues[$file_path] as $i => $issue_data) {
@@ -1515,7 +1430,7 @@ class Analyzer
     /**
      * @return array<string, array<string, int>>
      */
-    public function getAnalyzedMethods()
+    public function getAnalyzedMethods(): array
     {
         return $this->analyzed_methods;
     }
@@ -1523,7 +1438,7 @@ class Analyzer
     /**
      * @return array<string, FileMapType>
      */
-    public function getFileMaps()
+    public function getFileMaps(): array
     {
         $file_maps = [];
 
@@ -1553,7 +1468,7 @@ class Analyzer
     /**
      * @return FileMapType
      */
-    public function getMapsForFile(string $file_path)
+    public function getMapsForFile(string $file_path): array
     {
         return [
             $this->reference_map[$file_path] ?? [],
@@ -1565,7 +1480,7 @@ class Analyzer
     /**
      * @return array<string, array<int, \Psalm\Type\Union>>
      */
-    public function getPossibleMethodParamTypes()
+    public function getPossibleMethodParamTypes(): array
     {
         return $this->possible_method_param_types;
     }
@@ -1575,26 +1490,12 @@ class Analyzer
         $this->mutable_classes[\strtolower($fqcln)] = true;
     }
 
-    /**
-     * @param string $file_path
-     * @param string $method_id
-     * @param bool $is_constructor
-     *
-     * @return void
-     */
-    public function setAnalyzedMethod($file_path, $method_id, $is_constructor = false)
+    public function setAnalyzedMethod(string $file_path, string $method_id, bool $is_constructor = false): void
     {
         $this->analyzed_methods[$file_path][$method_id] = $is_constructor ? 2 : 1;
     }
 
-    /**
-     * @param  string  $file_path
-     * @param  string  $method_id
-     * @param bool $is_constructor
-     *
-     * @return bool
-     */
-    public function isMethodAlreadyAnalyzed($file_path, $method_id, $is_constructor = false)
+    public function isMethodAlreadyAnalyzed(string $file_path, string $method_id, bool $is_constructor = false): bool
     {
         if ($is_constructor) {
             return isset($this->analyzed_methods[$file_path][$method_id])

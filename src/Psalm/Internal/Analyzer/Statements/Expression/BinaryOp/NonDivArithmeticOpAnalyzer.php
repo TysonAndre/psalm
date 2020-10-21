@@ -18,7 +18,7 @@ use Psalm\Issue\StringIncrement;
 use Psalm\IssueBuffer;
 use Psalm\StatementsSource;
 use Psalm\Type;
-use Psalm\Type\Atomic\ObjectLike;
+use Psalm\Type\Atomic\TKeyedArray;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
@@ -34,6 +34,7 @@ use Psalm\Type\Atomic\TNumeric;
 use Psalm\Internal\Type\TypeCombination;
 use function array_diff_key;
 use function array_values;
+use function preg_match;
 use function strtolower;
 
 /**
@@ -269,8 +270,6 @@ class NonDivArithmeticOpAnalyzer
     /**
      * @param  string[]        &$invalid_left_messages
      * @param  string[]        &$invalid_right_messages
-     *
-     * @return Type\Union|null
      */
     private static function analyzeNonDivOperands(
         ?StatementsSource $statements_source,
@@ -288,15 +287,57 @@ class NonDivArithmeticOpAnalyzer
         bool &$has_valid_right_operand,
         bool &$has_string_increment,
         Type\Union &$result_type = null
-    ) {
+    ): ?Type\Union {
+        if ($left_type_part instanceof TLiteralInt
+            && $right_type_part instanceof TLiteralInt
+            && ($left instanceof PhpParser\Node\Scalar || $left instanceof PhpParser\Node\Expr\ConstFetch)
+            && ($right instanceof PhpParser\Node\Scalar || $right instanceof PhpParser\Node\Expr\ConstFetch)
+        ) {
+            // time for some arithmetic!
+
+            $calculated_type = null;
+
+            if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Plus) {
+                $calculated_type = Type::getInt(false, $left_type_part->value + $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Minus) {
+                $calculated_type = Type::getInt(false, $left_type_part->value - $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Mod) {
+                $calculated_type = Type::getInt(false, $left_type_part->value % $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Mul) {
+                $calculated_type = Type::getInt(false, $left_type_part->value * $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Pow) {
+                $calculated_type = Type::getInt(false, $left_type_part->value ^ $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr) {
+                $calculated_type = Type::getInt(false, $left_type_part->value | $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd) {
+                $calculated_type = Type::getInt(false, $left_type_part->value & $right_type_part->value);
+            }
+
+            if ($calculated_type) {
+                if ($result_type) {
+                    $result_type = Type::combineUnionTypes(
+                        $calculated_type,
+                        $result_type
+                    );
+                } else {
+                    $result_type = $calculated_type;
+                }
+
+                $has_valid_left_operand = true;
+                $has_valid_right_operand = true;
+
+                return null;
+            }
+        }
+
         if ($left_type_part instanceof TNull || $right_type_part instanceof TNull) {
             // null case is handled above
-            return;
+            return null;
         }
 
         if ($left_type_part instanceof TFalse || $right_type_part instanceof TFalse) {
             // null case is handled above
-            return;
+            return null;
         }
 
         if ($left_type_part instanceof Type\Atomic\TString
@@ -314,7 +355,7 @@ class NonDivArithmeticOpAnalyzer
             $has_valid_left_operand = true;
             $has_valid_right_operand = true;
 
-            return;
+            return null;
         }
 
         if ($left_type_part instanceof TTemplateParam
@@ -385,7 +426,7 @@ class NonDivArithmeticOpAnalyzer
                     $result_type = Type::combineUnionTypes($result_type_member, $result_type);
                 }
 
-                return;
+                return null;
             }
 
             $from_loop_isset = (!($left_type_part instanceof TMixed) || $left_type_part->from_loop_isset)
@@ -410,20 +451,20 @@ class NonDivArithmeticOpAnalyzer
 
         if ($left_type_part instanceof TArray
             || $right_type_part instanceof TArray
-            || $left_type_part instanceof ObjectLike
-            || $right_type_part instanceof ObjectLike
+            || $left_type_part instanceof TKeyedArray
+            || $right_type_part instanceof TKeyedArray
             || $left_type_part instanceof TList
             || $right_type_part instanceof TList
         ) {
             if ((!$right_type_part instanceof TArray
-                    && !$right_type_part instanceof ObjectLike
+                    && !$right_type_part instanceof TKeyedArray
                     && !$right_type_part instanceof TList)
                 || (!$left_type_part instanceof TArray
-                    && !$left_type_part instanceof ObjectLike
+                    && !$left_type_part instanceof TKeyedArray
                     && !$left_type_part instanceof TList)
             ) {
                 if (!$left_type_part instanceof TArray
-                    && !$left_type_part instanceof ObjectLike
+                    && !$left_type_part instanceof TKeyedArray
                     && !$left_type_part instanceof TList
                 ) {
                     $invalid_left_messages[] = 'Cannot add an array to a non-array ' . $left_type_part;
@@ -432,12 +473,12 @@ class NonDivArithmeticOpAnalyzer
                 }
 
                 if ($left_type_part instanceof TArray
-                    || $left_type_part instanceof ObjectLike
+                    || $left_type_part instanceof TKeyedArray
                     || $left_type_part instanceof TList
                 ) {
                     $has_valid_left_operand = true;
                 } elseif ($right_type_part instanceof TArray
-                    || $right_type_part instanceof ObjectLike
+                    || $right_type_part instanceof TKeyedArray
                     || $right_type_part instanceof TList
                 ) {
                     $has_valid_right_operand = true;
@@ -445,14 +486,14 @@ class NonDivArithmeticOpAnalyzer
 
                 $result_type = Type::getArray();
 
-                return;
+                return null;
             }
 
             $has_valid_right_operand = true;
             $has_valid_left_operand = true;
 
-            if ($left_type_part instanceof ObjectLike
-                && $right_type_part instanceof ObjectLike
+            if ($left_type_part instanceof TKeyedArray
+                && $right_type_part instanceof TKeyedArray
             ) {
                 $definitely_existing_mixed_right_properties = array_diff_key(
                     $right_type_part->properties,
@@ -481,7 +522,7 @@ class NonDivArithmeticOpAnalyzer
                     }
                 }
 
-                $result_type_member = new Type\Union([new ObjectLike($properties)]);
+                $result_type_member = new Type\Union([new TKeyedArray($properties)]);
             } else {
                 $result_type_member = TypeCombination::combineTypes(
                     [$left_type_part, $right_type_part],
@@ -509,7 +550,7 @@ class NonDivArithmeticOpAnalyzer
                 );
             }
 
-            return;
+            return null;
         }
 
         if (($left_type_part instanceof TNamedObject && strtolower($left_type_part->value) === 'gmp')
@@ -546,7 +587,23 @@ class NonDivArithmeticOpAnalyzer
                 }
             }
 
-            return;
+            return null;
+        }
+
+        if ($left_type_part instanceof Type\Atomic\TLiteralString) {
+            if (preg_match('/^\-?\d+$/', $left_type_part->value)) {
+                $left_type_part = new Type\Atomic\TLiteralInt((int) $left_type_part->value);
+            } elseif (preg_match('/^\-?\d?\.\d+$/', $left_type_part->value)) {
+                $left_type_part = new Type\Atomic\TLiteralFloat((float) $left_type_part->value);
+            }
+        }
+
+        if ($right_type_part instanceof Type\Atomic\TLiteralString) {
+            if (preg_match('/^\-?\d+$/', $right_type_part->value)) {
+                $right_type_part = new Type\Atomic\TLiteralInt((int) $right_type_part->value);
+            } elseif (preg_match('/^\-?\d?\.\d+$/', $right_type_part->value)) {
+                $right_type_part = new Type\Atomic\TLiteralFloat((float) $right_type_part->value);
+            }
         }
 
         if ($left_type_part->isNumericType() || $right_type_part->isNumericType()) {
@@ -564,7 +621,7 @@ class NonDivArithmeticOpAnalyzer
                 $has_valid_right_operand = true;
                 $has_valid_left_operand = true;
 
-                return;
+                return null;
             }
 
             if ($left_type_part instanceof TInt && $right_type_part instanceof TInt) {
@@ -608,7 +665,7 @@ class NonDivArithmeticOpAnalyzer
                 $has_valid_right_operand = true;
                 $has_valid_left_operand = true;
 
-                return;
+                return null;
             }
 
             if ($left_type_part instanceof TFloat && $right_type_part instanceof TFloat) {
@@ -623,7 +680,7 @@ class NonDivArithmeticOpAnalyzer
                 $has_valid_right_operand = true;
                 $has_valid_left_operand = true;
 
-                return;
+                return null;
             }
 
             if (($left_type_part instanceof TFloat && $right_type_part instanceof TInt)
@@ -652,7 +709,7 @@ class NonDivArithmeticOpAnalyzer
                 $has_valid_right_operand = true;
                 $has_valid_left_operand = true;
 
-                return;
+                return null;
             }
 
             if ($left_type_part->isNumericType() && $right_type_part->isNumericType()) {
@@ -670,16 +727,14 @@ class NonDivArithmeticOpAnalyzer
 
                 if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Mod) {
                     $result_type = Type::getInt();
-                } elseif (!$result_type) {
-                    $result_type = Type::getFloat();
                 } else {
-                    $result_type = Type::combineUnionTypes(Type::getFloat(), $result_type);
+                    $result_type = new Type\Union([new Type\Atomic\TInt, new Type\Atomic\TFloat]);
                 }
 
                 $has_valid_right_operand = true;
                 $has_valid_left_operand = true;
 
-                return;
+                return null;
             }
 
             if (!$left_type_part->isNumericType()) {
@@ -696,5 +751,7 @@ class NonDivArithmeticOpAnalyzer
                 'Cannot perform a numeric operation with non-numeric types ' . $left_type_part
                     . ' and ' . $right_type_part;
         }
+
+        return null;
     }
 }

@@ -7,7 +7,7 @@ use Psalm\FileManipulation;
 /**
  * @internal
  */
-class ParamReplacementVisitor extends PhpParser\NodeVisitorAbstract implements PhpParser\NodeVisitor
+class ParamReplacementVisitor extends PhpParser\NodeVisitorAbstract
 {
     /** @var string */
     private $old_name;
@@ -30,12 +30,7 @@ class ParamReplacementVisitor extends PhpParser\NodeVisitorAbstract implements P
         $this->new_name = $new_name;
     }
 
-    /**
-     * @param  PhpParser\Node $node
-     *
-     * @return null|int
-     */
-    public function enterNode(PhpParser\Node $node)
+    public function enterNode(PhpParser\Node $node): ?int
     {
         if ($node instanceof PhpParser\Node\Expr\Variable) {
             if ($node->name === $this->old_name) {
@@ -95,20 +90,22 @@ class ParamReplacementVisitor extends PhpParser\NodeVisitorAbstract implements P
 
             if ($replaced) {
                 $this->replacements[] = new FileManipulation(
-                    $docblock->getFilePos(),
-                    $docblock->getFilePos() + \strlen($docblock->getText()),
+                    $docblock->getStartFilePos(),
+                    $docblock->getStartFilePos() + \strlen($docblock->getText()),
                     \rtrim($parsed_docblock->render($parsed_docblock->first_line_padding)),
                     false,
                     false
                 );
             }
         }
+
+        return null;
     }
 
     /**
      * @return list<FileManipulation>
      */
-    public function getReplacements()
+    public function getReplacements(): array
     {
         return $this->replacements;
     }

@@ -5,13 +5,10 @@ use function array_map;
 use function count;
 use function implode;
 use Psalm\Codebase;
-use Psalm\CodeLocation;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\TemplateResult;
 use Psalm\Internal\Type\UnionTemplateHandler;
-use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeParameter;
-use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Union;
 
@@ -35,14 +32,12 @@ trait CallableTrait
     /**
      * Constructs a new instance of a generic type
      *
-     * @param string                            $value
      * @param array<int, FunctionLikeParameter> $params
-     * @param Union                             $return_type
      */
     public function __construct(
-        $value = 'callable',
-        array $params = null,
-        Union $return_type = null,
+        string $value = 'callable',
+        ?array $params = null,
+        ?Union $return_type = null,
         ?bool $is_pure = null
     ) {
         $this->value = $value;
@@ -62,25 +57,20 @@ trait CallableTrait
         $this->return_type = $this->return_type ? clone $this->return_type : null;
     }
 
-    /**
-     * @return string
-     */
-    public function getKey(bool $include_extra = true)
+    public function getKey(bool $include_extra = true): string
     {
         return $this->__toString();
     }
 
     /**
      * @param  array<string, string> $aliased_classes
-     *
-     * @return string
      */
     public function toNamespacedString(
         ?string $namespace,
         array $aliased_classes,
         ?string $this_class,
         bool $use_phpdoc_format
-    ) {
+    ): string {
         if ($use_phpdoc_format) {
             if ($this instanceof TNamedObject) {
                 return parent::toNamespacedString($namespace, $aliased_classes, $this_class, true);
@@ -99,7 +89,7 @@ trait CallableTrait
                     /**
                      * @return string
                      */
-                    function (FunctionLikeParameter $param) use ($namespace, $aliased_classes, $this_class) {
+                    function (FunctionLikeParameter $param) use ($namespace, $aliased_classes, $this_class): string {
                         if (!$param->type) {
                             $type_string = 'mixed';
                         } else {
@@ -138,21 +128,15 @@ trait CallableTrait
     }
 
     /**
-     * @param  string|null   $namespace
      * @param  array<string, string> $aliased_classes
-     * @param  string|null   $this_class
-     * @param  int           $php_major_version
-     * @param  int           $php_minor_version
-     *
-     * @return string
      */
     public function toPhpString(
-        $namespace,
+        ?string $namespace,
         array $aliased_classes,
-        $this_class,
-        $php_major_version,
-        $php_minor_version
-    ) {
+        ?string $this_class,
+        int $php_major_version,
+        int $php_minor_version
+    ): string {
         if ($this instanceof TNamedObject) {
             return parent::toNamespacedString($namespace, $aliased_classes, $this_class, true);
         }
@@ -160,10 +144,7 @@ trait CallableTrait
         return $this->value;
     }
 
-    /**
-     * @return string
-     */
-    public function getId(bool $nested = false)
+    public function getId(bool $nested = false): string
     {
         $param_string = '';
         $return_type_string = '';
@@ -191,16 +172,16 @@ trait CallableTrait
             . $this->value . $param_string . $return_type_string;
     }
 
-    public function __toString()
+    public function __toString(): string
     {
         return $this->getId();
     }
 
     public function replaceTemplateTypesWithStandins(
         TemplateResult $template_result,
-        Codebase $codebase = null,
+        ?Codebase $codebase = null,
         ?StatementsAnalyzer $statements_analyzer = null,
-        Atomic $input_type = null,
+        ?Atomic $input_type = null,
         ?int $input_arg_offset = null,
         ?string $calling_class = null,
         ?string $calling_function = null,
@@ -214,7 +195,7 @@ trait CallableTrait
             foreach ($callable->params as $offset => $param) {
                 $input_param_type = null;
 
-                if (($input_type instanceof Atomic\TFn || $input_type instanceof Atomic\TCallable)
+                if (($input_type instanceof Atomic\TClosure || $input_type instanceof Atomic\TCallable)
                     && isset($input_type->params[$offset])
                 ) {
                     $input_param_type = $input_type->params[$offset]->type;
@@ -240,7 +221,7 @@ trait CallableTrait
             }
         }
 
-        if (($input_type instanceof Atomic\TCallable || $input_type instanceof Atomic\TFn)
+        if (($input_type instanceof Atomic\TCallable || $input_type instanceof Atomic\TClosure)
             && $callable->return_type
             && $input_type->return_type
         ) {
@@ -281,7 +262,7 @@ trait CallableTrait
     }
 
     /**
-     * @return array<\Psalm\Type\TypeNode>
+     * @return list<\Psalm\Type\TypeNode>
      */
     public function getChildNodes() : array
     {

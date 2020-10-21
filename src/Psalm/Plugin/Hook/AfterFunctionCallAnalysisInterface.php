@@ -13,8 +13,6 @@ interface AfterFunctionCallAnalysisInterface
     /**
      * @param  non-empty-string $function_id
      * @param  FileManipulation[] $file_replacements
-     *
-     * @return void
      */
     public static function afterFunctionCallAnalysis(
         FuncCall $expr,
@@ -22,7 +20,7 @@ interface AfterFunctionCallAnalysisInterface
         Context $context,
         StatementsSource $statements_source,
         Codebase $codebase,
-        array &$file_replacements = [],
-        Union &$return_type_candidate = null
-    );
+        Union $return_type_candidate,
+        array &$file_replacements
+    ): void;
 }

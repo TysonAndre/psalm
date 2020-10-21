@@ -1,7 +1,6 @@
 <?php
 namespace Psalm\Internal\Scope;
 
-use Psalm\CodeLocation;
 use Psalm\Internal\Clause;
 use Psalm\Type;
 
@@ -70,7 +69,7 @@ class IfScope
      * statement, if the `if` statement contains branches with leaving statements,
      * and the else leaves too
      *
-     * @var array<int, Clause>
+     * @var list<Clause>
      */
     public $reasonable_clauses = [];
 
@@ -87,7 +86,7 @@ class IfScope
     public $final_actions = [];
 
     /**
-     * @var array<string, array<string, CodeLocation>>
+     * @var ?\Psalm\Context
      */
-    public $new_unreferenced_vars = [];
+    public $mic_drop_context;
 }

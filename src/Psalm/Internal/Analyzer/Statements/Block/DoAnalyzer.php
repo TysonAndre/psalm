@@ -22,14 +22,11 @@ use function array_merge;
  */
 class DoAnalyzer
 {
-    /**
-     * @return void
-     */
     public static function analyze(
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Stmt\Do_ $stmt,
         Context $context
-    ) {
+    ): void {
         $do_context = clone $context;
         $do_context->break_types[] = 'loop';
 
@@ -66,8 +63,7 @@ class DoAnalyzer
         $while_clauses = array_values(
             array_filter(
                 $while_clauses,
-                /** @return bool */
-                function (Clause $c) use ($mixed_var_ids) {
+                function (Clause $c) use ($mixed_var_ids): bool {
                     $keys = array_keys($c->possibilities);
 
                     $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
@@ -159,10 +155,6 @@ class DoAnalyzer
             $context->referenced_var_ids,
             $do_context->referenced_var_ids
         );
-
-        if ($codebase->find_unused_variables) {
-            $context->unreferenced_vars = $loop_scope->loop_context->unreferenced_vars;
-        }
 
         if ($context->collect_exceptions) {
             $context->mergeExceptions($inner_loop_context);

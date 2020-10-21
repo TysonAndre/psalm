@@ -17,7 +17,7 @@ use Psalm\Issue\TypeDoesNotContainType;
 use Psalm\Issue\UnevaluatedCode;
 use Psalm\IssueBuffer;
 use Psalm\Type;
-use Psalm\Type\Atomic\TBool;
+
 use function substr;
 use function count;
 use function strtolower;
@@ -31,25 +31,23 @@ use function is_int;
  */
 class AssertionFinder
 {
-    const ASSIGNMENT_TO_RIGHT = 1;
-    const ASSIGNMENT_TO_LEFT = -1;
+    public const ASSIGNMENT_TO_RIGHT = 1;
+    public const ASSIGNMENT_TO_LEFT = -1;
 
     /**
      * Gets all the type assertions in a conditional
      *
-     * @param string|null $this_class_name
-     *
-     * @return array<string, non-empty-list<non-empty-list<string>>>|null
+     * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     public static function scrapeAssertions(
         PhpParser\Node\Expr $conditional,
-        $this_class_name,
+        ?string $this_class_name,
         FileSource $source,
-        Codebase $codebase = null,
+        ?Codebase $codebase = null,
         bool $inside_negation = false,
         bool $cache = true,
         bool $inside_conditional = true
-    ) {
+    ): array {
         $if_types = [];
 
         if ($conditional instanceof PhpParser\Node\Expr\Instanceof_) {
@@ -99,7 +97,8 @@ class AssertionFinder
                                         new RedundantConditionGivenDocblockType(
                                             $var_type->getId() . ' does not contain '
                                                 . $instanceof_type->getId(),
-                                            new CodeLocation($source, $conditional)
+                                            new CodeLocation($source, $conditional),
+                                            $var_type->getId() . ' ' . $instanceof_type->getId()
                                         ),
                                         $source->getSuppressedIssues()
                                     )) {
@@ -110,7 +109,8 @@ class AssertionFinder
                                         new RedundantCondition(
                                             $var_type->getId() . ' cannot be identical to '
                                                 . $instanceof_type->getId(),
-                                            new CodeLocation($source, $conditional)
+                                            new CodeLocation($source, $conditional),
+                                            $var_type->getId() . ' ' . $instanceof_type->getId()
                                         ),
                                         $source->getSuppressedIssues()
                                     )) {
@@ -195,10 +195,6 @@ class AssertionFinder
                 }
             }
 
-            if ($expr_assertions === null) {
-                throw new \UnexpectedValueException('Assertions should be set');
-            }
-
             if (count($expr_assertions) !== 1) {
                 return [];
             }
@@ -247,6 +243,8 @@ class AssertionFinder
             $count_equality_position = self::hasNonEmptyCountEqualityCheck($conditional, $min_count);
             $min_comparison = null;
             $positive_number_position = self::hasPositiveNumberCheck($conditional, $min_comparison);
+            $max_count = null;
+            $count_inequality_position = self::hasLessThanCountEqualityCheck($conditional, $max_count);
 
             if ($count_equality_position) {
                 if ($count_equality_position === self::ASSIGNMENT_TO_RIGHT) {
@@ -271,6 +269,31 @@ class AssertionFinder
                         } else {
                             $if_types[$var_name] = [['=non-empty-countable']];
                         }
+                    }
+                }
+
+                return $if_types;
+            }
+
+            if ($count_inequality_position) {
+                if ($count_inequality_position === self::ASSIGNMENT_TO_LEFT) {
+                    $count_expr = $conditional->right;
+                } else {
+                    throw new \UnexpectedValueException('$count_inequality_position value');
+                }
+
+                /** @var PhpParser\Node\Expr\FuncCall $count_expr */
+                $var_name = ExpressionIdentifier::getArrayVarId(
+                    $count_expr->args[0]->value,
+                    $this_class_name,
+                    $source
+                );
+
+                if ($var_name) {
+                    if ($max_count) {
+                        $if_types[$var_name] = [['!has-at-least-' . ($max_count + 1)]];
+                    } else {
+                        $if_types[$var_name] = [['!non-empty-countable']];
                     }
                 }
 
@@ -305,7 +328,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new DocblockTypeContradiction(
                                 $var_type . ' cannot be greater than ' . $min_comparison,
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                null
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -315,7 +339,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new TypeDoesNotContainType(
                                 $var_type . ' cannot be greater than ' . $min_comparison,
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                null
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -340,6 +365,9 @@ class AssertionFinder
             $min_count = null;
             $count_equality_position = self::hasNonEmptyCountEqualityCheck($conditional, $min_count);
             $typed_value_position = self::hasTypedValueComparison($conditional, $source);
+
+            $max_count = null;
+            $count_inequality_position = self::hasLessThanCountEqualityCheck($conditional, $max_count);
 
             if ($count_equality_position) {
                 if ($count_equality_position === self::ASSIGNMENT_TO_LEFT) {
@@ -366,9 +394,33 @@ class AssertionFinder
                 return $if_types;
             }
 
+            if ($count_inequality_position) {
+                if ($count_inequality_position === self::ASSIGNMENT_TO_RIGHT) {
+                    $count_expr = $conditional->left;
+                } else {
+                    throw new \UnexpectedValueException('$count_inequality_position value');
+                }
+
+                /** @var PhpParser\Node\Expr\FuncCall $count_expr */
+                $var_name = ExpressionIdentifier::getArrayVarId(
+                    $count_expr->args[0]->value,
+                    $this_class_name,
+                    $source
+                );
+
+                if ($var_name) {
+                    if ($max_count) {
+                        $if_types[$var_name] = [['!has-at-least-' . ($max_count + 1)]];
+                    } else {
+                        $if_types[$var_name] = [['!non-empty-countable']];
+                    }
+                }
+
+                return $if_types;
+            }
+
             if ($typed_value_position) {
                 if ($typed_value_position === self::ASSIGNMENT_TO_RIGHT) {
-                    /** @var PhpParser\Node\Expr $conditional->left */
                     $var_name = ExpressionIdentifier::getArrayVarId(
                         $conditional->left,
                         $this_class_name,
@@ -377,7 +429,6 @@ class AssertionFinder
 
                     $expr = $conditional->right;
                 } elseif ($typed_value_position === self::ASSIGNMENT_TO_LEFT) {
-                    /** @var PhpParser\Node\Expr $conditional->left */
                     $var_name = ExpressionIdentifier::getArrayVarId(
                         $conditional->right,
                         $this_class_name,
@@ -496,19 +547,18 @@ class AssertionFinder
 
     /**
      * @param PhpParser\Node\Expr\BinaryOp\Identical|PhpParser\Node\Expr\BinaryOp\Equal $conditional
-     * @param string|null $this_class_name
      *
      * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     private static function scrapeEqualityAssertions(
         PhpParser\Node\Expr\BinaryOp $conditional,
-        $this_class_name,
+        ?string $this_class_name,
         FileSource $source,
-        Codebase $codebase = null,
+        ?Codebase $codebase = null,
         bool $inside_negation = false,
         bool $cache = true,
         bool $inside_conditional = true
-    ) {
+    ): array {
         $if_types = [];
 
         $null_position = self::hasNullVariable($conditional, $source);
@@ -516,6 +566,7 @@ class AssertionFinder
         $true_position = self::hasTrueVariable($conditional);
         $empty_array_position = self::hasEmptyArrayVariable($conditional);
         $gettype_position = self::hasGetTypeCheck($conditional);
+        $get_debug_type_position = self::hasGetDebugTypeCheck($conditional);
         $min_count = null;
         $count_equality_position = self::hasNonEmptyCountEqualityCheck($conditional, $min_count);
 
@@ -566,7 +617,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new DocblockTypeContradiction(
                                 $var_type . ' does not contain null',
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                $var_type . ' null'
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -576,7 +628,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new TypeDoesNotContainNull(
                                 $var_type . ' does not contain null',
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                $var_type->getId()
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -641,10 +694,6 @@ class AssertionFinder
                         }
                     }
 
-                    if ($base_assertions === null) {
-                        throw new \UnexpectedValueException('Assertions should be set');
-                    }
-
                     $if_types = $base_assertions;
                 }
             }
@@ -683,7 +732,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new DocblockTypeContradiction(
                                     $var_type . ' does not contain true',
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type . ' true'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -693,7 +743,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new TypeDoesNotContainType(
                                     $var_type . ' does not contain true',
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type . ' true'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -760,10 +811,6 @@ class AssertionFinder
                         }
                     }
 
-                    if ($base_assertions === null) {
-                        throw new \UnexpectedValueException('Assertions should be set');
-                    }
-
                     $notif_types = $base_assertions;
 
                     if (count($notif_types) === 1) {
@@ -788,7 +835,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new DocblockTypeContradiction(
                                     $var_type . ' does not contain false',
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type . ' false'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -798,7 +846,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new TypeDoesNotContainType(
                                     $var_type . ' does not contain false',
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type . ' false'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -851,7 +900,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new DocblockTypeContradiction(
                                 $var_type . ' does not contain an empty array',
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                null
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -861,7 +911,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new TypeDoesNotContainType(
                                 $var_type . ' does not contain empty array',
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                null
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -906,6 +957,52 @@ class AssertionFinder
                 }
             } else {
                 if ($var_name && $var_type) {
+                    $if_types[$var_name] = [[$var_type]];
+                }
+            }
+
+            return $if_types;
+        }
+
+        if ($get_debug_type_position) {
+            if ($get_debug_type_position === self::ASSIGNMENT_TO_RIGHT) {
+                $whichclass_expr = $conditional->left;
+                $get_debug_type_expr = $conditional->right;
+            } elseif ($get_debug_type_position === self::ASSIGNMENT_TO_LEFT) {
+                $whichclass_expr = $conditional->right;
+                $get_debug_type_expr = $conditional->left;
+            } else {
+                throw new \UnexpectedValueException('$gettype_position value');
+            }
+
+            /** @var PhpParser\Node\Expr\FuncCall $get_debug_type_expr */
+            $var_name = ExpressionIdentifier::getArrayVarId(
+                $get_debug_type_expr->args[0]->value,
+                $this_class_name,
+                $source
+            );
+
+            if ($whichclass_expr instanceof PhpParser\Node\Scalar\String_) {
+                $var_type = $whichclass_expr->value;
+            } elseif ($whichclass_expr instanceof PhpParser\Node\Expr\ClassConstFetch
+                && $whichclass_expr->class instanceof PhpParser\Node\Name
+            ) {
+                $var_type = ClassLikeAnalyzer::getFQCLNFromNameObject(
+                    $whichclass_expr->class,
+                    $source->getAliases()
+                );
+            } else {
+                throw new \UnexpectedValueException('Shouldn’t get here');
+            }
+
+            if ($var_name && $var_type) {
+                if ($var_type === 'class@anonymous') {
+                    $if_types[$var_name] = [['=object']];
+                } elseif ($var_type === 'resource (closed)') {
+                    $if_types[$var_name] = [['closed-resource']];
+                } elseif (substr($var_type, 0, 10) === 'resource (') {
+                    $if_types[$var_name] = [['=resource']];
+                } else {
                     $if_types[$var_name] = [[$var_type]];
                 }
             }
@@ -1018,7 +1115,6 @@ class AssertionFinder
 
         if ($typed_value_position) {
             if ($typed_value_position === self::ASSIGNMENT_TO_RIGHT) {
-                /** @var PhpParser\Node\Expr $conditional->right */
                 $var_name = ExpressionIdentifier::getArrayVarId(
                     $conditional->left,
                     $this_class_name,
@@ -1028,7 +1124,6 @@ class AssertionFinder
                 $other_type = $source->node_data->getType($conditional->left);
                 $var_type = $source->node_data->getType($conditional->right);
             } elseif ($typed_value_position === self::ASSIGNMENT_TO_LEFT) {
-                /** @var PhpParser\Node\Expr $conditional->left */
                 $var_name = ExpressionIdentifier::getArrayVarId(
                     $conditional->right,
                     $this_class_name,
@@ -1083,7 +1178,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new DocblockTypeContradiction(
                                 $var_type->getId() . ' does not contain ' . $other_type->getId(),
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                $var_type->getId() . ' ' . $other_type->getId()
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -1093,7 +1189,8 @@ class AssertionFinder
                         if (IssueBuffer::accepts(
                             new TypeDoesNotContainType(
                                 $var_type->getId() . ' cannot be identical to ' . $other_type->getId(),
-                                new CodeLocation($source, $conditional)
+                                new CodeLocation($source, $conditional),
+                                $var_type->getId() . ' ' . $other_type->getId()
                             ),
                             $source->getSuppressedIssues()
                         )) {
@@ -1118,7 +1215,8 @@ class AssertionFinder
                 if (IssueBuffer::accepts(
                     new TypeDoesNotContainType(
                         $var_type->getId() . ' cannot be identical to ' . $other_type->getId(),
-                        new CodeLocation($source, $conditional)
+                        new CodeLocation($source, $conditional),
+                        $var_type->getId() . ' ' . $other_type->getId()
                     ),
                     $source->getSuppressedIssues()
                 )) {
@@ -1132,19 +1230,18 @@ class AssertionFinder
 
     /**
      * @param PhpParser\Node\Expr\BinaryOp\NotIdentical|PhpParser\Node\Expr\BinaryOp\NotEqual $conditional
-     * @param string|null $this_class_name
      *
      * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     private static function scrapeInequalityAssertions(
         PhpParser\Node\Expr\BinaryOp $conditional,
-        $this_class_name,
+        ?string $this_class_name,
         FileSource $source,
-        Codebase $codebase = null,
+        ?Codebase $codebase = null,
         bool $inside_negation = false,
         bool $cache = true,
         bool $inside_conditional = true
-    ) {
+    ): array {
         $if_types = [];
 
         $null_position = self::hasNullVariable($conditional, $source);
@@ -1152,6 +1249,9 @@ class AssertionFinder
         $true_position = self::hasTrueVariable($conditional);
         $empty_array_position = self::hasEmptyArrayVariable($conditional);
         $gettype_position = self::hasGetTypeCheck($conditional);
+        $get_debug_type_position = self::hasGetDebugTypeCheck($conditional);
+        $count = null;
+        $count_inequality_position = self::hasNotCountEqualityCheck($conditional, $count);
 
         if ($null_position !== null) {
             if ($null_position === self::ASSIGNMENT_TO_RIGHT) {
@@ -1199,8 +1299,9 @@ class AssertionFinder
                         if ($var_type->from_docblock) {
                             if (IssueBuffer::accepts(
                                 new RedundantConditionGivenDocblockType(
-                                    'Docblock-asserted type ' . $var_type . ' can never contain null',
-                                    new CodeLocation($source, $conditional)
+                                    'Docblock-defined type ' . $var_type . ' can never contain null',
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' null'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1210,7 +1311,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new RedundantCondition(
                                     $var_type . ' can never contain null',
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' null'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1268,10 +1370,6 @@ class AssertionFinder
                     }
                 }
 
-                if ($base_assertions === null) {
-                    throw new \UnexpectedValueException('Assertions should be set');
-                }
-
                 $notif_types = $base_assertions;
 
                 if (count($notif_types) === 1) {
@@ -1298,8 +1396,9 @@ class AssertionFinder
                         if ($var_type->from_docblock) {
                             if (IssueBuffer::accepts(
                                 new RedundantConditionGivenDocblockType(
-                                    'Docblock-asserted type ' . $var_type . ' can never contain false',
-                                    new CodeLocation($source, $conditional)
+                                    'Docblock-defined type ' . $var_type . ' can never contain false',
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' false'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1309,7 +1408,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new RedundantCondition(
                                     $var_type . ' can never contain false',
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' false'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1376,10 +1476,6 @@ class AssertionFinder
                         }
                     }
 
-                    if ($base_assertions === null) {
-                        throw new \UnexpectedValueException('Assertions should be set');
-                    }
-
                     $notif_types = $base_assertions;
 
                     if (count($notif_types) === 1) {
@@ -1407,8 +1503,9 @@ class AssertionFinder
                         if ($var_type->from_docblock) {
                             if (IssueBuffer::accepts(
                                 new RedundantConditionGivenDocblockType(
-                                    'Docblock-asserted type ' . $var_type . ' can never contain true',
-                                    new CodeLocation($source, $conditional)
+                                    'Docblock-defined type ' . $var_type . ' can never contain true',
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' true'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1418,7 +1515,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new RedundantCondition(
                                     $var_type . ' can never contain ' . $true_type,
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' true'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1426,6 +1524,33 @@ class AssertionFinder
                             }
                         }
                     }
+                }
+            }
+
+            return $if_types;
+        }
+
+        if ($count_inequality_position) {
+            if ($count_inequality_position === self::ASSIGNMENT_TO_RIGHT) {
+                $count_expr = $conditional->left;
+            } elseif ($count_inequality_position === self::ASSIGNMENT_TO_LEFT) {
+                $count_expr = $conditional->right;
+            } else {
+                throw new \UnexpectedValueException('$count_equality_position value');
+            }
+
+            /** @var PhpParser\Node\Expr\FuncCall $count_expr */
+            $var_name = ExpressionIdentifier::getArrayVarId(
+                $count_expr->args[0]->value,
+                $this_class_name,
+                $source
+            );
+
+            if ($var_name) {
+                if ($count) {
+                    $if_types[$var_name] = [['!has-exactly-' . $count]];
+                } else {
+                    $if_types[$var_name] = [['non-empty-countable']];
                 }
             }
 
@@ -1474,8 +1599,9 @@ class AssertionFinder
                         if ($var_type->from_docblock) {
                             if (IssueBuffer::accepts(
                                 new RedundantConditionGivenDocblockType(
-                                    'Docblock-asserted type ' . $var_type . ' can never contain null',
-                                    new CodeLocation($source, $conditional)
+                                    'Docblock-defined type ' . $var_type->getId() . ' can never contain null',
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' null'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1484,8 +1610,9 @@ class AssertionFinder
                         } else {
                             if (IssueBuffer::accepts(
                                 new RedundantCondition(
-                                    $var_type . ' can never contain null',
-                                    new CodeLocation($source, $conditional)
+                                    $var_type->getId() . ' can never contain null',
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' null'
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1541,6 +1668,52 @@ class AssertionFinder
                 }
             } else {
                 if ($var_name && $var_type) {
+                    $if_types[$var_name] = [['!' . $var_type]];
+                }
+            }
+
+            return $if_types;
+        }
+
+        if ($get_debug_type_position) {
+            if ($get_debug_type_position === self::ASSIGNMENT_TO_RIGHT) {
+                $whichclass_expr = $conditional->left;
+                $get_debug_type_expr = $conditional->right;
+            } elseif ($get_debug_type_position === self::ASSIGNMENT_TO_LEFT) {
+                $whichclass_expr = $conditional->right;
+                $get_debug_type_expr = $conditional->left;
+            } else {
+                throw new \UnexpectedValueException('$gettype_position value');
+            }
+
+            /** @var PhpParser\Node\Expr\FuncCall $get_debug_type_expr */
+            $var_name = ExpressionIdentifier::getArrayVarId(
+                $get_debug_type_expr->args[0]->value,
+                $this_class_name,
+                $source
+            );
+
+            if ($whichclass_expr instanceof PhpParser\Node\Scalar\String_) {
+                $var_type = $whichclass_expr->value;
+            } elseif ($whichclass_expr instanceof PhpParser\Node\Expr\ClassConstFetch
+                && $whichclass_expr->class instanceof PhpParser\Node\Name
+            ) {
+                $var_type = ClassLikeAnalyzer::getFQCLNFromNameObject(
+                    $whichclass_expr->class,
+                    $source->getAliases()
+                );
+            } else {
+                throw new \UnexpectedValueException('Shouldn’t get here');
+            }
+
+            if ($var_name && $var_type) {
+                if ($var_type === 'class@anonymous') {
+                    $if_types[$var_name] = [['!=object']];
+                } elseif ($var_type === 'resource (closed)') {
+                    $if_types[$var_name] = [['!closed-resource']];
+                } elseif (substr($var_type, 0, 10) === 'resource (') {
+                    $if_types[$var_name] = [['!=resource']];
+                } else {
                     $if_types[$var_name] = [['!' . $var_type]];
                 }
             }
@@ -1628,7 +1801,6 @@ class AssertionFinder
 
         if ($typed_value_position) {
             if ($typed_value_position === self::ASSIGNMENT_TO_RIGHT) {
-                /** @var PhpParser\Node\Expr $conditional->right */
                 $var_name = ExpressionIdentifier::getArrayVarId(
                     $conditional->left,
                     $this_class_name,
@@ -1638,7 +1810,6 @@ class AssertionFinder
                 $other_type = $source->node_data->getType($conditional->left);
                 $var_type = $source->node_data->getType($conditional->right);
             } elseif ($typed_value_position === self::ASSIGNMENT_TO_LEFT) {
-                /** @var PhpParser\Node\Expr $conditional->left */
                 $var_name = ExpressionIdentifier::getArrayVarId(
                     $conditional->right,
                     $this_class_name,
@@ -1689,8 +1860,9 @@ class AssertionFinder
                         if ($var_type->from_docblock || $other_type->from_docblock) {
                             if (IssueBuffer::accepts(
                                 new DocblockTypeContradiction(
-                                    $var_type . ' can never contain ' . $other_type,
-                                    new CodeLocation($source, $conditional)
+                                    $var_type . ' can never contain ' . $other_type->getId(),
+                                    new CodeLocation($source, $conditional),
+                                    $var_type . ' ' . $other_type
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1700,7 +1872,8 @@ class AssertionFinder
                             if (IssueBuffer::accepts(
                                 new RedundantCondition(
                                     $var_type->getId() . ' can never contain ' . $other_type->getId(),
-                                    new CodeLocation($source, $conditional)
+                                    new CodeLocation($source, $conditional),
+                                    $var_type->getId() . ' ' . $other_type->getId()
                                 ),
                                 $source->getSuppressedIssues()
                             )) {
@@ -1718,20 +1891,15 @@ class AssertionFinder
     }
 
     /**
-     * @param  PhpParser\Node\Expr\FuncCall $expr
-     * @param  string|null                  $this_class_name
-     * @param  FileSource                   $source
-     * @param  bool                         $negate
-     *
      * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     public static function processFunctionCall(
         PhpParser\Node\Expr\FuncCall $expr,
-        $this_class_name,
+        ?string $this_class_name,
         FileSource $source,
-        Codebase $codebase = null,
-        $negate = false
-    ) {
+        ?Codebase $codebase = null,
+        bool $negate = false
+    ): array {
         $prefix = $negate ? '!' : '';
 
         $first_var_name = isset($expr->args[0]->value)
@@ -2050,9 +2218,9 @@ class AssertionFinder
             ) {
                 foreach ($second_arg_type->getAtomicTypes() as $atomic_type) {
                     if ($atomic_type instanceof Type\Atomic\TArray
-                        || $atomic_type instanceof Type\Atomic\ObjectLike
+                        || $atomic_type instanceof Type\Atomic\TKeyedArray
                     ) {
-                        if ($atomic_type instanceof Type\Atomic\ObjectLike) {
+                        if ($atomic_type instanceof Type\Atomic\TKeyedArray) {
                             $atomic_type = $atomic_type->getGenericArrayType();
                         }
 
@@ -2069,6 +2237,14 @@ class AssertionFinder
 
                             foreach ($array_literal_types as $array_literal_type) {
                                 $literal_assertions[] = '=' . $array_literal_type->getId();
+                            }
+
+                            if ($atomic_type->type_params[1]->isFalsable()) {
+                                $literal_assertions[] = 'false';
+                            }
+
+                            if ($atomic_type->type_params[1]->isNullable()) {
+                                $literal_assertions[] = 'null';
                             }
 
                             if ($negate) {
@@ -2167,7 +2343,8 @@ class AssertionFinder
                 if (IssueBuffer::accepts(
                     new RedundantConditionGivenDocblockType(
                         'Docblock type ' . $first_var_type . ' always contains ' . $expected_type,
-                        new CodeLocation($source, $expr)
+                        new CodeLocation($source, $expr),
+                        $first_var_type . ' ' . $expected_type
                     ),
                     $source->getSuppressedIssues()
                 )) {
@@ -2177,7 +2354,8 @@ class AssertionFinder
                 if (IssueBuffer::accepts(
                     new RedundantCondition(
                         $first_var_type . ' always contains ' . $expected_type,
-                        new CodeLocation($source, $expr)
+                        new CodeLocation($source, $expr),
+                        $first_var_type . ' ' . $expected_type
                     ),
                     $source->getSuppressedIssues()
                 )) {
@@ -2189,7 +2367,8 @@ class AssertionFinder
                 if (IssueBuffer::accepts(
                     new DocblockTypeContradiction(
                         $first_var_type . ' does not contain ' . $expected_type,
-                        new CodeLocation($source, $expr)
+                        new CodeLocation($source, $expr),
+                        $first_var_type . ' ' . $expected_type
                     ),
                     $source->getSuppressedIssues()
                 )) {
@@ -2199,7 +2378,8 @@ class AssertionFinder
                 if (IssueBuffer::accepts(
                     new TypeDoesNotContainType(
                         $first_var_type . ' does not contain ' . $expected_type,
-                        new CodeLocation($source, $expr)
+                        new CodeLocation($source, $expr),
+                        $first_var_type . ' ' . $expected_type
                     ),
                     $source->getSuppressedIssues()
                 )) {
@@ -2211,18 +2391,15 @@ class AssertionFinder
 
     /**
      * @param  PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall|PhpParser\Node\Expr\StaticCall $expr
-     * @param  string|null  $this_class_name
-     * @param  FileSource   $source
-     * @param  bool         $negate
      *
      * @return array<string, non-empty-list<non-empty-list<string>>>
      */
     protected static function processCustomAssertion(
-        $expr,
-        $this_class_name,
+        PhpParser\Node\Expr $expr,
+        ?string $this_class_name,
         FileSource $source,
-        $negate = false
-    ) {
+        bool $negate = false
+    ): array {
         if (!$source instanceof StatementsAnalyzer) {
             return [];
         }
@@ -2380,17 +2557,13 @@ class AssertionFinder
     }
 
     /**
-     * @param  PhpParser\Node\Expr\Instanceof_ $stmt
-     * @param  string|null                     $this_class_name
-     * @param  FileSource                $source
-     *
      * @return list<string>
      */
     protected static function getInstanceOfTypes(
         PhpParser\Node\Expr\Instanceof_ $stmt,
-        $this_class_name,
+        ?string $this_class_name,
         FileSource $source
-    ) {
+    ): array {
         if ($stmt->class instanceof PhpParser\Node\Name) {
             if (!in_array(strtolower($stmt->class->parts[0]), ['self', 'static', 'parent'], true)) {
                 $instanceof_class = ClassLikeAnalyzer::getFQCLNFromNameObject(
@@ -2434,15 +2607,10 @@ class AssertionFinder
         return [];
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
-     * @return  int|null
-     */
     protected static function hasNullVariable(
         PhpParser\Node\Expr\BinaryOp $conditional,
         FileSource $source
-    ) {
+    ): ?int {
         if ($conditional->right instanceof PhpParser\Node\Expr\ConstFetch
             && strtolower($conditional->right->name->parts[0]) === 'null'
         ) {
@@ -2465,12 +2633,7 @@ class AssertionFinder
         return null;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
-     * @return  int|null
-     */
-    public static function hasFalseVariable(PhpParser\Node\Expr\BinaryOp $conditional)
+    public static function hasFalseVariable(PhpParser\Node\Expr\BinaryOp $conditional): ?int
     {
         if ($conditional->right instanceof PhpParser\Node\Expr\ConstFetch
             && strtolower($conditional->right->name->parts[0]) === 'false'
@@ -2487,12 +2650,7 @@ class AssertionFinder
         return null;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
-     * @return  int|null
-     */
-    public static function hasTrueVariable(PhpParser\Node\Expr\BinaryOp $conditional)
+    public static function hasTrueVariable(PhpParser\Node\Expr\BinaryOp $conditional): ?int
     {
         if ($conditional->right instanceof PhpParser\Node\Expr\ConstFetch
             && strtolower($conditional->right->name->parts[0]) === 'true'
@@ -2509,12 +2667,7 @@ class AssertionFinder
         return null;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
-     * @return  int|null
-     */
-    protected static function hasEmptyArrayVariable(PhpParser\Node\Expr\BinaryOp $conditional)
+    protected static function hasEmptyArrayVariable(PhpParser\Node\Expr\BinaryOp $conditional): ?int
     {
         if ($conditional->right instanceof PhpParser\Node\Expr\Array_
             && !$conditional->right->items
@@ -2532,8 +2685,6 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
      * @return  false|int
      */
     protected static function hasGetTypeCheck(PhpParser\Node\Expr\BinaryOp $conditional)
@@ -2560,8 +2711,34 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
+     * @return  false|int
+     */
+    protected static function hasGetDebugTypeCheck(PhpParser\Node\Expr\BinaryOp $conditional)
+    {
+        if ($conditional->right instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->right->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->right->name->parts[0]) === 'get_debug_type'
+            && $conditional->right->args
+            && ($conditional->left instanceof PhpParser\Node\Scalar\String_
+                || $conditional->left instanceof PhpParser\Node\Expr\ClassConstFetch)
+        ) {
+            return self::ASSIGNMENT_TO_RIGHT;
+        }
+
+        if ($conditional->left instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->left->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->left->name->parts[0]) === 'get_debug_type'
+            && $conditional->left->args
+            && ($conditional->right instanceof PhpParser\Node\Scalar\String_
+                || $conditional->right instanceof PhpParser\Node\Expr\ClassConstFetch)
+        ) {
+            return self::ASSIGNMENT_TO_LEFT;
+        }
+
+        return false;
+    }
+
+    /**
      * @return  false|int
      */
     protected static function hasGetClassCheck(
@@ -2595,6 +2772,7 @@ class AssertionFinder
             foreach ($left_type->getAtomicTypes() as $type_part) {
                 if ($type_part instanceof Type\Atomic\TClassString) {
                     $left_class_string_t = true;
+                    break;
                 }
             }
         }
@@ -2626,6 +2804,7 @@ class AssertionFinder
             foreach ($right_type->getAtomicTypes() as $type_part) {
                 if ($type_part instanceof Type\Atomic\TClassString) {
                     $right_class_string_t = true;
+                    break;
                 }
             }
         }
@@ -2638,8 +2817,6 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
      * @return  false|int
      */
     protected static function hasNonEmptyCountEqualityCheck(
@@ -2700,8 +2877,88 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
+     * @return  false|int
+     */
+    protected static function hasLessThanCountEqualityCheck(
+        PhpParser\Node\Expr\BinaryOp $conditional,
+        ?int &$max_count
+    ) {
+        $left_count = $conditional->left instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->left->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->left->name->parts[0]) === 'count'
+            && $conditional->left->args;
+
+        $operator_less_than_or_equal =
+            $conditional instanceof PhpParser\Node\Expr\BinaryOp\SmallerOrEqual
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Smaller;
+
+        if ($left_count
+            && $conditional->right instanceof PhpParser\Node\Scalar\LNumber
+            && $operator_less_than_or_equal
+        ) {
+            $max_count = $conditional->right->value -
+                ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Smaller ? 1 : 0);
+
+            return self::ASSIGNMENT_TO_RIGHT;
+        }
+
+        $right_count = $conditional->right instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->right->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->right->name->parts[0]) === 'count'
+            && $conditional->right->args;
+
+        $operator_greater_than_or_equal =
+            $conditional instanceof PhpParser\Node\Expr\BinaryOp\GreaterOrEqual
+            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Greater;
+
+        if ($right_count
+            && $conditional->left instanceof PhpParser\Node\Scalar\LNumber
+            && $operator_greater_than_or_equal
+        ) {
+            $max_count = $conditional->left->value -
+                ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Greater ? 1 : 0);
+
+            return self::ASSIGNMENT_TO_LEFT;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  PhpParser\Node\Expr\BinaryOp\NotIdentical|PhpParser\Node\Expr\BinaryOp\NotEqual $conditional
      *
+     * @return  false|int
+     */
+    protected static function hasNotCountEqualityCheck(
+        PhpParser\Node\Expr\BinaryOp $conditional,
+        ?int &$count
+    ) {
+        $left_count = $conditional->left instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->left->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->left->name->parts[0]) === 'count'
+            && $conditional->left->args;
+
+        if ($left_count && $conditional->right instanceof PhpParser\Node\Scalar\LNumber) {
+            $count = $conditional->right->value;
+
+            return self::ASSIGNMENT_TO_RIGHT;
+        }
+
+        $right_count = $conditional->right instanceof PhpParser\Node\Expr\FuncCall
+            && $conditional->right->name instanceof PhpParser\Node\Name
+            && strtolower($conditional->right->name->parts[0]) === 'count'
+            && $conditional->right->args;
+
+        if ($right_count && $conditional->left instanceof PhpParser\Node\Scalar\LNumber) {
+            $count = $conditional->left->value;
+
+            return self::ASSIGNMENT_TO_LEFT;
+        }
+
+        return false;
+    }
+
+    /**
      * @return  false|int
      */
     protected static function hasPositiveNumberCheck(
@@ -2750,8 +3007,6 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
      * @return  false|int
      */
     protected static function hasReconcilableNonEmptyCountEqualityCheck(PhpParser\Node\Expr\BinaryOp $conditional)
@@ -2796,8 +3051,6 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\BinaryOp    $conditional
-     *
      * @return  false|int
      */
     protected static function hasTypedValueComparison(
@@ -2834,12 +3087,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasNullCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasNullCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_null') {
             return true;
@@ -2848,15 +3096,10 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
     protected static function hasIsACheck(
         PhpParser\Node\Expr\FuncCall $stmt,
         StatementsAnalyzer $source
-    ) {
+    ): bool {
         if ($stmt->name instanceof PhpParser\Node\Name
             && (strtolower($stmt->name->parts[0]) === 'is_a'
                 || strtolower($stmt->name->parts[0]) === 'is_subclass_of')
@@ -2881,12 +3124,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasArrayCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasArrayCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_array') {
             return true;
@@ -2895,12 +3133,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasStringCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasStringCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_string') {
             return true;
@@ -2909,12 +3142,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasBoolCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasBoolCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_bool') {
             return true;
@@ -2923,12 +3151,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasObjectCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasObjectCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && $stmt->name->parts === ['is_object']) {
             return true;
@@ -2937,12 +3160,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasNumericCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasNumericCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && $stmt->name->parts === ['is_numeric']) {
             return true;
@@ -2951,12 +3169,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasIterableCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasIterableCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_iterable') {
             return true;
@@ -2965,12 +3178,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasCountableCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasCountableCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'is_countable') {
             return true;
@@ -2980,11 +3188,9 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
      * @return  0|1|2
      */
-    protected static function hasClassExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasClassExistsCheck(PhpParser\Node\Expr\FuncCall $stmt): int
     {
         if ($stmt->name instanceof PhpParser\Node\Name
             && strtolower($stmt->name->parts[0]) === 'class_exists'
@@ -3008,11 +3214,9 @@ class AssertionFinder
     }
 
     /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
      * @return  0|1|2
      */
-    protected static function hasTraitExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasTraitExistsCheck(PhpParser\Node\Expr\FuncCall $stmt): int
     {
         if ($stmt->name instanceof PhpParser\Node\Name
             && strtolower($stmt->name->parts[0]) === 'trait_exists'
@@ -3035,12 +3239,7 @@ class AssertionFinder
         return 0;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasInterfaceExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasInterfaceExistsCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name
             && strtolower($stmt->name->parts[0]) === 'interface_exists'
@@ -3051,12 +3250,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasFunctionExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasFunctionExistsCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && strtolower($stmt->name->parts[0]) === 'function_exists') {
             return true;
@@ -3065,12 +3259,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasIntCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasIntCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name &&
             ($stmt->name->parts === ['is_int'] ||
@@ -3083,12 +3272,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasFloatCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasFloatCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name &&
             ($stmt->name->parts === ['is_float'] ||
@@ -3101,12 +3285,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasResourceCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasResourceCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && $stmt->name->parts === ['is_resource']) {
             return true;
@@ -3115,12 +3294,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasScalarCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasScalarCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && $stmt->name->parts === ['is_scalar']) {
             return true;
@@ -3129,12 +3303,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasCallableCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasCallableCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && $stmt->name->parts === ['is_callable']) {
             return true;
@@ -3143,12 +3312,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasInArrayCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasInArrayCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name
             && $stmt->name->parts === ['in_array']
@@ -3166,12 +3330,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasNonEmptyCountCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasNonEmptyCountCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name
             && $stmt->name->parts === ['count']
@@ -3182,12 +3341,7 @@ class AssertionFinder
         return false;
     }
 
-    /**
-     * @param   PhpParser\Node\Expr\FuncCall    $stmt
-     *
-     * @return  bool
-     */
-    protected static function hasArrayKeyExistsCheck(PhpParser\Node\Expr\FuncCall $stmt)
+    protected static function hasArrayKeyExistsCheck(PhpParser\Node\Expr\FuncCall $stmt): bool
     {
         if ($stmt->name instanceof PhpParser\Node\Name && $stmt->name->parts === ['array_key_exists']) {
             return true;

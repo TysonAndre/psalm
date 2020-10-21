@@ -2,7 +2,6 @@
 namespace Psalm\Internal\FileManipulation;
 
 use PhpParser;
-use function array_shift;
 use function count;
 use function ltrim;
 use PhpParser\Node\Expr\ArrowFunction;
@@ -94,16 +93,13 @@ class FunctionDocblockManipulator
     private $is_pure = false;
 
     /**
-     * @param  string $file_path
      * @param  Closure|Function_|ClassMethod|ArrowFunction $stmt
-     *
-     * @return self
      */
     public static function getForFunction(
         ProjectAnalyzer $project_analyzer,
-        $file_path,
+        string $file_path,
         FunctionLike $stmt
-    ) {
+    ): FunctionDocblockManipulator {
         if (isset(self::$manipulators[$file_path][$stmt->getLine()])) {
             return self::$manipulators[$file_path][$stmt->getLine()];
         }
@@ -116,14 +112,13 @@ class FunctionDocblockManipulator
     }
 
     /**
-     * @param string $file_path
      * @param Closure|Function_|ClassMethod|ArrowFunction $stmt
      */
-    private function __construct($file_path, FunctionLike $stmt, ProjectAnalyzer $project_analyzer)
+    private function __construct(string $file_path, FunctionLike $stmt, ProjectAnalyzer $project_analyzer)
     {
         $this->stmt = $stmt;
         $docblock = $stmt->getDocComment();
-        $this->docblock_start = $docblock ? $docblock->getFilePos() : (int)$stmt->getAttribute('startFilePos');
+        $this->docblock_start = $docblock ? $docblock->getStartFilePos() : (int)$stmt->getAttribute('startFilePos');
         $this->docblock_end = $function_start = (int)$stmt->getAttribute('startFilePos');
         $function_end = (int)$stmt->getAttribute('endFilePos');
 
@@ -167,7 +162,7 @@ class FunctionDocblockManipulator
 
         $in_single_line_comment = $in_multi_line_comment = false;
 
-        for ($i = 0; $i < count($chars); ++$i) {
+        for ($i = 0, $iMax = count($chars); $i < $iMax; ++$i) {
             $char = $chars[$i];
 
             switch ($char) {
@@ -261,16 +256,14 @@ class FunctionDocblockManipulator
     /**
      * Sets the new return type
      *
-     * @param   ?string     $php_type
-     * @param   string      $new_type
-     * @param   string      $phpdoc_type
-     * @param   bool        $is_php_compatible
-     * @param   ?string     $description
-     *
-     * @return  void
      */
-    public function setReturnType($php_type, $new_type, $phpdoc_type, $is_php_compatible, $description)
-    {
+    public function setReturnType(
+        ?string $php_type,
+        string $new_type,
+        string $phpdoc_type,
+        bool $is_php_compatible,
+        ?string $description
+    ): void {
         $new_type = str_replace(['<mixed, mixed>', '<array-key, mixed>'], '', $new_type);
 
         $this->new_php_return_type = $php_type;
@@ -283,20 +276,15 @@ class FunctionDocblockManipulator
     /**
      * Sets a new param type
      *
-     * @param   string      $param_name
-     * @param   ?string     $php_type
-     * @param   string      $new_type
-     * @param   string      $phpdoc_type
      * @param   bool        $is_php_compatible
      *
-     * @return  void
      */
     public function setParamType(
         string $param_name,
         ?string $php_type,
         string $new_type,
         string $phpdoc_type
-    ) {
+    ): void {
         $new_type = str_replace(['<mixed, mixed>', '<array-key, mixed>', '<empty, empty>'], '', $new_type);
 
         if ($php_type) {
@@ -313,9 +301,8 @@ class FunctionDocblockManipulator
      * Gets a new docblock given the existing docblock, if one exists, and the updated return types
      * and/or parameters
      *
-     * @return string
      */
-    private function getDocblock()
+    private function getDocblock(): string
     {
         $docblock = $this->stmt->getDocComment();
 
@@ -398,11 +385,9 @@ class FunctionDocblockManipulator
     }
 
     /**
-     * @param  string $file_path
-     *
      * @return array<int, FileManipulation>
      */
-    public static function getManipulationsForFile($file_path)
+    public static function getManipulationsForFile(string $file_path): array
     {
         if (!isset(self::$manipulators[$file_path])) {
             return [];
@@ -493,10 +478,7 @@ class FunctionDocblockManipulator
         $this->is_pure = true;
     }
 
-    /**
-     * @return void
-     */
-    public static function clearCache()
+    public static function clearCache(): void
     {
         self::$manipulators = [];
     }
@@ -512,7 +494,7 @@ class FunctionDocblockManipulator
     /**
      * @return array<string, array<int, FunctionDocblockManipulator>>
      */
-    public static function getManipulators()
+    public static function getManipulators(): array
     {
         return self::$manipulators;
     }

@@ -77,18 +77,15 @@ class Clause
 
     /**
      * @param array<string, non-empty-list<string>>  $possibilities
-     * @param bool                          $wedge
-     * @param bool                          $reconcilable
-     * @param bool                          $generated
      * @param array<string, bool> $redefined_vars
      */
     public function __construct(
         array $possibilities,
         int $creating_conditional_id,
         int $creating_object_id,
-        $wedge = false,
-        $reconcilable = true,
-        $generated = false,
+        bool $wedge = false,
+        bool $reconcilable = true,
+        bool $generated = false,
         array $redefined_vars = []
     ) {
         $this->possibilities = $possibilities;
@@ -112,12 +109,7 @@ class Clause
         }
     }
 
-    /**
-     * @param  Clause $other_clause
-     *
-     * @return bool
-     */
-    public function contains(Clause $other_clause)
+    public function contains(Clause $other_clause): bool
     {
         if (count($other_clause->possibilities) > count($this->possibilities)) {
             return false;
@@ -132,45 +124,69 @@ class Clause
         return true;
     }
 
-    public function __toString()
+    /**
+     * @psalm-mutation-free
+     */
+    public function __toString(): string
     {
-        return implode(
-            ' || ',
-            array_map(
-                /**
-                 * @param string $var_id
-                 * @param string[] $values
-                 *
-                 * @return string
-                 */
-                function ($var_id, $values) {
-                    return implode(
-                        ' || ',
-                        array_map(
-                            /**
-                             * @param string $value
-                             *
-                             * @return string
-                             */
-                            function ($value) use ($var_id) {
-                                if ($value === 'falsy') {
-                                    return '!' . $var_id;
-                                }
+        $clause_strings = array_map(
+            /**
+             * @param string $var_id
+             * @param non-empty-list<string> $values
+             *
+             * @return string
+             */
+            function ($var_id, $values): string {
+                $var_id_clauses = array_map(
+                    /**
+                     * @param string $value
+                     *
+                     * @return string
+                     */
+                    function ($value) use ($var_id): string {
+                        if ($value === 'falsy') {
+                            return '!' . $var_id;
+                        }
 
-                                if ($value === '!falsy') {
-                                    return $var_id;
-                                }
+                        if ($value === '!falsy') {
+                            return $var_id;
+                        }
 
-                                return $var_id . '==' . $value;
-                            },
-                            $values
-                        )
-                    );
-                },
-                array_keys($this->possibilities),
-                array_values($this->possibilities)
-            )
+                        $negate = false;
+
+                        if ($value[0] === '!') {
+                            $negate = true;
+                            $value = \substr($value, 1);
+                        }
+
+                        if ($value[0] === '=') {
+                            $value = \substr($value, 1);
+                        }
+
+                        if ($negate) {
+                            return $var_id . ' is not ' . $value;
+                        }
+
+                        return $var_id . ' is ' . $value;
+                    },
+                    $values
+                );
+
+                if (count($var_id_clauses) > 1) {
+                    return '(' . implode(') || (', $var_id_clauses) . ')';
+                }
+
+                return $var_id_clauses[0];
+            },
+            array_keys($this->possibilities),
+            array_values($this->possibilities)
         );
+
+        if (count($clause_strings) > 1) {
+            return '(' . implode(') || (', $clause_strings) . ')';
+        }
+
+        return \reset($clause_strings);
     }
 
     public function makeUnique() : self

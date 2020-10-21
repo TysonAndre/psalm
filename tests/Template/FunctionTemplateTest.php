@@ -12,7 +12,7 @@ class FunctionTemplateTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'validTemplatedType' => [
@@ -583,7 +583,7 @@ class FunctionTemplateTest extends TestCase
                          * @param int|false $x
                          */
                         function($x): void {},
-                        [strpos("str", "str")]
+                        [rand(0, 1) ? 5 : false]
                     );',
             ],
             'ignoreTooManyArrayArgs' => [
@@ -1065,7 +1065,7 @@ class FunctionTemplateTest extends TestCase
                      */
                     function toArray(iterable $iter): array {
                         $data = [];
-                        foreach ($iter as $key => $val) {
+                        foreach ($iter as $val) {
                             $data[] = $val;
                         }
                         return $data;
@@ -1075,11 +1075,11 @@ class FunctionTemplateTest extends TestCase
                      * @template T
                      * @template U
                      * @param callable(T): U $predicate
-                     * @return callable(iterable<T>): iterable<U>
+                     * @return callable(iterable<int, T>): iterable<int, U>
                      */
                     function map(callable $predicate): callable {
                         return
-                        /** @param iterable<T> $iter */
+                        /** @param iterable<int, T> $iter */
                         function(iterable $iter) use ($predicate): iterable {
                             foreach ($iter as $key => $value) {
                                 yield $key => $predicate($value);
@@ -1091,7 +1091,7 @@ class FunctionTemplateTest extends TestCase
                     function _test(array $strings): void {}
                     $a =  map([A::class, "dup"])(["a", "b", "c"]);',
                 [
-                    '$a' => 'iterable<mixed, string>'
+                    '$a' => 'iterable<int, string>'
                 ]
             ],
             'testClosureCallableInference' => [
@@ -1103,7 +1103,7 @@ class FunctionTemplateTest extends TestCase
                      */
                     function toArray(iterable $iter): array {
                         $data = [];
-                        foreach ($iter as $key => $val) {
+                        foreach ($iter as $val) {
                             $data[] = $val;
                         }
                         return $data;
@@ -1113,11 +1113,11 @@ class FunctionTemplateTest extends TestCase
                      * @template T
                      * @template U
                      * @param callable(T): U $predicate
-                     * @return callable(iterable<T>): iterable<U>
+                     * @return callable(iterable<int, T>): iterable<int, U>
                      */
                     function map(callable $predicate): callable {
                         return
-                        /** @param iterable<T> $iter */
+                        /** @param iterable<int, T> $iter */
                         function(iterable $iter) use ($predicate): iterable {
                             foreach ($iter as $key => $value) {
                                 yield $key => $predicate($value);
@@ -1134,7 +1134,7 @@ class FunctionTemplateTest extends TestCase
                         }
                     )(["a", "b", "c"]);',
                 [
-                    '$a' => 'iterable<mixed, string>'
+                    '$a' => 'iterable<int, string>'
                 ]
             ],
             'possiblyNullMatchesTemplateType' => [
@@ -1408,7 +1408,7 @@ class FunctionTemplateTest extends TestCase
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'invalidTemplatedType' => [

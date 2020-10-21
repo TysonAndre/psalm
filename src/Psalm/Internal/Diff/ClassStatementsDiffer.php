@@ -17,24 +17,21 @@ class ClassStatementsDiffer extends AstDiffer
     /**
      * Calculate diff (edit script) from $a to $b.
      *
-     * @param string $name
-     * @param string $a_code
-     * @param string $b_code
      * @param array<int, PhpParser\Node\Stmt> $a
      * @param array<int, PhpParser\Node\Stmt> $b
      *
      * @return array{
-     *      0: array<int, string>,
-     *      1: array<int, string>,
-     *      2: array<int, string>,
+     *      0: list<string>,
+     *      1: list<string>,
+     *      2: list<string>,
      *      3: array<int, array{0: int, 1: int, 2: int, 3: int}>
      * }
      */
-    public static function diff($name, array $a, array $b, $a_code, $b_code)
+    public static function diff(string $name, array $a, array $b, string $a_code, string $b_code): array
     {
         $diff_map = [];
 
-        list($trace, $x, $y, $bc) = self::calculateTrace(
+        [$trace, $x, $y, $bc] = self::calculateTrace(
             /**
              * @param string $a_code
              * @param string $b_code
@@ -48,7 +45,7 @@ class ClassStatementsDiffer extends AstDiffer
                 $a_code,
                 $b_code,
                 &$body_change = false
-            ) use (&$diff_map) {
+            ) use (&$diff_map): bool {
                 if (get_class($a) !== get_class($b)) {
                     return false;
                 }
@@ -75,7 +72,7 @@ class ClassStatementsDiffer extends AstDiffer
                         $signature_change = true;
                     }
 
-                    $a_start = $a_comments[0]->getFilePos();
+                    $a_start = $a_comments[0]->getStartFilePos();
                 }
 
                 if ($b_comments) {
@@ -83,7 +80,7 @@ class ClassStatementsDiffer extends AstDiffer
                         $signature_change = true;
                     }
 
-                    $b_start = $b_comments[0]->getFilePos();
+                    $b_start = $b_comments[0]->getStartFilePos();
                 }
 
                 $a_size = $a_end - $a_start;
@@ -118,7 +115,7 @@ class ClassStatementsDiffer extends AstDiffer
                         $a_stmts_start = (int) $first_stmt->getAttribute('startFilePos');
 
                         if ($a_stmt_comments = $first_stmt->getComments()) {
-                            $a_stmts_start = $a_stmt_comments[0]->getFilePos();
+                            $a_stmts_start = $a_stmt_comments[0]->getStartFilePos();
                         }
                     } else {
                         $a_stmts_start = $a_end;
@@ -129,7 +126,7 @@ class ClassStatementsDiffer extends AstDiffer
                         $b_stmts_start = (int) $first_stmt->getAttribute('startFilePos');
 
                         if ($b_stmt_comments = $first_stmt->getComments()) {
-                            $b_stmts_start = $b_stmt_comments[0]->getFilePos();
+                            $b_stmts_start = $b_stmt_comments[0]->getStartFilePos();
                         }
                     } else {
                         $b_stmts_start = $b_end;

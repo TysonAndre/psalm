@@ -53,10 +53,8 @@ class TextDocument
      * document's uri.
      *
      * @param \LanguageServerProtocol\TextDocumentItem $textDocument the document that was opened
-     *
-     * @return void
      */
-    public function didOpen(TextDocumentItem $textDocument)
+    public function didOpen(TextDocumentItem $textDocument): void
     {
         $file_path = LanguageServer::uriToPath($textDocument->uri);
 
@@ -71,10 +69,7 @@ class TextDocument
         $this->server->queueFileAnalysis($file_path, $textDocument->uri);
     }
 
-    /**
-     * @return void
-     */
-    public function didSave(TextDocumentItem $textDocument)
+    public function didSave(TextDocumentItem $textDocument): void
     {
         $file_path = LanguageServer::uriToPath($textDocument->uri);
 
@@ -94,10 +89,8 @@ class TextDocument
      *
      * @param \LanguageServerProtocol\VersionedTextDocumentIdentifier $textDocument
      * @param \LanguageServerProtocol\TextDocumentContentChangeEvent[] $contentChanges
-     *
-     * @return void
      */
-    public function didChange(VersionedTextDocumentIdentifier $textDocument, array $contentChanges)
+    public function didChange(VersionedTextDocumentIdentifier $textDocument, array $contentChanges): void
     {
         $file_path = \Psalm\Internal\LanguageServer\LanguageServer::uriToPath($textDocument->uri);
 
@@ -132,9 +125,8 @@ class TextDocument
      *
      * @param \LanguageServerProtocol\TextDocumentIdentifier $textDocument The document that was closed
      *
-     * @return void
      */
-    public function didClose(TextDocumentIdentifier $textDocument)
+    public function didClose(TextDocumentIdentifier $textDocument): void
     {
         $file_path = LanguageServer::uriToPath($textDocument->uri);
 
@@ -167,7 +159,7 @@ class TextDocument
             return new Success(null);
         }
 
-        list($reference) = $reference_location;
+        [$reference] = $reference_location;
 
         $code_location = $this->codebase->getSymbolLocation($file_path, $reference);
 
@@ -211,7 +203,7 @@ class TextDocument
             return new Success(null);
         }
 
-        list($reference, $range) = $reference_location;
+        [$reference, $range] = $reference_location;
 
         $symbol_information = $this->codebase->getSymbolInformation($file_path, $reference);
 
@@ -244,6 +236,9 @@ class TextDocument
         $this->server->doAnalysis();
 
         $file_path = LanguageServer::uriToPath($textDocument->uri);
+        if (!$this->codebase->config->isInProjectDirs($file_path)) {
+            return new Success([]);
+        }
 
         try {
             $completion_data = $this->codebase->getCompletionDataAtPosition($file_path, $position);
@@ -260,7 +255,7 @@ class TextDocument
             return new Success([]);
         }
 
-        list($recent_type, $gap, $offset) = $completion_data;
+        [$recent_type, $gap, $offset] = $completion_data;
 
         if ($gap === '->' || $gap === '::') {
             $completion_items = $this->codebase->getCompletionItemsForClassishThing($recent_type, $gap);

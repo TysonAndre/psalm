@@ -9,15 +9,14 @@ gc_disable();
 error_reporting(-1);
 
 require_once('command_functions.php');
+require_once __DIR__ . '/Psalm/Internal/Composer.php';
 require_once __DIR__ . '/Psalm/Internal/exception_handler.php';
 
-use Psalm\ErrorBaseline;
 use Psalm\Exception\ConfigException;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
+use Psalm\Internal\Composer;
 use Psalm\Internal\Provider;
-use Psalm\Config;
 use Psalm\Internal\IncludeCollector;
-use Psalm\IssueBuffer;
 use Psalm\Progress\DebugProgress;
 use Psalm\Progress\DefaultProgress;
 use Psalm\Progress\LongProgress;
@@ -54,7 +53,6 @@ use function ini_get;
 use const PHP_OS;
 use function version_compare;
 use const PHP_VERSION;
-use function is_null;
 use function setlocale;
 use const LC_CTYPE;
 use function microtime;
@@ -85,7 +83,6 @@ $valid_long_options = [
     'debug-performance',
     'debug-emitted-issues',
     'diff',
-    'diff-methods',
     'disable-extension:',
     'find-dead-code::',
     'find-unused-code::',
@@ -96,6 +93,7 @@ $valid_long_options = [
     'init',
     'memory-limit:',
     'monochrome',
+    'no-diff',
     'no-cache',
     'no-reflection-cache',
     'no-vendor-autoloader',
@@ -157,10 +155,8 @@ if (isset($options['refactor'])) {
 array_map(
     /**
      * @param string $arg
-     *
-     * @return void
      */
-    function ($arg) use ($valid_long_options, $valid_short_options) {
+    function ($arg) use ($valid_long_options, $valid_short_options): void {
         if (substr($arg, 0, 2) === '--' && $arg !== '--') {
             $arg_name = preg_replace('/=.*$/', '', substr($arg, 2));
 
@@ -279,7 +275,7 @@ require_once __DIR__ . '/' . 'Psalm/Internal/IncludeCollector.php';
 
 $include_collector = new IncludeCollector();
 $first_autoloader = $include_collector->runAndCollect(
-    function () use ($current_dir, $options, $vendor_dir) {
+    function () use ($current_dir, $options, $vendor_dir): ?\Composer\Autoload\ClassLoader {
         return requireAutoloaders($current_dir, isset($options['r']), $vendor_dir, isset($options['no-vendor-autoloader']));
     }
 );
@@ -304,12 +300,7 @@ if (isset($options['i'])) {
 
     $args = array_values(array_filter(
         $args,
-        /**
-         * @param string $arg
-         *
-         * @return bool
-         */
-        function ($arg) {
+        function (string $arg): bool {
             return $arg !== '--ansi'
                 && $arg !== '--no-ansi'
                 && $arg !== '-i'
@@ -460,7 +451,7 @@ if (isset($options['generate-stubs']) && is_string($options['generate-stubs'])) 
 // If Xdebug is enabled, restart without it
 $ini_handler->check();
 
-if (is_null($config->load_xdebug_stub) && '' !== $ini_handler->getSkippedVersion()) {
+if ($config->load_xdebug_stub === null && '' !== $ini_handler->getSkippedVersion()) {
     $config->load_xdebug_stub = true;
 }
 
@@ -494,7 +485,9 @@ $show_info = isset($options['show-info'])
     ? $options['show-info'] === 'true' || $options['show-info'] === '1'
     : false;
 
-$is_diff = isset($options['diff']);
+$is_diff = !isset($options['no-diff'])
+    && !isset($options['set-baseline'])
+    && !isset($options['update-baseline']);
 
 /** @var false|'always'|'auto' $find_unused_code */
 $find_unused_code = false;
@@ -532,7 +525,9 @@ if (isset($options['shepherd'])) {
 if (isset($options['clear-cache'])) {
     $cache_directory = $config->getCacheDirectory();
 
-    Config::removeCacheDirectory($cache_directory);
+    if ($cache_directory !== null) {
+        Config::removeCacheDirectory($cache_directory);
+    }
     echo 'Cache directory deleted' . PHP_EOL;
     exit;
 }
@@ -585,7 +580,7 @@ if (isset($options['no-cache']) || isset($options['i'])) {
         $file_storage_cache_provider,
         $classlike_storage_cache_provider,
         new Provider\FileReferenceCacheProvider($config),
-        new Provider\ProjectCacheProvider($current_dir . DIRECTORY_SEPARATOR . 'composer.lock')
+        new Provider\ProjectCacheProvider(Composer::getLockFilePath($current_dir))
     );
 }
 
@@ -689,67 +684,59 @@ if ($find_references_to) {
 }
 
 if (isset($options['set-baseline']) && is_string($options['set-baseline'])) {
-    if ($is_diff) {
-        fwrite(STDERR, 'Cannot set baseline in --diff mode' . PHP_EOL);
-    } else {
-        fwrite(STDERR, 'Writing error baseline to file...' . PHP_EOL);
+    fwrite(STDERR, 'Writing error baseline to file...' . PHP_EOL);
 
-        ErrorBaseline::create(
-            new \Psalm\Internal\Provider\FileProvider,
-            $options['set-baseline'],
-            IssueBuffer::getIssuesData(),
-            $config->include_php_versions_in_error_baseline || isset($options['include-php-versions'])
-        );
+    ErrorBaseline::create(
+        new \Psalm\Internal\Provider\FileProvider,
+        $options['set-baseline'],
+        IssueBuffer::getIssuesData(),
+        $config->include_php_versions_in_error_baseline || isset($options['include-php-versions'])
+    );
 
-        fwrite(STDERR, "Baseline saved to {$options['set-baseline']}.");
+    fwrite(STDERR, "Baseline saved to {$options['set-baseline']}.");
 
-        update_config_file(
-            $config,
-            $path_to_config ?? $current_dir,
-            $options['set-baseline']
-        );
+    update_config_file(
+        $config,
+        $path_to_config ?? $current_dir,
+        $options['set-baseline']
+    );
 
-        fwrite(STDERR, PHP_EOL);
-    }
+    fwrite(STDERR, PHP_EOL);
 }
 
 $issue_baseline = [];
 
 if (isset($options['update-baseline'])) {
-    if ($is_diff) {
-        fwrite(STDERR, 'Cannot update baseline in --diff mode' . PHP_EOL);
-    } else {
-        $baselineFile = Config::getInstance()->error_baseline;
+    $baselineFile = Config::getInstance()->error_baseline;
 
-        if (empty($baselineFile)) {
-            die('Cannot update baseline, because no baseline file is configured.' . PHP_EOL);
+    if (empty($baselineFile)) {
+        die('Cannot update baseline, because no baseline file is configured.' . PHP_EOL);
+    }
+
+    try {
+        $issue_current_baseline = ErrorBaseline::read(
+            new \Psalm\Internal\Provider\FileProvider,
+            $baselineFile
+        );
+        $total_issues_current_baseline = ErrorBaseline::countTotalIssues($issue_current_baseline);
+
+        $issue_baseline = ErrorBaseline::update(
+            new \Psalm\Internal\Provider\FileProvider,
+            $baselineFile,
+            IssueBuffer::getIssuesData(),
+            $config->include_php_versions_in_error_baseline || isset($options['include-php-versions'])
+        );
+        $total_issues_updated_baseline = ErrorBaseline::countTotalIssues($issue_baseline);
+
+        $total_fixed_issues = $total_issues_current_baseline - $total_issues_updated_baseline;
+
+        if ($total_fixed_issues > 0) {
+            echo str_repeat('-', 30) . "\n";
+            echo $total_fixed_issues . ' errors fixed' . "\n";
         }
-
-        try {
-            $issue_current_baseline = ErrorBaseline::read(
-                new \Psalm\Internal\Provider\FileProvider,
-                $baselineFile
-            );
-            $total_issues_current_baseline = ErrorBaseline::countTotalIssues($issue_current_baseline);
-
-            $issue_baseline = ErrorBaseline::update(
-                new \Psalm\Internal\Provider\FileProvider,
-                $baselineFile,
-                IssueBuffer::getIssuesData(),
-                $config->include_php_versions_in_error_baseline || isset($options['include-php-versions'])
-            );
-            $total_issues_updated_baseline = ErrorBaseline::countTotalIssues($issue_baseline);
-
-            $total_fixed_issues = $total_issues_current_baseline - $total_issues_updated_baseline;
-
-            if ($total_fixed_issues > 0) {
-                echo str_repeat('-', 30) . "\n";
-                echo $total_fixed_issues . ' errors fixed' . "\n";
-            }
-        } catch (\Psalm\Exception\ConfigException $exception) {
-            fwrite(STDERR, 'Could not update baseline file: ' . $exception->getMessage() . PHP_EOL);
-            exit(1);
-        }
+    } catch (\Psalm\Exception\ConfigException $exception) {
+        fwrite(STDERR, 'Could not update baseline file: ' . $exception->getMessage() . PHP_EOL);
+        exit(1);
     }
 }
 

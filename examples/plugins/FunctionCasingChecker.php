@@ -12,8 +12,6 @@ use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\FileManipulation;
-use Psalm\IssueBuffer;
-use Psalm\Issue\TypeCoercion;
 use Psalm\Plugin\Hook\AfterFunctionCallAnalysisInterface;
 use Psalm\Plugin\Hook\AfterMethodCallAnalysisInterface;
 use Psalm\StatementsSource;
@@ -27,8 +25,6 @@ class FunctionCasingChecker implements AfterFunctionCallAnalysisInterface, After
     /**
      * @param  MethodCall|StaticCall $expr
      * @param  FileManipulation[] $file_replacements
-     *
-     * @return void
      */
     public static function afterMethodCallAnalysis(
         Expr $expr,
@@ -40,12 +36,13 @@ class FunctionCasingChecker implements AfterFunctionCallAnalysisInterface, After
         Codebase $codebase,
         array &$file_replacements = [],
         Union &$return_type_candidate = null
-    ) {
+    ): void {
         if (!$expr->name instanceof PhpParser\Node\Identifier) {
             return;
         }
 
         try {
+            /** @psalm-suppress ArgumentTypeCoercion */
             $method_id = new \Psalm\Internal\MethodIdentifier(...explode('::', $declaring_method_id));
             $function_storage = $codebase->methods->getStorage($method_id);
 
@@ -76,8 +73,6 @@ class FunctionCasingChecker implements AfterFunctionCallAnalysisInterface, After
     /**
      * @param non-empty-string $function_id
      * @param  FileManipulation[] $file_replacements
-     *
-     * @return void
      */
     public static function afterFunctionCallAnalysis(
         FuncCall $expr,
@@ -85,9 +80,9 @@ class FunctionCasingChecker implements AfterFunctionCallAnalysisInterface, After
         Context $context,
         StatementsSource $statements_source,
         Codebase $codebase,
-        array &$file_replacements = [],
-        Union &$return_type_candidate = null
-    ) {
+        Union $return_type_candidate,
+        array &$file_replacements
+    ): void {
         if ($expr->name instanceof PhpParser\Node\Expr) {
             return;
         }

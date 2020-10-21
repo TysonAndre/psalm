@@ -32,14 +32,7 @@ use function substr;
 class MethodComparator
 {
     /**
-     * @param  ClassLikeStorage $implementer_classlike_storage
-     * @param  ClassLikeStorage $guide_classlike_storage
-     * @param  MethodStorage    $implementer_method_storage
-     * @param  MethodStorage    $guide_method_storage
-     * @param  CodeLocation     $code_location
      * @param  string[]         $suppressed_issues
-     * @param  bool             $prevent_abstract_override
-     * @param  bool             $prevent_method_signature_mismatch
      *
      * @return false|null
      */
@@ -56,7 +49,7 @@ class MethodComparator
         array $suppressed_issues,
         bool $prevent_abstract_override = true,
         bool $prevent_method_signature_mismatch = true
-    ) {
+    ): ?bool {
         $implementer_declaring_method_id = $codebase->methods->getDeclaringMethodId(
             new MethodIdentifier(
                 $implementer_classlike_storage->name,
@@ -80,6 +73,7 @@ class MethodComparator
             $cased_implementer_method_id,
             $prevent_method_signature_mismatch,
             $prevent_abstract_override,
+            $codebase->php_major_version >= 8,
             $code_location,
             $suppressed_issues
         );
@@ -192,6 +186,8 @@ class MethodComparator
 
             return null;
         }
+
+        return null;
     }
 
     /**
@@ -208,11 +204,13 @@ class MethodComparator
         string $cased_implementer_method_id,
         bool $prevent_method_signature_mismatch,
         bool $prevent_abstract_override,
+        bool $trait_mismatches_are_fatal,
         CodeLocation $code_location,
         array $suppressed_issues
     ) : void {
         if ($implementer_visibility > $guide_visibility) {
-            if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
+            if ($trait_mismatches_are_fatal
+                || $guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
                 || !in_array($guide_classlike_storage->name, $implementer_classlike_storage->used_traits)
                 || $implementer_method_storage->defining_fqcln !== $implementer_classlike_storage->name
                 || (!$implementer_method_storage->abstract
@@ -547,8 +545,9 @@ class MethodComparator
             $implementer_classlike_storage->parent_class
         );
 
-        $is_contained_by = $codebase->php_major_version >= 7
-            && $codebase->php_minor_version >= 4
+        $is_contained_by = (($codebase->php_major_version === 7
+                    && $codebase->php_minor_version === 4)
+                || $codebase->php_major_version >= 8)
             && $guide_param_signature_type
             ? UnionTypeComparator::isContainedBy(
                 $codebase,
@@ -562,7 +561,8 @@ class MethodComparator
         if (!$is_contained_by) {
             $config = \Psalm\Config::getInstance();
 
-            if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
+            if ($codebase->php_major_version >= 8
+                || $guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
                 || !in_array($guide_classlike_storage->name, $implementer_classlike_storage->used_traits)
                 || $implementer_method_storage->defining_fqcln !== $implementer_classlike_storage->name
                 || (!$implementer_method_storage->abstract
@@ -845,8 +845,9 @@ class MethodComparator
                 $implementer_classlike_storage->parent_class
             ) : null;
 
-        $is_contained_by = $codebase->php_major_version >= 7
-            && $codebase->php_minor_version >= 4
+        $is_contained_by = (($codebase->php_major_version === 7
+                    && $codebase->php_minor_version === 4)
+                || $codebase->php_major_version >= 8)
             && $implementer_signature_return_type
             ? UnionTypeComparator::isContainedBy(
                 $codebase,
@@ -856,7 +857,8 @@ class MethodComparator
             : UnionTypeComparator::isContainedByInPhp($implementer_signature_return_type, $guide_signature_return_type);
 
         if (!$is_contained_by) {
-            if ($guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
+            if ($codebase->php_major_version >= 8
+                || $guide_classlike_storage->is_trait === $implementer_classlike_storage->is_trait
                 || !in_array($guide_classlike_storage->name, $implementer_classlike_storage->used_traits)
                 || $implementer_method_storage->defining_fqcln !== $implementer_classlike_storage->name
                 || (!$implementer_method_storage->abstract

@@ -11,7 +11,7 @@ class ReturnTypeTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'returnTypeAfterUselessNullCheck' => [
@@ -713,7 +713,7 @@ class ReturnTypeTest extends TestCase
                      * @template T
                      * @template U
                      * @param callable(T): U $predicate
-                     * @return Closure(iterable<T>): iterable<U>
+                     * @return Closure(iterable<int, T>): iterable<int, U>
                      */
                     function map(callable $predicate): callable {
                         return function($iter) use ($predicate) {
@@ -726,7 +726,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, numeric-string>',
+                    '$res' => 'iterable<int, numeric-string>',
                 ],
             ],
             'infersArrowClosureReturnTypes' => [
@@ -753,7 +753,7 @@ class ReturnTypeTest extends TestCase
                      * @template T
                      * @template U
                      * @param callable(T): U $predicate
-                     * @return Closure(iterable<T>): iterable<U>
+                     * @return Closure(iterable<int, T>): iterable<int, U>
                      */
                     function map(callable $predicate): callable {
                         return function(iterable $iter) use ($predicate): iterable {
@@ -766,7 +766,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, numeric-string>',
+                    '$res' => 'iterable<int, numeric-string>',
                 ],
             ],
             'infersCallableReturnTypes' => [
@@ -775,7 +775,7 @@ class ReturnTypeTest extends TestCase
                      * @template T
                      * @template U
                      * @param callable(T): U $predicate
-                     * @return callable(iterable<T>): iterable<U>
+                     * @return callable(iterable<int, T>): iterable<int, U>
                      */
                     function map(callable $predicate): callable {
                         return function($iter) use ($predicate) {
@@ -788,7 +788,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, numeric-string>',
+                    '$res' => 'iterable<int, numeric-string>',
                 ],
             ],
             'infersCallableReturnTypesWithPartialTypehinting' => [
@@ -797,7 +797,7 @@ class ReturnTypeTest extends TestCase
                      * @template T
                      * @template U
                      * @param callable(T): U $predicate
-                     * @return callable(iterable<T>): iterable<U>
+                     * @return callable(iterable<int, T>): iterable<int, U>
                      */
                     function map(callable $predicate): callable {
                         return function(iterable $iter) use ($predicate): iterable {
@@ -810,7 +810,7 @@ class ReturnTypeTest extends TestCase
                     $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
                 'assertions' => [
-                    '$res' => 'iterable<mixed, numeric-string>',
+                    '$res' => 'iterable<int, numeric-string>',
                 ],
             ],
             'mixedAssignmentWithUnderscore' => [
@@ -853,7 +853,7 @@ class ReturnTypeTest extends TestCase
                         }
                     }'
             ],
-            'compareObjectLikeToPotentiallyUnfilledArray' => [
+            'compareTKeyedArrayToPotentiallyUnfilledArray' => [
                 '<?php
                     /**
                      * @param array<"from"|"to", bool> $a
@@ -863,13 +863,42 @@ class ReturnTypeTest extends TestCase
                         return $a;
                     }',
             ],
+            'returnStaticThis' => [
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        public function getThis() : static {
+                            return $this;
+                        }
+                    }
+
+                    class B extends A {
+                        public function foo() : void {}
+                    }
+
+                    (new B)->getThis()->foo();',
+            ],
+            'returnMixed' => [
+                '<?php
+                    namespace Foo;
+
+                    class A {
+                        public function getThis() : mixed {
+                            return $this;
+                        }
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'switchReturnTypeWithFallthroughAndBreak' => [
@@ -1044,7 +1073,7 @@ class ReturnTypeTest extends TestCase
                     }',
                 'error_message' => 'InvalidReturnStatement',
             ],
-            'complainAboutObjectLikeWhenArrayIsFound' => [
+            'complainAboutTKeyedArrayWhenArrayIsFound' => [
                 '<?php
                     /** @return array{a:string,b:string,c:string} */
                     function foo(): array {
@@ -1239,7 +1268,7 @@ class ReturnTypeTest extends TestCase
                  * @template T
                  * @template U
                  * @param callable(T): U $predicate
-                 * @return callable(iterable<T>): iterable<U>
+                 * @return callable(iterable<int, T>): iterable<int, U>
                  */
                 function map(callable $predicate): callable {
                     $a = function($iter) use ($predicate) {
@@ -1252,7 +1281,7 @@ class ReturnTypeTest extends TestCase
 
                 $res = map(function(int $i): string { return (string) $i; })([1,2,3]);
                 ',
-                'error_message' => 'MixedAssignment - src' . DIRECTORY_SEPARATOR . 'somefile.php:10:51 - Unable to determine the type that $value is being assigned to',
+                'error_message' => 'MixedAssignment - src' . DIRECTORY_SEPARATOR . 'somefile.php:10:43 - Unable to determine the type that $key is being assigned to',
             ],
             'cannotInferReturnClosureWithMoreSpecificTypes' => [
                 '<?php
@@ -1260,11 +1289,11 @@ class ReturnTypeTest extends TestCase
                  * @template T
                  * @template U
                  * @param callable(T): U $predicate
-                 * @return callable(iterable<T>): iterable<U>
+                 * @return callable(iterable<int, T>): iterable<int, U>
                  */
                 function map(callable $predicate): callable {
                     return
-                    /** @param iterable<int> $iter */
+                    /** @param iterable<int, int> $iter */
                     function($iter) use ($predicate) {
                         foreach ($iter as $key => $value) {
                             yield $key => $predicate($value);
@@ -1282,14 +1311,14 @@ class ReturnTypeTest extends TestCase
                  * @template T
                  * @template U
                  * @param callable(T): U $predicate
-                 * @return callable(iterable<T>): iterable<U>
+                 * @return callable(iterable<int, T>): iterable<int, U>
                  */
                 function map(callable $predicate): callable {
                     return function($iter) use ($predicate): int {
                         return 1;
                     };
                 }',
-                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:28 - The inferred type \'pure-Closure(iterable<mixed, T:fn-map as mixed>):int(1)\' does not match the declared return type \'callable(iterable<mixed, T:fn-map as mixed>):iterable<mixed, U:fn-map as mixed>\' for map',
+                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:28 - The inferred type \'pure-Closure(iterable<int, T:fn-map as mixed>):int(1)\' does not match the declared return type \'callable(iterable<int, T:fn-map as mixed>):iterable<int, U:fn-map as mixed>\' for map',
             ],
             'cannotInferReturnClosureWithDifferentTypes' => [
                 '<?php
@@ -1303,7 +1332,7 @@ class ReturnTypeTest extends TestCase
                 }',
                 'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:28 - The inferred type \'impure-Closure(B):void\' does not match the declared return type \'callable(A):void\' for map',
             ],
-            'compareObjectLikeToAlwaysFilledArray' => [
+            'compareTKeyedArrayToAlwaysFilledArray' => [
                 '<?php
                     /**
                      * @param array<"from"|"to", bool> $a
@@ -1313,6 +1342,22 @@ class ReturnTypeTest extends TestCase
                         return $a;
                     }',
                 'error_message' => 'LessSpecificReturnStatement',
+            ],
+            'docblockishTypeMustReturn' => [
+                '<?php
+                    /**
+                     * @return "a"|"b"|null
+                     */
+                    function foo() : ?string {
+                        if (rand(0, 1)) {
+                            return "a";
+                        }
+
+                        if (rand(0, 1)) {
+                            return "b";
+                        }
+                    }',
+                'error_message' => 'InvalidReturnType',
             ],
         ];
     }

@@ -9,7 +9,7 @@ class CallableTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'byRefUseVar' => [
@@ -848,13 +848,29 @@ class CallableTest extends TestCase
 
                     foo(["a", "b"]);'
             ],
+            'abstractInvokeInTrait' => [
+                '<?php
+                    function testFunc(callable $func) : void {}
+
+                    trait TestTrait {
+                        abstract public function __invoke() : void;
+
+                        public function apply() : void {
+                            testFunc($this);
+                        }
+                    }
+
+                    abstract class TestClass {
+                        use TestTrait;
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'undefinedCallableClass' => [
@@ -1181,7 +1197,28 @@ class CallableTest extends TestCase
                 ',
                 'error_message' => 'ImpureFunctionCall',
                 'error_levels' => [],
-            ]
+            ],
+            'constructCallableFromClassStringArray' => [
+                '<?php
+                    interface Foo {
+                        public function bar() : int;
+                    }
+
+                    /**
+                     * @param callable():string $c
+                     */
+                    function takesCallableReturningString(callable $c) : void {
+                        $c();
+                    }
+
+                    /**
+                     * @param class-string<Foo> $c
+                     */
+                    function foo(string $c) : void {
+                        takesCallableReturningString([$c, "bar"]);
+                    }',
+                'error_message' => 'InvalidScalarArgument',
+            ],
         ];
     }
 }

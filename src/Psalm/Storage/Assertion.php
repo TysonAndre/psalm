@@ -39,6 +39,8 @@ class Assertion
             array_map(
                 /**
                  * @param array<int, string> $rules
+                 *
+                 * @return array{0: string}
                  */
                 function (array $rules) use ($template_type_map) : array {
                     $first_rule = $rules[0];
@@ -50,7 +52,7 @@ class Assertion
 
                         foreach ($rule_tokens as &$rule_token) {
                             if (isset($template_type_map[$rule_token[0]])) {
-                                foreach ($template_type_map[$rule_token[0]] as list($type)) {
+                                foreach ($template_type_map[$rule_token[0]] as [$type]) {
                                     $substitute = true;
 
                                     $first_type = \array_values($type->getAtomicTypes())[0];

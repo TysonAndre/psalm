@@ -2,7 +2,6 @@
 namespace Psalm\Tests;
 
 use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\RuntimeCaches;
 use Psalm\IssueBuffer;
@@ -11,9 +10,6 @@ use function substr;
 
 class JsonOutputTest extends TestCase
 {
-    /**
-     * @return void
-     */
     public function setUp() : void
     {
         // `TestCase::setUp()` creates its own ProjectAnalyzer and Config instance, but we don't want to do that in this
@@ -47,9 +43,8 @@ class JsonOutputTest extends TestCase
      * @param int $line_number
      * @param string $error
      *
-     * @return void
      */
-    public function testJsonOutputErrors($code, $message, $line_number, $error)
+    public function testJsonOutputErrors($code, $message, $line_number, $error): void
     {
         $this->addFile('somefile.php', $code);
         $this->analyzeFile('somefile.php', new Context());
@@ -68,7 +63,7 @@ class JsonOutputTest extends TestCase
     /**
      * @return array<string,array{string,message:string,line:int,error:string}>
      */
-    public function providerTestJsonOutputErrors()
+    public function providerTestJsonOutputErrors(): array
     {
         return [
             'returnTypeError' => [
@@ -103,7 +98,7 @@ class JsonOutputTest extends TestCase
                     function fooFoo() {
                         return "hello";
                     }',
-                'message' => 'Method fooFoo does not have a return type, expecting string',
+                'message' => 'Method fooFoo does not have a return type, expecting string(hello)',
                 'line' => 2,
                 'error' => 'fooFoo',
             ],
@@ -124,7 +119,7 @@ class JsonOutputTest extends TestCase
                     $a = $_GET["hello"];
                     assert(is_int($a));
                     if (is_int($a)) {}',
-                'message' => "Found a redundant condition when evaluating docblock-defined type \$a and trying to reconcile type 'int' to int",
+                'message' => 'Docblock-defined type int for $a is always int',
                 'line' => 4,
                 'error' => 'is_int($a)',
             ],

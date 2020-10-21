@@ -11,7 +11,7 @@ class SwitchTypeTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'getClassConstArg' => [
@@ -984,13 +984,43 @@ class SwitchTypeTest extends TestCase
                         return true;
                     }'
             ],
+            'alwaysReturnsWithConditionalReturnFirst' => [
+                '<?php
+                    function getRows(string $s) : int {
+                        if (rand(0, 1)) {
+                            return 1;
+                        }
+
+                        switch ($s) {
+                            case "a":
+                                return 2;
+                            default:
+                                return 1;
+                        }
+                    }'
+            ],
+            'loopWithSwitchAlwaysReturns' => [
+                '<?php
+                    function b(): int {
+                        foreach([1,2] as $i) {
+                            continue;
+                        }
+
+                        switch (random_int(1, 10)) {
+                            case 1:
+                                return 1;
+                            default:
+                                return 2;
+                        }
+                    }',
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'switchReturnTypeWithFallthroughAndBreak' => [
@@ -1254,6 +1284,22 @@ class SwitchTypeTest extends TestCase
                             echo "bar";
                     }',
                 'error_message' => 'ParadoxicalCondition'
+            ],
+            'loopWithSwitchDoesntReturnFirstCase' => [
+                '<?php
+                    function b(): int {
+                        switch (random_int(1, 10)) {
+                            case 1:
+                                foreach([1,2] as $i) {
+                                    continue;
+                                }
+                                break;
+
+                            default:
+                                return 2;
+                        }
+                    }',
+                'error_message' => 'InvalidReturnType'
             ],
         ];
     }

@@ -83,10 +83,7 @@ class BinaryOperationTest extends TestCase
         $this->assertSame($assertions, $actual_vars);
     }
 
-    /**
-     * @return void
-     */
-    public function testStrictTrueEquivalence()
+    public function testStrictTrueEquivalence(): void
     {
         $config = \Psalm\Config::getInstance();
         $config->strict_binary_operands = true;
@@ -112,7 +109,7 @@ class BinaryOperationTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'regularAddition' => [
@@ -136,7 +133,7 @@ class BinaryOperationTest extends TestCase
                     $c = 25 % 2.5;
                     $d = 25.5 % 2.5;',
                 'assertions' => [
-                    '$a' => 'int|int',
+                    '$a' => 'int',
                     '$b' => 'int',
                     '$c' => 'int',
                     '$d' => 'int',
@@ -177,21 +174,21 @@ class BinaryOperationTest extends TestCase
                 'assertions' => [
                     '$a' => 'int',
                     '$b' => 'int',
-                    '$c' => 'int',
-                    '$d' => 'int',
-                    '$e' => 'int',
+                    '$c' => 'positive-int',
+                    '$d' => 'positive-int',
+                    '$e' => 'positive-int',
                     '$f' => 'string',
                 ],
             ],
             'booleanXor' => [
                 '<?php
-                    $a = true ^ false;
-                    $b = false ^ false;
+                    $a = 4 ^ 1;
+                    $b = 3 ^ 1;
                     $c = (true xor false);
                     $d = (false xor false);',
                 'assertions' => [
-                    '$a' => 'int',
-                    '$b' => 'int',
+                    '$a' => 'positive-int',
+                    '$b' => 'positive-int',
                     '$c' => 'bool',
                     '$d' => 'bool',
                 ],
@@ -223,7 +220,7 @@ class BinaryOperationTest extends TestCase
                     $b = 4 ^ 5;',
                 'assertions' => [
                     '$a' => 'string',
-                    '$b' => 'int',
+                    '$b' => 'positive-int',
                 ],
             ],
             'bitwiseNot' => [
@@ -299,13 +296,21 @@ class BinaryOperationTest extends TestCase
                      */
                     function test(int $tickedTimes): void {}'
             ],
+            'numericPlusIntegerIsIntOrFloat' => [
+                '<?php
+                    /** @param numeric-string $s */
+                    function foo(string $s) : void {
+                        $s = $s + 1;
+                        if (is_int($s)) {}
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'badAddition' => [

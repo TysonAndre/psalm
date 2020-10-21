@@ -11,7 +11,7 @@ class WhileTest extends \Psalm\Tests\TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'whileVar' => [
@@ -437,7 +437,7 @@ class WhileTest extends \Psalm\Tests\TestCase
                         }
                     }'
             ],
-            'assignToObjectLikeListPreserveListness' => [
+            'assignToTKeyedArrayListPreserveListness' => [
                 '<?php
                     /**
                      * @return non-empty-list<string>
@@ -464,13 +464,135 @@ class WhileTest extends \Psalm\Tests\TestCase
                         }
                     }'
             ],
+            'nonEmptyListIterationChangeVarWithContinue' => [
+                '<?php
+                    /** @param non-empty-list<int> $arr */
+                    function foo(array $arr) : void {
+                        while (array_shift($arr)) {
+                            if ($arr && $arr[0] === "a") {}
+
+                            if (rand(0, 1)) {
+                                $arr = array_merge($arr, ["a"]);
+                                continue;
+                            }
+
+                            echo "here";
+                        }
+                    }'
+            ],
+            'nonEmptyListIterationChangeVarWithoutContinue' => [
+                '<?php
+                    /** @param non-empty-list<int> $arr */
+                    function foo(array $arr) : void {
+                        while (array_shift($arr)) {
+                            if ($arr && $arr[0] === "a") {}
+
+                            if (rand(0, 1)) {
+                                $arr = array_merge($arr, ["a"]);
+                            }
+
+                            echo "here";
+                        }
+                    }'
+            ],
+            'propertyAssertionInsideWhile' => [
+                '<?php
+                    class Foo {
+                        public array $a = [];
+                        public array $b = [];
+                        public array $c = [];
+
+                        public function one(): bool {
+                            $has_changes = false;
+
+                            while ($this->a) {
+                                $has_changes = true;
+                                $this->alter();
+                            }
+
+                            return $has_changes;
+                        }
+
+                        public function two(): bool {
+                            $has_changes = false;
+
+                            while ($this->a || $this->b) {
+                                $has_changes = true;
+                                $this->alter();
+                            }
+
+                            return $has_changes;
+                        }
+
+                        public function three(): bool {
+                            $has_changes = false;
+
+                            while ($this->a || $this->b || $this->c) {
+                                $has_changes = true;
+                                $this->alter();
+                            }
+
+                            return $has_changes;
+                        }
+
+                        public function four(): bool {
+                            $has_changes = false;
+
+                            while (($this->a && $this->b) || $this->c) {
+                                $has_changes = true;
+                                $this->alter();
+                            }
+
+                            return $has_changes;
+                        }
+
+                        public function alter() : void {
+                            if (rand(0, 1)) {
+                                array_pop($this->a);
+                            } elseif (rand(0, 1)) {
+                                array_pop($this->a);
+                            } else {
+                                array_pop($this->c);
+                            }
+                        }
+                    }'
+            ],
+            'propertyAssertionInsideWhileNested' => [
+                '<?php
+                    class Foo {
+                        public array $a = [];
+                        public array $b = [];
+                        public array $c = [];
+
+                        public function five(): bool {
+                            $has_changes = false;
+
+                            while ($this->a || ($this->b && $this->c)) {
+                                $has_changes = true;
+                                $this->alter();
+                            }
+
+                            return $has_changes;
+                        }
+
+                        public function alter() : void {
+                            if (rand(0, 1)) {
+                                array_pop($this->a);
+                            } elseif (rand(0, 1)) {
+                                array_pop($this->a);
+                            } else {
+                                array_pop($this->c);
+                            }
+                        }
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'whileTrueNoBreak' => [

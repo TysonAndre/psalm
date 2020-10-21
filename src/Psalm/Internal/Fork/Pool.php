@@ -58,8 +58,8 @@ use function in_array;
  */
 class Pool
 {
-    const EXIT_SUCCESS = 0;
-    const EXIT_FAILURE = 1;
+    private const EXIT_SUCCESS = 0;
+    private const EXIT_FAILURE = 1;
 
     /** @var int[] */
     private $child_pid_list = [];
@@ -254,7 +254,7 @@ class Pool
      */
     private static function streamForParent(array $sockets)
     {
-        list($for_read, $for_write) = $sockets;
+        [$for_read, $for_write] = $sockets;
 
         // The parent will not use the write channel, so it
         // must be closed to prevent deadlock.
@@ -280,7 +280,7 @@ class Pool
      */
     private static function streamForChild(array $sockets)
     {
-        list($for_read, $for_write) = $sockets;
+        [$for_read, $for_write] = $sockets;
 
         // The while will not use the read channel, so it must
         // be closed to prevent deadlock.
@@ -294,11 +294,12 @@ class Pool
      * The results are returned in an array, one for each worker. The order of the results
      * is not maintained.
      *
-     * @return array
      *
      * @psalm-suppress MixedAssignment
+     *
+     * @return list<mixed>
      */
-    private function readResultsFromChildren()
+    private function readResultsFromChildren(): array
     {
         // Create an array of all active streams, indexed by
         // resource id.
@@ -381,7 +382,7 @@ class Pool
     /**
      * Wait for all child processes to complete
      *
-     * @return array
+     * @return list<mixed>
      */
     public function wait(): array
     {
@@ -427,9 +428,8 @@ class Pool
     /**
      * Returns true if this had an error, e.g. due to memory limits or due to a child process crashing.
      *
-     * @return  bool
      */
-    public function didHaveError()
+    public function didHaveError(): bool
     {
         return $this->did_have_error;
     }

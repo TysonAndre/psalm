@@ -45,17 +45,13 @@ use function array_keys;
 class ForeachAnalyzer
 {
     /**
-     * @param   StatementsAnalyzer               $statements_analyzer
-     * @param   PhpParser\Node\Stmt\Foreach_    $stmt
-     * @param   Context                         $context
-     *
      * @return  false|null
      */
     public static function analyze(
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Stmt\Foreach_ $stmt,
         Context $context
-    ) {
+    ): ?bool {
         $var_comments = [];
 
         $doc_comment = $stmt->getDocComment();
@@ -182,15 +178,20 @@ class ForeachAnalyzer
                     }
                 }
 
+                if (isset($context->vars_in_scope[$var_comment->var_id])) {
+                    $comment_type->parent_nodes = $context->vars_in_scope[$var_comment->var_id]->parent_nodes;
+                }
+
                 $context->vars_in_scope[$var_comment->var_id] = $comment_type;
             }
         }
 
-        $context->inside_assignment = true;
+        $was_inside_use = $context->inside_use;
+        $context->inside_use = true;
         if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->expr, $context) === false) {
             return false;
         }
-        $context->inside_assignment = false;
+        $context->inside_use = $was_inside_use;
 
         $key_type = null;
         $value_type = null;
@@ -204,7 +205,7 @@ class ForeachAnalyzer
 
         if ($stmt_expr_type = $statements_analyzer->node_data->getType($stmt->expr)) {
             $iterator_type = $stmt_expr_type;
-        } elseif ($var_id && $context->hasVariable($var_id, $statements_analyzer)) {
+        } elseif ($var_id && $context->hasVariable($var_id)) {
             $iterator_type = $context->vars_in_scope[$var_id];
         } else {
             $iterator_type = null;
@@ -241,51 +242,36 @@ class ForeachAnalyzer
         }
 
         if ($stmt->keyVar && $stmt->keyVar instanceof PhpParser\Node\Expr\Variable && is_string($stmt->keyVar->name)) {
-            $key_var_id = '$' . $stmt->keyVar->name;
-            $foreach_context->vars_in_scope[$key_var_id] = $key_type ?: Type::getMixed();
-            $foreach_context->vars_possibly_in_scope[$key_var_id] = true;
+            $key_type = $key_type ?: Type::getMixed();
 
-            $location = new CodeLocation($statements_analyzer, $stmt->keyVar);
-
-            if ($codebase->find_unused_variables && !isset($foreach_context->byref_constraints[$key_var_id])) {
-                $foreach_context->unreferenced_vars[$key_var_id] = [$location->getHash() => $location];
-                unset($foreach_context->referenced_var_ids[$key_var_id]);
-            }
-
-            if (!$statements_analyzer->hasVariable($key_var_id)) {
-                $statements_analyzer->registerVariable(
-                    $key_var_id,
-                    $location,
-                    $foreach_context->branch_point
-                );
-            } else {
-                $statements_analyzer->registerVariableAssignment(
-                    $key_var_id,
-                    $location
-                );
-            }
-
-            if ($stmt->byRef && $codebase->find_unused_variables) {
-                $statements_analyzer->registerVariableUses([$location->getHash() => $location]);
-            }
+            AssignmentAnalyzer::analyze(
+                $statements_analyzer,
+                $stmt->keyVar,
+                $stmt->expr,
+                $key_type,
+                $foreach_context,
+                $doc_comment,
+                ['$' . $stmt->keyVar->name => true]
+            );
         }
 
-        if ($codebase->find_unused_variables
-            && $stmt->byRef
-            && $stmt->valueVar instanceof PhpParser\Node\Expr\Variable
-            && is_string($stmt->valueVar->name)
-        ) {
-            $foreach_context->byref_constraints['$' . $stmt->valueVar->name]
-                = new \Psalm\Internal\ReferenceConstraint($value_type);
+        $value_type = $value_type ?: Type::getMixed();
+
+        if ($stmt->byRef) {
+            $value_type->by_ref = true;
         }
 
         AssignmentAnalyzer::analyze(
             $statements_analyzer,
             $stmt->valueVar,
-            null,
-            $value_type ?: Type::getMixed(),
+            $stmt->expr,
+            $value_type,
             $foreach_context,
-            $doc_comment
+            $doc_comment,
+            $stmt->valueVar instanceof PhpParser\Node\Expr\Variable
+                && is_string($stmt->valueVar->name)
+                ? ['$' . $stmt->valueVar->name => true]
+                : []
         );
 
         foreach ($var_comments as $var_comment) {
@@ -300,6 +286,12 @@ class ForeachAnalyzer
                 $context->self,
                 $statements_analyzer->getParentFQCLN()
             );
+
+            if (isset($foreach_context->vars_in_scope[$var_comment->var_id])) {
+                $existing_var_type = $foreach_context->vars_in_scope[$var_comment->var_id];
+                $comment_type->parent_nodes = $existing_var_type->parent_nodes;
+                $comment_type->by_ref = $existing_var_type->by_ref;
+            }
 
             $foreach_context->vars_in_scope[$var_comment->var_id] = $comment_type;
         }
@@ -339,22 +331,10 @@ class ForeachAnalyzer
             $context->mergeExceptions($foreach_context);
         }
 
-        if ($codebase->find_unused_variables) {
-            foreach ($foreach_context->unreferenced_vars as $var_id => $locations) {
-                if (isset($context->unreferenced_vars[$var_id])) {
-                    $context->unreferenced_vars[$var_id] += $locations;
-                } else {
-                    $context->unreferenced_vars[$var_id] = $locations;
-                }
-            }
-        }
-
         return null;
     }
 
     /**
-     * @param  ?Type\Union  $key_type
-     * @param  ?Type\Union  $value_type
      * @return false|null
      */
     public static function checkIteratorType(
@@ -363,10 +343,10 @@ class ForeachAnalyzer
         Type\Union $iterator_type,
         Codebase $codebase,
         Context $context,
-        &$key_type,
-        &$value_type,
+        ?Type\Union &$key_type,
+        ?Type\Union &$value_type,
         bool &$always_non_empty_array
-    ) {
+    ): ?bool {
         if ($iterator_type->isNull()) {
             if (IssueBuffer::accepts(
                 new NullIterator(
@@ -425,10 +405,10 @@ class ForeachAnalyzer
             }
 
             if ($iterator_atomic_type instanceof Type\Atomic\TArray
-                || $iterator_atomic_type instanceof Type\Atomic\ObjectLike
+                || $iterator_atomic_type instanceof Type\Atomic\TKeyedArray
                 || $iterator_atomic_type instanceof Type\Atomic\TList
             ) {
-                if ($iterator_atomic_type instanceof Type\Atomic\ObjectLike) {
+                if ($iterator_atomic_type instanceof Type\Atomic\TKeyedArray) {
                     if (!$iterator_atomic_type->sealed) {
                         $always_non_empty_array = false;
                     }
@@ -543,8 +523,7 @@ class ForeachAnalyzer
                         continue;
                     }
 
-                    $value_type_part = $iat->type_params[1];
-                    $key_type_part = $iat->type_params[0];
+                    [$key_type_part, $value_type_part] = $iat->type_params;
 
                     if (!$intersection_value_type) {
                         $intersection_value_type = $value_type_part;
@@ -708,23 +687,20 @@ class ForeachAnalyzer
                 }
             }
         }
+
+        return null;
     }
 
-    /**
-     * @param  ?Type\Union  $key_type
-     * @param  ?Type\Union  $value_type
-     * @return void
-     */
     public static function handleIterable(
         StatementsAnalyzer $statements_analyzer,
         Type\Atomic\TNamedObject $iterator_atomic_type,
         PhpParser\Node\Expr $foreach_expr,
         Codebase $codebase,
         Context $context,
-        &$key_type,
-        &$value_type,
+        ?Type\Union &$key_type,
+        ?Type\Union &$value_type,
         bool &$has_valid_iterator
-    ) {
+    ): void {
         if ($iterator_atomic_type->extra_types) {
             $iterator_atomic_type_copy = clone $iterator_atomic_type;
             $iterator_atomic_type_copy->extra_types = [];
@@ -811,11 +787,17 @@ class ForeachAnalyzer
                         $statements_analyzer->addSuppressedIssues(['PossiblyUndefinedMethod']);
                     }
 
+                    $was_inside_call = $context->inside_call;
+
+                    $context->inside_call = true;
+
                     \Psalm\Internal\Analyzer\Statements\Expression\Call\MethodCallAnalyzer::analyze(
                         $statements_analyzer,
                         $fake_method_call,
                         $context
                     );
+
+                    $context->inside_call = $was_inside_call;
 
                     if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
                         $statements_analyzer->removeSuppressedIssues(['PossiblyInvalidMethodCall']);
@@ -835,14 +817,13 @@ class ForeachAnalyzer
                             $value_type_part = null;
 
                             if ($array_atomic_type instanceof Type\Atomic\TArray
-                                || $array_atomic_type instanceof Type\Atomic\ObjectLike
+                                || $array_atomic_type instanceof Type\Atomic\TKeyedArray
                             ) {
-                                if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                                if ($array_atomic_type instanceof Type\Atomic\TKeyedArray) {
                                     $array_atomic_type = $array_atomic_type->getGenericArrayType();
                                 }
 
-                                $key_type_part = $array_atomic_type->type_params[0];
-                                $value_type_part = $array_atomic_type->type_params[1];
+                                [$key_type_part, $value_type_part] = $array_atomic_type->type_params;
                             } else {
                                 if ($array_atomic_type instanceof Type\Atomic\TNamedObject
                                     && $codebase->classExists($array_atomic_type->value)
@@ -975,17 +956,12 @@ class ForeachAnalyzer
         }
     }
 
-    /**
-     * @param  ?Type\Union  $key_type
-     * @param  ?Type\Union  $value_type
-     * @return void
-     */
     public static function getKeyValueParamsForTraversableObject(
         Type\Atomic $iterator_atomic_type,
         Codebase $codebase,
-        &$key_type,
-        &$value_type
-    ) {
+        ?Type\Union &$key_type,
+        ?Type\Union &$value_type
+    ): void {
         if ($iterator_atomic_type instanceof Type\Atomic\TIterable
             || ($iterator_atomic_type instanceof Type\Atomic\TGenericObject
                 && strtolower($iterator_atomic_type->value) === 'traversable')
@@ -1127,20 +1103,18 @@ class ForeachAnalyzer
     }
 
     /**
-     * @param  string $template_name
      * @param  array<string, array<int|string, Type\Union>>  $template_type_extends
      * @param  array<string, array<string, array{Type\Union}>>  $class_template_types
      * @param  array<int, Type\Union> $calling_type_params
-     * @return Type\Union|null
      */
     private static function getExtendedType(
         string $template_name,
         string $template_class,
         string $calling_class,
         array $template_type_extends,
-        array $class_template_types = null,
-        array $calling_type_params = null
-    ) {
+        ?array $class_template_types = null,
+        ?array $calling_type_params = null
+    ): ?Type\Union {
         if ($calling_class === $template_class) {
             if (isset($class_template_types[$template_name]) && $calling_type_params) {
                 $offset = array_search($template_name, array_keys($class_template_types));

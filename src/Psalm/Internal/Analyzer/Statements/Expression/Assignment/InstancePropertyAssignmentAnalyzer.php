@@ -4,14 +4,16 @@ namespace Psalm\Internal\Analyzer\Statements\Expression\Assignment;
 use PhpParser;
 use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Stmt\PropertyProperty;
+use Psalm\Config;
 use Psalm\Internal\Analyzer\ClassAnalyzer;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\NamespaceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
-use Psalm\Internal\Analyzer\Statements\Expression\Fetch\InstancePropertyFetchAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Expression\Fetch\AtomicPropertyFetchAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
+use Psalm\Internal\Codebase\TaintFlowGraph;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\DeprecatedProperty;
@@ -45,7 +47,7 @@ use Psalm\Type\Atomic\TObject;
 use function count;
 use function in_array;
 use function strtolower;
-use Psalm\Internal\Taint\TaintNode;
+use Psalm\Internal\DataFlow\DataFlowNode;
 
 /**
  * @internal
@@ -53,25 +55,20 @@ use Psalm\Internal\Taint\TaintNode;
 class InstancePropertyAssignmentAnalyzer
 {
     /**
-     * @param   StatementsAnalyzer               $statements_analyzer
      * @param   PropertyFetch|PropertyProperty  $stmt
-     * @param   string                          $prop_name
-     * @param   PhpParser\Node\Expr|null        $assignment_value
-     * @param   Type\Union                      $assignment_value_type
-     * @param   Context                         $context
      * @param   bool                            $direct_assignment whether the variable is assigned explicitly
      *
      * @return  false|null
      */
     public static function analyze(
         StatementsAnalyzer $statements_analyzer,
-        $stmt,
-        $prop_name,
-        $assignment_value,
+        PhpParser\NodeAbstract $stmt,
+        string $prop_name,
+        ?PhpParser\Node\Expr $assignment_value,
         Type\Union $assignment_value_type,
         Context $context,
-        $direct_assignment = true
-    ) {
+        bool $direct_assignment = true
+    ): ?bool {
         $class_property_types = [];
 
         $codebase = $statements_analyzer->getCodebase();
@@ -117,9 +114,14 @@ class InstancePropertyAssignmentAnalyzer
 
             $var_id = '$this->' . $prop_name;
         } else {
+            $was_inside_use = $context->inside_use;
+            $context->inside_use = true;
+
             if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->var, $context) === false) {
                 return false;
             }
+
+            $context->inside_use = $was_inside_use;
 
             $lhs_type = $statements_analyzer->node_data->getType($stmt->var);
 
@@ -268,7 +270,11 @@ class InstancePropertyAssignmentAnalyzer
                     (
                         in_array(
                             strtolower($lhs_type_part->value),
-                            ['stdclass', 'simplexmlelement', 'dateinterval', 'domdocument', 'domnode'],
+                            Config::getInstance()->getUniversalObjectCrates() + [
+                                'dateinterval',
+                                'domdocument',
+                                'domnode'
+                            ],
                             true
                         )
                     )
@@ -529,7 +535,7 @@ class InstancePropertyAssignmentAnalyzer
                     }
                 }
 
-                if ($codebase->taint && !$context->collect_initializations) {
+                if ($statements_analyzer->data_flow_graph && !$context->collect_initializations) {
                     $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
                     self::taintProperty(
@@ -696,7 +702,6 @@ class InstancePropertyAssignmentAnalyzer
                         $property_id,
                         $property_storage,
                         $declaring_class_storage,
-                        $assignment_value_type,
                         $context
                     );
 
@@ -784,7 +789,7 @@ class InstancePropertyAssignmentAnalyzer
                     );
 
                     if ($lhs_type_part instanceof Type\Atomic\TGenericObject) {
-                        $class_property_type = InstancePropertyFetchAnalyzer::localizePropertyType(
+                        $class_property_type = AtomicPropertyFetchAnalyzer::localizePropertyType(
                             $codebase,
                             $class_property_type,
                             $lhs_type_part,
@@ -1069,7 +1074,6 @@ class InstancePropertyAssignmentAnalyzer
         string $property_id,
         \Psalm\Storage\PropertyStorage $property_storage,
         \Psalm\Storage\ClassLikeStorage $declaring_class_storage,
-        ?Type\Union $assignment_value_type,
         Context $context
     ): void {
         $codebase = $statements_analyzer->getCodebase();
@@ -1117,26 +1121,6 @@ class InstancePropertyAssignmentAnalyzer
                 ) {
                     $codebase->analyzer->addMutableClass($declaring_class_storage->name);
                 }
-            } elseif ($assignment_value_type
-                && ($declaring_class_storage->mutation_free
-                    || $codebase->alter_code)
-            ) {
-                $visitor = new \Psalm\Internal\TypeVisitor\ImmutablePropertyAssignmentVisitor(
-                    $statements_analyzer,
-                    $stmt
-                );
-
-                $visitor->traverse($assignment_value_type);
-
-                if (!$declaring_class_storage->mutation_free
-                    && $statements_analyzer->getSource()
-                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer
-                    && $statements_analyzer->getSource()->track_mutations
-                    && $visitor->has_mutation
-                ) {
-                    $statements_analyzer->getSource()->inferred_has_mutation = true;
-                    $statements_analyzer->getSource()->inferred_impure = true;
-                }
             }
         }
     }
@@ -1174,13 +1158,11 @@ class InstancePropertyAssignmentAnalyzer
         Type\Union $assignment_value_type,
         Context $context
     ) : void {
-        $codebase = $statements_analyzer->getCodebase();
-
-        if (!$codebase->taint
-            || !$codebase->config->trackTaintsInPath($statements_analyzer->getFilePath())
-        ) {
+        if (!$statements_analyzer->data_flow_graph) {
             return;
         }
+
+        $data_flow_graph = $statements_analyzer->data_flow_graph;
 
         $var_location = new CodeLocation($statements_analyzer->getSource(), $stmt->var);
         $property_location = new CodeLocation($statements_analyzer->getSource(), $stmt);
@@ -1199,26 +1181,28 @@ class InstancePropertyAssignmentAnalyzer
             );
 
             if ($var_id) {
-                if (\in_array('TaintedInput', $statements_analyzer->getSuppressedIssues())) {
+                if ($statements_analyzer->data_flow_graph instanceof TaintFlowGraph
+                    && \in_array('TaintedInput', $statements_analyzer->getSuppressedIssues())
+                ) {
                     $context->vars_in_scope[$var_id]->parent_nodes = [];
                     return;
                 }
 
-                $var_node = TaintNode::getForAssignment(
+                $var_node = DataFlowNode::getForAssignment(
                     $var_id,
                     $var_location
                 );
 
-                $codebase->taint->addTaintNode($var_node);
+                $data_flow_graph->addNode($var_node);
 
-                $property_node = TaintNode::getForAssignment(
+                $property_node = DataFlowNode::getForAssignment(
                     $var_property_id ?: $var_id . '->$property',
                     $property_location
                 );
 
-                $codebase->taint->addTaintNode($property_node);
+                $data_flow_graph->addNode($property_node);
 
-                $codebase->taint->addPath(
+                $data_flow_graph->addPath(
                     $property_node,
                     $var_node,
                     'property-assignment'
@@ -1227,7 +1211,7 @@ class InstancePropertyAssignmentAnalyzer
 
                 if ($assignment_value_type->parent_nodes) {
                     foreach ($assignment_value_type->parent_nodes as $parent_node) {
-                        $codebase->taint->addPath($parent_node, $property_node, '=');
+                        $data_flow_graph->addPath($parent_node, $property_node, '=');
                     }
                 }
 
@@ -1235,46 +1219,47 @@ class InstancePropertyAssignmentAnalyzer
 
                 if ($context->vars_in_scope[$var_id]->parent_nodes) {
                     foreach ($context->vars_in_scope[$var_id]->parent_nodes as $parent_node) {
-                        $codebase->taint->addPath($parent_node, $var_node, '=');
+                        $data_flow_graph->addPath($parent_node, $var_node, '=');
                     }
                 }
 
-                $stmt_var_type->parent_nodes = [$var_node];
+                $stmt_var_type->parent_nodes = [$var_node->id => $var_node];
 
                 $context->vars_in_scope[$var_id] = $stmt_var_type;
             }
         } else {
-            if (\in_array('TaintedInput', $statements_analyzer->getSuppressedIssues())) {
+            if ($statements_analyzer->data_flow_graph instanceof TaintFlowGraph
+                && \in_array('TaintedInput', $statements_analyzer->getSuppressedIssues())
+            ) {
                 $assignment_value_type->parent_nodes = [];
                 return;
             }
 
-
             $code_location = new CodeLocation($statements_analyzer->getSource(), $stmt);
 
-            $localized_property_node = new TaintNode(
+            $localized_property_node = new DataFlowNode(
                 $property_id . '-' . $code_location->file_name . ':' . $code_location->raw_file_start,
                 $property_id,
                 $code_location,
                 null
             );
 
-            $codebase->taint->addTaintNode($localized_property_node);
+            $data_flow_graph->addNode($localized_property_node);
 
-            $property_node = new TaintNode(
+            $property_node = new DataFlowNode(
                 $property_id,
                 $property_id,
                 null,
                 null
             );
 
-            $codebase->taint->addTaintNode($property_node);
+            $data_flow_graph->addNode($property_node);
 
-            $codebase->taint->addPath($localized_property_node, $property_node, 'property-assignment');
+            $data_flow_graph->addPath($localized_property_node, $property_node, 'property-assignment');
 
             if ($assignment_value_type->parent_nodes) {
                 foreach ($assignment_value_type->parent_nodes as $parent_node) {
-                    $codebase->taint->addPath($parent_node, $localized_property_node, '=');
+                    $data_flow_graph->addPath($parent_node, $localized_property_node, '=');
                 }
             }
         }

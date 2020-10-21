@@ -21,10 +21,10 @@ use function substr;
 class FileDiffer
 {
     /**
-     * @param array<int, string>    $a
-     * @param array<int, string>    $b
+     * @param list<string>    $a
+     * @param list<string>    $b
      *
-     * @return array{0:array<int, array<int, int>>, 1: int, 2: int}
+     * @return array{0:non-empty-list<array<int, int>>, 1: int, 2: int}
      *
      * @psalm-pure
      */
@@ -63,11 +63,11 @@ class FileDiffer
     }
 
     /**
-     * @param array<int, array<int, int>> $trace
-     * @param array<int, string> $a
-     * @param array<int, string> $b
+     * @param list<array<int, int>> $trace
+     * @param list<string> $a
+     * @param list<string> $b
      *
-     * @return DiffElem[]
+     * @return list<DiffElem>
      *
      * @psalm-pure
      */
@@ -120,11 +120,11 @@ class FileDiffer
      *
      * @psalm-pure
      */
-    public static function getDiff(string $a_code, string $b_code)
+    public static function getDiff(string $a_code, string $b_code): array
     {
         $a = explode("\n", $a_code);
         $b = explode("\n", $b_code);
-        list($trace, $x, $y) = self::calculateTrace($a, $b);
+        [$trace, $x, $y] = self::calculateTrace($a, $b);
 
         $diff = self::coalesceReplacements(self::extractDiff($trace, $x, $y, $a, $b));
 
@@ -266,11 +266,11 @@ class FileDiffer
      *
      * @param DiffElem[] $diff
      *
-     * @return DiffElem[]
+     * @return list<DiffElem>
      *
      * @psalm-pure
      */
-    private static function coalesceReplacements(array $diff)
+    private static function coalesceReplacements(array $diff): array
     {
         $newDiff = [];
         $c = \count($diff);

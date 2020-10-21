@@ -93,7 +93,7 @@ class AndAnalyzer
             $context_clauses = array_values(
                 array_filter(
                     $context_clauses,
-                    function ($c) use ($reconciled_expression_clauses) {
+                    function ($c) use ($reconciled_expression_clauses): bool {
                         return !\in_array($c->hash, $reconciled_expression_clauses);
                     }
                 )
@@ -134,7 +134,8 @@ class AndAnalyzer
                 $statements_analyzer,
                 [],
                 $context->inside_loop,
-                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                new CodeLocation($statements_analyzer->getSource(), $stmt->left),
+                $context->inside_negation
             );
 
             $right_context->vars_in_scope = $right_vars_in_scope;
@@ -156,10 +157,6 @@ class AndAnalyzer
             $right_context->referenced_var_ids,
             $left_context->referenced_var_ids
         );
-
-        if ($codebase->find_unused_variables) {
-            $context->unreferenced_vars = $right_context->unreferenced_vars;
-        }
 
         if ($context->inside_conditional) {
             $context->updateChecks($right_context);
@@ -196,10 +193,6 @@ class AndAnalyzer
                 $context->assigned_var_ids,
                 $if_context->assigned_var_ids
             );
-
-            if ($codebase->find_unused_variables) {
-                $if_context->unreferenced_vars = $context->unreferenced_vars;
-            }
 
             $if_context->reconciled_expression_clauses = array_merge(
                 $if_context->reconciled_expression_clauses,

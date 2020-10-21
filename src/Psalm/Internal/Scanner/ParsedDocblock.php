@@ -38,7 +38,7 @@ class ParsedDocblock
 
         $trimmed_description = trim($this->description);
 
-        if (!empty($trimmed_description)) {
+        if ($trimmed_description !== '') {
             $description_lines = explode("\n", $this->description);
 
             foreach ($description_lines as $line) {
@@ -47,7 +47,7 @@ class ParsedDocblock
         }
 
         if ($this->tags) {
-            if (!empty($trimmed_description)) {
+            if ($trimmed_description !== '') {
                 $doc_comment_text .= $left_padding . ' *' . "\n";
             }
 
@@ -82,7 +82,6 @@ class ParsedDocblock
     /**
      * Sets whether a new line should be added between the annotations or not.
      *
-     * @param bool $should
      */
     public static function addNewLineBetweenAnnotations(bool $should = true): void
     {

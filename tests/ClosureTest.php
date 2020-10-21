@@ -11,7 +11,7 @@ class ClosureTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'byRefUseVar' => [
@@ -492,13 +492,40 @@ class ClosureTest extends TestCase
                         })()
                     );'
             ],
+            'callingInvokeOnClosureIsSameAsCallingDirectly' => [
+                '<?php
+                    class A {
+                        /** @var Closure(int):int */
+                        private Closure $a;
+
+                        public function __construct() {
+                            $this->a = fn(int $a) : int => $a + 5;
+                        }
+
+                        public function invoker(int $b) : int {
+                            return $this->a->__invoke($b);
+                        }
+                    }',
+                'assertions' => [],
+                'error_levels' => [],
+                '7.4'
+            ],
+            'annotateShortClosureReturn' => [
+                '<?php
+                    /** @psalm-suppress MissingReturnType */
+                    function returnsBool() { return true; }
+                    $a = fn() : bool => /** @var bool */ returnsBool();',
+                [],
+                [],
+                '7.4'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'wrongArg' => [
@@ -818,6 +845,18 @@ class ClosureTest extends TestCase
                         return $int;
                     }',
                 'error_message' => 'MixedReturnStatement'
+            ],
+            'noCrashWhenComparingIllegitimateCallable' => [
+                '<?php
+                    class C {}
+
+                    function foo() : C {
+                        return fn (int $i) => "";
+                    }',
+                'error_message' => 'InvalidReturnStatement',
+                [],
+                false,
+                '7.4',
             ],
         ];
     }

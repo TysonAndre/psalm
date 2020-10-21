@@ -1,8 +1,6 @@
 <?php
 namespace Psalm\Tests;
 
-use const DIRECTORY_SEPARATOR;
-
 class PureAnnotationTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -11,7 +9,7 @@ class PureAnnotationTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'simplePureFunction' => [
@@ -387,13 +385,34 @@ class PureAnnotationTest extends TestCase
                         return false;
                     }',
             ],
+            'allowPureInConstrucctorThis' => [
+                '<?php
+                    class Port {
+                       private int $portNumber;
+
+                       public function __construct(int $portNumber) {
+                          if (!$this->isValidPort($portNumber)) {
+                             throw new Exception();
+                          }
+
+                          $this->portNumber = $portNumber;
+                       }
+
+                       /**
+                        * @psalm-pure
+                        */
+                       private function isValidPort(int $portNumber): bool {
+                          return $portNumber >= 1 && $portNumber <= 1000;
+                       }
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'impurePropertyAssignment' => [

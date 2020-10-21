@@ -12,6 +12,7 @@ use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type;
 use Psalm\Type\Atomic\TCallable;
+use function dirname;
 use function strtolower;
 use function substr;
 use function version_compare;
@@ -23,9 +24,9 @@ use function version_compare;
  */
 class InternalCallMapHandler
 {
-    const PHP_MAJOR_VERSION = 7;
-    const PHP_MINOR_VERSION = 4;
-    const LOWEST_AVAILABLE_DELTA = 71;
+    private const PHP_MAJOR_VERSION = 8;
+    private const PHP_MINOR_VERSION = 0;
+    private const LOWEST_AVAILABLE_DELTA = 71;
 
     /**
      * @var ?int
@@ -52,17 +53,14 @@ class InternalCallMapHandler
     private static $taint_sink_map = [];
 
     /**
-     * @param  string                           $method_id
      * @param  array<int, PhpParser\Node\Arg>   $args
-     *
-     * @return TCallable
      */
     public static function getCallableFromCallMapById(
         Codebase $codebase,
-        $method_id,
+        string $method_id,
         array $args,
         ?\Psalm\Internal\Provider\NodeDataProvider $nodes
-    ) {
+    ): TCallable {
         $possible_callables = self::getCallablesFromCallMap($method_id);
 
         if ($possible_callables === null) {
@@ -75,7 +73,8 @@ class InternalCallMapHandler
             $codebase,
             $possible_callables,
             $args,
-            $nodes
+            $nodes,
+            $method_id
         );
     }
 
@@ -83,14 +82,14 @@ class InternalCallMapHandler
      * @param  array<int, TCallable>  $callables
      * @param  array<int, PhpParser\Node\Arg>                 $args
      *
-     * @return TCallable
      */
     public static function getMatchingCallableFromCallMapOptions(
         Codebase $codebase,
         array $callables,
         array $args,
-        ?\Psalm\NodeTypeProvider $nodes
-    ) {
+        ?\Psalm\NodeTypeProvider $nodes,
+        string $method_id
+    ): TCallable {
         if (count($callables) === 1) {
             return $callables[0];
         }
@@ -141,8 +140,6 @@ class InternalCallMapHandler
                     continue;
                 }
 
-                $arg_type = null;
-
                 if (!$nodes
                     || !($arg_type = $nodes->getType($arg->value))
                 ) {
@@ -157,11 +154,11 @@ class InternalCallMapHandler
                     if ($arg_type->hasArray()) {
                         /**
                          * @psalm-suppress PossiblyUndefinedStringArrayOffset
-                         * @var Type\Atomic\TArray|Type\Atomic\ObjectLike|Type\Atomic\TList
+                         * @var Type\Atomic\TArray|Type\Atomic\TKeyedArray|Type\Atomic\TList
                          */
                         $array_atomic_type = $arg_type->getAtomicTypes()['array'];
 
-                        if ($array_atomic_type instanceof Type\Atomic\ObjectLike) {
+                        if ($array_atomic_type instanceof Type\Atomic\TKeyedArray) {
                             $arg_type = $array_atomic_type->getGenericValueType();
                         } elseif ($array_atomic_type instanceof Type\Atomic\TList) {
                             $arg_type = $array_atomic_type->type_param;
@@ -196,7 +193,7 @@ class InternalCallMapHandler
                 $matching_param_count_callable = $possible_callable;
             }
 
-            if ($all_args_match && !$type_coerced) {
+            if ($all_args_match && (!$type_coerced || $method_id === 'max' || $method_id === 'min')) {
                 return $possible_callable;
             }
 
@@ -218,12 +215,9 @@ class InternalCallMapHandler
     }
 
     /**
-     * @param  string $function_id
-     *
-     * @return array|null
-     * @psalm-return array<int, TCallable>|null
+     * @return array<int, TCallable>|null
      */
-    public static function getCallablesFromCallMap($function_id)
+    public static function getCallablesFromCallMap(string $function_id): ?array
     {
         $call_map_key = strtolower($function_id);
 
@@ -310,6 +304,10 @@ class InternalCallMapHandler
                     $function_param->out_type = $out_type;
                 }
 
+                if ($arg_name === 'haystack') {
+                    $function_param->expect_variable = true;
+                }
+
                 if (isset(self::$taint_sink_map[$call_map_key][$arg_offset])) {
                     $function_param->sinks = self::$taint_sink_map[$call_map_key][$arg_offset];
                 }
@@ -334,10 +332,10 @@ class InternalCallMapHandler
      *
      * @return array<string, array<int|string, string>>
      * @psalm-suppress MixedInferredReturnType as the use of require buggers things up
-     * @psalm-suppress MixedTypeCoercion
      * @psalm-suppress MixedReturnStatement
+     * @psalm-suppress MixedReturnTypeCoercion
      */
-    public static function getCallMap()
+    public static function getCallMap(): array
     {
         $codebase = ProjectAnalyzer::getInstance()->getCodebase();
         $analyzer_major_version = $codebase->php_major_version;
@@ -357,7 +355,7 @@ class InternalCallMapHandler
         }
 
         /** @var array<string, array<int|string, string>> */
-        $call_map = require(__DIR__ . '/../CallMap.php');
+        $call_map = require(dirname(__DIR__, 4) . '/dictionaries/CallMap.php');
 
         self::$call_map = [];
 
@@ -369,7 +367,7 @@ class InternalCallMapHandler
         /**
          * @var array<string, list<list<Type\TaintKind::*>>>
          */
-        $taint_map = require(__DIR__ . '/../InternalTaintSinkMap.php');
+        $taint_map = require(dirname(__DIR__, 4) . '/dictionaries/InternalTaintSinkMap.php');
 
         foreach ($taint_map as $key => $value) {
             $cased_key = strtolower($key);
@@ -379,7 +377,7 @@ class InternalCallMapHandler
         if (version_compare($analyzer_version, $current_version, '<')) {
             // the following assumes both minor and major versions a single digits
             for ($i = $current_version_int; $i > $analyzer_version_int && $i >= self::LOWEST_AVAILABLE_DELTA; --$i) {
-                $delta_file = __DIR__ . '/../CallMap_' . $i . '_delta.php';
+                $delta_file = dirname(__DIR__, 4) . '/dictionaries/CallMap_' . $i . '_delta.php';
                 if (!file_exists($delta_file)) {
                     continue;
                 }
@@ -410,13 +408,13 @@ class InternalCallMapHandler
         return self::$call_map;
     }
 
-    /**
-     * @param   string $key
-     *
-     * @return  bool
-     */
-    public static function inCallMap($key)
+    public static function inCallMap(string $key): bool
     {
         return isset(self::getCallMap()[strtolower($key)]);
+    }
+
+    public static function clearCache() : void
+    {
+        self::$call_map_callables = [];
     }
 }

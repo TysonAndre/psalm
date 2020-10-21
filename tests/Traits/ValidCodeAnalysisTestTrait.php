@@ -15,7 +15,7 @@ trait ValidCodeAnalysisTestTrait
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    abstract public function providerValidCodeParse();
+    abstract public function providerValidCodeParse(): iterable;
 
     /**
      * @dataProvider providerValidCodeParse
@@ -44,6 +44,12 @@ trait ValidCodeAnalysisTestTrait
         } elseif (strpos($test_name, 'PHP71-') !== false) {
             if (version_compare(PHP_VERSION, '7.1.0', '<')) {
                 $this->markTestSkipped('Test case requires PHP 7.1.');
+
+                return;
+            }
+        } elseif (strpos($test_name, 'PHP80-') !== false) {
+            if (version_compare(PHP_VERSION, '8.0.0', '<')) {
+                $this->markTestSkipped('Test case requires PHP 8.0.');
 
                 return;
             }

@@ -9,7 +9,7 @@ class IssetTest extends \Psalm\Tests\TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'issetWithSimpleAssignment' => [
@@ -130,7 +130,7 @@ class IssetTest extends \Psalm\Tests\TestCase
                         unset($foo, $bar);
                     }',
             ],
-            'issetObjectLike' => [
+            'issetTKeyedArray' => [
                 '<?php
                     $arr = [
                         "profile" => [
@@ -698,7 +698,7 @@ class IssetTest extends \Psalm\Tests\TestCase
                     class B extends P {}
                     class C extends P {}'
             ],
-            'issetCreateObjectLikeWithType' => [
+            'issetCreateTKeyedArrayWithType' => [
                 '<?php
                     function foo(array $options): void {
                         if (isset($options["a"])) {
@@ -966,13 +966,43 @@ class IssetTest extends \Psalm\Tests\TestCase
                         assert($dt);
                     }'
             ],
+            'arrayKeyExistsThrice' => [
+                '<?php
+                    function three(array $a): void {
+                        if (!array_key_exists("a", $a)
+                            || !array_key_exists("b", $a)
+                            || !array_key_exists("c", $a)
+                            || (!is_string($a["a"]) && !is_int($a["a"]))
+                            || (!is_string($a["b"]) && !is_int($a["b"]))
+                            || (!is_string($a["c"]) && !is_int($a["c"]))
+                        ) {
+                            throw new \Exception();
+                        }
+
+                        echo $a["a"];
+                        echo $a["b"];
+                    }'
+            ],
+            'arrayKeyExistsTwice' => [
+                '<?php
+                    function two(array $a): void {
+                        if (!array_key_exists("a", $a) || !(is_string($a["a"]) || is_int($a["a"])) ||
+                            !array_key_exists("b", $a) || !(is_string($a["b"]) || is_int($a["b"]))
+                        ) {
+                            throw new \Exception();
+                        }
+
+                        echo $a["a"];
+                        echo $a["b"];
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'complainAboutBadCallInIsset' => [
@@ -992,7 +1022,7 @@ class IssetTest extends \Psalm\Tests\TestCase
                     }',
                 'error_message' => 'NullArrayAccess',
             ],
-            'issetAdditionalVarWithSealedObjectLike' => [
+            'issetAdditionalVarWithSealedTKeyedArray' => [
                 '<?php
                     class Example {
                         const FOO = "foo";

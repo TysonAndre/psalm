@@ -28,12 +28,7 @@ use function strlen;
 class ConcatAnalyzer
 {
     /**
-     * @param  StatementsAnalyzer     $statements_analyzer
-     * @param  PhpParser\Node\Expr   $left
-     * @param  PhpParser\Node\Expr   $right
      * @param  Type\Union|null       &$result_type
-     *
-     * @return void
      */
     public static function analyze(
         StatementsAnalyzer $statements_analyzer,
@@ -41,7 +36,7 @@ class ConcatAnalyzer
         PhpParser\Node\Expr $right,
         Context $context,
         Type\Union &$result_type = null
-    ) {
+    ): void {
         $codebase = $statements_analyzer->getCodebase();
 
         $left_type = $statements_analyzer->node_data->getType($left);

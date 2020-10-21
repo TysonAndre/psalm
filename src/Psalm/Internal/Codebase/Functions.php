@@ -141,22 +141,12 @@ class Functions
         return $declaring_file_storage->functions[$function_id];
     }
 
-    /**
-     * @param string $function_id
-     *
-     * @return void
-     */
-    public function addGlobalFunction($function_id, FunctionStorage $storage)
+    public function addGlobalFunction(string $function_id, FunctionStorage $storage): void
     {
         self::$stubbed_functions[strtolower($function_id)] = $storage;
     }
 
-    /**
-     * @param  string  $function_id
-     *
-     * @return bool
-     */
-    public function hasStubbedFunction($function_id)
+    public function hasStubbedFunction(string $function_id): bool
     {
         return isset(self::$stubbed_functions[strtolower($function_id)]);
     }
@@ -164,19 +154,18 @@ class Functions
     /**
      * @return array<string, FunctionStorage>
      */
-    public function getAllStubbedFunctions()
+    public function getAllStubbedFunctions(): array
     {
         return self::$stubbed_functions;
     }
 
     /**
      * @param lowercase-string $function_id
-     * @return bool
      */
     public function functionExists(
         StatementsAnalyzer $statements_analyzer,
         string $function_id
-    ) {
+    ): bool {
         if ($this->existence_provider->has($function_id)) {
             $function_exists = $this->existence_provider->doesFunctionExist($statements_analyzer, $function_id);
 
@@ -206,7 +195,7 @@ class Functions
         $predefined_functions = $statements_analyzer->getCodebase()->config->getPredefinedFunctions();
 
         if (isset($predefined_functions[$function_id])) {
-            /** @psalm-suppress TypeCoercion */
+            /** @psalm-suppress ArgumentTypeCoercion */
             if ($this->reflection->registerFunction($function_id) === false) {
                 return false;
             }
@@ -219,11 +208,10 @@ class Functions
 
     /**
      * @param  non-empty-string         $function_name
-     * @param  StatementsSource         $source
      *
      * @return non-empty-string
      */
-    public function getFullyQualifiedFunctionNameFromString(string $function_name, StatementsSource $source)
+    public function getFullyQualifiedFunctionNameFromString(string $function_name, StatementsSource $source): string
     {
         if ($function_name[0] === '\\') {
             $function_name = substr($function_name, 1);
@@ -264,13 +252,7 @@ class Functions
         return ($namespace ? $namespace . '\\' : '') . $function_name;
     }
 
-    /**
-     * @param  string $function_id
-     * @param  string $file_path
-     *
-     * @return bool
-     */
-    public static function isVariadic(Codebase $codebase, $function_id, $file_path)
+    public static function isVariadic(Codebase $codebase, string $function_id, string $file_path): bool
     {
         $file_storage = $codebase->file_storage_provider->get($file_path);
 
@@ -408,6 +390,10 @@ class Functions
 
         if ($function_id === 'assert') {
             $must_use = false;
+            return true;
+        }
+
+        if ($function_id === 'func_num_args' || $function_id === 'func_get_args') {
             return true;
         }
 

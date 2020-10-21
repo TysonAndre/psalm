@@ -18,6 +18,7 @@ use Psalm\Issue\TypeDoesNotContainType;
 use Psalm\Issue\RedundantCondition;
 use Psalm\IssueBuffer;
 use Psalm\Internal\Scope\IfScope;
+use Psalm\Internal\Scope\IfConditionalScope;
 use Psalm\Type;
 use Psalm\Type\Algebra;
 use Psalm\Type\Reconciler;
@@ -65,9 +66,6 @@ class IfAnalyzer
      *   (x: null)
      *   throw new Exception -- effects: remove null from the type of x
      *
-     * @param  StatementsAnalyzer       $statements_analyzer
-     * @param  PhpParser\Node\Stmt\If_ $stmt
-     * @param  Context                 $context
      *
      * @return null|false
      */
@@ -75,10 +73,31 @@ class IfAnalyzer
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Stmt\If_ $stmt,
         Context $context
-    ) {
+    ): ?bool {
         $codebase = $statements_analyzer->getCodebase();
 
         $if_scope = new IfScope();
+
+        // We need to clone the original context for later use if we're exiting in this if conditional
+        if (!$stmt->else && !$stmt->elseifs
+            && ($stmt->cond instanceof PhpParser\Node\Expr\BinaryOp
+                || ($stmt->cond instanceof PhpParser\Node\Expr\BooleanNot
+                    && $stmt->cond->expr instanceof PhpParser\Node\Expr\BinaryOp))
+        ) {
+            $final_actions = ScopeAnalyzer::getControlActions(
+                $stmt->stmts,
+                null,
+                $codebase->config->exit_functions,
+                $context->break_types
+            );
+
+            $has_leaving_statements = $final_actions === [ScopeAnalyzer::ACTION_END]
+                || (count($final_actions) && !in_array(ScopeAnalyzer::ACTION_NONE, $final_actions, true));
+
+            if ($has_leaving_statements) {
+                $if_scope->mic_drop_context = clone $context;
+            }
+        }
 
         try {
             $if_conditional_scope = self::analyzeIfConditional(
@@ -127,7 +146,7 @@ class IfAnalyzer
                 /**
                  * @return Clause
                  */
-                function (Clause $c) use ($mixed_var_ids, $cond_object_id) {
+                function (Clause $c) use ($mixed_var_ids, $cond_object_id): Clause {
                     $keys = array_keys($c->possibilities);
 
                     $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
@@ -172,7 +191,7 @@ class IfAnalyzer
             $if_context->clauses = array_values(
                 array_filter(
                     $if_context->clauses,
-                    function ($c) use ($reconciled_expression_clauses) {
+                    function ($c) use ($reconciled_expression_clauses): bool {
                         return !in_array($c->hash, $reconciled_expression_clauses);
                     }
                 )
@@ -193,7 +212,19 @@ class IfAnalyzer
         try {
             $if_scope->negated_clauses = Algebra::negateFormula($if_clauses);
         } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
-            $if_scope->negated_clauses = [];
+            try {
+                $if_scope->negated_clauses = Algebra::getFormula(
+                    $cond_object_id,
+                    $cond_object_id,
+                    new PhpParser\Node\Expr\BooleanNot($stmt->cond),
+                    $context->self,
+                    $statements_analyzer,
+                    $codebase,
+                    false
+                );
+            } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+                $if_scope->negated_clauses = [];
+            }
         }
 
         $if_scope->negated_types = Algebra::getTruthsFromFormula(
@@ -213,7 +244,7 @@ class IfAnalyzer
 
         if (array_filter(
             $context->clauses,
-            function ($clause) {
+            function ($clause): bool {
                 return !!$clause->possibilities;
             }
         )) {
@@ -223,7 +254,7 @@ class IfAnalyzer
                  * @param array<string> $carry
                  * @return array<string>
                  */
-                function ($carry, Clause $clause) {
+                function (array $carry, Clause $clause): array {
                     return array_merge($carry, array_keys($clause->possibilities));
                 },
                 []
@@ -320,37 +351,12 @@ class IfAnalyzer
             $changed_var_ids
         );
 
-        // this captures statements in the if conditional
-        if ($codebase->find_unused_variables) {
-            foreach ($if_context->unreferenced_vars as $var_id => $locations) {
-                if (!isset($context->unreferenced_vars[$var_id])) {
-                    if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                        $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                    } else {
-                        $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                    }
-                } else {
-                    $new_locations = array_diff_key(
-                        $locations,
-                        $context->unreferenced_vars[$var_id]
-                    );
-
-                    if ($new_locations) {
-                        if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                            $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                        } else {
-                            $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                        }
-                    }
-                }
-            }
-        }
-
         // check the if
         if (self::analyzeIfBlock(
             $statements_analyzer,
             $stmt,
             $if_scope,
+            $if_conditional_scope,
             $if_context,
             $old_if_context,
             $context,
@@ -420,7 +426,15 @@ class IfAnalyzer
         );
 
         if ($if_scope->new_vars) {
-            $context->vars_in_scope = array_merge($context->vars_in_scope, $if_scope->new_vars);
+            foreach ($if_scope->new_vars as $var_id => $type) {
+                if (isset($context->vars_possibly_in_scope[$var_id])
+                    && $statements_analyzer->data_flow_graph
+                ) {
+                    $type->parent_nodes += $statements_analyzer->getParentNodesForPossiblyUndefinedVariable($var_id);
+                }
+
+                $context->vars_in_scope[$var_id] = $type;
+            }
         }
 
         if ($if_scope->redefined_vars) {
@@ -460,48 +474,29 @@ class IfAnalyzer
 
         if ($if_scope->possibly_redefined_vars) {
             foreach ($if_scope->possibly_redefined_vars as $var_id => $type) {
-                if (isset($context->vars_in_scope[$var_id])
-                    && !$type->failed_reconciliation
-                    && !isset($if_scope->updated_vars[$var_id])
-                ) {
-                    $combined_type = Type::combineUnionTypes(
-                        $context->vars_in_scope[$var_id],
-                        $type,
-                        $codebase
-                    );
+                if (isset($context->vars_in_scope[$var_id])) {
+                    if (!$type->failed_reconciliation
+                        && !isset($if_scope->updated_vars[$var_id])
+                    ) {
+                        $combined_type = Type::combineUnionTypes(
+                            $context->vars_in_scope[$var_id],
+                            $type,
+                            $codebase
+                        );
 
-                    if ($combined_type->equals($context->vars_in_scope[$var_id])) {
-                        continue;
-                    }
+                        if (!$combined_type->equals($context->vars_in_scope[$var_id])) {
+                            $context->removeDescendents($var_id, $combined_type);
+                        }
 
-                    $context->removeDescendents($var_id, $combined_type);
-                    $context->vars_in_scope[$var_id] = $combined_type;
-                }
-            }
-        }
-
-        if ($codebase->find_unused_variables) {
-            foreach ($if_scope->new_unreferenced_vars as $var_id => $locations) {
-                if (($stmt->else
-                        && (isset($if_scope->assigned_var_ids[$var_id]) || isset($if_scope->new_vars[$var_id])))
-                    || !isset($context->vars_in_scope[$var_id])
-                ) {
-                    $context->unreferenced_vars[$var_id] = $locations;
-                } elseif (isset($if_scope->possibly_assigned_var_ids[$var_id])
-                    || isset($if_context->possibly_assigned_var_ids[$var_id])
-                ) {
-                    if (!isset($context->unreferenced_vars[$var_id])) {
-                        $context->unreferenced_vars[$var_id] = $locations;
+                        $context->vars_in_scope[$var_id] = $combined_type;
                     } else {
-                        $context->unreferenced_vars[$var_id] += $locations;
+                        $context->vars_in_scope[$var_id]->parent_nodes += $type->parent_nodes;
                     }
-                } else {
-                    $statements_analyzer->registerVariableUses($locations);
                 }
             }
-
-            $context->possibly_assigned_var_ids += $if_scope->possibly_assigned_var_ids;
         }
+
+        $context->possibly_assigned_var_ids += $if_scope->possibly_assigned_var_ids;
 
         if (!in_array(ScopeAnalyzer::ACTION_NONE, $if_scope->final_actions, true)) {
             $context->has_returned = true;
@@ -510,9 +505,6 @@ class IfAnalyzer
         return null;
     }
 
-    /**
-     * @return \Psalm\Internal\Scope\IfConditionalScope
-     */
     public static function analyzeIfConditional(
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr $cond,
@@ -520,7 +512,7 @@ class IfAnalyzer
         Codebase $codebase,
         IfScope $if_scope,
         ?int $branch_point
-    ) {
+    ): IfConditionalScope {
         $entry_clauses = [];
 
         // used when evaluating elseifs
@@ -556,8 +548,7 @@ class IfAnalyzer
                     $entry_clauses = array_values(
                         array_filter(
                             $entry_clauses,
-                            /** @return bool */
-                            function (Clause $c) use ($changed_var_ids) {
+                            function (Clause $c) use ($changed_var_ids): bool {
                                 return count($c->possibilities) > 1
                                     || $c->wedge
                                     || !isset($changed_var_ids[array_keys($c->possibilities)[0]]);
@@ -641,10 +632,10 @@ class IfAnalyzer
         if ($internally_applied_if_cond_expr !== $cond
             || $externally_applied_if_cond_expr !== $cond
         ) {
-            $assigned_var_ids = $outer_context->assigned_var_ids;
+            $assigned_var_ids = $first_cond_assigned_var_ids;
             $if_conditional_context->assigned_var_ids = [];
 
-            $referenced_var_ids = $outer_context->referenced_var_ids;
+            $referenced_var_ids = $first_cond_referenced_var_ids;
             $if_conditional_context->referenced_var_ids = [];
 
             $if_conditional_context->inside_conditional = true;
@@ -690,7 +681,7 @@ class IfAnalyzer
              *
              * @return true
              */
-            function (Type\Union $_) {
+            function (Type\Union $_): bool {
                 return true;
             },
             array_diff_key(
@@ -709,7 +700,8 @@ class IfAnalyzer
                     if (IssueBuffer::accepts(
                         new DocblockTypeContradiction(
                             'if (false) is impossible',
-                            new CodeLocation($statements_analyzer, $cond)
+                            new CodeLocation($statements_analyzer, $cond),
+                            'false falsy'
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -719,7 +711,8 @@ class IfAnalyzer
                     if (IssueBuffer::accepts(
                         new TypeDoesNotContainType(
                             'if (false) is impossible',
-                            new CodeLocation($statements_analyzer, $cond)
+                            new CodeLocation($statements_analyzer, $cond),
+                            'false falsy'
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -731,7 +724,8 @@ class IfAnalyzer
                     if (IssueBuffer::accepts(
                         new RedundantConditionGivenDocblockType(
                             'if (true) is redundant',
-                            new CodeLocation($statements_analyzer, $cond)
+                            new CodeLocation($statements_analyzer, $cond),
+                            'true falsy'
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -741,7 +735,8 @@ class IfAnalyzer
                     if (IssueBuffer::accepts(
                         new RedundantCondition(
                             'if (true) is redundant',
-                            new CodeLocation($statements_analyzer, $cond)
+                            new CodeLocation($statements_analyzer, $cond),
+                            'true falsy'
                         ),
                         $statements_analyzer->getSuppressedIssues()
                     )) {
@@ -766,12 +761,6 @@ class IfAnalyzer
     }
 
     /**
-     * @param  StatementsAnalyzer        $statements_analyzer
-     * @param  PhpParser\Node\Stmt\If_  $stmt
-     * @param  IfScope                  $if_scope
-     * @param  Context                  $if_context
-     * @param  Context                  $old_if_context
-     * @param  Context                  $outer_context
      * @param  array<string,Type\Union> $pre_assignment_else_redefined_vars
      *
      * @return false|null
@@ -780,11 +769,12 @@ class IfAnalyzer
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Stmt\If_ $stmt,
         IfScope $if_scope,
+        IfConditionalScope $if_conditional_scope,
         Context $if_context,
         Context $old_if_context,
         Context $outer_context,
         array $pre_assignment_else_redefined_vars
-    ) {
+    ): ?bool {
         $codebase = $statements_analyzer->getCodebase();
 
         $if_context->parent_context = $outer_context;
@@ -802,7 +792,7 @@ class IfAnalyzer
             return false;
         }
 
-        $final_actions = ScopeAnalyzer::getFinalControlActions(
+        $final_actions = ScopeAnalyzer::getControlActions(
             $stmt->stmts,
             $statements_analyzer->node_data,
             $codebase->config->exit_functions,
@@ -816,7 +806,6 @@ class IfAnalyzer
 
         $has_break_statement = $final_actions === [ScopeAnalyzer::ACTION_BREAK];
         $has_continue_statement = $final_actions === [ScopeAnalyzer::ACTION_CONTINUE];
-        $has_leave_switch_statement = $final_actions === [ScopeAnalyzer::ACTION_LEAVE_SWITCH];
 
         $if_scope->final_actions = $final_actions;
 
@@ -831,38 +820,28 @@ class IfAnalyzer
             $new_possibly_assigned_var_ids
         );
 
-        if ($if_context->byref_constraints !== null) {
-            foreach ($if_context->byref_constraints as $var_id => $byref_constraint) {
-                if ($outer_context->byref_constraints !== null
-                    && isset($outer_context->byref_constraints[$var_id])
-                    && $byref_constraint->type
-                    && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
-                    && !UnionTypeComparator::isContainedBy(
-                        $codebase,
-                        $byref_constraint->type,
-                        $outer_constraint_type
-                    )
-                ) {
-                    if (IssueBuffer::accepts(
-                        new ConflictingReferenceConstraint(
-                            'There is more than one pass-by-reference constraint on ' . $var_id,
-                            new CodeLocation($statements_analyzer, $stmt, $outer_context->include_location, true)
-                        ),
-                        $statements_analyzer->getSuppressedIssues()
-                    )) {
-                        // fall through
-                    }
-                } else {
-                    $outer_context->byref_constraints[$var_id] = $byref_constraint;
+        foreach ($if_context->byref_constraints as $var_id => $byref_constraint) {
+            if (isset($outer_context->byref_constraints[$var_id])
+                && $byref_constraint->type
+                && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
+                && !UnionTypeComparator::isContainedBy(
+                    $codebase,
+                    $byref_constraint->type,
+                    $outer_constraint_type
+                )
+            ) {
+                if (IssueBuffer::accepts(
+                    new ConflictingReferenceConstraint(
+                        'There is more than one pass-by-reference constraint on ' . $var_id,
+                        new CodeLocation($statements_analyzer, $stmt, $outer_context->include_location, true)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
                 }
+            } else {
+                $outer_context->byref_constraints[$var_id] = $byref_constraint;
             }
-        }
-
-        if ($codebase->find_unused_variables) {
-            $outer_context->referenced_var_ids = array_merge(
-                $outer_context->referenced_var_ids,
-                $if_context->referenced_var_ids
-            );
         }
 
         $mic_drop = false;
@@ -904,6 +883,19 @@ class IfAnalyzer
         }
 
         if ($has_leaving_statements && !$has_break_statement && !$stmt->else && !$stmt->elseifs) {
+            // If we're assigning inside
+            if ($if_conditional_scope->cond_assigned_var_ids
+                && $if_scope->mic_drop_context
+            ) {
+                self::addConditionallyAssignedVarsToContext(
+                    $statements_analyzer,
+                    $stmt->cond,
+                    $if_scope->mic_drop_context,
+                    $outer_context,
+                    $if_conditional_scope->cond_assigned_var_ids
+                );
+            }
+
             if ($if_scope->negated_types) {
                 $changed_var_ids = [];
 
@@ -937,6 +929,33 @@ class IfAnalyzer
                         $var_id,
                         $if_scope->negated_clauses
                     );
+                }
+
+                foreach ($changed_var_ids as $var_id => $_) {
+                    $first_appearance = $statements_analyzer->getFirstAppearance($var_id);
+
+                    if ($first_appearance
+                        && isset($outer_context->vars_in_scope[$var_id])
+                        && isset($outer_context_vars_reconciled[$var_id])
+                        && $outer_context->vars_in_scope[$var_id]->hasMixed()
+                        && !$outer_context_vars_reconciled[$var_id]->hasMixed()
+                    ) {
+                        if (!$outer_context->collect_initializations
+                            && !$outer_context->collect_mutations
+                            && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
+                            && (!(($parent_source = $statements_analyzer->getSource())
+                                        instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
+                                    || !$parent_source->getSource() instanceof \Psalm\Internal\Analyzer\TraitAnalyzer)
+                        ) {
+                            $codebase->analyzer->decrementMixedCount($statements_analyzer->getFilePath());
+                        }
+
+                        IssueBuffer::remove(
+                            $statements_analyzer->getFilePath(),
+                            'MixedAssignment',
+                            $first_appearance->raw_file_start
+                        );
+                    }
                 }
 
                 $outer_context->vars_in_scope = $outer_context_vars_reconciled;
@@ -1011,44 +1030,17 @@ class IfAnalyzer
             } elseif (!$has_leaving_statements) {
                 $if_scope->new_vars_possibly_in_scope = $vars_possibly_in_scope;
             }
-
-            if ($codebase->find_unused_variables && (!$has_leaving_statements || $has_leave_switch_statement)) {
-                foreach ($if_context->unreferenced_vars as $var_id => $locations) {
-                    if (!isset($outer_context->unreferenced_vars[$var_id])) {
-                        if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                            $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                        } else {
-                            $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                        }
-                    } else {
-                        $new_locations = array_diff_key(
-                            $locations,
-                            $outer_context->unreferenced_vars[$var_id]
-                        );
-
-                        if ($new_locations) {
-                            if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                                $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                            } else {
-                                $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         if ($outer_context->collect_exceptions) {
             $outer_context->mergeExceptions($if_context);
         }
+
+        return null;
     }
 
     /**
-     * @param  StatementsAnalyzer           $statements_analyzer
-     * @param  PhpParser\Node\Stmt\ElseIf_ $elseif
-     * @param  IfScope                     $if_scope
      * @param  Context                     $elseif_context
-     * @param  Context                     $outer_context
      *
      * @return false|null
      */
@@ -1060,7 +1052,7 @@ class IfAnalyzer
         Context $outer_context,
         Codebase $codebase,
         ?int $branch_point
-    ) {
+    ): ?bool {
         $pre_conditional_context = clone $else_context;
 
         try {
@@ -1104,7 +1096,7 @@ class IfAnalyzer
             /**
              * @return Clause
              */
-            function (Clause $c) use ($mixed_var_ids, $elseif_cond_id) {
+            function (Clause $c) use ($mixed_var_ids, $elseif_cond_id): Clause {
                 $keys = array_keys($c->possibilities);
 
                 $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
@@ -1126,7 +1118,7 @@ class IfAnalyzer
             /**
              * @return Clause
              */
-            function (Clause $c) use ($cond_assigned_var_ids, $elseif_cond_id) {
+            function (Clause $c) use ($cond_assigned_var_ids, $elseif_cond_id): Clause {
                 $keys = array_keys($c->possibilities);
 
                 foreach ($keys as $key) {
@@ -1159,7 +1151,7 @@ class IfAnalyzer
             $elseif_context_clauses = array_values(
                 array_filter(
                     $elseif_context_clauses,
-                    function ($c) use ($reconciled_expression_clauses) {
+                    function ($c) use ($reconciled_expression_clauses): bool {
                         return !in_array($c->hash, $reconciled_expression_clauses);
                     }
                 )
@@ -1173,7 +1165,7 @@ class IfAnalyzer
         try {
             if (array_filter(
                 $entry_clauses,
-                function ($clause) {
+                function ($clause): bool {
                     return !!$clause->possibilities;
                 }
             )) {
@@ -1183,7 +1175,7 @@ class IfAnalyzer
                      * @param array<string> $carry
                      * @return array<string>
                      */
-                    function ($carry, Clause $clause) {
+                    function (array $carry, Clause $clause): array {
                         return array_merge($carry, array_keys($clause->possibilities));
                     },
                     []
@@ -1285,34 +1277,31 @@ class IfAnalyzer
         $elseif_context->possibly_assigned_var_ids =
             $pre_stmts_possibly_assigned_var_ids + $new_stmts_possibly_assigned_var_ids;
 
-        if ($elseif_context->byref_constraints !== null) {
-            foreach ($elseif_context->byref_constraints as $var_id => $byref_constraint) {
-                if ($outer_context->byref_constraints !== null
-                    && isset($outer_context->byref_constraints[$var_id])
-                    && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
-                    && $byref_constraint->type
-                    && !UnionTypeComparator::isContainedBy(
-                        $codebase,
-                        $byref_constraint->type,
-                        $outer_constraint_type
-                    )
-                ) {
-                    if (IssueBuffer::accepts(
-                        new ConflictingReferenceConstraint(
-                            'There is more than one pass-by-reference constraint on ' . $var_id,
-                            new CodeLocation($statements_analyzer, $elseif, $outer_context->include_location, true)
-                        ),
-                        $statements_analyzer->getSuppressedIssues()
-                    )) {
-                        // fall through
-                    }
-                } else {
-                    $outer_context->byref_constraints[$var_id] = $byref_constraint;
+        foreach ($elseif_context->byref_constraints as $var_id => $byref_constraint) {
+            if (isset($outer_context->byref_constraints[$var_id])
+                && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
+                && $byref_constraint->type
+                && !UnionTypeComparator::isContainedBy(
+                    $codebase,
+                    $byref_constraint->type,
+                    $outer_constraint_type
+                )
+            ) {
+                if (IssueBuffer::accepts(
+                    new ConflictingReferenceConstraint(
+                        'There is more than one pass-by-reference constraint on ' . $var_id,
+                        new CodeLocation($statements_analyzer, $elseif, $outer_context->include_location, true)
+                    ),
+                    $statements_analyzer->getSuppressedIssues()
+                )) {
+                    // fall through
                 }
+            } else {
+                $outer_context->byref_constraints[$var_id] = $byref_constraint;
             }
         }
 
-        $final_actions = ScopeAnalyzer::getFinalControlActions(
+        $final_actions = ScopeAnalyzer::getControlActions(
             $elseif->stmts,
             $statements_analyzer->node_data,
             $codebase->config->exit_functions,
@@ -1325,7 +1314,6 @@ class IfAnalyzer
 
         $has_break_statement = $final_actions === [ScopeAnalyzer::ACTION_BREAK];
         $has_continue_statement = $final_actions === [ScopeAnalyzer::ACTION_CONTINUE];
-        $has_leave_switch_statement = $final_actions === [ScopeAnalyzer::ACTION_LEAVE_SWITCH];
 
         $if_scope->final_actions = array_merge($final_actions, $if_scope->final_actions);
 
@@ -1337,7 +1325,7 @@ class IfAnalyzer
                 $if_scope->new_vars = array_diff_key($elseif_context->vars_in_scope, $outer_context->vars_in_scope);
             } else {
                 foreach ($if_scope->new_vars as $new_var => $type) {
-                    if (!$elseif_context->hasVariable($new_var, $statements_analyzer)) {
+                    if (!$elseif_context->hasVariable($new_var)) {
                         unset($if_scope->new_vars[$new_var]);
                     } else {
                         $if_scope->new_vars[$new_var] = Type::combineUnionTypes(
@@ -1482,38 +1470,6 @@ class IfAnalyzer
                     $if_scope->possibly_assigned_var_ids
                 );
             }
-
-            if ($codebase->find_unused_variables &&  (!$has_leaving_statements || $has_leave_switch_statement)) {
-                foreach ($elseif_context->unreferenced_vars as $var_id => $locations) {
-                    if (!isset($outer_context->unreferenced_vars[$var_id])) {
-                        if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                            $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                        } else {
-                            $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                        }
-                    } else {
-                        $new_locations = array_diff_key(
-                            $locations,
-                            $outer_context->unreferenced_vars[$var_id]
-                        );
-
-                        if ($new_locations) {
-                            if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                                $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                            } else {
-                                $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if ($codebase->find_unused_variables) {
-            $outer_context->referenced_var_ids = array_merge(
-                $outer_context->referenced_var_ids,
-                $elseif_context->referenced_var_ids
-            );
         }
 
         if ($outer_context->collect_exceptions) {
@@ -1530,24 +1486,20 @@ class IfAnalyzer
         } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
             $if_scope->negated_clauses = [];
         }
+
+        return null;
     }
 
     /**
-     * @param  StatementsAnalyzer         $statements_analyzer
-     * @param  PhpParser\Node\Stmt\Else_|null $else
-     * @param  IfScope                   $if_scope
-     * @param  Context                   $else_context
-     * @param  Context                   $outer_context
-     *
      * @return false|null
      */
     protected static function analyzeElseBlock(
         StatementsAnalyzer $statements_analyzer,
-        $else,
+        ?PhpParser\Node\Stmt\Else_ $else,
         IfScope $if_scope,
         Context $else_context,
         Context $outer_context
-    ) {
+    ): ?bool {
         $codebase = $statements_analyzer->getCodebase();
 
         if (!$else && !$if_scope->negated_clauses && !$else_context->clauses) {
@@ -1557,7 +1509,7 @@ class IfAnalyzer
             $if_scope->redefined_vars = [];
             $if_scope->reasonable_clauses = [];
 
-            return;
+            return null;
         }
 
         $else_context->clauses = Algebra::simplifyCNF(
@@ -1576,7 +1528,7 @@ class IfAnalyzer
             $if_scope->redefined_vars = [];
             $if_scope->reasonable_clauses = [];
 
-            return;
+            return null;
         }
 
         $original_context = clone $else_context;
@@ -1629,10 +1581,9 @@ class IfAnalyzer
         $new_possibly_assigned_var_ids = $else_context->possibly_assigned_var_ids;
         $else_context->possibly_assigned_var_ids = $pre_possibly_assigned_var_ids + $new_possibly_assigned_var_ids;
 
-        if ($else && $else_context->byref_constraints !== null) {
+        if ($else) {
             foreach ($else_context->byref_constraints as $var_id => $byref_constraint) {
-                if ($outer_context->byref_constraints !== null
-                    && isset($outer_context->byref_constraints[$var_id])
+                if (isset($outer_context->byref_constraints[$var_id])
                     && ($outer_constraint_type = $outer_context->byref_constraints[$var_id]->type)
                     && $byref_constraint->type
                     && !UnionTypeComparator::isContainedBy(
@@ -1656,15 +1607,8 @@ class IfAnalyzer
             }
         }
 
-        if ($else && $codebase->find_unused_variables) {
-            $outer_context->referenced_var_ids = array_merge(
-                $outer_context->referenced_var_ids,
-                $else_context->referenced_var_ids
-            );
-        }
-
         $final_actions = $else
-            ? ScopeAnalyzer::getFinalControlActions(
+            ? ScopeAnalyzer::getControlActions(
                 $else->stmts,
                 $statements_analyzer->node_data,
                 $codebase->config->exit_functions,
@@ -1678,7 +1622,6 @@ class IfAnalyzer
 
         $has_break_statement = $final_actions === [ScopeAnalyzer::ACTION_BREAK];
         $has_continue_statement = $final_actions === [ScopeAnalyzer::ACTION_CONTINUE];
-        $has_leave_switch_statement = $final_actions === [ScopeAnalyzer::ACTION_LEAVE_SWITCH];
 
         $if_scope->final_actions = array_merge($final_actions, $if_scope->final_actions);
 
@@ -1787,47 +1730,20 @@ class IfAnalyzer
                     $if_scope->possibly_assigned_var_ids
                 );
             }
-
-            if ($codebase->find_unused_variables && (!$has_leaving_statements || $has_leave_switch_statement)) {
-                foreach ($else_context->unreferenced_vars as $var_id => $locations) {
-                    if (!isset($outer_context->unreferenced_vars[$var_id])) {
-                        if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                            $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                        } else {
-                            $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                        }
-                    } else {
-                        $new_locations = array_diff_key(
-                            $locations,
-                            $outer_context->unreferenced_vars[$var_id]
-                        );
-
-                        if ($new_locations) {
-                            if (isset($if_scope->new_unreferenced_vars[$var_id])) {
-                                $if_scope->new_unreferenced_vars[$var_id] += $locations;
-                            } else {
-                                $if_scope->new_unreferenced_vars[$var_id] = $locations;
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         if ($outer_context->collect_exceptions) {
             $outer_context->mergeExceptions($else_context);
         }
+
+        return null;
     }
 
     /**
      * Returns statements that are definitely evaluated before any statements after the end of the
      * if/elseif/else blocks
-     *
-     * @param  PhpParser\Node\Expr $stmt
-     *
-     * @return PhpParser\Node\Expr|null
      */
-    private static function getDefinitelyEvaluatedExpressionAfterIf(PhpParser\Node\Expr $stmt)
+    private static function getDefinitelyEvaluatedExpressionAfterIf(PhpParser\Node\Expr $stmt): ?PhpParser\Node\Expr
     {
         if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Equal
             || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Identical
@@ -1870,12 +1786,8 @@ class IfAnalyzer
     /**
      * Returns statements that are definitely evaluated before any statements inside
      * the if block
-     *
-     * @param  PhpParser\Node\Expr $stmt
-     *
-     * @return PhpParser\Node\Expr|null
      */
-    private static function getDefinitelyEvaluatedExpressionInsideIf(PhpParser\Node\Expr $stmt)
+    private static function getDefinitelyEvaluatedExpressionInsideIf(PhpParser\Node\Expr $stmt): ?PhpParser\Node\Expr
     {
         if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Equal
             || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Identical
@@ -1913,5 +1825,103 @@ class IfAnalyzer
         }
 
         return $stmt;
+    }
+
+    /**
+     * Returns all expressions inside an ored expression
+     * @return non-empty-list<PhpParser\Node\Expr>
+     */
+    private static function getDefinitelyEvaluatedOredExpressions(PhpParser\Node\Expr $stmt): array
+    {
+        if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\LogicalOr
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\LogicalXor
+        ) {
+            return array_merge(
+                self::getDefinitelyEvaluatedOredExpressions($stmt->left),
+                self::getDefinitelyEvaluatedOredExpressions($stmt->right)
+            );
+        }
+
+        return [$stmt];
+    }
+
+    /**
+     * @param array<string, bool> $cond_assigned_var_ids
+     */
+    public static function addConditionallyAssignedVarsToContext(
+        StatementsAnalyzer $statements_analyzer,
+        PhpParser\Node\Expr $cond,
+        Context $mic_drop_context,
+        Context $outer_context,
+        array $cond_assigned_var_ids
+    ) : void {
+        // this filters out coercions to expeccted types in ArgumentAnalyzer
+        $cond_assigned_var_ids = \array_filter($cond_assigned_var_ids);
+
+        if (!$cond_assigned_var_ids) {
+            return;
+        }
+
+        $exprs = self::getDefinitelyEvaluatedOredExpressions($cond);
+
+        // if there was no assignment in the first expression it's safe to proceed
+        $old_node_data = $statements_analyzer->node_data;
+        $statements_analyzer->node_data = clone $old_node_data;
+
+        IssueBuffer::startRecording();
+
+        foreach ($exprs as $expr) {
+            if ($expr instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd) {
+                $fake_not = new PhpParser\Node\Expr\BinaryOp\BooleanOr(
+                    self::negateExpr($expr->left),
+                    self::negateExpr($expr->right),
+                    $expr->getAttributes()
+                );
+            } else {
+                $fake_not = self::negateExpr($expr);
+            }
+
+            $fake_negated_expr = new PhpParser\Node\Expr\FuncCall(
+                new PhpParser\Node\Name\FullyQualified('assert'),
+                [new PhpParser\Node\Arg(
+                    $fake_not,
+                    false,
+                    false,
+                    $expr->getAttributes()
+                )],
+                $expr->getAttributes()
+            );
+
+            $mic_drop_context->inside_negation = !$mic_drop_context->inside_negation;
+
+            ExpressionAnalyzer::analyze(
+                $statements_analyzer,
+                $fake_negated_expr,
+                $mic_drop_context
+            );
+
+            $mic_drop_context->inside_negation = !$mic_drop_context->inside_negation;
+        }
+
+        IssueBuffer::clearRecordingLevel();
+        IssueBuffer::stopRecording();
+
+        $statements_analyzer->node_data = $old_node_data;
+
+        foreach ($cond_assigned_var_ids as $var_id => $_) {
+            if (isset($mic_drop_context->vars_in_scope[$var_id])) {
+                $outer_context->vars_in_scope[$var_id] = clone $mic_drop_context->vars_in_scope[$var_id];
+            }
+        }
+    }
+
+    private static function negateExpr(PhpParser\Node\Expr $expr) : PhpParser\Node\Expr
+    {
+        if ($expr instanceof PhpParser\Node\Expr\BooleanNot) {
+            return $expr->expr;
+        }
+
+        return new PhpParser\Node\Expr\BooleanNot($expr, $expr->getAttributes());
     }
 }

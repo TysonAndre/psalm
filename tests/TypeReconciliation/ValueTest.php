@@ -23,13 +23,12 @@ class ValueTest extends \Psalm\Tests\TestCase
         );
 
         $this->project_analyzer->setPhpVersion('7.3');
-        $this->project_analyzer->getCodebase()->config->parse_sql = true;
     }
 
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'whileCountUpdate' => [
@@ -756,13 +755,39 @@ class ValueTest extends \Psalm\Tests\TestCase
 
                     echo strlen($data);'
             ],
+            'negateValueInUnion' => [
+                '<?php
+                    function f(): int {
+                        $ret = 0;
+                        for ($i = 20; $i >= 0; $i--) {
+                            $ret = ($ret === 10) ? 1 : $ret + 1;
+                        }
+                        return $ret;
+                    }'
+            ],
+            'inArrayPreserveNull' => [
+                '<?php
+                    function x(?string $foo): void {
+                        if (!in_array($foo, ["foo", "bar", null], true)) {
+                            throw new Exception();
+                        }
+
+                        if ($foo) {}
+                    }',
+            ],
+            'allowCheckOnPositiveNumericInverse' => [
+                '<?php
+                    function foo(int $a): void {
+                        if (false === ($a > 1)){}
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'neverEqualsType' => [

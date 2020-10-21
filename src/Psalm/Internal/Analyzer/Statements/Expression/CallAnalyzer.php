@@ -24,7 +24,6 @@ use function strtolower;
 use function strpos;
 use function count;
 use function in_array;
-use function is_null;
 use function is_string;
 use function preg_match;
 use function preg_replace;
@@ -38,18 +37,11 @@ use function array_merge;
  */
 class CallAnalyzer
 {
-    /**
-     * @param   FunctionLikeAnalyzer $source
-     * @param   string              $method_name
-     * @param   Context             $context
-     *
-     * @return  void
-     */
     public static function collectSpecialInformation(
         FunctionLikeAnalyzer $source,
         string $method_name,
         Context $context
-    ) {
+    ): void {
         $fq_class_name = (string)$source->getFQCLN();
 
         $project_analyzer = $source->getFileAnalyzer()->project_analyzer;
@@ -239,11 +231,8 @@ class CallAnalyzer
 
     /**
      * @param  array<int, PhpParser\Node\Arg>   $args
-     * @param  Context                          $context
-     * @param  CodeLocation                     $code_location
-     * @param  StatementsAnalyzer               $statements_analyzer
      */
-    protected static function checkMethodArgs(
+    public static function checkMethodArgs(
         ?\Psalm\Internal\MethodIdentifier $method_id,
         array $args,
         ?TemplateResult $class_template_result,
@@ -253,24 +242,19 @@ class CallAnalyzer
     ) : bool {
         $codebase = $statements_analyzer->getCodebase();
 
-        $method_params = $method_id
-            ? $codebase->methods->getMethodParams($method_id, $statements_analyzer, $args, $context)
-            : null;
-
-        if (Call\ArgumentsAnalyzer::analyze(
-            $statements_analyzer,
-            $args,
-            $method_params,
-            (string) $method_id,
-            $context,
-            $class_template_result
-        ) === false) {
-            return false;
+        if (!$method_id) {
+            return Call\ArgumentsAnalyzer::analyze(
+                $statements_analyzer,
+                $args,
+                null,
+                null,
+                true,
+                $context,
+                $class_template_result
+            ) !== false;
         }
 
-        if (!$method_id || $method_params === null) {
-            return true;
-        }
+        $method_params = $codebase->methods->getMethodParams($method_id, $statements_analyzer, $args, $context);
 
         $fq_class_name = $method_id->fq_class_name;
         $method_name = $method_id->method_name;
@@ -315,6 +299,18 @@ class CallAnalyzer
             if (!$context->isSuppressingExceptions($statements_analyzer)) {
                 $context->mergeFunctionExceptions($method_storage, $code_location);
             }
+        }
+
+        if (Call\ArgumentsAnalyzer::analyze(
+            $statements_analyzer,
+            $args,
+            $method_params,
+            (string) $method_id,
+            $method_storage ? $method_storage->allow_named_arg_calls : true,
+            $context,
+            $class_template_result
+        ) === false) {
+            return false;
         }
 
         if (Call\ArgumentsAnalyzer::checkArgumentsMatch(
@@ -401,7 +397,7 @@ class CallAnalyzer
                 }
             } elseif ($declaring_class_storage->template_types) {
                 foreach ($declaring_class_storage->template_types as $template_name => $type_map) {
-                    foreach ($type_map as $key => list($type)) {
+                    foreach ($type_map as $key => [$type]) {
                         $template_types[$template_name][$key] = [$type];
                     }
                 }
@@ -430,15 +426,15 @@ class CallAnalyzer
      * @param  PhpParser\Node\Scalar\String_|PhpParser\Node\Expr\Array_|PhpParser\Node\Expr\BinaryOp\Concat
      *         $callable_arg
      *
-     * @return non-empty-string[]
+     * @return list<non-empty-string>
      *
      * @psalm-suppress LessSpecificReturnStatement
      * @psalm-suppress MoreSpecificReturnType
      */
     public static function getFunctionIdsFromCallableArg(
         \Psalm\FileSource $file_source,
-        $callable_arg
-    ) {
+        PhpParser\Node\Expr $callable_arg
+    ): array {
         if ($callable_arg instanceof PhpParser\Node\Expr\BinaryOp\Concat) {
             if ($callable_arg->left instanceof PhpParser\Node\Expr\ClassConstFetch
                 && $callable_arg->left->class instanceof PhpParser\Node\Name
@@ -503,8 +499,6 @@ class CallAnalyzer
             return [$fq_class_name . '::' . $method_name_arg->value];
         }
 
-        $class_arg_type = null;
-
         if (!$file_source instanceof StatementsAnalyzer
             || !($class_arg_type = $file_source->node_data->getType($class_arg))
         ) {
@@ -537,19 +531,16 @@ class CallAnalyzer
     }
 
     /**
-     * @param  StatementsAnalyzer   $statements_analyzer
      * @param  non-empty-string     $function_id
-     * @param  CodeLocation         $code_location
      * @param  bool                 $can_be_in_root_scope if true, the function can be shortened to the root version
      *
-     * @return bool
      */
     public static function checkFunctionExists(
         StatementsAnalyzer $statements_analyzer,
-        &$function_id,
+        string &$function_id,
         CodeLocation $code_location,
-        $can_be_in_root_scope
-    ) {
+        bool $can_be_in_root_scope
+    ): bool {
         $cased_function_id = $function_id;
         $function_id = strtolower($function_id);
 
@@ -588,21 +579,18 @@ class CallAnalyzer
      * @param  \Psalm\Storage\Assertion[] $assertions
      * @param  string $thisName
      * @param  array<int, PhpParser\Node\Arg> $args
-     * @param  Context           $context
      * @param  array<string, array<string, array{Type\Union}>> $template_type_map,
-     * @param  StatementsAnalyzer $statements_analyzer
      *
-     * @return void
      */
     protected static function applyAssertionsToContext(
-        $expr,
+        PhpParser\NodeAbstract $expr,
         ?string $thisName,
         array $assertions,
         array $args,
         array $template_type_map,
         Context $context,
         StatementsAnalyzer $statements_analyzer
-    ) {
+    ): void {
         $type_assertions = [];
 
         $asserted_keys = [];
@@ -624,9 +612,9 @@ class CallAnalyzer
                 if ($arg_var_id) {
                     $assertion_var_id = $arg_var_id;
                 }
-            } elseif ($assertion->var_id === '$this' && !is_null($thisName)) {
+            } elseif ($assertion->var_id === '$this' && $thisName !== null) {
                 $assertion_var_id = $thisName;
-            } elseif (strpos($assertion->var_id, '$this->') === 0 && !is_null($thisName)) {
+            } elseif (strpos($assertion->var_id, '$this->') === 0 && $thisName !== null) {
                 $assertion_var_id = $thisName . str_replace('$this->', '->', $assertion->var_id);
             } elseif (isset($context->vars_in_scope[$assertion->var_id])) {
                 $assertion_var_id = $assertion->var_id;
@@ -669,7 +657,7 @@ class CallAnalyzer
                             }
 
                             if ($replacement_atomic_type instanceof Type\Atomic\TArray
-                                || $replacement_atomic_type instanceof Type\Atomic\ObjectLike
+                                || $replacement_atomic_type instanceof Type\Atomic\TKeyedArray
                             ) {
                                 $ored_type_assertions[] = $prefix . 'array';
                             } elseif ($replacement_atomic_type instanceof Type\Atomic\TNamedObject) {
@@ -764,7 +752,7 @@ class CallAnalyzer
 
         if ($type_assertions) {
             foreach (($statements_analyzer->getTemplateTypeMap() ?: []) as $template_name => $map) {
-                foreach ($map as $ref => list($type)) {
+                foreach ($map as $ref => [$type]) {
                     $template_type_map[$template_name][$ref] = [
                         new Type\Union([
                             new Type\Atomic\TTemplateParam(
@@ -846,15 +834,15 @@ class CallAnalyzer
     ) : void {
         if ($template_result->upper_bounds && $template_result->lower_bounds) {
             foreach ($template_result->lower_bounds as $template_name => $defining_map) {
-                foreach ($defining_map as $defining_id => list($lower_bound_type)) {
+                foreach ($defining_map as $defining_id => [$lower_bound_type]) {
                     if (isset($template_result->upper_bounds[$template_name][$defining_id])) {
                         $upper_bound_type = $template_result->upper_bounds[$template_name][$defining_id][0];
 
                         $union_comparison_result = new \Psalm\Internal\Type\Comparator\TypeComparisonResult();
 
                         if (count($template_result->lower_bounds_unintersectable_types) > 1) {
-                            $upper_bound_type = $template_result->lower_bounds_unintersectable_types[0];
-                            $lower_bound_type = $template_result->lower_bounds_unintersectable_types[1];
+                            [$upper_bound_type, $lower_bound_type]
+                                = $template_result->lower_bounds_unintersectable_types;
                         }
 
                         if (!UnionTypeComparator::isContainedBy(

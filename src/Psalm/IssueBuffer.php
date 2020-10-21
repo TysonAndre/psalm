@@ -1,20 +1,25 @@
 <?php
 namespace Psalm;
 
+use Psalm\Report\PhpStormReport;
 use function array_pop;
 use function array_search;
 use function array_splice;
 use function count;
 use function debug_print_backtrace;
+use function dirname;
 use function explode;
 use function file_put_contents;
 use function fwrite;
 use function get_class;
+use function is_dir;
 use function memory_get_peak_usage;
+use function mkdir;
 use function microtime;
 use function number_format;
 use function ob_get_clean;
 use function ob_start;
+use function sprintf;
 use Psalm\Internal\Analyzer\IssueData;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Issue\CodeIssue;
@@ -37,6 +42,7 @@ use function str_replace;
 use function usort;
 use function array_merge;
 use function array_values;
+use function in_array;
 use const DEBUG_BACKTRACE_IGNORE_ARGS;
 use const STDERR;
 
@@ -84,12 +90,10 @@ class IssueBuffer
     protected static $used_suppressions = [];
 
     /**
-     * @param   CodeIssue $e
      * @param   string[]  $suppressed_issues
      *
-     * @return  bool
      */
-    public static function accepts(CodeIssue $e, array $suppressed_issues = [], bool $is_fixable = false)
+    public static function accepts(CodeIssue $e, array $suppressed_issues = [], bool $is_fixable = false): bool
     {
         if (self::isSuppressed($e, $suppressed_issues)) {
             return false;
@@ -116,10 +120,8 @@ class IssueBuffer
     }
 
     /**
-     * @param   CodeIssue $e
      * @param   string[]  $suppressed_issues
      *
-     * @return  bool
      */
     public static function isSuppressed(CodeIssue $e, array $suppressed_issues = []) : bool
     {
@@ -173,7 +175,7 @@ class IssueBuffer
             return true;
         }
 
-        if ($e->getLocation()->getLineNumber() === -1) {
+        if ($e->code_location->getLineNumber() === -1) {
             return true;
         }
 
@@ -187,13 +189,9 @@ class IssueBuffer
     }
 
     /**
-     * @param   CodeIssue $e
-     *
      * @throws  Exception\CodeException
-     *
-     * @return  bool
      */
-    public static function add(CodeIssue $e, bool $is_fixable = false)
+    public static function add(CodeIssue $e, bool $is_fixable = false): bool
     {
         $config = Config::getInstance();
 
@@ -206,7 +204,7 @@ class IssueBuffer
             return false;
         }
 
-        if ($project_analyzer->getCodebase()->taint && $issue_type !== 'TaintedInput') {
+        if ($project_analyzer->getCodebase()->taint_flow_graph && $issue_type !== 'TaintedInput') {
             return false;
         }
 
@@ -220,14 +218,21 @@ class IssueBuffer
             ob_start();
             debug_print_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
             $trace = ob_get_clean();
-            fwrite(STDERR, "\nEmitting {$e->getShortLocation()} $issue_type {$e->getMessage()}\n$trace\n");
+            fwrite(STDERR, "\nEmitting {$e->getShortLocation()} $issue_type {$e->message}\n$trace\n");
         }
 
-        $emitted_key = $issue_type . '-' . $e->getShortLocation() . ':' . $e->getLocation()->getColumn();
+        $emitted_key = $issue_type
+            . '-' . $e->getShortLocation()
+            . ':' . $e->code_location->getColumn()
+            . ' ' . $e->dupe_key;
 
         if ($reporting_level === Config::REPORT_INFO) {
             if ($issue_type === 'TaintedInput' || !self::alreadyEmitted($emitted_key)) {
                 self::$issues_data[$e->getFilePath()][] = $e->toIssueData(Config::REPORT_INFO);
+
+                if ($is_fixable) {
+                    self::addFixableIssue($issue_type);
+                }
             }
 
             return false;
@@ -238,12 +243,12 @@ class IssueBuffer
 
             $message = $e instanceof \Psalm\Issue\TaintedInput
                 ? $e->getJourneyMessage()
-                : $e->getMessage();
+                : $e->message;
 
             throw new Exception\CodeException(
                 $issue_type
                     . ' - ' . $e->getShortLocationWithPrevious()
-                    . ':' . $e->getLocation()->getColumn()
+                    . ':' . $e->code_location->getColumn()
                     . ' - ' . $message
             );
         }
@@ -251,10 +256,10 @@ class IssueBuffer
         if ($issue_type === 'TaintedInput' || !self::alreadyEmitted($emitted_key)) {
             ++self::$error_count;
             self::$issues_data[$e->getFilePath()][] = $e->toIssueData(Config::REPORT_ERROR);
-        }
 
-        if ($is_fixable) {
-            self::addFixableIssue($issue_type);
+            if ($is_fixable) {
+                self::addFixableIssue($issue_type);
+            }
         }
 
         return true;
@@ -293,7 +298,7 @@ class IssueBuffer
     /**
      * @return array<string, list<IssueData>>
      */
-    public static function getIssuesData()
+    public static function getIssuesData(): array
     {
         return self::$issues_data;
     }
@@ -301,7 +306,7 @@ class IssueBuffer
     /**
      * @return list<IssueData>
      */
-    public static function getIssuesDataForFile(string $file_path)
+    public static function getIssuesDataForFile(string $file_path): array
     {
         return self::$issues_data[$file_path] ?? [];
     }
@@ -309,7 +314,7 @@ class IssueBuffer
     /**
      * @return array<string, int>
      */
-    public static function getFixableIssues()
+    public static function getFixableIssues(): array
     {
         return self::$fixable_issue_counts;
     }
@@ -398,10 +403,7 @@ class IssueBuffer
         }
     }
 
-    /**
-     * @return int
-     */
-    public static function getErrorCount()
+    public static function getErrorCount(): int
     {
         return self::$error_count;
     }
@@ -409,16 +411,16 @@ class IssueBuffer
     /**
      * @param array<string, list<IssueData>> $issues_data
      *
-     * @return void
      */
-    public static function addIssues(array $issues_data)
+    public static function addIssues(array $issues_data): void
     {
         foreach ($issues_data as $file_path => $file_issues) {
             foreach ($file_issues as $issue) {
                 $emitted_key = $issue->type
                     . '-' . $issue->file_name
                     . ':' . $issue->line_from
-                    . ':' . $issue->column_from;
+                    . ':' . $issue->column_from
+                    . ' ' . $issue->dupe_key;
 
                 if (!self::alreadyEmitted($emitted_key)) {
                     self::$issues_data[$file_path][] = $issue;
@@ -428,13 +430,8 @@ class IssueBuffer
     }
 
     /**
-     * @param  ProjectAnalyzer                   $project_analyzer
-     * @param  bool                             $is_full
-     * @param  float                            $start_time
-     * @param  bool                             $add_stats
      * @param  array<string,array<string,array{o:int, s:array<int, string>}>>  $issue_baseline
      *
-     * @return void
      */
     public static function finish(
         ProjectAnalyzer $project_analyzer,
@@ -442,7 +439,7 @@ class IssueBuffer
         float $start_time,
         bool $add_stats = false,
         array $issue_baseline = []
-    ) {
+    ): void {
         if (!$project_analyzer->stdout_report_options) {
             throw new \UnexpectedValueException('Cannot finish without stdout report options');
         }
@@ -455,7 +452,10 @@ class IssueBuffer
         $issues_data = [];
 
         if (self::$issues_data) {
-            if ($project_analyzer->stdout_report_options->format === Report::TYPE_CONSOLE) {
+            if (in_array(
+                $project_analyzer->stdout_report_options->format,
+                [\Psalm\Report::TYPE_CONSOLE, \Psalm\Report::TYPE_PHP_STORM]
+            )) {
                 echo "\n";
             }
 
@@ -565,6 +565,10 @@ class IssueBuffer
                 throw new \UnexpectedValueException('Output path should not be null here');
             }
 
+            $folder = dirname($report_options->output_path);
+            if (!is_dir($folder) && !mkdir($folder, 0777, true) && !is_dir($folder)) {
+                throw new \RuntimeException(sprintf('Directory "%s" was not created', $folder));
+            }
             file_put_contents(
                 $report_options->output_path,
                 self::getOutput(
@@ -575,7 +579,10 @@ class IssueBuffer
             );
         }
 
-        if ($project_analyzer->stdout_report_options->format === Report::TYPE_CONSOLE) {
+        if (in_array(
+            $project_analyzer->stdout_report_options->format,
+            [\Psalm\Report::TYPE_CONSOLE, \Psalm\Report::TYPE_PHP_STORM]
+        )) {
             echo str_repeat('-', 30) . "\n";
 
             if ($error_count) {
@@ -603,7 +610,7 @@ class IssueBuffer
                 }
             }
 
-            if (self::$fixable_issue_counts && $show_suggestions && !$codebase->taint) {
+            if (self::$fixable_issue_counts && $show_suggestions && !$codebase->taint_flow_graph) {
                 echo str_repeat('-', 30) . "\n";
 
                 $total_count = \array_sum(self::$fixable_issue_counts);
@@ -679,13 +686,12 @@ class IssueBuffer
      * @param array<string, array<int, IssueData>> $issues_data
      * @param array{int, int} $mixed_counts
      *
-     * @return string
      */
     public static function getOutput(
         array $issues_data,
         \Psalm\Report\ReportOptions $report_options,
         array $mixed_counts = [0, 0]
-    ) {
+    ): string {
         $total_expression_count = $mixed_counts[0] + $mixed_counts[1];
         $mixed_expression_count = $mixed_counts[0];
 
@@ -735,7 +741,7 @@ class IssueBuffer
                 break;
 
             case Report::TYPE_JUNIT:
-                $output = new JUnitReport($normalized_data, self::$fixable_issue_counts, $report_options);
+                $output = new JunitReport($normalized_data, self::$fixable_issue_counts, $report_options);
                 break;
 
             case Report::TYPE_CONSOLE:
@@ -745,17 +751,16 @@ class IssueBuffer
             case Report::TYPE_GITHUB_ACTIONS:
                 $output = new GithubActionsReport($normalized_data, self::$fixable_issue_counts, $report_options);
                 break;
+
+            case Report::TYPE_PHP_STORM:
+                $output = new PhpStormReport($normalized_data, self::$fixable_issue_counts, $report_options);
+                break;
         }
 
         return $output->create();
     }
 
-    /**
-     * @param  string $message
-     *
-     * @return bool
-     */
-    protected static function alreadyEmitted($message)
+    protected static function alreadyEmitted(string $message): bool
     {
         $sham = sha1($message);
 
@@ -768,10 +773,7 @@ class IssueBuffer
         return false;
     }
 
-    /**
-     * @return void
-     */
-    public static function clearCache()
+    public static function clearCache(): void
     {
         self::$issues_data = [];
         self::$emitted = [];
@@ -786,7 +788,7 @@ class IssueBuffer
     /**
      * @return array<string, list<IssueData>>
      */
-    public static function clear()
+    public static function clear(): array
     {
         $current_data = self::$issues_data;
         self::$issues_data = [];
@@ -795,27 +797,18 @@ class IssueBuffer
         return $current_data;
     }
 
-    /**
-     * @return bool
-     */
-    public static function isRecording()
+    public static function isRecording(): bool
     {
         return self::$recording_level > 0;
     }
 
-    /**
-     * @return void
-     */
-    public static function startRecording()
+    public static function startRecording(): void
     {
         ++self::$recording_level;
         self::$recorded_issues[self::$recording_level] = [];
     }
 
-    /**
-     * @return void
-     */
-    public static function stopRecording()
+    public static function stopRecording(): void
     {
         if (self::$recording_level === 0) {
             throw new \UnexpectedValueException('Cannot stop recording - already at base level');
@@ -827,7 +820,7 @@ class IssueBuffer
     /**
      * @return array<int, CodeIssue>
      */
-    public static function clearRecordingLevel()
+    public static function clearRecordingLevel(): array
     {
         if (self::$recording_level === 0) {
             throw new \UnexpectedValueException('Not currently recording');
@@ -840,10 +833,7 @@ class IssueBuffer
         return $recorded_issues;
     }
 
-    /**
-     * @return void
-     */
-    public static function bubbleUp(CodeIssue $e)
+    public static function bubbleUp(CodeIssue $e): void
     {
         if (self::$recording_level === 0) {
             self::add($e);

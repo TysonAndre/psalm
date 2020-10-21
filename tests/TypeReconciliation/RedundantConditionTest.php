@@ -11,7 +11,7 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'ignoreIssueAndAssign' => [
@@ -806,7 +806,7 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'ifFalse' => [
@@ -1222,7 +1222,7 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                     }',
                 'error_message' => 'RedundantCondition',
             ],
-            'SKIPPED-noLongerWarnsAboutRedundancyHere' => [
+            'noLongerWarnsAboutRedundancyHere' => [
                 '<?php
                     function a(bool $a, bool $b) : void {
                         if ($a || $b) {
@@ -1351,6 +1351,28 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                         if ($oc) {}
                     }',
                 'error_message' => 'RedundantCondition',
+            ],
+            'leftCannotBeTrue' => [
+                '<?php
+                    /** @psalm-type F = ""|"0" */
+                    /**
+                     * @param F $a
+                     * @param F $b
+                     */
+                    function foo(string $a, string $b): void {
+                        if ($a || $b) {}
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+            ],
+            'rightCannotBeTrue' => [
+                '<?php
+                    /** @param false $a */
+                    function foo(bool $a): void {
+                        if (rand(0, 1) || $a) {
+                            echo "a or b";
+                        }
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
             ],
         ];
     }

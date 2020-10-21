@@ -13,7 +13,6 @@ use function implode;
 use function preg_quote;
 use Psalm\Config;
 use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Tests\Internal\Provider;
 use function sort;
 use function strpos;
@@ -38,7 +37,7 @@ class DocumentationTest extends TestCase
     /**
      * @return array<string, array<int, string>>
      */
-    private static function getCodeBlocksFromDocs()
+    private static function getCodeBlocksFromDocs(): array
     {
         $issues_dir = dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'docs' . DIRECTORY_SEPARATOR . 'running_psalm' . DIRECTORY_SEPARATOR . 'issues';
 
@@ -77,9 +76,6 @@ class DocumentationTest extends TestCase
         return $issue_code;
     }
 
-    /**
-     * @return void
-     */
     public function setUp() : void
     {
         RuntimeCaches::clearAll();
@@ -94,7 +90,7 @@ class DocumentationTest extends TestCase
             )
         );
 
-        $this->project_analyzer->setPhpVersion('7.3');
+        $this->project_analyzer->setPhpVersion('8.0');
     }
 
     public function testAllIssuesCoveredInConfigSchema(): void
@@ -120,10 +116,7 @@ class DocumentationTest extends TestCase
         $this->assertSame(implode("\n", $all_issues), implode("\n", $handler_types));
     }
 
-    /**
-     * @return void
-     */
-    public function testAllIssuesCovered()
+    public function testAllIssuesCovered(): void
     {
         $all_issues = \Psalm\Config\IssueHandler::getAllIssueTypes();
         $all_issues[] = 'ParseError';
@@ -138,12 +131,6 @@ class DocumentationTest extends TestCase
         $code_blocks['UnrecognizedStatement'] = true;
         $code_blocks['PluginIssue'] = true;
         $code_blocks['TaintedInput'] = true;
-
-        // these are deprecated
-        $code_blocks['TypeCoercion'] = true;
-        $code_blocks['MixedTypeCoercion'] = true;
-        $code_blocks['MixedTypeCoercion'] = true;
-        $code_blocks['MisplacedRequiredParam'] = true;
 
         $documented_issues = array_keys($code_blocks);
         sort($documented_issues);
@@ -160,9 +147,8 @@ class DocumentationTest extends TestCase
      * @param array<string> $error_levels
      * @param bool $check_references
      *
-     * @return void
      */
-    public function testInvalidCode($code, $error_message, $error_levels = [], $check_references = false)
+    public function testInvalidCode($code, $error_message, $error_levels = [], $check_references = false): void
     {
         if (strpos($this->getTestName(), 'SKIPPED-') !== false) {
             $this->markTestSkipped();
@@ -199,7 +185,7 @@ class DocumentationTest extends TestCase
     /**
      * @return array<string,array{string,string,string[],bool}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): array
     {
         $invalid_code_data = [];
 
@@ -221,6 +207,9 @@ class DocumentationTest extends TestCase
                     continue 2;
 
                 case 'RedundantIdentityWithTrue':
+                    continue 2;
+
+                case 'TraitMethodSignatureMismatch':
                     continue 2;
 
                 case 'InvalidFalsableReturnType':
@@ -284,7 +273,7 @@ class DocumentationTest extends TestCase
 
         $duplicate_shortcodes = array_filter(
             $all_shortcodes,
-            function ($issues) {
+            function ($issues): bool {
                 return count($issues) > 1;
             }
         );

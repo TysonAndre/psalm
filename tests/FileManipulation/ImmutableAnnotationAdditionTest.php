@@ -6,7 +6,7 @@ class ImmutableAnnotationAdditionTest extends FileManipulationTest
     /**
      * @return array<string,array{string,string,string,string[],bool}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): array
     {
         return [
             'addPureAnnotationToFunction' => [
@@ -46,6 +46,8 @@ class ImmutableAnnotationAdditionTest extends FileManipulationTest
                     /**
                      * This is a class
                      * that is cool
+                     *
+                     * @Foo\Bar
                      */
                     class A {
                         public int $i;
@@ -62,6 +64,8 @@ class ImmutableAnnotationAdditionTest extends FileManipulationTest
                     /**
                      * This is a class
                      * that is cool
+                     *
+                     * @Foo\Bar
                      *
                      * @psalm-immutable
                      */
@@ -111,7 +115,7 @@ class ImmutableAnnotationAdditionTest extends FileManipulationTest
                 ['MissingImmutableAnnotation'],
                 true,
             ],
-            'dontAddPureAnnotationWhenClassCanHoldMutableData' => [
+            'addPureAnnotationWhenClassCanHoldMutableData' => [
                 '<?php
                     class B {
                         public int $i = 5;
@@ -143,6 +147,9 @@ class ImmutableAnnotationAdditionTest extends FileManipulationTest
                         public int $i = 5;
                     }
 
+                    /**
+                     * @psalm-immutable
+                     */
                     class A {
                         public B $b;
 
@@ -164,6 +171,47 @@ class ImmutableAnnotationAdditionTest extends FileManipulationTest
                     $b->i = 6;
 
                     echo $a->getPlus5();',
+                '7.4',
+                ['MissingImmutableAnnotation'],
+                true,
+            ],
+            'addPureAnnotationToClassThatExtends' => [
+                '<?php
+                    class AParent {
+                        public int $i;
+
+                        public function __construct(int $i) {
+                            $this->i = $i;
+                        }
+
+                        public function mutate() : void {
+                            echo "hello";
+                        }
+                    }
+
+                    class A extends AParent {
+                        public function getPlus5() {
+                            return $this->i + 5;
+                        }
+                    }',
+                '<?php
+                    class AParent {
+                        public int $i;
+
+                        public function __construct(int $i) {
+                            $this->i = $i;
+                        }
+
+                        public function mutate() : void {
+                            echo "hello";
+                        }
+                    }
+
+                    class A extends AParent {
+                        public function getPlus5() {
+                            return $this->i + 5;
+                        }
+                    }',
                 '7.4',
                 ['MissingImmutableAnnotation'],
                 true,

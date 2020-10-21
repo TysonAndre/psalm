@@ -11,7 +11,7 @@ class FunctionCallTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'preg_grep' => [
@@ -257,7 +257,7 @@ class FunctionCallTest extends TestCase
 
                     a(["a" => "hello"]);',
             ],
-            'objectLikeKeyChecksAgainstObjectLike' => [
+            'objectLikeKeyChecksAgainstTKeyedArray' => [
                 '<?php
                     /**
                      * @param array{a: string} $b
@@ -1315,13 +1315,103 @@ class FunctionCallTest extends TestCase
                     }
                     print_r(array_map("strval", $headers));'
             ],
+            'allowListEqualToRange' => [
+                '<?php
+                    /** @param array<int, int> $two */
+                    function collectCommit(array $one, array $two) : void {
+                        if ($one && array_values($one) === array_values($two)) {}
+                    }'
+            ],
+            'pregMatchAll' => [
+                '<?php
+                    /**
+                     * @return array<list<string>>
+                     */
+                    function extractUsernames(string $input): array {
+                        preg_match_all(\'/([a-zA-Z])*/\', $input, $matches);
+
+                        return $matches;
+                    }'
+            ],
+            'pregMatchAllOffsetCapture' => [
+                '<?php
+                    function foo(string $input): array {
+                        preg_match_all(\'/([a-zA-Z])*/\', $input, $matches, PREG_OFFSET_CAPTURE);
+
+                        return $matches[0];
+                    }'
+            ],
+            'pregMatchAllReturnsFalse' => [
+                '<?php
+                    /**
+                     * @return int|false
+                     */
+                    function badpattern() {
+                        return @preg_match_all("foo", "foo", $matches);
+                    }'
+            ],
+            'strposAllowDictionary' => [
+                '<?php
+                    function sayHello(string $format): void {
+                        if (strpos("abcdefghijklmno", $format)) {}
+                    }',
+            ],
+            'curlInitIsResourceAllowedIn7x' => [
+                '<?php
+                    $ch = curl_init();
+                    if (!is_resource($ch)) {}',
+                [],
+                [],
+                '7.4'
+            ],
+            'pregSplit' => [
+                '<?php
+                    /** @return non-empty-list */
+                    function foo(string $s) {
+                        return preg_split("/ /", $s);
+                    }'
+            ],
+            'pregSplitWithFlags' => [
+                '<?php
+                    /** @return list<string> */
+                    function foo(string $s) {
+                        return preg_split("/ /", $s, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE);
+                    }'
+            ],
+            'mbConvertEncodingWithArray' => [
+                '<?php
+                    /**
+                     * @param array<int, string> $str
+                     * @return array<int, string>
+                     */
+                    function test2(array $str): array {
+                        return mb_convert_encoding($str, "UTF-8", "UTF-8");
+                    }'
+            ],
+            'getDebugType' => [
+                '<?php
+                    function foo(mixed $var) : void {
+                        switch (get_debug_type($var)) {
+                            case "string":
+                                echo "a string";
+                                break;
+
+                            case Exception::class;
+                                echo "an Exception with message " . $var->getMessage();
+                                break;
+                        }
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'invalidScalarArgument' => [
@@ -1486,7 +1576,7 @@ class FunctionCallTest extends TestCase
                     a(["a" => "hello"]);',
                 'error_message' => 'InvalidScalarInComplexArgument',
             ],
-            'objectLikeKeyChecksAgainstDifferentObjectLike' => [
+            'objectLikeKeyChecksAgainstDifferentTKeyedArray' => [
                 '<?php
                     /**
                      * @param array{a: int} $b
@@ -1792,6 +1882,37 @@ class FunctionCallTest extends TestCase
                         if ($s) {}
                     }',
                 'error_message' => 'RedundantCondition',
+            ],
+            'strposNoSetFirstParam' => [
+                '<?php
+                    function sayHello(string $format): void {
+                        if (strpos("u", $format)) {}
+                    }',
+                'error_message' => 'InvalidLiteralArgument',
+            ],
+            'curlInitIsResourceFailsIn8x' => [
+                '<?php
+                    $ch = curl_init();
+                    if (!is_resource($ch)) {}',
+                'error_message' => 'RedundantCondition',
+                [],
+                false,
+                '8.0'
+            ],
+            'maxCallWithArray' => [
+                '<?php
+                    function foo(array $a) {
+                        max($a);
+                    }',
+                'error_message' => 'ArgumentTypeCoercion',
+            ],
+            'pregSplitNoEmpty' => [
+                '<?php
+                    /** @return non-empty-list */
+                    function foo(string $s) {
+                        return preg_split("/ /", $s, -1, PREG_SPLIT_NO_EMPTY);
+                    }',
+                'error_message' => 'InvalidReturnStatement'
             ],
         ];
     }

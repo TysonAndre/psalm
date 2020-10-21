@@ -6,15 +6,11 @@ use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Provider\Providers;
-use Psalm\Internal\RuntimeCaches;
 use Psalm\Tests\Internal\Provider;
 use Psalm\Tests\TestConfig;
 
 class SymbolLookupTest extends \Psalm\Tests\TestCase
 {
-    /**
-     * @return void
-     */
     public function setUp() : void
     {
         parent::setUp();
@@ -41,10 +37,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->project_analyzer->getCodebase()->store_node_types = true;
     }
 
-    /**
-     * @return void
-     */
-    public function testSimpleSymbolLookup()
+    public function testSimpleSymbolLookup(): void
     {
         $this->addFile(
             'somefile.php',
@@ -90,10 +83,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame("<?php function B\qux(\n    int \$a,\n    int \$b\n) : int", $codebase->getSymbolInformation('somefile.php', 'B\qux()'));
     }
 
-    /**
-     * @return void
-     */
-    public function testSimpleSymbolLocation()
+    public function testSimpleSymbolLocation(): void
     {
         $this->addFile(
             'somefile.php',
@@ -154,10 +144,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame(25, $function_symbol_location->getColumn());
     }
 
-    /**
-     * @return void
-     */
-    public function testSymbolLookupAfterAlteration()
+    public function testSymbolLookupAfterAlteration(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -238,10 +225,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame('425-426:int(2)', $symbol_at_position[0]);
     }
 
-    /**
-     * @return void
-     */
-    public function testGetSymbolPositionMissingArg()
+    public function testGetSymbolPositionMissingArg(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -274,10 +258,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame('B\A::foo()', $symbol_at_position[0]);
     }
 
-    /**
-     * @return void
-     */
-    public function testGetSymbolPositionNullableArg()
+    public function testGetSymbolPositionNullableArg(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -303,10 +284,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame('B\AClass', $symbol_at_position[0]);
     }
 
-    /**
-     * @return void
-     */
-    public function testGetSymbolPositionMethodWrongReturnType()
+    public function testGetSymbolPositionMethodWrongReturnType(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -336,10 +314,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame('B\AClass', $symbol_at_position[0]);
     }
 
-    /**
-     * @return void
-     */
-    public function testGetSymbolPositionUseStatement()
+    public function testGetSymbolPositionUseStatement(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -363,10 +338,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame('StreamWrapper', $symbol_at_position[0]);
     }
 
-    /**
-     * @return void
-     */
-    public function testGetSymbolPositionRange()
+    public function testGetSymbolPositionRange(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -396,10 +368,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
         $this->assertSame(30, $symbol_at_position[1]->end->character);
     }
 
-    /**
-     * @return void
-     */
-    public function testGetTypeInDocblock()
+    public function testGetTypeInDocblock(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -449,7 +418,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
             [new Position(8, 46), 'B\A::bar', 0, 1],
             [new Position(8, 47), 'B\A::foo', 0, 2],
             [new Position(10, 40), 'B\A::staticfoo', 0, 1],
-            #[new Position(12, 28), 'B\foo', 0, 1],
+            // [new Position(12, 28), 'B\foo', 0, 1],
             [new Position(14, 30), 'B\A::__construct', 0, 0],
             [new Position(16, 31), 'strlen', 0, 1],
         ];
@@ -508,7 +477,7 @@ class SymbolLookupTest extends \Psalm\Tests\TestCase
 
         if ($expected_symbol !== null) {
             $this->assertNotNull($reference_location);
-            list($symbol, $argument_number) = $reference_location;
+            [$symbol, $argument_number] = $reference_location;
             $this->assertSame($expected_symbol, $symbol);
             $this->assertSame($expected_argument_number, $argument_number);
 

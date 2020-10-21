@@ -3,7 +3,6 @@ namespace Psalm\Tests;
 
 use Psalm\Config;
 use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\RuntimeCaches;
 use Psalm\Tests\Internal\Provider;
 
@@ -12,9 +11,6 @@ class UnusedCodeTest extends TestCase
     /** @var \Psalm\Internal\Analyzer\ProjectAnalyzer */
     protected $project_analyzer;
 
-    /**
-     * @return void
-     */
     public function setUp() : void
     {
         RuntimeCaches::clearAll();
@@ -39,9 +35,8 @@ class UnusedCodeTest extends TestCase
      * @param string $code
      * @param array<string> $error_levels
      *
-     * @return void
      */
-    public function testValidCode($code, array $error_levels = [])
+    public function testValidCode($code, array $error_levels = []): void
     {
         $test_name = $this->getTestName();
         if (\strpos($test_name, 'SKIPPED-') !== false) {
@@ -73,9 +68,8 @@ class UnusedCodeTest extends TestCase
      * @param string $error_message
      * @param array<string> $error_levels
      *
-     * @return void
      */
-    public function testInvalidCode($code, $error_message, $error_levels = [])
+    public function testInvalidCode($code, $error_message, $error_levels = []): void
     {
         if (\strpos($this->getTestName(), 'SKIPPED-') !== false) {
             $this->markTestSkipped();
@@ -105,7 +99,7 @@ class UnusedCodeTest extends TestCase
     /**
      * @return array<string, array{string}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): array
     {
         return [
             'magicCall' => [
@@ -731,13 +725,31 @@ class UnusedCodeTest extends TestCase
 
                     echo $a[0];'
             ],
+            'callMethodThatUpdatesStaticVar' => [
+                '<?php
+                    class References {
+                        /**
+                         * @var array<string, string>
+                         */
+                        public $foo = [];
+
+                        /**
+                         * @param array<string, string> $map
+                         */
+                        public function bar(array $map) : void {
+                            self::$foo += $map;
+                        }
+                    }
+
+                    (new References)->bar(["a" => "b"]);'
+            ],
         ];
     }
 
     /**
      * @return array<string,array{string,error_message:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): array
     {
         return [
             'unusedClass' => [

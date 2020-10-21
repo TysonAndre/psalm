@@ -20,24 +20,21 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     /** @var string */
     private $file_path;
 
-    /** @return void */
     public function setUp() : void
     {
         RuntimeCaches::clearAll();
         $this->file_path = tempnam(sys_get_temp_dir(), 'psalm-test-config');
     }
 
-    /** @return void */
     public function tearDown() : void
     {
         @unlink($this->file_path);
     }
 
     /**
-     * @return void
      * @test
      */
-    public function canCreateConfigObject()
+    public function canCreateConfigObject(): void
     {
         file_put_contents($this->file_path, trim('
             <?xml version="1.0"?>
@@ -49,10 +46,9 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return void
      * @test
      */
-    public function addCanAddPluginClassToExistingPluginsNode()
+    public function addCanAddPluginClassToExistingPluginsNode(): void
     {
         file_put_contents(
             $this->file_path,
@@ -79,10 +75,9 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return void
      * @test
      */
-    public function addCanCreateMissingPluginsNode()
+    public function addCanCreateMissingPluginsNode(): void
     {
         file_put_contents(
             $this->file_path,
@@ -101,10 +96,9 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return void
      * @test
      */
-    public function removeDoesNothingWhenThereIsNoPluginsNode()
+    public function removeDoesNothingWhenThereIsNoPluginsNode(): void
     {
         $noPlugins = '<?xml version="1.0"?>
             <psalm></psalm>' . PHP_EOL;
@@ -121,10 +115,9 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return void
      * @test
      */
-    public function removeKillsEmptyPluginsNode()
+    public function removeKillsEmptyPluginsNode(): void
     {
         $noPlugins = '<?xml version="1.0" encoding="UTF-8"?>
             <psalm/>' . PHP_EOL;
@@ -146,10 +139,9 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return void
      * @test
      */
-    public function removeKillsSpecifiedPlugin()
+    public function removeKillsSpecifiedPlugin(): void
     {
         $noPlugins = trim('
             <?xml version="1.0"?>
@@ -173,10 +165,9 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
     }
 
     /**
-     * @return void
      * @test
      */
-    public function removeKillsSpecifiedPluginWithOneRemaining()
+    public function removeKillsSpecifiedPluginWithOneRemaining(): void
     {
         $noPlugins = trim('
             <?xml version="1.0"?>
@@ -216,11 +207,10 @@ class ConfigFileTest extends \Psalm\Tests\TestCase
      * @param string $expected_template
      * @param string $contents
      *
-     * @return bool
      *
      * @psalm-pure
      */
-    protected static function compareContentWithTemplateAndTrailingLineEnding($expected_template, $contents)
+    protected static function compareContentWithTemplateAndTrailingLineEnding($expected_template, $contents): bool
     {
         $passed = false;
 

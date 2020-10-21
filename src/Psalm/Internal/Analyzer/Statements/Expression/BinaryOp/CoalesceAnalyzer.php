@@ -13,7 +13,6 @@ use Psalm\Type\Algebra;
 use Psalm\Type\Reconciler;
 use Psalm\Internal\Type\AssertionReconciler;
 use function array_merge;
-use function array_intersect_key;
 use function array_values;
 use function array_map;
 use function array_keys;
@@ -61,10 +60,7 @@ class CoalesceAnalyzer
 
         $if_clauses = array_values(
             array_map(
-                /**
-                 * @return \Psalm\Internal\Clause
-                 */
-                function (\Psalm\Internal\Clause $c) use ($mixed_var_ids, $stmt_id) {
+                function (\Psalm\Internal\Clause $c) use ($mixed_var_ids, $stmt_id): \Psalm\Internal\Clause {
                     $keys = array_keys($c->possibilities);
 
                     $mixed_var_ids = \array_diff($mixed_var_ids, $keys);
@@ -139,7 +135,8 @@ class CoalesceAnalyzer
                         if (IssueBuffer::accepts(
                             new \Psalm\Issue\DocblockTypeContradiction(
                                 $naive_type->getId() . ' does not contain null',
-                                new CodeLocation($statements_analyzer, $stmt->left)
+                                new CodeLocation($statements_analyzer, $stmt->left),
+                                $naive_type->getId() . ' null'
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -149,7 +146,8 @@ class CoalesceAnalyzer
                         if (IssueBuffer::accepts(
                             new \Psalm\Issue\TypeDoesNotContainType(
                                 $naive_type->getId() . ' is always defined and non-null',
-                                new CodeLocation($statements_analyzer, $stmt->left)
+                                new CodeLocation($statements_analyzer, $stmt->left),
+                                null
                             ),
                             $statements_analyzer->getSuppressedIssues()
                         )) {
@@ -185,13 +183,6 @@ class CoalesceAnalyzer
             $t_if_context->referenced_var_ids
         );
 
-        if ($codebase->find_unused_variables) {
-            $context->unreferenced_vars = array_intersect_key(
-                $t_if_context->unreferenced_vars,
-                $context->unreferenced_vars
-            );
-        }
-
         $t_else_context = clone $context;
 
         if ($negated_if_types) {
@@ -219,16 +210,11 @@ class CoalesceAnalyzer
             $t_else_context->referenced_var_ids
         );
 
-        if ($codebase->find_unused_variables) {
-            $context->unreferenced_vars = array_intersect_key(
-                $t_else_context->unreferenced_vars,
-                $context->unreferenced_vars
-            );
-        }
-
         $lhs_type = null;
 
-        if ($stmt_left_type = $statements_analyzer->node_data->getType($stmt->left)) {
+        $stmt_left_type = $statements_analyzer->node_data->getType($stmt->left);
+
+        if ($stmt_left_type) {
             $if_return_type_reconciled = AssertionReconciler::reconcile(
                 'isset',
                 clone $stmt_left_type,

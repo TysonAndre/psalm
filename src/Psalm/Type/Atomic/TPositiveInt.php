@@ -3,10 +3,12 @@ namespace Psalm\Type\Atomic;
 
 class TPositiveInt extends TInt
 {
-    /**
-     * @return string
-     */
-    public function getId(bool $nested = false)
+    public function getId(bool $nested = false): string
+    {
+        return 'positive-int';
+    }
+
+    public function __toString(): string
     {
         return 'positive-int';
     }
@@ -14,8 +16,21 @@ class TPositiveInt extends TInt
     /**
      * @return false
      */
-    public function canBeFullyExpressedInPhp()
+    public function canBeFullyExpressedInPhp(): bool
     {
         return false;
+    }
+
+    /**
+     * @param  array<string> $aliased_classes
+     *
+     */
+    public function toNamespacedString(
+        ?string $namespace,
+        array $aliased_classes,
+        ?string $this_class,
+        bool $use_phpdoc_format
+    ): string {
+        return $use_phpdoc_format ? 'int' : 'positive-int';
     }
 }

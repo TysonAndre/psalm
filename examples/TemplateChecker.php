@@ -27,12 +27,12 @@ class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
 {
     const VIEW_CLASS = 'Your\\View\\Class';
 
-    public function analyze(Context $file_context = null, $preserve_analyzers = false, Context $global_context = null)
+    public function analyze(?Context $file_context = null, bool $preserve_analyzers = false, ?Context $global_context = null): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $stmts = $codebase->getStatementsForFile($this->file_path);
 
-        if (empty($stmts)) {
+        if ($stmts === []) {
             return;
         }
 
@@ -54,6 +54,7 @@ class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
                     throw new \InvalidArgumentException('Could not interpret doc comment correctly');
                 }
 
+                /** @psalm-suppress ArgumentTypeCoercion */
                 $method_id = new \Psalm\Internal\MethodIdentifier(...explode('::', $matches[1]));
 
                 $this_params = $this->checkMethod($method_id, $first_stmt, $codebase);
@@ -81,9 +82,6 @@ class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
     }
 
     /**
-     * @param  \Psalm\Internal\MethodIdentifier         $method_id
-     * @param  PhpParser\Node $stmt
-     *
      * @return Context|false
      */
     private function checkMethod(\Psalm\Internal\MethodIdentifier $method_id, PhpParser\Node $stmt, Codebase $codebase)
@@ -141,12 +139,10 @@ class TemplateChecker extends Psalm\Internal\Analyzer\FileAnalyzer
     }
 
     /**
-     * @param  Context $context
      * @param  array<PhpParser\Node\Stmt> $stmts
      *
-     * @return void
      */
-    protected function checkWithViewClass(Context $context, array $stmts)
+    protected function checkWithViewClass(Context $context, array $stmts): void
     {
         $pseudo_method_stmts = [];
 

@@ -1,16 +1,6 @@
 <?php
 namespace Psalm\Tests\TypeReconciliation;
 
-use function is_array;
-use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
-use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
-use Psalm\Internal\Clause;
-use Psalm\Type;
-use Psalm\Type\Algebra;
-use Psalm\Type\Reconciler;
-
 class ConditionalTest extends \Psalm\Tests\TestCase
 {
     use \Psalm\Tests\Traits\InvalidCodeAnalysisTestTrait;
@@ -19,7 +9,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
             'intIsMixed' => [
@@ -1121,13 +1111,13 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         public function foo() : void {}
                     }
                     function bar(A $a) : void {
-                        if (false === (!$a instanceof B || !$a instanceof C)) {
+                        if (false === (!$a instanceof B && !$a instanceof C)) {
                             return;
                         }
                         $a->foo();
                     }
                     function baz(A $a) : void {
-                        if ((!$a instanceof B || !$a instanceof C) === false) {
+                        if ((!$a instanceof B && !$a instanceof C) === false) {
                             return;
                         }
                         $a->foo();
@@ -1897,7 +1887,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         return new O();
                     }'
             ],
-            'SKIPPED-assertVarRedefinedInIfWithOr' => [
+            'assertVarRedefinedInIfWithOr' => [
                 '<?php
                     class O {}
 
@@ -1907,6 +1897,33 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                     function exampleWithOr($value): O {
                         if (!is_string($value) || ($value = rand(0, 1) ? new O : null) === null) {
                             return new O();
+                        }
+
+                        return $value;
+                    }'
+            ],
+            'assertVarRedefinedInIfWithOrAndConversion' => [
+                '<?php
+                    interface Convertor {
+                        function maybeConvert(string $value): ?SomeObject;
+                    }
+
+                    interface SomeObject
+                    {
+                        function isValid(): bool;
+                    }
+
+                    /**
+                     * @param mixed $value
+                     */
+                    function exampleWithOr(Convertor $convertor, $value): SomeObject
+                    {
+                        if (
+                          !\is_string($value)
+                          || ($value = $convertor->maybeConvert($value)) === null
+                          || !$value->isValid()
+                        ) {
+                            throw new Exception();
                         }
 
                         return $value;
@@ -1945,7 +1962,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                     '$a' => 'bool',
                 ]
             ],
-            'SKIPPED-assertVarRedefinedInOpWithOr' => [
+            'assertVarRedefinedInOpWithOr' => [
                 '<?php
                     class O {
                         public function foo() : bool { return true; }
@@ -2832,13 +2849,122 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         }
                     }'
             ],
+            'nullsafePropertyAccess' => [
+                '<?php
+                    class IntLinkedList {
+                        public function __construct(
+                            public int $value,
+                            public ?self $next
+                        ) {}
+                    }
+
+                    function skipOne(IntLinkedList $l) : ?int {
+                        return $l->next?->value;
+                    }
+
+                    function skipTwo(IntLinkedList $l) : ?int {
+                        return $l->next?->next?->value;
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
+            'nullsafeMethodCall' => [
+                '<?php
+                    class IntLinkedList {
+                        public function __construct(
+                            public int $value,
+                            private ?self $next
+                        ) {}
+
+                        public function getNext() : ?self {
+                            return $this->next;
+                        }
+                    }
+
+                    function skipOne(IntLinkedList $l) : ?int {
+                        return $l->getNext()?->value;
+                    }
+
+                    function skipTwo(IntLinkedList $l) : ?int {
+                        return $l->getNext()?->getNext()?->value;
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
+            'allowBasicOrAssignment' => [
+                '<?php
+                    function test(): int {
+                        if (rand(0, 1) || ($a = rand(0, 10)) === 0) {
+                            return 0;
+                        }
+
+                        return $a;
+                    }
+
+                    function test2(?string $comment): ?string {
+                        if ($comment === null || preg_match("/.*/", $comment, $match) === 0) {
+                            return null;
+                        }
+
+                        return $match[0];
+                    }'
+            ],
+            'onlySingleErrorForEarlyExit' => [
+                '<?php
+                    class App {
+                        public function bar(int $i) : bool {
+                            return $i === 5;
+                        }
+                    }
+
+                    /** @psalm-suppress MixedArgument, MissingParamType */
+                    function bar(App $foo, $arr) : void {
+                        /** @psalm-suppress TypeDoesNotContainNull */
+                        if ($foo === null || $foo->bar($arr)) {
+                            return;
+                        }
+                    }'
+            ],
+            'nonRedundantConditionAfterThing' => [
+                '<?php
+                    class U {
+                        public function takes(self $u) : bool {
+                            return true;
+                        }
+                    }
+
+                    function bar(?U $a, ?U $b) : void {
+                        if ($a === null
+                            || ($b !== null && $a->takes($b))
+                            || $b === null
+                        ) {}
+                    }'
+            ],
+            'assertWithAssignmentInOr' => [
+                'function test(int $x = null): int {
+                    \assert($x || ($x = rand(0, 10)));
+                    return $x;
+                }'
+            ],
+            'noParadoxicalConditionAfterTwoAssignments' => [
+                '<?php
+                    function foo(string $str): ?int {
+                        if (rand(0, 1) || (!($pos = strpos($str, "a")) && !($pos = strpos($str, "b")))) {
+                            return null;
+                        }
+
+                        return $pos;
+                    }'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
             'makeNonNullableNull' => [
@@ -3186,7 +3312,7 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                     function test(App $app) : void {
                         if ($app || rand(0, 1)) {}
                     }',
-                'error_message' => 'TypeDoesNotContainType',
+                'error_message' => 'RedundantCondition',
             ],
             'nonEmptyString' => [
                 '<?php
@@ -3211,6 +3337,19 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         if (get_class($e) == "InvalidArgumentException") {}
                     }',
                 'error_message' => 'TypeDoesNotContainType',
+            ],
+            'assignmentInBranchOfAnd' => [
+                '<?php
+                    function foo(string $str): ?int {
+                        $pos = 5;
+
+                        if (rand(0, 1) && !($pos = $str)) {
+                            return null;
+                        }
+
+                        return $pos;
+                    }',
+                'error_message' => 'InvalidReturnStatement',
             ],
         ];
     }

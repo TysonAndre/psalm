@@ -3,18 +3,13 @@ namespace Psalm\Tests\LanguageServer;
 
 use LanguageServerProtocol\Position;
 use Psalm\Context;
-use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Provider\Providers;
-use Psalm\Internal\RuntimeCaches;
 use Psalm\Tests\Internal\Provider;
 use Psalm\Tests\TestConfig;
 
 class CompletionTest extends \Psalm\Tests\TestCase
 {
-    /**
-     * @return void
-     */
     public function setUp() : void
     {
         parent::setUp();
@@ -40,10 +35,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->project_analyzer->getCodebase()->store_node_types = true;
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnThisWithNoAssignment()
+    public function testCompletionOnThisWithNoAssignment(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -71,10 +63,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A&static', '->', 213], $codebase->getCompletionDataAtPosition('somefile.php', new Position(8, 31)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnThisWithAssignmentBelow()
+    public function testCompletionOnThisWithAssignmentBelow(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -104,10 +93,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A&static', '->', 220], $codebase->getCompletionDataAtPosition('somefile.php', new Position(8, 31)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnThisWithIfBelow()
+    public function testCompletionOnThisWithIfBelow(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -156,10 +142,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A&static', '->', 220], $codebase->getCompletionDataAtPosition('somefile.php', new Position(8, 31)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnThisProperty()
+    public function testCompletionOnThisProperty(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -197,10 +180,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\C', '->', 454], $codebase->getCompletionDataAtPosition('somefile.php', new Position(16, 39)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnThisPropertyWithCharacter()
+    public function testCompletionOnThisPropertyWithCharacter(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -238,10 +218,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\C', '->', 455], $codebase->getCompletionDataAtPosition('somefile.php', new Position(16, 40)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnThisPropertyWithAnotherCharacter()
+    public function testCompletionOnThisPropertyWithAnotherCharacter(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -279,10 +256,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertNull($codebase->getCompletionDataAtPosition('somefile.php', new Position(16, 41)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnTemplatedThisProperty()
+    public function testCompletionOnTemplatedThisProperty(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -335,10 +309,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertCount(3, $completion_items);
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodReturnValue()
+    public function testCompletionOnMethodReturnValue(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -367,10 +338,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A', '->', 259], $codebase->getCompletionDataAtPosition('somefile.php', new Position(9, 31)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodArgument()
+    public function testCompletionOnMethodArgument(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -401,10 +369,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\C', '->', 298], $codebase->getCompletionDataAtPosition('somefile.php', new Position(11, 32)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodReturnValueWithArgument()
+    public function testCompletionOnMethodReturnValueWithArgument(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -435,10 +400,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A', '->', 299], $codebase->getCompletionDataAtPosition('somefile.php', new Position(11, 33)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnVariableWithWhitespace()
+    public function testCompletionOnVariableWithWhitespace(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -463,10 +425,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A', '->', 126], $codebase->getCompletionDataAtPosition('somefile.php', new Position(6, 25)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnVariableWithWhitespaceAndReturn()
+    public function testCompletionOnVariableWithWhitespaceAndReturn(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -493,10 +452,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A', '->', 150], $codebase->getCompletionDataAtPosition('somefile.php', new Position(7, 26)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodReturnValueWithWhitespace()
+    public function testCompletionOnMethodReturnValueWithWhitespace(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -526,10 +482,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A', '->', 261], $codebase->getCompletionDataAtPosition('somefile.php', new Position(10, 32)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodReturnValueWithWhitespaceAndReturn()
+    public function testCompletionOnMethodReturnValueWithWhitespaceAndReturn(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -560,10 +513,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\A', '->', 285], $codebase->getCompletionDataAtPosition('somefile.php', new Position(11, 26)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodReturnValueWhereParamIsClosure()
+    public function testCompletionOnMethodReturnValueWhereParamIsClosure(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -592,10 +542,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['B\Collection', '->', 312], $codebase->getCompletionDataAtPosition('somefile.php', new Position(10, 49)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnMethodReturnValueWhereParamIsClosureWithStmt()
+    public function testCompletionOnMethodReturnValueWhereParamIsClosureWithStmt(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -661,10 +608,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame('baz()', $completion_items[1]->insertText);
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnNewExceptionWithoutNamespace()
+    public function testCompletionOnNewExceptionWithoutNamespace(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -685,10 +629,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(['*Ex', 'symbol', 78], $codebase->getCompletionDataAtPosition('somefile.php', new Position(2, 32)));
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnNewExceptionWithNamespaceNoUse()
+    public function testCompletionOnNewExceptionWithNamespaceNoUse(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -735,10 +676,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(16, $completion_items[0]->additionalTextEdits[0]->range->end->character);
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnNewExceptionWithNamespaceAndUse()
+    public function testCompletionOnNewExceptionWithNamespaceAndUse(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;
@@ -787,10 +725,7 @@ class CompletionTest extends \Psalm\Tests\TestCase
         $this->assertSame(44, $completion_items[0]->additionalTextEdits[0]->range->end->character);
     }
 
-    /**
-     * @return void
-     */
-    public function testCompletionOnInstanceofWithNamespaceAndUse()
+    public function testCompletionOnInstanceofWithNamespaceAndUse(): void
     {
         $codebase = $this->project_analyzer->getCodebase();
         $config = $codebase->config;

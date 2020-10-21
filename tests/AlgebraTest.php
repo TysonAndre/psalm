@@ -1,24 +1,17 @@
 <?php
 namespace Psalm\Tests;
 
-use function is_array;
 use PhpParser;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Clause;
 use Psalm\Internal\Provider\StatementsProvider;
-use Psalm\Type;
 use Psalm\Type\Algebra;
-use Psalm\Type\Reconciler;
 
 class AlgebraTest extends TestCase
 {
-    /**
-     * @return void
-     */
-    public function testNegateFormula()
+    public function testNegateFormula(): void
     {
         $formula = [
             new Clause(['$a' => ['!falsy']], 1, 1),
@@ -61,10 +54,7 @@ class AlgebraTest extends TestCase
         $this->assertSame(['$b' => ['falsy']], $negated_formula[2]->possibilities);
     }
 
-    /**
-     * @return void
-     */
-    public function testCombinatorialExpansion()
+    public function testCombinatorialExpansion(): void
     {
         $dnf = '<?php ($b0 === true && $b4 === true && $b8 === true)
                   || ($b0 === true && $b1 === true && $b2 === true)
@@ -98,10 +88,7 @@ class AlgebraTest extends TestCase
         $this->assertCount(23, $simplified_dnf_clauses);
     }
 
-    /**
-     * @return void
-     */
-    public function testContainsClause()
+    public function testContainsClause(): void
     {
         $this->assertTrue(
             (new Clause(
@@ -142,10 +129,7 @@ class AlgebraTest extends TestCase
         );
     }
 
-    /**
-     * @return void
-     */
-    public function testSimplifyCNF()
+    public function testSimplifyCNF(): void
     {
         $formula = [
             new Clause(['$a' => ['!falsy']], 1, 1),

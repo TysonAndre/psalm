@@ -24,7 +24,6 @@ use Psalm\SourceControl\SourceControlInfo;
 use const STDERR;
 use function strlen;
 use function var_export;
-use function count;
 use function array_merge;
 use function array_values;
 
@@ -34,15 +33,13 @@ class Shepherd implements \Psalm\Plugin\Hook\AfterAnalysisInterface
      * Called after analysis is complete
      *
      * @param array<string, list<IssueData>> $issues
-     *
-     * @return void
      */
     public static function afterAnalysis(
         Codebase $codebase,
         array $issues,
         array $build_info,
-        SourceControlInfo $source_control_info = null
-    ) {
+        ?SourceControlInfo $source_control_info = null
+    ): void {
         if (!function_exists('curl_init')) {
             fwrite(STDERR, 'No curl found, cannot send data to ' . $codebase->config->shepherd_host . PHP_EOL);
 
@@ -126,13 +123,16 @@ class Shepherd implements \Psalm\Plugin\Hook\AfterAnalysisInterface
     }
 
     /**
-     * @param resource $ch
+     * @param mixed $ch
      *
      * @psalm-pure
      */
     public static function getCurlErrorMessage($ch) : string
     {
-        /** @var array */
+        /**
+         * @psalm-suppress MixedArgument
+         * @var array
+         */
         $curl_info = curl_getinfo($ch);
 
         if (isset($curl_info['ssl_verify_result'])
@@ -208,6 +208,9 @@ class Shepherd implements \Psalm\Plugin\Hook\AfterAnalysisInterface
             return '';
         }
 
+        /**
+         * @psalm-suppress MixedArgument
+         */
         return var_export(curl_getinfo($ch), true);
     }
 }

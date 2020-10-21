@@ -9,9 +9,97 @@ class ArgTest extends TestCase
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
-    public function providerValidCodeParse()
+    public function providerValidCodeParse(): iterable
     {
         return [
+            'argumentUnpackingLiteral' => [
+                '<?php
+                    function add(int $a, int $b, int $c) : int {
+                        return $a + $b + $c;
+                    }
+
+                    echo add(1, ...[2, 3]);',
+            ],
+            'arrayPushArgumentUnpackingWithGoodArg' => [
+                '<?php
+                    $a = ["foo"];
+                    $b = ["foo", "bar"];
+
+                    array_push($a, ...$b);',
+                'assertions' => [
+                    '$a' => 'non-empty-list<string>',
+                ],
+            ],
+            'arrayMergeArgumentUnpacking' => [
+                '<?php
+                    $a = [[1, 2]];
+                    $b = array_merge([], ...$a);',
+                'assertions' => [
+                    '$b' => 'array{0: int, 1: int}',
+                ],
+            ],
+            'preserveTypesWhenUnpacking' => [
+                '<?php
+                    /**
+                     * @return array<int,array<int,string>>
+                     */
+                    function getData(): array
+                    {
+                        return [
+                            ["a", "b"],
+                            ["c", "d"]
+                        ];
+                    }
+
+                    /**
+                     * @return array<int,string>
+                     */
+                    function f1(): array
+                    {
+                        $data = getData();
+                        return array_merge($data[0], $data[1]);
+                    }
+
+                    /**
+                     * @return array<int,string>
+                     */
+                    function f2(): array
+                    {
+                        $data = getData();
+                        return array_merge(...$data);
+                    }
+
+                    /**
+                     * @return array<int,string>
+                     */
+                    function f3(): array
+                    {
+                        $data = getData();
+                        return array_merge([], ...$data);
+                    }',
+            ],
+            'unpackArg' => [
+                '<?php
+                    function Foo(string $a, string ...$b) : void {}
+
+                    /** @return array<int, string> */
+                    function Baz(string ...$c) {
+                        Foo(...$c);
+                        return $c;
+                    }',
+            ],
+            'unpackByRefArg' => [
+                '<?php
+                    function example (int &...$x): void {}
+                    $y = 0;
+                    example($y);
+                    $z = [0];
+                    example(...$z);',
+                'assertions' => [
+                    '$y' => 'int',
+                    '$z' => 'array<int, int>',
+                ],
+            ],
             'callMapClassOptionalArg' => [
                 '<?php
                     class Hello {}
@@ -121,15 +209,75 @@ class ArgTest extends TestCase
                         return intval(...$args);
                     }',
             ],
+            'unpackListWithOptional' => [
+                '<?php
+                    function foo(string ...$rest):void {}
+
+                    $rest = ["zzz"];
+
+                    if (rand(0,1)) {
+                        $rest[] = "xxx";
+                    }
+
+                    foo("first", ...$rest);'
+            ],
+            'useNamedArguments' => [
+                '<?php
+                    class CustomerData {
+                        public function __construct(
+                            public string $name,
+                            public string $email,
+                            public int $age,
+                        ) {}
+                    }
+
+                    /**
+                     * @param array{age: int, name: string, email: string} $input
+                     */
+                    function foo(array $input) : CustomerData {
+                        return new CustomerData(
+                            age: $input["age"],
+                            name: $input["name"],
+                            email: $input["email"],
+                        );
+                    }'
+            ],
+            'useNamedArgumentsSimple' => [
+                '<?php
+                    function takesArguments(string $name, int $age) : void {}
+
+                    takesArguments(name: "hello", age: 5);
+                    takesArguments(age: 5, name: "hello");'
+            ],
+            'useNamedArgumentsSpread' => [
+                '<?php
+                    function takesArguments(string $name, int $age) : void {}
+
+                    $args = ["name" => "hello", "age" => 5];
+                    takesArguments(...$args);',
+                [],
+                [],
+                '8.0'
+            ],
         ];
     }
 
     /**
      * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
      */
-    public function providerInvalidCodeParse()
+    public function providerInvalidCodeParse(): iterable
     {
         return [
+            'arrayPushArgumentUnpackingWithBadArg' => [
+                '<?php
+                    $a = [];
+                    $b = "hello";
+
+                    $a[] = "foo";
+
+                    array_push($a, ...$b);',
+                'error_message' => 'InvalidArgument',
+            ],
             'possiblyInvalidArgument' => [
                 '<?php
                     $foo = [
@@ -173,6 +321,116 @@ class ArgTest extends TestCase
                         echo strlen($a);
                     }',
                 'error_message' => 'PossiblyInvalidArgument',
+            ],
+            'expectsNonNullAndPassedPossiblyNull' => [
+                '<?php
+                    /**
+                     * @param mixed|null $mixed_or_null
+                     */
+                    function foo($mixed, $mixed_or_null): void {
+                        /**
+                         * @psalm-suppress MixedArgument
+                         */
+                        new Exception($mixed_or_null);
+                    }',
+                'error_message' => 'PossiblyNullArgument'
+            ],
+            'useInvalidNamedArgument' => [
+                '<?php
+                    class CustomerData {
+                        public function __construct(
+                            public string $name,
+                            public string $email,
+                            public int $age,
+                        ) {}
+                    }
+
+                    /**
+                     * @param array{age: int, name: string, email: string} $input
+                     */
+                    function foo(array $input) : CustomerData {
+                        return new CustomerData(
+                            aage: $input["age"],
+                            name: $input["name"],
+                            email: $input["email"],
+                        );
+                    }',
+                'error_message' => 'InvalidNamedArgument'
+            ],
+            'noNamedArgsMethod' => [
+                '<?php
+                    class CustomerData
+                    {
+                        /** @no-named-arguments */
+                        public function __construct(
+                            public string $name,
+                            public string $email,
+                            public int $age,
+                        ) {}
+                    }
+
+                    /**
+                     * @param array{age: int, name: string, email: string} $input
+                     */
+                    function foo(array $input) : CustomerData {
+                        return new CustomerData(
+                            age: $input["age"],
+                            name: $input["name"],
+                            email: $input["email"],
+                        );
+                    }',
+                'error_message' => 'InvalidScalarArgument'
+            ],
+            'noNamedArgsFunction' => [
+                '<?php
+                    /** @no-named-arguments */
+                    function takesArguments(string $name, int $age) : void {}
+
+                    takesArguments(age: 5, name: "hello");',
+                'error_message' => 'InvalidScalarArgument'
+            ],
+            'arrayWithoutAllNamedParameters' => [
+                '<?php
+                    class User {
+                        public function __construct(
+                            public int $id,
+                            public string $name,
+                            public int $age
+                        ) {}
+                    }
+
+                    /**
+                     * @param array{id: int, name: string} $data
+                     */
+                    function processUserDataInvalid(array $data) : User {
+                        return new User(...$data);
+                    }',
+                'error_message' => 'MixedArgument',
+                [],
+                false,
+                '8.0'
+            ],
+            'arrayWithoutAllNamedParametersSuppressMixed' => [
+                '<?php
+                    class User {
+                        public function __construct(
+                            public int $id,
+                            public string $name,
+                            public int $age
+                        ) {}
+                    }
+
+                    /**
+                     * @param array{id: int, name: string} $data
+                     */
+                    function processUserDataInvalid(array $data) : User {
+                        /** @psalm-suppress MixedArgument */
+                        return new User(...$data);
+                    }',
+                'error_message' => 'TooFewArguments',
+                [],
+                false,
+                '8.0'
             ],
         ];
     }
