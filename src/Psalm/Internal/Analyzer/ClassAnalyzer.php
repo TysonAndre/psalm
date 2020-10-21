@@ -106,6 +106,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         if (!$class instanceof PhpParser\Node\Stmt\Class_) {
             throw new \LogicException('Something went badly wrong');
         }
+        // TODO: plugins->beforeAnalyzeClass()? And the same/similar method for interfaces and traits (plugins should check the checker or PhpParser node
 
         $fq_class_name = $class_context && $class_context->self ? $class_context->self : $this->fq_class_name;
 

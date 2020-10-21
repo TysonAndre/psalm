@@ -1574,7 +1574,7 @@ class FunctionCallTest extends TestCase
                     }
 
                     a(["a" => "hello"]);',
-                'error_message' => 'InvalidScalarArgument',
+                'error_message' => 'InvalidScalarInComplexArgument',
             ],
             'objectLikeKeyChecksAgainstDifferentTKeyedArray' => [
                 '<?php
@@ -1587,7 +1587,7 @@ class FunctionCallTest extends TestCase
                     }
 
                     a(["a" => "hello"]);',
-                'error_message' => 'InvalidArgument',
+                'error_message' => 'InvalidArgument',  // TODO: fix
             ],
             'possiblyNullFunctionCall' => [
                 '<?php

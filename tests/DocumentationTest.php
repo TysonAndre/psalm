@@ -220,6 +220,7 @@ class DocumentationTest extends TestCase
                     $ignored_issues = ['NullableReturnStatement'];
                     break;
 
+                case 'PossiblyInvalidReturnType':
                 case 'InvalidReturnType':
                     $ignored_issues = ['InvalidReturnStatement'];
                     break;

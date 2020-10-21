@@ -26,6 +26,8 @@ class ParseTree
         $this->parent = $parent;
     }
 
+    // TODO: Look into performance impact of caching parse tree
+
     public function __destruct()
     {
         $this->parent = null;

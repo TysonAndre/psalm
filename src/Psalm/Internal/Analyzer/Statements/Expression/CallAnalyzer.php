@@ -11,6 +11,8 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\InvalidArgument;
 use Psalm\Issue\InvalidScalarArgument;
+use Psalm\Issue\InvalidScalarInComplexArgument;
+use Psalm\Issue\MixedArgument;
 use Psalm\Issue\MixedArgumentTypeCoercion;
 use Psalm\Issue\ArgumentTypeCoercion;
 use Psalm\Issue\UndefinedFunction;

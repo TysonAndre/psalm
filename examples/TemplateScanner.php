@@ -3,7 +3,6 @@ namespace Psalm\Examples\Template;
 
 use PhpParser;
 use Psalm;
-use Psalm\Checker\CommentChecker;
 use Psalm\Codebase;
 use Psalm\DocComment;
 use Psalm\Progress\Progress;

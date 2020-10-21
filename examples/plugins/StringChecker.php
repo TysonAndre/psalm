@@ -2,8 +2,6 @@
 namespace Psalm\Example\Plugin;
 
 use PhpParser;
-use Psalm\Checker;
-use Psalm\Checker\StatementsChecker;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
 use Psalm\Context;

@@ -11,6 +11,8 @@ use function get_class;
 use function in_array;
 use function is_int;
 use Psalm\Codebase;
+use Psalm\Exception\TypeParseTreeException;
+use Psalm\Storage\FunctionLikeParameter;
 use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Atomic\TKeyedArray;

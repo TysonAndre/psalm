@@ -1335,6 +1335,59 @@ class TypeTest extends \Psalm\Tests\TestCase
                     $one->barBar();',
                 'error_message' => 'PossiblyUndefinedMethod',
             ],
+            'variableReassignmentToScalarInIfWithOutsideCall' => [
+                '<?php
+                    class One {
+                        /** @return void */
+                        public function fooFoo() {}
+                    }
+
+                    class Two {
+                        /** @return void */
+                        public function barBar() {}
+                    }
+
+                    $one = "str";
+
+                    if (1 + 1 === 2) {
+                        $one = new Two();
+
+                        $one->barBar();
+                    }
+
+                    $one->barBar();',
+                'error_message' => 'PossiblyInvalidMethodCall',
+            ],
+            'unnecessaryInstanceof' => [
+                '<?php
+                    class One {
+                        public function fooFoo() {}
+                    }
+
+                    $var = new One();
+
+                    if ($var instanceof One) {
+                        $var->fooFoo();
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'unNegatableInstanceof' => [
+                '<?php
+                    class One {
+                        /** @return void */
+                        public function fooFoo() {}
+                    }
+
+                    $var = new One();
+
+                    if ($var instanceof One) {
+                        $var->fooFoo();
+                    }
+                    else {
+                        // do something
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
             'wrongParam' => [
                 '<?php
                     class A {}

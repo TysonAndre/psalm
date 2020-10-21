@@ -1,0 +1,2 @@
+src/000_example_api.php:36: [E0001] InvalidArrayOffset: Cannot access value on variable $params using offset value of 'fieldTypo', expecting 'field' or 'otherField' (column 28)
+src/000_example_api.php:38: [E0001] InvalidArgument: Argument 1 of strlen expects string, array<mixed, string> provided (column 25)

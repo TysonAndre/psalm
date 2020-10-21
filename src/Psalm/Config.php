@@ -506,6 +506,13 @@ class Config
     public $after_visit_classlikes = [];
 
     /**
+     * Static methods to be called before the analyze phase begins.
+     *
+     * @var string[]
+     */
+    public $before_analyze_files = [];
+
+    /**
      * Static methods to be called after codebase has been populated
      *
      * @var class-string<Hook\AfterCodebasePopulatedInterface>[]
@@ -868,7 +875,7 @@ class Config
 
         $config->global_cache_directory = $config->cache_directory;
 
-        $config->cache_directory .= DIRECTORY_SEPARATOR . sha1($base_dir);
+        $config->cache_directory .= DIRECTORY_SEPARATOR . sha1($base_dir . '::' . PSALM_VERSION);
 
         if (is_dir($config->cache_directory) === false && @mkdir($config->cache_directory, 0777, true) === false) {
             trigger_error('Could not create cache directory: ' . $config->cache_directory, E_USER_ERROR);
@@ -966,7 +973,7 @@ class Config
         if (isset($config_xml->universalObjectCrates) && isset($config_xml->universalObjectCrates->class)) {
             /** @var \SimpleXMLElement $universal_object_crate */
             foreach ($config_xml->universalObjectCrates->class as $universal_object_crate) {
-                /** @var string $classString */
+                /** @var class-string $classString */
                 $classString = $universal_object_crate['name'];
                 $config->addUniversalObjectCrate($classString);
             }
@@ -1276,7 +1283,6 @@ class Config
                     count($declared_classes)
             );
         }
-
         $fq_class_name = reset($declared_classes);
 
         if (!$codebase->classlikes->classExtends(
@@ -1289,9 +1295,6 @@ class Config
             );
         }
 
-        /**
-         * @var class-string<T>
-         */
         return $fq_class_name;
     }
 
@@ -2007,11 +2010,11 @@ class Config
         return null;
     }
 
+    /**
+     * @param class-string $class
+     */
     public function addUniversalObjectCrate(string $class): void
     {
-        if (!class_exists($class, true)) {
-            throw new \UnexpectedValueException($class . ' is not a known class');
-        }
         $this->universal_object_crates[] = $class;
     }
 

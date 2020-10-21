@@ -235,6 +235,7 @@ class Analyzer
 
         $file_name = $this->config->shortenFileName($file_path);
 
+        // TODO: Could hook into this based on directory, regex, etc
         if (isset($filetype_analyzers[$extension])) {
             $file_analyzer = new $filetype_analyzers[$extension]($project_analyzer, $file_path, $file_name);
         } else {
@@ -258,6 +259,14 @@ class Analyzer
 
         if ($alter_code) {
             $project_analyzer->interpretRefactors();
+        }
+        // Run any plugins that must be run after scanning,
+        // but before analysis of methods, functions, etc (and forking)
+        $plugin_classes = $this->config->before_analyze_files;
+        foreach ($plugin_classes as $plugin) {
+            // Pass in ProjectChecker
+            /** @psalm-suppress InvalidStringClass consider converting to Closure first */
+            $plugin::beforeAnalyzeFiles($project_analyzer);
         }
 
         $this->files_to_analyze = array_filter(

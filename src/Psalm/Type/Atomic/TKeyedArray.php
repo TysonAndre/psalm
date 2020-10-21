@@ -23,7 +23,7 @@ use Psalm\Type\Union;
 class TKeyedArray extends \Psalm\Type\Atomic
 {
     /**
-     * @var non-empty-array<string|int, Union>
+     * @var array<string|int, Union>
      */
     public $properties;
 
@@ -61,7 +61,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
     /**
      * Constructs a new instance of a generic type
      *
-     * @param non-empty-array<string|int, Union> $properties
+     * @param array<string|int, Union> $properties
      * @param array<string, bool> $class_strings
      */
     public function __construct(array $properties, ?array $class_strings = null)
@@ -270,6 +270,12 @@ class TKeyedArray extends \Psalm\Type\Atomic
             if (!$value_type->possibly_undefined) {
                 $has_defined_keys = true;
             }
+        }
+
+        if (!$value_type) {
+            // This was array{}
+            return new TArray([new Type\Union([new TEmpty]), new Type\Union([new TEmpty])]);
+            // throw new \UnexpectedValueException('$value_type should not be null here');
         }
 
         $key_type = TypeCombination::combineTypes($key_types);

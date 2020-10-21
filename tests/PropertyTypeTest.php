@@ -120,12 +120,16 @@ class PropertyTypeTest extends TestCase
 
     public function testUniversalObjectCrates(): void
     {
-        Config::getInstance()->addUniversalObjectCrate(\DateTime::class);
+        /** @var class-string $classString */
+        $classString = 'Foo';
+        Config::getInstance()->addUniversalObjectCrate($classString);
 
         $this->addFile(
             'somefile.php',
             '<?php
-                $f = new \DateTime();
+                class Foo { }
+
+                $f = new Foo();
                 // reads are fine
                 $f->bar;
 
@@ -2253,6 +2257,19 @@ class PropertyTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidPropertyAssignmentValue',
+            ],
+            'possiblyFalseAssignment' => [
+                '<?php
+                    class A {
+                        /** @var string */
+                        public $foo;
+
+                        public function barBar(): void
+                        {
+                            $this->foo = rand(0, 1) ? "str" : false;
+                        }
+                    }',
+                'error_message' => 'PossiblyFalsePropertyAssignmentValue',
             ],
             'badStaticAssignment' => [
                 '<?php

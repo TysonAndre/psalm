@@ -128,4 +128,9 @@
             </errorLevel>
         </PossiblyUndefinedStringArrayOffset>
     </issueHandlers>
+    <plugins>
+      <!-- TODO: https://github.com/psalm/phpunit-psalm-plugin/issues/1
+      <pluginClass class="Psalm\PhpUnitPlugin\Plugin"/>
+      -->
+    </plugins>
 </psalm>

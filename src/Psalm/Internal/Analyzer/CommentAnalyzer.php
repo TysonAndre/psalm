@@ -114,7 +114,11 @@ class CommentAnalyzer
                 $type_start = null;
                 $type_end = null;
 
-                $line_parts = self::splitDocLine($var_line);
+                try {
+                    $line_parts = self::splitDocLine($var_line);
+                } catch (DocblockParseException $e) {
+                    continue;
+                }
 
                 $line_number = $comment->getStartLine() + substr_count($comment_text, "\n", 0, $offset);
 
@@ -253,6 +257,33 @@ class CommentAnalyzer
     }
 
     /**
+     * @param string $comment_type
+     * @return string
+     * @psalm-suppress MixedArrayAccess
+     * @psalm-suppress MixedInferredReturnType
+     * @psalm-suppress MixedReturnStatement
+     */
+    public static function getRenamedType($comment_type)
+    {
+        // FIXME make this configurable
+        /** @var array<string, string> $renamings */
+        static $renamings = [
+            'arrays' => 'array',
+            'associative' => 'array',
+            'char' => 'string',
+            'function' => 'callable',
+            'long' => 'int',
+            'number' => 'int|float',
+            'str' => 'string',
+            'unknown' => 'mixed',
+            'unknown_type' => 'mixed',
+            'url' => 'string',
+        ];
+        return $renamings[$comment_type] ?? $comment_type;
+    }
+
+    /**
+     * @param  Aliases          $aliases
      * @param  array<string, TypeAlias> $type_aliases
      *
      * @return array<string, TypeAlias\InlineTypeAlias>
@@ -326,10 +357,6 @@ class CommentAnalyzer
                 array_shift($var_line_parts);
             }
 
-            if (!isset($var_line_parts[0])) {
-                continue;
-            }
-
             if ($var_line_parts[0] === ' ') {
                 array_shift($var_line_parts);
             }
@@ -381,6 +408,12 @@ class CommentAnalyzer
         if (isset($parsed_docblock->combined_tags['param'])) {
             foreach ($parsed_docblock->combined_tags['param'] as $offset => $param) {
                 $line_parts = self::splitDocLine($param);
+                if (count($line_parts) >= 1) {
+                    $line_parts[0] = self::getRenamedType($line_parts[0]);
+                    if ($line_parts[0] === '') {
+                        throw new IncorrectDocblockException('Empty type after renaming original');
+                    }
+                }
 
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
                     continue;
@@ -427,6 +460,7 @@ class CommentAnalyzer
                 if (count($line_parts) === 1 && isset($line_parts[0][0]) && $line_parts[0][0] === '$') {
                     continue;
                 }
+                $line_parts[0] = self::getRenamedType($line_parts[0]);
 
                 if (count($line_parts) > 1) {
                     if (!preg_match('/\[[^\]]+\]/', $line_parts[0])
@@ -445,7 +479,6 @@ class CommentAnalyzer
                         ) {
                             throw new IncorrectDocblockException('Misplaced variable');
                         }
-
                         $line_parts[1] = preg_replace('/,$/', '', $line_parts[1]);
 
                         $info->params_out[] = [
@@ -784,6 +817,7 @@ class CommentAnalyzer
                 $end = $start + strlen($line_parts[0]);
 
                 $line_parts[0] = self::sanitizeDocblockType($line_parts[0]);
+                $line_parts[0] = self::getRenamedType($line_parts[0]);
 
                 $info->return_type = array_shift($line_parts);
                 $info->return_type_description = $line_parts ? implode(' ', $line_parts) : null;
@@ -954,11 +988,15 @@ class CommentAnalyzer
             }
         }
 
-        if (isset($parsed_docblock->tags['psalm-seal-properties'])) {
+        if (isset($parsed_docblock->tags['psalm-seal-properties']) ||
+            isset($parsed_docblock->tags['phan-forbid-undeclared-magic-properties']) ||
+            isset($parsed_docblock->tags['seal-properties'])) {
             $info->sealed_properties = true;
         }
 
-        if (isset($parsed_docblock->tags['psalm-seal-methods'])) {
+        if (isset($parsed_docblock->tags['psalm-seal-methods']) ||
+            isset($parsed_docblock->tags['phan-forbid-undeclared-magic-methods']) ||
+            isset($parsed_docblock->tags['seal-methods'])) {
             $info->sealed_methods = true;
         }
 
@@ -1126,7 +1164,7 @@ class CommentAnalyzer
 
                 $function_docblock = $docblock_lines ? "/**\n * " . implode("\n * ", $docblock_lines) . "\n*/\n" : "";
 
-                $php_string = '<?php class A { ' . $function_docblock . ' public ' . $function_string . '{} }';
+                $php_string = '<'.'?php class A { ' . $function_docblock . ' public ' . $function_string . '{} }';
 
                 try {
                     $statements = \Psalm\Internal\Provider\StatementsProvider::parseStatements(

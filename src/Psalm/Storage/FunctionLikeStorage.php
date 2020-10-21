@@ -27,7 +27,7 @@ abstract class FunctionLikeStorage
     public $params = [];
 
     /**
-     * @var array<string, bool>
+     * @var array<string, bool> (maps param names to param types, in the order the params occur in the method)
      */
     public $param_lookup = [];
 

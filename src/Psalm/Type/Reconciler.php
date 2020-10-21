@@ -9,6 +9,7 @@ use function implode;
 use function ksort;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
+use Psalm\Exception\TypeParseTreeException;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\AssertionReconciler;
 use Psalm\Issue\DocblockTypeContradiction;
@@ -651,7 +652,7 @@ class Reconciler
                             || $existing_key_type_part instanceof TTemplateParam
                             || $existing_key_type_part instanceof TObject
                             || ($existing_key_type_part instanceof TNamedObject
-                                && strtolower($existing_key_type_part->value) === 'stdclass')
+                                && \strtolower($existing_key_type_part->value) === 'stdclass')
                         ) {
                             $class_property_type = Type::getMixed();
                         } elseif ($existing_key_type_part instanceof TNamedObject) {

@@ -457,10 +457,12 @@ class Codebase
     /**
      * Scans all files their related files
      *
+     * @return void
+     * @psalm-suppress PossiblyUnusedParam deliberately limiting due to plugin used with this fork requiring a single thread.
      */
     public function scanFiles(int $threads = 1): void
     {
-        $has_changes = $this->scanner->scanFiles($this->classlikes, $threads);
+        $has_changes = $this->scanner->scanFiles($this->classlikes, 1);
 
         if ($has_changes) {
             $this->populator->populateCodebase();

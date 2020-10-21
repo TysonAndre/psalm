@@ -1407,6 +1407,14 @@ class ProjectAnalyzer
     }
 
     /**
+     * Allows plugins to access the ClassLikeStorageProvider
+     */
+    public function getClasslikeStorageProvider() : ClassLikeStorageProvider
+    {
+        return $this->classlike_storage_provider;
+    }
+
+    /**
      * Adapted from https://gist.github.com/divinity76/01ef9ca99c111565a72d3a8a6e42f7fb
      * returns number of cpu cores
      * Copyleft 2018, license: WTFPL

@@ -34,6 +34,10 @@ class PluginRegistrationSocket implements RegistrationInterface
             throw new \InvalidArgumentException('Plugins must be loaded before registration');
         }
 
+        if (is_subclass_of($handler, Hook\BeforeAnalyzeFilesInterface::class)) {
+            $this->config->before_analyze_files[$handler] = $handler;
+        }
+
         if (is_subclass_of($handler, Hook\AfterFileAnalysisInterface::class)) {
             $this->config->after_file_checks[$handler] = $handler;
         }
