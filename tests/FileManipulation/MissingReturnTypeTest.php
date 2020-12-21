@@ -448,6 +448,9 @@ class MissingReturnTypeTest extends FileManipulationTest
                     }',
                 '<?php
                     class A {
+                        /**
+                         * @return static
+                         */
                         public function foo(): self {
                             return $this;
                         }
@@ -650,7 +653,7 @@ class MissingReturnTypeTest extends FileManipulationTest
                 '<?php
                     class A {
                         /**
-                         * @return self
+                         * @return static
                          */
                         public function foo() {
                             return $this;
@@ -659,7 +662,7 @@ class MissingReturnTypeTest extends FileManipulationTest
 
                     class B extends A {
                         /**
-                         * @return self
+                         * @return static
                          */
                         public function foo() {
                             return $this;
@@ -687,7 +690,7 @@ class MissingReturnTypeTest extends FileManipulationTest
                 '<?php
                     class A {
                         /**
-                         * @return self
+                         * @return static
                          */
                         public function foo() {
                             return $this;
@@ -698,7 +701,7 @@ class MissingReturnTypeTest extends FileManipulationTest
 
                     class C extends B {
                         /**
-                         * @return self
+                         * @return static
                          */
                         public function foo() {
                             return $this;
@@ -889,6 +892,125 @@ class MissingReturnTypeTest extends FileManipulationTest
                 '7.3',
                 ['MissingReturnType'],
                 false,
+            ],
+            'staticReturn5.6' => [
+                '<?php
+                    class HelloWorld
+                    {
+                        public function sayHello()
+                        {
+                            return $this;
+                        }
+                    }',
+                '<?php
+                    class HelloWorld
+                    {
+                        /**
+                         * @return static
+                         */
+                        public function sayHello()
+                        {
+                            return $this;
+                        }
+                    }',
+                '5.6',
+                ['MissingReturnType'],
+                false,
+                true,
+            ],
+            'staticReturn7.0' => [
+                '<?php
+                    class HelloWorld
+                    {
+                        public function sayHello()
+                        {
+                            return $this;
+                        }
+                    }',
+                '<?php
+                    class HelloWorld
+                    {
+                        /**
+                         * @return static
+                         */
+                        public function sayHello(): self
+                        {
+                            return $this;
+                        }
+                    }',
+                '7.0',
+                ['MissingReturnType'],
+                false,
+                true,
+            ],
+            'staticReturn8.0' => [
+                '<?php
+                    class HelloWorld
+                    {
+                        public function sayHello()
+                        {
+                            return $this;
+                        }
+                    }',
+                '<?php
+                    class HelloWorld
+                    {
+                        public function sayHello(): static
+                        {
+                            return $this;
+                        }
+                    }',
+                '8.0',
+                ['MissingReturnType'],
+                false,
+                true,
+            ],
+            'arrayKeyReturn' => [
+                '<?php
+                    function scope(array $array) {
+                        return (array_keys($array))[0] ?? null;
+                    }',
+                '<?php
+                    /**
+                     * @return (int|string)|null
+                     *
+                     * @psalm-return array-key|null
+                     */
+                    function scope(array $array) {
+                        return (array_keys($array))[0] ?? null;
+                    }',
+                '7.1',
+                ['MissingReturnType'],
+                false,
+                true,
+            ],
+            'returnIntOrString' => [
+                '<?php
+                    function scope(int $i, string $s) {
+                        return rand(0, 1) ? $i : $s;
+                    }',
+                '<?php
+                    function scope(int $i, string $s): int|string {
+                        return rand(0, 1) ? $i : $s;
+                    }',
+                '8.0',
+                ['MissingReturnType'],
+                false,
+                true,
+            ],
+            'returnIntOrString80' => [
+                '<?php
+                    function scope(int $i, string $s) {
+                        return rand(0, 1) ? $i : $s;
+                    }',
+                '<?php
+                    function scope(int $i, string $s): int|string {
+                        return rand(0, 1) ? $i : $s;
+                    }',
+                '8.0',
+                ['MissingReturnType'],
+                false,
+                true,
             ],
         ];
     }

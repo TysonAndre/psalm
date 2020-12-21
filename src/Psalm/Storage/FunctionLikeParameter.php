@@ -93,6 +93,16 @@ class FunctionLikeParameter
      */
     public $expect_variable = false;
 
+    /**
+     * @var bool
+     */
+    public $promoted_property = false;
+
+    /**
+     * @var list<AttributeStorage>
+     */
+    public $attributes = [];
+
     public function __construct(
         string $name,
         bool $by_ref,

@@ -788,6 +788,80 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                 ],
                 'error_positions' => [[197], []],
             ],
+            'changeUseShouldInvalidateBadNew' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo {
+                                use Baz\B;
+
+                                class A {
+                                    public function foo() : void {
+                                        new B();
+                                    }
+                                }
+                            }
+
+                            namespace Bar {
+                                class B {}
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo {
+                                use Bar\B;
+
+                                class A {
+                                    public function foo() : void {
+                                        new B();
+                                    }
+                                }
+                            }
+
+                            namespace Bar {
+                                class B {}
+                            }',
+                    ],
+                ],
+                'error_positions' => [[247], []],
+            ],
+            'changeUseShouldInvalidateBadReturn' => [
+                [
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo {
+                                use Baz\B;
+
+                                class A {
+                                    public function foo() : ?B {
+                                        return null;
+                                    }
+                                }
+                            }
+
+                            namespace Bar {
+                                class B {}
+                            }',
+                    ],
+                    [
+                        getcwd() . DIRECTORY_SEPARATOR . 'A.php' => '<?php
+                            namespace Foo {
+                                use Bar\B;
+
+                                class A {
+                                    public function foo() : ?B {
+                                        return null;
+                                    }
+                                }
+                            }
+
+                            namespace Bar {
+                                class B {}
+                            }',
+                    ],
+                ],
+                'error_positions' => [[196], []],
+            ],
             'fixMissingProperty' => [
                 [
                     [
@@ -913,7 +987,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[], [238], [], [238], []],
+                'error_positions' => [[], [238, 231], [], [238, 231], []],
             ],
             'traitMethodRenameSameFile' => [
                 [
@@ -1003,7 +1077,7 @@ class TemporaryUpdateTest extends \Psalm\Tests\TestCase
                             }',
                     ],
                 ],
-                'error_positions' => [[], [238], [], [238], []],
+                'error_positions' => [[], [238, 231], [], [238, 231], []],
             ],
             'duplicateMethodThenRemove' => [
                 [

@@ -12,6 +12,7 @@ use function count;
 use function is_array;
 use function array_merge;
 use function array_values;
+use function reset;
 
 /**
  * @internal
@@ -59,7 +60,7 @@ class TypeExpander
         }
 
         if ($has_array_output) {
-            $fleshed_out_type = TypeCombination::combineTypes(
+            $fleshed_out_type = TypeCombiner::combine(
                 $new_return_type_parts,
                 $codebase
             );
@@ -74,6 +75,7 @@ class TypeExpander
         $fleshed_out_type->possibly_undefined_from_try = $return_type->possibly_undefined_from_try;
         $fleshed_out_type->by_ref = $return_type->by_ref;
         $fleshed_out_type->initialized = $return_type->initialized;
+        $fleshed_out_type->from_property = $return_type->from_property;
         $fleshed_out_type->had_template = $return_type->had_template;
         $fleshed_out_type->parent_nodes = $return_type->parent_nodes;
 
@@ -360,6 +362,74 @@ class TypeExpander
             return $return_type;
         }
 
+        if ($return_type instanceof Type\Atomic\TIntMask) {
+            if (!$evaluate_class_constants) {
+                return new Type\Atomic\TInt();
+            }
+
+            $potential_ints = [];
+
+            foreach ($return_type->values as $value_type) {
+                $new_value_type = self::expandAtomic(
+                    $codebase,
+                    $value_type,
+                    $self_class,
+                    $static_class_type,
+                    $parent_class,
+                    $evaluate_class_constants,
+                    $evaluate_conditional_types,
+                    $final
+                );
+
+                if (\is_array($new_value_type)) {
+                    $new_value_type = reset($new_value_type);
+                }
+
+                if (!$new_value_type instanceof Type\Atomic\TLiteralInt) {
+                    return new Type\Atomic\TInt();
+                }
+
+                $potential_ints[] = $new_value_type->value;
+            }
+
+            return \Psalm\Internal\Type\TypeParser::getComputedIntsFromMask($potential_ints);
+        }
+
+        if ($return_type instanceof Type\Atomic\TIntMaskOf) {
+            if (!$evaluate_class_constants) {
+                return new Type\Atomic\TInt();
+            }
+
+            $value_type = $return_type->value;
+
+            $new_value_types = self::expandAtomic(
+                $codebase,
+                $value_type,
+                $self_class,
+                $static_class_type,
+                $parent_class,
+                $evaluate_class_constants,
+                $evaluate_conditional_types,
+                $final
+            );
+
+            if (!is_array($new_value_types)) {
+                return new Type\Atomic\TInt();
+            }
+
+            $potential_ints = [];
+
+            foreach ($new_value_types as $new_value_type) {
+                if (!$new_value_type instanceof Type\Atomic\TLiteralInt) {
+                    return new Type\Atomic\TInt();
+                }
+
+                $potential_ints[] = $new_value_type->value;
+            }
+
+            return \Psalm\Internal\Type\TypeParser::getComputedIntsFromMask($potential_ints);
+        }
+
         if ($return_type instanceof Type\Atomic\TArray
             || $return_type instanceof Type\Atomic\TGenericObject
             || $return_type instanceof Type\Atomic\TIterable
@@ -519,7 +589,7 @@ class TypeExpander
                 }
 
                 if ($assertion && $return_type->param_name === (string) $return_type->if_type) {
-                    $if_conditional_return_type = TypeCombination::combineTypes(
+                    $if_conditional_return_type = TypeCombiner::combine(
                         $if_conditional_return_types,
                         $codebase
                     );
@@ -537,7 +607,7 @@ class TypeExpander
                 }
 
                 if ($assertion && $return_type->param_name === (string) $return_type->else_type) {
-                    $else_conditional_return_type = TypeCombination::combineTypes(
+                    $else_conditional_return_type = TypeCombiner::combine(
                         $else_conditional_return_types,
                         $codebase
                     );
@@ -566,7 +636,7 @@ class TypeExpander
                     }
                 }
 
-                $combined = TypeCombination::combineTypes(
+                $combined = TypeCombiner::combine(
                     array_values($all_conditional_return_types),
                     $codebase
                 );

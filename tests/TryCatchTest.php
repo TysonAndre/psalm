@@ -441,6 +441,52 @@ class TryCatchTest extends TestCase
                         return $foo;
                     }'
             ],
+            'mixedNotUndefinedAfterTry' => [
+                '<?php
+                    /**
+                     * @return array<int, mixed>
+                     * @psalm-suppress MixedAssignment
+                     */
+                    function fetchFromCache(mixed $m)
+                    {
+                        $data = [];
+
+                        try {
+                            $value = $m;
+                        } catch (Throwable $e) {
+                            $value = $m;
+                        }
+
+                        $data[] = $value;
+
+                        return $data;
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
+            'issetInCatch' => [
+                '<?php
+                    function foo() : void {
+                        try {
+                            $a = 0;
+                        } catch (Exception $e) {
+                            echo isset($a) ? $a : 1;
+                        }
+                    }'
+            ],
+            'issetExceptionInFinally' => [
+                '<?php
+                    try {
+                        if (rand(0, 1)) {
+                            throw new \Exception("bad");
+                        }
+                    } catch (Throwable $exception) {
+                        //throw $exception;
+                    } finally {
+                        if (isset($exception)) {}
+                    }'
+            ],
         ];
     }
 

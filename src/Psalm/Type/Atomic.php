@@ -83,8 +83,13 @@ abstract class Atomic implements TypeNode
     public $offset_end;
 
     /**
+     * @var ?string
+     */
+    public $text;
+
+    /**
      * @param  array{int,int}|null   $php_version
-     * @param  array<string, array<string, array{Union}>> $template_type_map
+     * @param  array<string, array<string, Union>> $template_type_map
      * @param  array<string, TypeAlias> $type_aliases
      */
     public static function create(
@@ -131,6 +136,7 @@ abstract class Atomic implements TypeNode
 
             case 'never-return':
             case 'never-returns':
+            case 'never':
             case 'no-return':
                 return new TNever();
 
@@ -259,7 +265,7 @@ abstract class Atomic implements TypeNode
 
             return new TTemplateParam(
                 $value,
-                $template_type_map[$value][$first_class][0],
+                $template_type_map[$value][$first_class],
                 $first_class
             );
         }
@@ -271,7 +277,7 @@ abstract class Atomic implements TypeNode
                 return new TTypeAlias($type_alias->declaring_fq_classlike_name, $type_alias->alias_name);
             }
 
-            throw new \UnexpectedValueException('This should never happen');
+            throw new \Psalm\Exception\TypeParseTreeException('Invalid type alias ' . $value . ' provided');
         }
 
         return new TNamedObject($value);
@@ -565,7 +571,7 @@ abstract class Atomic implements TypeNode
         int $php_minor_version
     ): ?string;
 
-    abstract public function canBeFullyExpressedInPhp(): bool;
+    abstract public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool;
 
     public function replaceTemplateTypesWithStandins(
         TemplateResult $template_result,

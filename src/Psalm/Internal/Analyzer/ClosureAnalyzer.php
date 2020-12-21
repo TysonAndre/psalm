@@ -16,6 +16,7 @@ use function is_string;
 use function in_array;
 use function strtolower;
 use function array_map;
+use function preg_match;
 
 /**
  * @internal
@@ -122,8 +123,6 @@ class ClosureAnalyzer extends FunctionLikeAnalyzer
             }
         }
 
-        $byref_uses = [];
-
         if ($stmt instanceof PhpParser\Node\Expr\Closure) {
             foreach ($stmt->uses as $use) {
                 if (!is_string($use->var->name)) {
@@ -131,10 +130,6 @@ class ClosureAnalyzer extends FunctionLikeAnalyzer
                 }
 
                 $use_var_id = '$' . $use->var->name;
-
-                if ($use->byRef) {
-                    $byref_uses[$use_var_id] = true;
-                }
 
                 // insert the ref into the current context if passed by ref, as whatever we're passing
                 // the closure to could execute it straight away.
@@ -159,7 +154,18 @@ class ClosureAnalyzer extends FunctionLikeAnalyzer
                     ? clone $context->vars_in_scope[$use_var_id]
                     : Type::getMixed();
 
+                if ($use->byRef) {
+                    $use_context->vars_in_scope[$use_var_id]->by_ref = true;
+                }
+
                 $use_context->vars_possibly_in_scope[$use_var_id] = true;
+
+                foreach ($context->vars_in_scope as $var_id => $type) {
+                    if (preg_match('/^\$' . $use->var->name . '[\[\-]/', $var_id)) {
+                        $use_context->vars_in_scope[$var_id] = clone $type;
+                        $use_context->vars_possibly_in_scope[$var_id] = true;
+                    }
+                }
             }
         } else {
             $traverser = new PhpParser\NodeTraverser;
@@ -194,7 +200,7 @@ class ClosureAnalyzer extends FunctionLikeAnalyzer
 
         $use_context->calling_method_id = $context->calling_method_id;
 
-        $closure_analyzer->analyze($use_context, $statements_analyzer->node_data, $context, false, $byref_uses);
+        $closure_analyzer->analyze($use_context, $statements_analyzer->node_data, $context, false);
 
         if ($closure_analyzer->inferred_impure
             && $statements_analyzer->getSource() instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer

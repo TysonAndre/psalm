@@ -6,7 +6,6 @@ use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\BinaryOpAnalyzer;
 use Psalm\Context;
 use Psalm\Type;
-use Psalm\Type\Atomic\TFloat;
 
 /**
  * @internal
@@ -44,13 +43,11 @@ class NonComparisonOpAnalyzer
             || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mod
             || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mul
             || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Pow
-            || (($stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr
-                    || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor
-                    || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd
-                    || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftLeft
-                    || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftRight
-                )
-            )
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftLeft
+            || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftRight
         ) {
             NonDivArithmeticOpAnalyzer::analyze(
                 $statements_analyzer,
@@ -124,8 +121,6 @@ class NonComparisonOpAnalyzer
 
             if (!$result_type) {
                 $result_type = new Type\Union([new Type\Atomic\TInt(), new Type\Atomic\TFloat()]);
-            } elseif ($result_type->hasInt()) {
-                $result_type->addType(new TFloat);
             }
 
             $statements_analyzer->node_data->setType($stmt, $result_type);

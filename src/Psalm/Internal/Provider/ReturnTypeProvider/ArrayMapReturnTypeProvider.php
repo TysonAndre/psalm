@@ -23,7 +23,7 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
     }
 
     /**
-     * @param  array<PhpParser\Node\Arg>    $call_args
+     * @param  list<PhpParser\Node\Arg>    $call_args
      */
     public static function getFunctionReturnType(
         StatementsSource $statements_source,
@@ -230,7 +230,7 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
     }
 
     /**
-     * @param-out array<string, array<array<string>>>|null $assertions
+     * @param-out array<string, array<array<int, string>>>|null $assertions
      */
     private static function executeFakeCall(
         \Psalm\Internal\Analyzer\StatementsAnalyzer $statements_analyzer,
@@ -281,12 +281,14 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
         $codebase = $statements_analyzer->getCodebase();
 
         if ($assertions !== null) {
-            $assertions = AssertionFinder::scrapeAssertions(
+            $anded_assertions = AssertionFinder::scrapeAssertions(
                 $fake_call,
                 null,
                 $statements_analyzer,
                 $codebase
             );
+
+            $assertions = $anded_assertions[0] ?? [];
         }
 
         $context->inside_call = $was_inside_call;
@@ -307,9 +309,9 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturnTyp
     }
 
     /**
-     * @param non-empty-array<string> $mapping_function_ids
-     * @param array<PhpParser\Node\Arg> $array_args
-     * @param-out array<string, array<array<string>>>|null $assertions
+     * @param non-empty-array<int, string> $mapping_function_ids
+     * @param list<PhpParser\Node\Arg> $array_args
+     * @param-out array<string, array<array<int, string>>>|null $assertions
      */
     public static function getReturnTypeFromMappingIds(
         \Psalm\Internal\Analyzer\StatementsAnalyzer $statements_source,

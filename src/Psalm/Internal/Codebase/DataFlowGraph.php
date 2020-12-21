@@ -7,6 +7,7 @@ use Psalm\Internal\DataFlow\DataFlowNode;
 use function substr;
 use function strlen;
 use function array_reverse;
+use function array_sum;
 
 abstract class DataFlowGraph
 {
@@ -33,7 +34,18 @@ abstract class DataFlowGraph
             return;
         }
 
-        $this->forward_edges[$from_id][$to_id] = new Path($path_type, $added_taints, $removed_taints);
+        $length = 0;
+
+        if ($from->code_location
+            && $to->code_location
+            && $from->code_location->file_path === $to->code_location->file_path
+        ) {
+            $to_line = $to->code_location->raw_line_number;
+            $from_line = $from->code_location->raw_line_number;
+            $length = \abs($to_line - $from_line);
+        }
+
+        $this->forward_edges[$from_id][$to_id] = new Path($path_type, $length, $added_taints, $removed_taints);
     }
 
     /**
@@ -82,5 +94,44 @@ abstract class DataFlowGraph
         }
 
         return false;
+    }
+
+    /**
+     * @return array{int, int, int, float}
+     */
+    public function getEdgeStats() : array
+    {
+        $lengths = 0;
+
+        $destination_counts = [];
+        $origin_counts = [];
+
+        foreach ($this->forward_edges as $from_id => $destinations) {
+            foreach ($destinations as $to_id => $path) {
+                if ($path->length === 0) {
+                    continue;
+                }
+
+                $lengths += $path->length;
+
+                if (!isset($destination_counts[$to_id])) {
+                    $destination_counts[$to_id] = 0;
+                }
+
+                $destination_counts[$to_id]++;
+
+                $origin_counts[$from_id] = true;
+            }
+        }
+
+        $count = array_sum($destination_counts);
+
+        if (!$count) {
+            return [0, 0, 0, 0.0];
+        }
+
+        $mean = $lengths / $count;
+
+        return [$count, \count($origin_counts), \count($destination_counts), $mean];
     }
 }

@@ -368,6 +368,7 @@ class ProjectAnalyzer
             '.emacs' => Report::TYPE_EMACS,
             '.pylint' => Report::TYPE_PYLINT,
             '.console' => Report::TYPE_CONSOLE,
+            '.sarif' => Report::TYPE_SARIF,
         ];
 
         foreach ($report_file_paths as $report_file_path) {
@@ -582,6 +583,8 @@ class ProjectAnalyzer
 
             $this->config->initializePlugins($this);
 
+            $this->config->visitPreloadedStubFiles($this->codebase, $this->progress);
+
             $this->codebase->scanFiles($this->threads);
 
             $this->codebase->infer_types_from_usage = true;
@@ -603,6 +606,8 @@ class ProjectAnalyzer
                     $this->checkDiffFilesWithConfig($this->config, $file_list);
 
                     $this->config->initializePlugins($this);
+
+                    $this->config->visitPreloadedStubFiles($this->codebase, $this->progress);
 
                     $this->codebase->scanFiles($this->threads);
                 } else {
@@ -636,7 +641,7 @@ class ProjectAnalyzer
 
         if ($this->project_cache_provider && $this->parser_cache_provider) {
             $removed_parser_files = $this->parser_cache_provider->deleteOldParserCaches(
-                $is_diff ? $this->project_cache_provider->getLastRun() : $start_checks
+                $is_diff ? $this->project_cache_provider->getLastRun(\PSALM_VERSION) : $start_checks
             );
 
             if ($removed_parser_files) {
@@ -987,6 +992,8 @@ class ProjectAnalyzer
 
         $this->config->initializePlugins($this);
 
+        $this->config->visitPreloadedStubFiles($this->codebase, $this->progress);
+
         $this->codebase->scanFiles($this->threads);
 
         $this->config->visitStubFiles($this->codebase, $this->progress);
@@ -1063,13 +1070,13 @@ class ProjectAnalyzer
 
         $diff_files = [];
 
-        $last_run = $this->project_cache_provider->getLastRun();
+        $last_run = $this->project_cache_provider->getLastRun(\PSALM_VERSION);
 
         $file_paths = $this->file_provider->getFilesInDir($dir_name, $file_extensions);
 
         foreach ($file_paths as $file_path) {
             if ($config->isInProjectDirs($file_path)) {
-                if ($this->file_provider->getModifiedTime($file_path) > $last_run
+                if ($this->file_provider->getModifiedTime($file_path) >= $last_run
                     && $this->parser_cache_provider->loadExistingFileContentsFromCache($file_path)
                         !== $this->file_provider->getContents($file_path)
                 ) {
@@ -1120,6 +1127,8 @@ class ProjectAnalyzer
 
         $this->config->initializePlugins($this);
 
+        $this->config->visitPreloadedStubFiles($this->codebase, $this->progress);
+
         $this->codebase->scanFiles($this->threads);
 
         $this->config->visitStubFiles($this->codebase, $this->progress);
@@ -1141,6 +1150,8 @@ class ProjectAnalyzer
     {
         $this->visitAutoloadFiles();
 
+        $this->codebase->scanner->addFilesToShallowScan($this->extra_files);
+
         foreach ($paths_to_check as $path) {
             $this->progress->debug('Checking ' . $path . "\n");
 
@@ -1157,6 +1168,8 @@ class ProjectAnalyzer
         $this->progress->startScanningFiles();
 
         $this->config->initializePlugins($this);
+
+        $this->config->visitPreloadedStubFiles($this->codebase, $this->progress);
 
         $this->codebase->scanFiles($this->threads);
 

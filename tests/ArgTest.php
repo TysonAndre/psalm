@@ -259,6 +259,15 @@ class ArgTest extends TestCase
                 [],
                 '8.0'
             ],
+            'useNamedVariadicArguments' => [
+                '<?php
+                    function takesArguments(int ...$args) : void {}
+
+                    takesArguments(age: 5);',
+                [],
+                [],
+                '8.0'
+            ],
         ];
     }
 
@@ -431,6 +440,33 @@ class ArgTest extends TestCase
                 [],
                 false,
                 '8.0'
+            ],
+            'wrongTypeVariadicArguments' => [
+                '<?php
+                    function takesArguments(int ...$args) : void {}
+
+                    takesArguments(age: "abc");',
+                'error_message' => 'InvalidScalarArgument',
+                [],
+                false,
+                '8.0'
+            ],
+            'byrefVarSetsPossible' => [
+                '<?php
+                    /**
+                     * @param mixed $a
+                     * @psalm-param-out int $a
+                     */
+                    function takesByRef(&$a) : void {
+                        $a = 5;
+                    }
+
+                    if (rand(0, 1)) {
+                        takesByRef($b);
+                    }
+
+                    echo $b;',
+                'error_message' => 'PossiblyUndefinedGlobalVariable',
             ],
         ];
     }

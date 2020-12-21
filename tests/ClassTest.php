@@ -412,6 +412,15 @@ class ClassTest extends TestCase
                         return $class;
                     }',
             ],
+            'allowNegatingClassExistsWithoutAutloading' => [
+                '<?php
+                    function specifyString(string $className): void{
+                        if (!class_exists($className, false)) {
+                            return;
+                        }
+                        new ReflectionClass($className);
+                    }'
+            ],
             'classExistsWithFalseArgInside' => [
                 '<?php
                     function foo(string $s) : void {
@@ -474,17 +483,25 @@ class ClassTest extends TestCase
             ],
             'resourceAndNumericSoftlyReserved' => [
                 '<?php
+                    namespace {
+                        class Numeric {}
+                        class Never {}
+                    }
+
                     namespace Foo {
                         class Resource {}
                         class Numeric {}
+                        class Never {}
                     }
 
                     namespace Bar {
                         use \Foo\Resource;
                         use \Foo\Numeric;
+                        use \Foo\Never;
 
                         new \Foo\Resource();
                         new \Foo\Numeric();
+                        new \Foo\Never();
 
                         new Resource();
                         new Numeric();
@@ -492,9 +509,10 @@ class ClassTest extends TestCase
                         /**
                          * @param  Resource $r
                          * @param  Numeric  $n
+                         * @param  Never $nev
                          * @return void
                          */
-                        function foo(Resource $r, Numeric $n) : void {}
+                        function foo(Resource $r, Numeric $n, Never $nev) : void {}
                     }'
             ],
             'inheritInterfaceFromParent' => [
@@ -523,6 +541,7 @@ class ClassTest extends TestCase
                 '<?php
                     if (class_exists(A::class)) {
                         if (method_exists(A::class, "method")) {
+                            /** @psalm-suppress MixedArgument */
                             echo A::method();
                         }
 

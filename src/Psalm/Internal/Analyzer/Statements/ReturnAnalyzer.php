@@ -17,6 +17,7 @@ use Psalm\Exception\DocblockParseException;
 use Psalm\Internal\DataFlow\DataFlowNode;
 use Psalm\Internal\Codebase\TaintFlowGraph;
 use Psalm\Internal\Type\TemplateResult;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Issue\FalsableReturnStatement;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\InvalidReturnStatement;
@@ -70,7 +71,7 @@ class ReturnAnalyzer
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
                     new InvalidDocblock(
-                        (string)$e->getMessage(),
+                        $e->getMessage(),
                         new CodeLocation($source, $stmt)
                     )
                 )) {
@@ -193,6 +194,8 @@ class ReturnAnalyzer
                     }
                 } else {
                     $context->finally_scope->vars_in_scope[$var_id] = $type;
+                    $type->possibly_undefined = true;
+                    $type->possibly_undefined_from_try = true;
                 }
             }
         }
@@ -263,7 +266,7 @@ class ReturnAnalyzer
                             $class_storage,
                             strtolower($method_name),
                             null,
-                            '$this'
+                            true
                         );
 
                         if ($found_generic_params) {
@@ -273,7 +276,8 @@ class ReturnAnalyzer
 
                             $local_return_type = clone $local_return_type;
 
-                            $local_return_type->replaceTemplateTypesWithArgTypes(
+                            TemplateInferredTypeReplacer::replace(
+                                $local_return_type,
                                 new TemplateResult([], $found_generic_params),
                                 $codebase
                             );
@@ -551,7 +555,7 @@ class ReturnAnalyzer
         $method_node = DataFlowNode::getForMethodReturn(
             strtolower($cased_method_id),
             $cased_method_id,
-            $storage->signature_return_type_location ?: $storage->location,
+            $storage->signature_return_type_location ?: $storage->location
         );
 
         $statements_analyzer->data_flow_graph->addNode($method_node);
@@ -590,7 +594,6 @@ class ReturnAnalyzer
             ->getCodebase()
             ->getFunctionLikeStorage($statements_analyzer, $closure_id);
 
-        /** @psalm-suppress ArgumentTypeCoercion */
         $parent_fn_storage = $statements_analyzer
             ->getCodebase()
             ->getFunctionLikeStorage(

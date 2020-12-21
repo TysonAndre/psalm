@@ -5,13 +5,17 @@ use function get_class;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\TemplateResult;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Union;
 
 /**
- * Represents an array where we know its key values
+ * Represents an array that has some particularities:
+ * - its keys are integers
+ * - they start at 0
+ * - they are consecutive and go upwards (no negative int)
  */
 class TList extends \Psalm\Type\Atomic
 {
@@ -92,7 +96,7 @@ class TList extends \Psalm\Type\Atomic
         return 'array';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }
@@ -140,7 +144,7 @@ class TList extends \Psalm\Type\Atomic
                 $input_type_param = clone $input_type->type_param;
             }
 
-            $type_param = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $type_param = TemplateStandinTypeReplacer::replace(
                 $type_param,
                 $template_result,
                 $codebase,
@@ -166,7 +170,11 @@ class TList extends \Psalm\Type\Atomic
         TemplateResult $template_result,
         ?Codebase $codebase
     ) : void {
-        $this->type_param->replaceTemplateTypesWithArgTypes($template_result, $codebase);
+        TemplateInferredTypeReplacer::replace(
+            $this->type_param,
+            $template_result,
+            $codebase
+        );
     }
 
     public function equals(Atomic $other_type): bool

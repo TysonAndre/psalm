@@ -15,7 +15,7 @@ class ArrayColumnReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
     }
 
     /**
-     * @param  array<PhpParser\Node\Arg>    $call_args
+     * @param  list<PhpParser\Node\Arg>    $call_args
      */
     public static function getFunctionReturnType(
         StatementsSource $statements_source,
@@ -24,7 +24,9 @@ class ArrayColumnReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
         Context $context,
         CodeLocation $code_location
     ) : Type\Union {
-        if (!$statements_source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
+        if (!$statements_source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer
+            || \count($call_args) < 2
+        ) {
             return Type::getMixed();
         }
 
@@ -90,10 +92,13 @@ class ArrayColumnReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
         // calculate results
         if ($row_shape instanceof Type\Atomic\TKeyedArray) {
             if ((null !== $value_column_name) && isset($row_shape->properties[$value_column_name])) {
-                if ($input_array_not_empty) {
+                $result_element_type = $row_shape->properties[$value_column_name];
+                // When the selected key is possibly_undefined, the resulting array can be empty
+                if ($input_array_not_empty && $result_element_type->possibly_undefined !== true) {
                     $have_at_least_one_res = true;
                 }
-                $result_element_type = $row_shape->properties[$value_column_name];
+                //array_column skips undefined elements so resulting type is necesseraly defined
+                $result_element_type->possibly_undefined = false;
             } else {
                 $result_element_type = Type::getMixed();
             }

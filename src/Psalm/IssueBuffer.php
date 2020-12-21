@@ -25,10 +25,12 @@ use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Issue\CodeIssue;
 use Psalm\Issue\UnusedPsalmSuppress;
 use Psalm\Report\CheckstyleReport;
+use Psalm\Report\CodeClimateReport;
 use Psalm\Report\CompactReport;
 use Psalm\Report\ConsoleReport;
 use Psalm\Report\EmacsReport;
 use Psalm\Report\GithubActionsReport;
+use Psalm\Report\SarifReport;
 use Psalm\Report\JsonReport;
 use Psalm\Report\JsonSummaryReport;
 use Psalm\Report\JunitReport;
@@ -104,7 +106,7 @@ class IssueBuffer
 
     public static function addUnusedSuppression(string $file_path, int $offset, string $issue_type) : void
     {
-        if ($issue_type === 'TaintedInput') {
+        if (\substr($issue_type, 0, 7) === 'Tainted') {
             return;
         }
 
@@ -204,7 +206,9 @@ class IssueBuffer
             return false;
         }
 
-        if ($project_analyzer->getCodebase()->taint_flow_graph && $issue_type !== 'TaintedInput') {
+        $is_tainted = \substr($issue_type, 0, 7) === 'Tainted';
+
+        if ($project_analyzer->getCodebase()->taint_flow_graph && !$is_tainted) {
             return false;
         }
 
@@ -227,7 +231,7 @@ class IssueBuffer
             . ' ' . $e->dupe_key;
 
         if ($reporting_level === Config::REPORT_INFO) {
-            if ($issue_type === 'TaintedInput' || !self::alreadyEmitted($emitted_key)) {
+            if ($is_tainted || !self::alreadyEmitted($emitted_key)) {
                 self::$issues_data[$e->getFilePath()][] = $e->toIssueData(Config::REPORT_INFO);
 
                 if ($is_fixable) {
@@ -253,7 +257,7 @@ class IssueBuffer
             );
         }
 
-        if ($issue_type === 'TaintedInput' || !self::alreadyEmitted($emitted_key)) {
+        if ($is_tainted || !self::alreadyEmitted($emitted_key)) {
             ++self::$error_count;
             self::$issues_data[$e->getFilePath()][] = $e->toIssueData(Config::REPORT_ERROR);
 
@@ -514,7 +518,6 @@ class IssueBuffer
                             }
                         }
 
-                        /** @psalm-suppress PropertyTypeCoercion due to Psalm bug */
                         $issues_data[$file_path][$key] = $issue_data;
                     }
                 }
@@ -669,7 +672,7 @@ class IssueBuffer
             $codebase->file_reference_provider->removeDeletedFilesFromReferences();
 
             if ($project_analyzer->project_cache_provider) {
-                $project_analyzer->project_cache_provider->processSuccessfulRun($start_time);
+                $project_analyzer->project_cache_provider->processSuccessfulRun($start_time, \PSALM_VERSION);
             }
 
             if ($codebase->statements_provider->parser_cache_provider) {
@@ -677,7 +680,11 @@ class IssueBuffer
             }
         }
 
-        if ($error_count) {
+        if ($error_count
+            && !($codebase->taint_flow_graph
+                && $project_analyzer->generated_report_options
+                && isset($_SERVER['GITHUB_WORKFLOW']))
+        ) {
             exit(1);
         }
     }
@@ -754,6 +761,14 @@ class IssueBuffer
 
             case Report::TYPE_PHP_STORM:
                 $output = new PhpStormReport($normalized_data, self::$fixable_issue_counts, $report_options);
+                break;
+
+            case Report::TYPE_SARIF:
+                $output = new SarifReport($normalized_data, self::$fixable_issue_counts, $report_options);
+                break;
+
+            case Report::TYPE_CODECLIMATE:
+                $output = new CodeClimateReport($normalized_data, self::$fixable_issue_counts, $report_options);
                 break;
         }
 

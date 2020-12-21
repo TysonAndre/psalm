@@ -65,7 +65,6 @@ class Reflection
         $storage->abstract = $reflected_class->isAbstract();
         $storage->is_interface = $reflected_class->isInterface();
 
-        /** @psalm-suppress PropertyTypeCoercion */
         $storage->potential_declaring_method_ids['__construct'][$class_name_lower . '::__construct'] = true;
 
         if ($reflected_parent_class) {
@@ -171,8 +170,8 @@ class Reflection
 
         if ($class_name_lower === 'generator') {
             $storage->template_types = [
-                'TKey' => ['Generator' => [Type::getMixed()]],
-                'TValue' => ['Generator' => [Type::getMixed()]],
+                'TKey' => ['Generator' => Type::getMixed()],
+                'TValue' => ['Generator' => Type::getMixed()],
             ];
         }
 
@@ -316,13 +315,13 @@ class Reflection
     private function getReflectionParamData(\ReflectionParameter $param): FunctionLikeParameter
     {
         $param_type = self::getPsalmTypeFromReflectionType($param->getType());
-        $param_name = (string)$param->getName();
+        $param_name = $param->getName();
 
-        $is_optional = (bool)$param->isOptional();
+        $is_optional = $param->isOptional();
 
         $parameter = new FunctionLikeParameter(
             $param_name,
-            (bool)$param->isPassedByReference(),
+            $param->isPassedByReference(),
             $param_type,
             null,
             null,
@@ -406,13 +405,31 @@ class Reflection
             return Type::getMixed();
         }
 
-        $suffix = '';
-
-        if ($reflection_type->allowsNull()) {
-            $suffix = '|null';
+        /**
+         * @psalm-suppress UndefinedClass,TypeDoesNotContainType
+         */
+        if ($reflection_type instanceof \ReflectionNamedType) {
+            $type = $reflection_type->getName();
+        } elseif ($reflection_type instanceof \ReflectionUnionType) {
+            /** @psalm-suppress MixedArgument */
+            $type = \implode(
+                '|',
+                \array_map(
+                    function (\ReflectionNamedType $reflection) {
+                        return $reflection->getName();
+                    },
+                    $reflection_type->getTypes()
+                )
+            );
+        } else {
+            throw new \LogicException('Unexpected reflection class ' . \get_class($reflection_type) . ' found.');
         }
 
-        return Type::parseString($reflection_type->getName() . $suffix);
+        if ($reflection_type->allowsNull()) {
+            $type .= '|null';
+        }
+
+        return Type::parseString($type);
     }
 
     private function registerInheritedMethods(

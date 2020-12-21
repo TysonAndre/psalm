@@ -7,7 +7,7 @@ use Psalm\CodeLocation;
 use Psalm\Issue\ParadoxicalCondition;
 use Psalm\Issue\RedundantCondition;
 use Psalm\IssueBuffer;
-use Psalm\Type\Algebra;
+use Psalm\Internal\Algebra;
 use function array_intersect_key;
 use function count;
 use function array_unique;
@@ -27,7 +27,7 @@ class AlgebraAnalyzer
      *
      * @param  list<Clause>   $formula_1
      * @param  list<Clause>   $formula_2
-     * @param  array<string, bool>  $new_assigned_var_ids
+     * @param  array<string, int>  $new_assigned_var_ids
      */
     public static function checkForParadox(
         array $formula_1,

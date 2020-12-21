@@ -4,7 +4,7 @@ namespace Psalm\Type\Atomic;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\TemplateResult;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
 use Psalm\Type\Atomic;
 use function preg_quote;
 use function preg_replace;
@@ -12,6 +12,10 @@ use function stripos;
 use function strpos;
 use function strtolower;
 
+/**
+ * Denotes the `class-string` type, used to describe a string representing a valid PHP class.
+ * The parent type from which the classes descend may or may not be specified in the constructor.
+ */
 class TClassString extends TString
 {
     /**
@@ -96,7 +100,7 @@ class TClassString extends TString
         return 'class-string<\\' . $this->as . '>';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }
@@ -132,7 +136,7 @@ class TClassString extends TString
             $input_object_type = new TObject();
         }
 
-        $as_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+        $as_type = TemplateStandinTypeReplacer::replace(
             new \Psalm\Type\Union([$class_string->as_type]),
             $template_result,
             $codebase,

@@ -31,11 +31,12 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TPositiveInt;
 use Psalm\Type\Atomic\TNumeric;
-use Psalm\Internal\Type\TypeCombination;
+use Psalm\Internal\Type\TypeCombiner;
 use function array_diff_key;
 use function array_values;
 use function preg_match;
 use function strtolower;
+use function is_int;
 
 /**
  * @internal
@@ -74,6 +75,7 @@ class NonDivArithmeticOpAnalyzer
                 )) {
                     // fall through
                 }
+                $result_type = Type::getMixed();
 
                 return;
             }
@@ -100,6 +102,7 @@ class NonDivArithmeticOpAnalyzer
                 )) {
                     // fall through
                 }
+                $result_type = Type::getMixed();
 
                 return;
             }
@@ -290,8 +293,12 @@ class NonDivArithmeticOpAnalyzer
     ): ?Type\Union {
         if ($left_type_part instanceof TLiteralInt
             && $right_type_part instanceof TLiteralInt
-            && ($left instanceof PhpParser\Node\Scalar || $left instanceof PhpParser\Node\Expr\ConstFetch)
-            && ($right instanceof PhpParser\Node\Scalar || $right instanceof PhpParser\Node\Expr\ConstFetch)
+            && ($left instanceof PhpParser\Node\Scalar
+                || $left instanceof PhpParser\Node\Expr\ConstFetch
+                || $left instanceof PhpParser\Node\Expr\ClassConstFetch)
+            && ($right instanceof PhpParser\Node\Scalar
+                || $right instanceof PhpParser\Node\Expr\ConstFetch
+                || $right instanceof PhpParser\Node\Expr\ClassConstFetch)
         ) {
             // time for some arithmetic!
 
@@ -306,11 +313,25 @@ class NonDivArithmeticOpAnalyzer
             } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Mul) {
                 $calculated_type = Type::getInt(false, $left_type_part->value * $right_type_part->value);
             } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Pow) {
-                $calculated_type = Type::getInt(false, $left_type_part->value ^ $right_type_part->value);
+                $calculated_type = Type::getInt(false, $left_type_part->value ** $right_type_part->value);
             } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr) {
                 $calculated_type = Type::getInt(false, $left_type_part->value | $right_type_part->value);
             } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd) {
                 $calculated_type = Type::getInt(false, $left_type_part->value & $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor) {
+                $calculated_type = Type::getInt(false, $left_type_part->value ^ $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\ShiftLeft) {
+                $calculated_type = Type::getInt(false, $left_type_part->value << $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\ShiftRight) {
+                $calculated_type = Type::getInt(false, $left_type_part->value >> $right_type_part->value);
+            } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Div) {
+                $value = $left_type_part->value / $right_type_part->value;
+
+                if (is_int($value)) {
+                    $calculated_type = Type::getInt(false, $value);
+                } else {
+                    $calculated_type = Type::getFloat($value);
+                }
             }
 
             if ($calculated_type) {
@@ -524,7 +545,7 @@ class NonDivArithmeticOpAnalyzer
 
                 $result_type_member = new Type\Union([new TKeyedArray($properties)]);
             } else {
-                $result_type_member = TypeCombination::combineTypes(
+                $result_type_member = TypeCombiner::combine(
                     [$left_type_part, $right_type_part],
                     $codebase,
                     true
@@ -625,41 +646,45 @@ class NonDivArithmeticOpAnalyzer
             }
 
             if ($left_type_part instanceof TInt && $right_type_part instanceof TInt) {
-                $left_is_positive = $left_type_part instanceof TPositiveInt
-                    || ($left_type_part instanceof TLiteralInt && $left_type_part->value > 0);
-
-                $right_is_positive = $right_type_part instanceof TPositiveInt
-                    || ($right_type_part instanceof TLiteralInt && $right_type_part->value > 0);
-
-                if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Minus) {
-                    $always_positive = false;
-                } elseif ($left_is_positive && $right_is_positive) {
-                    $always_positive = true;
-                } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Plus
-                    && ($left_type_part instanceof TLiteralInt && $left_type_part->value === 0)
-                    && $right_is_positive
-                ) {
-                    $always_positive = true;
-                } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Plus
-                    && ($right_type_part instanceof TLiteralInt && $right_type_part->value === 0)
-                    && $left_is_positive
-                ) {
-                    $always_positive = true;
+                if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Div) {
+                    $result_type = new Type\Union([new Type\Atomic\TInt(), new Type\Atomic\TFloat()]);
                 } else {
-                    $always_positive = false;
-                }
+                    $left_is_positive = $left_type_part instanceof TPositiveInt
+                        || ($left_type_part instanceof TLiteralInt && $left_type_part->value > 0);
 
-                if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Mod) {
-                    $result_type = $always_positive
-                        ? new Type\Union([new Type\Atomic\TPositiveInt(), new TLiteralInt(0)])
-                        : Type::getInt();
-                } elseif (!$result_type) {
-                    $result_type = $always_positive ? Type::getPositiveInt(true) : Type::getInt(true);
-                } else {
-                    $result_type = Type::combineUnionTypes(
-                        $always_positive ? Type::getPositiveInt(true) : Type::getInt(true),
-                        $result_type
-                    );
+                    $right_is_positive = $right_type_part instanceof TPositiveInt
+                        || ($right_type_part instanceof TLiteralInt && $right_type_part->value > 0);
+
+                    if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Minus) {
+                        $always_positive = false;
+                    } elseif ($left_is_positive && $right_is_positive) {
+                        $always_positive = true;
+                    } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Plus
+                        && ($left_type_part instanceof TLiteralInt && $left_type_part->value === 0)
+                        && $right_is_positive
+                    ) {
+                        $always_positive = true;
+                    } elseif ($parent instanceof PhpParser\Node\Expr\BinaryOp\Plus
+                        && ($right_type_part instanceof TLiteralInt && $right_type_part->value === 0)
+                        && $left_is_positive
+                    ) {
+                        $always_positive = true;
+                    } else {
+                        $always_positive = false;
+                    }
+
+                    if ($parent instanceof PhpParser\Node\Expr\BinaryOp\Mod) {
+                        $result_type = $always_positive
+                            ? new Type\Union([new Type\Atomic\TPositiveInt(), new TLiteralInt(0)])
+                            : Type::getInt();
+                    } elseif (!$result_type) {
+                        $result_type = $always_positive ? Type::getPositiveInt(true) : Type::getInt(true);
+                    } else {
+                        $result_type = Type::combineUnionTypes(
+                            $always_positive ? Type::getPositiveInt(true) : Type::getInt(true),
+                            $result_type
+                        );
+                    }
                 }
 
                 $has_valid_right_operand = true;

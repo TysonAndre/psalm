@@ -2,14 +2,17 @@
 namespace Psalm\Internal\Analyzer\Statements\Expression\BinaryOp;
 
 use PhpParser;
+use Psalm\Internal\Algebra\FormulaGenerator;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Block\IfAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\IfElseAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\IfElse\IfAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\IfConditionalAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Type;
-use Psalm\Type\Algebra;
+use Psalm\Internal\Algebra;
 use Psalm\Type\Reconciler;
 use Psalm\Internal\Type\AssertionReconciler;
 use function array_merge;
@@ -42,7 +45,7 @@ class OrAnalyzer
                 $stmt->getAttributes()
             );
 
-            return IfAnalyzer::analyze($statements_analyzer, $fake_if_stmt, $context) !== false;
+            return IfElseAnalyzer::analyze($statements_analyzer, $fake_if_stmt, $context) !== false;
         }
 
         $codebase = $statements_analyzer->getCodebase();
@@ -56,7 +59,7 @@ class OrAnalyzer
             $if_scope = new \Psalm\Internal\Scope\IfScope();
 
             try {
-                $if_conditional_scope = IfAnalyzer::analyzeIfConditional(
+                $if_conditional_scope = IfConditionalAnalyzer::analyze(
                     $statements_analyzer,
                     $stmt->left,
                     $context,
@@ -68,7 +71,7 @@ class OrAnalyzer
                 $left_context = $if_conditional_scope->if_context;
 
                 $left_referenced_var_ids = $if_conditional_scope->cond_referenced_var_ids;
-                $left_assigned_var_ids = $if_conditional_scope->cond_assigned_var_ids;
+                $left_assigned_var_ids = $if_conditional_scope->assigned_in_conditional_var_ids;
 
                 if ($stmt->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr) {
                     $mic_drop_context = clone $context;
@@ -118,7 +121,7 @@ class OrAnalyzer
 
         $left_cond_id = \spl_object_id($stmt->left);
 
-        $left_clauses = Algebra::getFormula(
+        $left_clauses = FormulaGenerator::getFormula(
             $left_cond_id,
             $left_cond_id,
             $stmt->left,
@@ -131,7 +134,7 @@ class OrAnalyzer
             $negated_left_clauses = Algebra::negateFormula($left_clauses);
         } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
             try {
-                $negated_left_clauses = Algebra::getFormula(
+                $negated_left_clauses = FormulaGenerator::getFormula(
                     $left_cond_id,
                     $left_cond_id,
                     new PhpParser\Node\Expr\BooleanNot($stmt->left),
@@ -249,6 +252,9 @@ class OrAnalyzer
         $pre_referenced_var_ids = $right_context->referenced_var_ids;
         $right_context->referenced_var_ids = [];
 
+        $pre_assigned_var_ids = $right_context->assigned_var_ids;
+        $right_context->assigned_var_ids = [];
+
         if (ExpressionAnalyzer::analyze($statements_analyzer, $stmt->right, $right_context) === false) {
             return false;
         }
@@ -256,9 +262,12 @@ class OrAnalyzer
         $right_referenced_var_ids = $right_context->referenced_var_ids;
         $right_context->referenced_var_ids = array_merge($pre_referenced_var_ids, $right_referenced_var_ids);
 
+        $right_assigned_var_ids = $right_context->assigned_var_ids;
+        $right_context->assigned_var_ids = array_merge($pre_assigned_var_ids, $right_assigned_var_ids);
+
         $right_cond_id = \spl_object_id($stmt->right);
 
-        $right_clauses = Algebra::getFormula(
+        $right_clauses = FormulaGenerator::getFormula(
             $right_cond_id,
             $right_cond_id,
             $stmt->right,
@@ -266,6 +275,11 @@ class OrAnalyzer
             $statements_analyzer,
             $codebase
         );
+
+        $clauses_for_right_analysis = Context::removeReconciledClauses(
+            $clauses_for_right_analysis,
+            $right_assigned_var_ids
+        )[0];
 
         $combined_right_clauses = Algebra::simplifyCNF(
             array_merge($clauses_for_right_analysis, $right_clauses)

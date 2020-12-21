@@ -9,6 +9,9 @@ use Psalm\Type\Atomic;
 use function substr;
 use function array_map;
 
+/**
+ * Denotes an object type where the type of the object is known e.g. `Exception`, `Throwable`, `Foo\Bar`
+ */
 class TNamedObject extends Atomic
 {
     use HasIntersectionTrait;
@@ -88,8 +91,14 @@ class TNamedObject extends Atomic
             $use_phpdoc_format
         );
 
-        return Type::getStringFromFQCLN($this->value, $namespace, $aliased_classes, $this_class, true)
-            . $intersection_types;
+        return Type::getStringFromFQCLN(
+            $this->value,
+            $namespace,
+            $aliased_classes,
+            $this_class,
+            true,
+            $this->was_static
+        ) . $intersection_types;
     }
 
     /**
@@ -103,15 +112,19 @@ class TNamedObject extends Atomic
         int $php_minor_version
     ): ?string {
         if ($this->value === 'static') {
-            return null;
+            return $php_major_version >= 8 ? 'static' : null;
+        }
+
+        if ($this->was_static) {
+            return $php_major_version >= 8 ? 'static' : 'self';
         }
 
         return $this->toNamespacedString($namespace, $aliased_classes, $this_class, false);
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
-        return $this->value !== 'static';
+        return ($this->value !== 'static' && $this->was_static === false) || $php_major_version >= 8;
     }
 
     public function replaceTemplateTypesWithArgTypes(

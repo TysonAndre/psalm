@@ -83,11 +83,6 @@ class PsalmEndToEndTest extends TestCase
         $this->assertStringContainsString('Usage:', $this->runPsalm(['--help'], self::$tmpDir)['STDOUT']);
     }
 
-    public function testVersion(): void
-    {
-        $this->assertStringStartsWith('Psalm 4', $this->runPsalm(['--version'], self::$tmpDir, false, false)['STDOUT']);
-    }
-
     public function testInit(): void
     {
         $this->assertStringStartsWith(
@@ -160,7 +155,16 @@ class PsalmEndToEndTest extends TestCase
         $this->runPsalmInit(1);
         $result = $this->runPsalm(['--taint-analysis'], self::$tmpDir, true);
 
-        $this->assertStringContainsString('TaintedInput', $result['STDOUT']);
+        $this->assertStringContainsString('TaintedHtml', $result['STDOUT']);
+        $this->assertStringContainsString('1 errors', $result['STDOUT']);
+        $this->assertSame(1, $result['CODE']);
+    }
+
+    public function testTaintingWithoutInit(): void
+    {
+        $result = $this->runPsalm(['--taint-analysis'], self::$tmpDir, true, false);
+
+        $this->assertStringContainsString('TaintedHtml', $result['STDOUT']);
         $this->assertStringContainsString('1 errors', $result['STDOUT']);
         $this->assertSame(1, $result['CODE']);
     }

@@ -56,6 +56,28 @@ class MatchTest extends TestCase
                 [],
                 '8.0'
             ],
+            'getClassWithMethod' => [
+                '<?php
+                    interface Foo {}
+
+                    class Bar implements Foo
+                    {
+                        public function hello(): string
+                        {
+                            return "a";
+                        }
+                    }
+
+                    function foo(Foo $value): string {
+                        return match (get_class($value)) {
+                            Bar::class => $value->hello(),
+                            default => "b",
+                        };
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
         ];
     }
 
@@ -172,6 +194,47 @@ class MatchTest extends TestCase
                         };
                     };',
                 'error_message' => 'ParadoxicalCondition',
+                [],
+                false,
+                '8.0',
+            ],
+            'noCrashWithEmptyMatch' => [
+                '<?php
+                    function foo(int $i) {
+                        match ($i) {
+
+                        };
+                    }',
+                'error_message' => 'UnhandledMatchCondition',
+                [],
+                false,
+                '8.0',
+            ],
+            'exitIsLikeThrow' => [
+                '<?php
+                    /**
+                     * @param 1|2|3 $i
+                     */
+                    function foo(int $i): void {
+                        $a = match ($i) {
+                            1 => exit(),
+                            2, 3 => $i,
+                        };
+                        $a === "aaa";
+                    }',
+                'error_message' => 'DocblockTypeContradiction',
+                [],
+                false,
+                '8.0',
+            ],
+            'matchTrueImpossible' => [
+                '<?php
+                    $foo = new \stdClass();
+                    $a = match (true) {
+                        $foo instanceof \stdClass => 1,
+                        $foo instanceof \Exception => 1,
+                    };',
+                'error_message' => 'TypeDoesNotContainType',
                 [],
                 false,
                 '8.0',

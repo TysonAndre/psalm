@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `trait-string` type, used to describe a string representing a valid PHP trait.
+ */
 class TTraitString extends TString
 {
     public function getKey(bool $include_extra = true): string
@@ -44,7 +47,7 @@ class TTraitString extends TString
         return 'trait-string';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

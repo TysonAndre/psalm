@@ -308,7 +308,7 @@ class Methods
     }
 
     /**
-     * @param  array<int, PhpParser\Node\Arg> $args
+     * @param  list<PhpParser\Node\Arg> $args
      *
      * @return array<int, FunctionLikeParameter>
      */
@@ -343,7 +343,9 @@ class Methods
         if (InternalCallMapHandler::inCallMap((string) $callmap_id)) {
             $class_storage = $this->classlike_storage_provider->get($callmap_id->fq_class_name);
 
-            if (!$class_storage->stubbed) {
+            $declaring_method_name = $declaring_method_id ? $declaring_method_id->method_name : $method_name;
+
+            if (!$class_storage->stubbed || empty($class_storage->methods[$declaring_method_name]->stubbed)) {
                 $function_callables = InternalCallMapHandler::getCallablesFromCallMap((string) $callmap_id);
 
                 if ($function_callables === null) {
@@ -465,7 +467,7 @@ class Methods
         string $base_fq_class_name
     ) : Type\Union {
         $class_storage = $codebase->classlike_storage_provider->get($appearing_fq_class_name);
-        $extends = $class_storage->template_type_extends;
+        $extends = $class_storage->template_extended_params;
 
         if (!$extends) {
             return $type;
@@ -575,7 +577,7 @@ class Methods
     }
 
     /**
-     * @param array<string, array<int|string, Type\Union>> $extends
+     * @param array<string, array<string, Type\Union>> $extends
      * @return list<Type\Atomic>
      */
     public static function getExtendedTemplatedTypes(
@@ -619,7 +621,7 @@ class Methods
     }
 
     /**
-     * @param  array<int, PhpParser\Node\Arg>|null $args
+     * @param  list<PhpParser\Node\Arg>|null $args
      *
      */
     public function getMethodReturnType(
@@ -722,15 +724,103 @@ class Methods
             return $return_type_candidate;
         }
 
+        $class_storage = $this->classlike_storage_provider->get($appearing_fq_class_name);
+
         $storage = $this->getStorage($declaring_method_id);
 
-        if ($storage->return_type) {
-            $self_class = $appearing_fq_class_storage->name;
+        $candidate_type = $storage->return_type;
 
-            return clone $storage->return_type;
+        if ($candidate_type && $candidate_type->isVoid()) {
+            return clone $candidate_type;
         }
 
-        $class_storage = $this->classlike_storage_provider->get($appearing_fq_class_name);
+        if (isset($class_storage->documenting_method_ids[$appearing_method_name])) {
+            $overridden_method_id = $class_storage->documenting_method_ids[$appearing_method_name];
+
+            // special override to allow inference of Iterator types
+            if ($overridden_method_id->fq_class_name === 'Iterator'
+                && $storage->return_type
+                && $storage->return_type === $storage->signature_return_type
+            ) {
+                return clone $storage->return_type;
+            }
+
+            $overridden_storage = $this->getStorage($overridden_method_id);
+
+            if ($overridden_storage->return_type) {
+                if ($overridden_storage->return_type->isNull()) {
+                    return Type::getVoid();
+                }
+
+                if (!$candidate_type || !$source_analyzer) {
+                    $self_class = $overridden_method_id->fq_class_name;
+
+                    return clone $overridden_storage->return_type;
+                }
+
+                if ($candidate_type->getId() === $overridden_storage->return_type->getId()) {
+                    $self_class = $appearing_fq_class_storage->name;
+
+                    return clone $candidate_type;
+                }
+
+                $old_contained_by_new = UnionTypeComparator::isContainedBy(
+                    $source_analyzer->getCodebase(),
+                    $candidate_type,
+                    $overridden_storage->return_type
+                );
+
+                $new_contained_by_old = UnionTypeComparator::isContainedBy(
+                    $source_analyzer->getCodebase(),
+                    $overridden_storage->return_type,
+                    $candidate_type
+                );
+
+                if ((!$old_contained_by_new && !$new_contained_by_old)
+                    || ($old_contained_by_new && $new_contained_by_old)
+                ) {
+                    if ($old_contained_by_new && $new_contained_by_old) {
+                        $attempted_intersection = Type::intersectUnionTypes(
+                            $candidate_type,
+                            $overridden_storage->return_type,
+                            $source_analyzer->getCodebase()
+                        );
+                    } else {
+                        $attempted_intersection = Type::intersectUnionTypes(
+                            $overridden_storage->return_type,
+                            $candidate_type,
+                            $source_analyzer->getCodebase()
+                        );
+                    }
+
+                    if ($attempted_intersection) {
+                        $self_class = $overridden_method_id->fq_class_name;
+
+                        return $attempted_intersection;
+                    }
+
+                    $self_class = $appearing_fq_class_storage->name;
+
+                    return clone $candidate_type;
+                }
+
+                if ($old_contained_by_new) {
+                    $self_class = $appearing_fq_class_storage->name;
+
+                    return clone $candidate_type;
+                }
+
+                $self_class = $overridden_method_id->fq_class_name;
+
+                return clone $overridden_storage->return_type;
+            }
+        }
+
+        if ($candidate_type) {
+            $self_class = $appearing_fq_class_storage->name;
+
+            return clone $candidate_type;
+        }
 
         if (!isset($class_storage->overridden_method_ids[$appearing_method_name])) {
             return null;
@@ -760,9 +850,7 @@ class Methods
 
                 $self_class = $overridden_class_storage->name;
 
-                if ($candidate_type
-                    && $source_analyzer
-                ) {
+                if ($candidate_type && $source_analyzer && !$candidate_type->isMixed()) {
                     $old_contained_by_new = UnionTypeComparator::isContainedBy(
                         $source_analyzer->getCodebase(),
                         $candidate_type,
@@ -775,7 +863,9 @@ class Methods
                         $candidate_type
                     );
 
-                    if (!$old_contained_by_new && !$new_contained_by_old) {
+                    if ((!$old_contained_by_new && !$new_contained_by_old)
+                        || ($old_contained_by_new && $new_contained_by_old)
+                    ) {
                         $attempted_intersection = Type::intersectUnionTypes(
                             $candidate_type,
                             $overridden_return_type,
@@ -950,7 +1040,7 @@ class Methods
         $method_id = $this->getDeclaringMethodId($original_method_id);
 
         if ($method_id === null) {
-            return $original_method_id;
+            return (string) $original_method_id;
         }
 
         $fq_class_name = $method_id->fq_class_name;

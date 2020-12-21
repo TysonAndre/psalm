@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `true` value type
+ */
 class TTrue extends TBool
 {
     public function __toString(): string
@@ -13,7 +16,7 @@ class TTrue extends TBool
         return 'true';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

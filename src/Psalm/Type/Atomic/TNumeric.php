@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `numeric` type (which can also result from an `is_numeric` check).
+ */
 class TNumeric extends Scalar
 {
     public function __toString(): string
@@ -26,7 +29,7 @@ class TNumeric extends Scalar
         return null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

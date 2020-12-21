@@ -101,14 +101,14 @@ class TryAnalyzer
 
         $context->has_returned = false;
 
-        $stmt_control_actions = ScopeAnalyzer::getControlActions(
+        $try_block_control_actions = ScopeAnalyzer::getControlActions(
             $stmt->stmts,
             $statements_analyzer->node_data,
             $codebase->config->exit_functions,
             $context->break_types
         );
 
-        /** @var array<string, bool> */
+        /** @var array<string, int> */
         $newly_assigned_var_ids = $context->assigned_var_ids;
 
         $context->assigned_var_ids = array_merge(
@@ -281,7 +281,6 @@ class TryAnalyzer
             // discard all clauses because crazy stuff may have happened in try block
             $catch_context->clauses = [];
 
-            /** @psalm-suppress RedundantConditionGivenDocblockType */
             if ($catch->var && is_string($catch->var->name)) {
                 $catch_var_id = '$' . $catch->var->name;
 
@@ -384,25 +383,22 @@ class TryAnalyzer
                 $possibly_referenced_var_ids
             );
 
-            if ($codebase->find_unused_variables && $catch_actions[$i] !== [ScopeAnalyzer::ACTION_END]) {
-                // something
-            }
-
             if ($catch_context->collect_exceptions) {
                 $context->mergeExceptions($catch_context);
             }
 
-            if ($catch_actions[$i] !== [ScopeAnalyzer::ACTION_END]
+            $catch_doesnt_leave_parent_scope = $catch_actions[$i] !== [ScopeAnalyzer::ACTION_END]
                 && $catch_actions[$i] !== [ScopeAnalyzer::ACTION_CONTINUE]
-                && $catch_actions[$i] !== [ScopeAnalyzer::ACTION_BREAK]
-            ) {
+                && $catch_actions[$i] !== [ScopeAnalyzer::ACTION_BREAK];
+
+            if ($catch_doesnt_leave_parent_scope) {
                 $definitely_newly_assigned_var_ids = array_intersect_key(
                     $new_catch_assigned_var_ids,
                     $definitely_newly_assigned_var_ids
                 );
 
                 foreach ($catch_context->vars_in_scope as $var_id => $type) {
-                    if ($stmt_control_actions === [ScopeAnalyzer::ACTION_END]) {
+                    if ($try_block_control_actions === [ScopeAnalyzer::ACTION_END]) {
                         $context->vars_in_scope[$var_id] = $type;
                     } elseif (isset($context->vars_in_scope[$var_id])) {
                         $context->vars_in_scope[$var_id] = Type::combineUnionTypes(
@@ -437,6 +433,8 @@ class TryAnalyzer
                         }
                     } else {
                         $try_context->finally_scope->vars_in_scope[$var_id] = $type;
+                        $type->possibly_undefined = true;
+                        $type->possibly_undefined_from_try = true;
                     }
                 }
             }
@@ -449,6 +447,7 @@ class TryAnalyzer
             $context->loop_scope->final_actions[] = ScopeAnalyzer::ACTION_NONE;
         }
 
+        $finally_has_returned = false;
         if ($stmt->finally) {
             if ($try_context->finally_scope) {
                 $finally_context = clone $context;
@@ -460,13 +459,13 @@ class TryAnalyzer
 
                 $statements_analyzer->analyze($stmt->finally->stmts, $finally_context);
 
-                if ($finally_context->has_returned) {
-                    $context->has_returned = true;
-                }
+                $finally_has_returned = $finally_context->has_returned;
 
                 /** @var string $var_id */
                 foreach ($finally_context->assigned_var_ids as $var_id => $_) {
-                    if (isset($context->vars_in_scope[$var_id])) {
+                    if (isset($context->vars_in_scope[$var_id])
+                        && isset($finally_context->vars_in_scope[$var_id])
+                    ) {
                         if ($context->vars_in_scope[$var_id]->possibly_undefined
                             && $context->vars_in_scope[$var_id]->possibly_undefined_from_try
                         ) {
@@ -504,6 +503,9 @@ class TryAnalyzer
                 $context->possibly_thrown_exceptions[$possibly_thrown_exception][$hash] = $codelocation;
             }
         }
+
+        $body_has_returned = !in_array(ScopeAnalyzer::ACTION_NONE, $try_block_control_actions, true);
+        $context->has_returned = ($body_has_returned && $all_catches_leave) || $finally_has_returned;
 
         return null;
     }

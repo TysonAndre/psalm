@@ -6,11 +6,16 @@ use function get_class;
 use Psalm\Type\Atomic;
 
 /**
- * Represents an array with generic type parameters.
+ * Denotes a simple array of the form `array<TKey, TValue>`. It expects an array with two elements, both union types.
  */
 class TArray extends \Psalm\Type\Atomic
 {
     use GenericTrait;
+
+    /**
+     * @var array{\Psalm\Type\Union, \Psalm\Type\Union}
+     */
+    public $type_params;
 
     /**
      * @var string
@@ -20,7 +25,7 @@ class TArray extends \Psalm\Type\Atomic
     /**
      * Constructs a new instance of a generic type
      *
-     * @param non-empty-list<\Psalm\Type\Union> $type_params
+     * @param array{\Psalm\Type\Union, \Psalm\Type\Union} $type_params
      */
     public function __construct(array $type_params)
     {
@@ -45,7 +50,7 @@ class TArray extends \Psalm\Type\Atomic
         return $this->getKey();
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return $this->type_params[0]->isArrayKey() && $this->type_params[1]->isMixed();
     }

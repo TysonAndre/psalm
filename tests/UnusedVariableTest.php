@@ -147,10 +147,10 @@ class UnusedVariableTest extends TestCase
             ],
             'varRedefinedInIfWithReference' => [
                 '<?php
-                    $a = (string) "fdf";
+                    $a = (string) 5;
 
                     if (rand(0, 1)) {
-                        $a = (string) "ard";
+                        $a = (string) 6;
                     }
 
                     echo $a;',
@@ -2135,7 +2135,7 @@ class UnusedVariableTest extends TestCase
                     }
 
                     /**
-                     * @param-out int $c
+                     * @psalm-param-out int $c
                      */
                     function takesByRef(?int &$c) : void {
                         $c = 7;
@@ -2222,6 +2222,72 @@ class UnusedVariableTest extends TestCase
 
                     foreach ($a as $v) {
                         echo $v;
+                    }'
+            ],
+            'castToBoolAndDouble' => [
+                '<?php
+                    function string_to_bool(string $a): bool {
+                        $b = (bool)$a;
+                        return $b;
+                    }
+
+                    function string_to_float(string $a): float {
+                        $b = (float)$a;
+                        return $b;
+                    }'
+            ],
+            'allowUseByRef' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MixedReturnStatement
+                     * @psalm-suppress MixedInferredReturnType
+                     */
+                    function foo(array $data) : array {
+                        $output = [];
+
+                        array_map(
+                            function (array $row) use (&$output) {
+                                $output = $row;
+                            },
+                            $data
+                        );
+
+                        return $output;
+                    }'
+            ],
+            'allowedUseByRefArrayAssignment' => [
+                '<?php
+                    $output_rows = [];
+
+                    $a = function() use (&$output_rows) : void {
+                        $output_row = 5;
+                        /** @psalm-suppress MixedArrayAssignment */
+                        $output_rows[] = $output_row;
+                    };
+                    $a();
+
+                    print_r($output_rows);'
+            ],
+            'usedInAssignOpToByRef' => [
+                '<?php
+                    function foo(int &$d): void  {
+                        $l = 4;
+                        $d += $l;
+                    }',
+            ],
+            'mixedArrayAccessMighBeObject' => [
+                '<?php
+                    function takesResults(array $arr) : void {
+                        /**
+                         * @psalm-suppress MixedAssignment
+                         */
+                        foreach ($arr as $item) {
+                            /**
+                             * @psalm-suppress MixedArrayAccess
+                             * @psalm-suppress MixedArrayAssignment
+                             */
+                            $item[0] = $item[1];
+                        }
                     }'
             ],
         ];
@@ -3028,6 +3094,15 @@ class UnusedVariableTest extends TestCase
                         return new Exception($mixed_or_null);
                     }',
                 'error_message' => 'PossiblyNullArgument'
+            ],
+            'useArrayAssignmentNeverUsed' => [
+                '<?php
+                    $data = [];
+
+                    return function () use ($data) {
+                        $data[] = 1;
+                    };',
+                'error_message' => 'UnusedVariable',
             ],
         ];
     }

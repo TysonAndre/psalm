@@ -83,7 +83,7 @@ array_map(
     /**
      * @param string $arg
      */
-    function ($arg) use ($valid_long_options, $valid_short_options): void {
+    function ($arg) use ($valid_long_options): void {
         if (substr($arg, 0, 2) === '--' && $arg !== '--') {
             $arg_name = preg_replace('/=.*$/', '', substr($arg, 2));
 
@@ -125,7 +125,7 @@ if (isset($options['c']) && is_array($options['c'])) {
 }
 
 if (array_key_exists('h', $options)) {
-    echo <<< HELP
+    echo <<<HELP
 Usage:
     psalter [options] [file...]
 
@@ -161,7 +161,7 @@ Options:
         If any issues can be fixed automatically, Psalm will update the codebase. To fix as many issues as possible,
         use --issues=all
 
-     --list-supported-issues
+    --list-supported-issues
         Display the list of issues that psalter knows how to fix
 
     --find-unused-code
@@ -181,6 +181,7 @@ Options:
 
     --no-cache
         Runs Psalm without using cache
+
 HELP;
 
     exit;

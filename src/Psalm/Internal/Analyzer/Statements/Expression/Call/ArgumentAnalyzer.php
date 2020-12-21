@@ -12,11 +12,13 @@ use Psalm\Internal\Analyzer\Statements\Expression\CastAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\Comparator\CallableTypeComparator;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
-use Psalm\Internal\DataFlow\TaintSink;
 use Psalm\Internal\DataFlow\DataFlowNode;
 use Psalm\Internal\Codebase\TaintFlowGraph;
+use Psalm\Internal\MethodIdentifier;
+use Psalm\Internal\Type\TemplateBound;
 use Psalm\Internal\Type\TemplateResult;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\ImplicitToStringCast;
@@ -49,12 +51,13 @@ use function count;
 class ArgumentAnalyzer
 {
     /**
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $class_generic_params
+     * @param  array<string, array<string, Type\Union>> $class_generic_params
      * @return false|null
      */
     public static function checkArgumentMatches(
         StatementsAnalyzer $statements_analyzer,
         ?string $cased_method_id,
+        ?MethodIdentifier $method_id,
         ?string $self_fq_class_name,
         ?string $static_fq_class_name,
         CodeLocation $function_call_location,
@@ -137,11 +140,7 @@ class ArgumentAnalyzer
             $gt_count = 0;
 
             foreach ($values as $value) {
-                /**
-                 * @var int
-                 * @psalm-suppress UnnecessaryVarAnnotation
-                 */
-                $ord = \mb_ord($value);
+                $ord = \ord($value);
 
                 if ($ord > $prev_ord) {
                     $gt_count++;
@@ -169,6 +168,7 @@ class ArgumentAnalyzer
             $statements_analyzer,
             $codebase,
             $cased_method_id,
+            $method_id,
             $self_fq_class_name,
             $static_fq_class_name,
             $function_call_location,
@@ -191,15 +191,14 @@ class ArgumentAnalyzer
     }
 
     /**
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $class_generic_params
-     * @param  array<string, array<string, array{Type\Union, 1?:int}>> $generic_params
-     * @param  array<string, array<string, array{Type\Union}>> $template_types
+     * @param  array<string, array<string, Type\Union>> $class_generic_params
      * @return false|null
      */
     private static function checkFunctionLikeTypeMatches(
         StatementsAnalyzer $statements_analyzer,
         Codebase $codebase,
         ?string $cased_method_id,
+        ?MethodIdentifier $method_id,
         ?string $self_fq_class_name,
         ?string $static_fq_class_name,
         CodeLocation $function_call_location,
@@ -231,16 +230,53 @@ class ArgumentAnalyzer
             $bindable_template_params = $param_type->getTemplateTypes();
         }
 
-        if ($class_generic_params) {
-            $empty_generic_params = [];
+        $parent_class = null;
 
-            $empty_template_result = new TemplateResult($class_generic_params, $empty_generic_params);
+        $classlike_storage = null;
+        $static_classlike_storage = null;
+
+        if ($self_fq_class_name) {
+            $classlike_storage = $codebase->classlike_storage_provider->get($self_fq_class_name);
+            $parent_class = $classlike_storage->parent_class;
+            $static_classlike_storage = $classlike_storage;
+
+            if ($static_fq_class_name && $static_fq_class_name !== $self_fq_class_name) {
+                $static_classlike_storage = $codebase->classlike_storage_provider->get($static_fq_class_name);
+            }
+        }
+
+        $param_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
+            $codebase,
+            $param_type,
+            $classlike_storage ? $classlike_storage->name : null,
+            $static_classlike_storage ? $static_classlike_storage->name : null,
+            $parent_class,
+            true,
+            false,
+            $static_classlike_storage ? $static_classlike_storage->final : false
+        );
+
+        if ($class_generic_params) {
+            // here we're replacing the param types and arg types with the bound
+            // class template params.
+            //
+            // For example, if we're operating on a class Foo with params TKey and TValue,
+            // and we're calling a method "add(TKey $key, TValue $value)" on an instance
+            // of that class where we know that TKey is int and TValue is string, then we
+            // want to substitute the expected parameters so it's as if we were actually
+            // calling "add(int $key, string $value)"
+            $readonly_template_result = new TemplateResult($class_generic_params, []);
+
+            // This flag ensures that the template results will never be written to
+            // It also supercedes the `$add_upper_bounds` flag so that closure params
+            // don’t get overwritten
+            $readonly_template_result->readonly = true;
 
             $arg_value_type = $statements_analyzer->node_data->getType($arg->value);
 
-            $param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $param_type = TemplateStandinTypeReplacer::replace(
                 $param_type,
-                $empty_template_result,
+                $readonly_template_result,
                 $codebase,
                 $statements_analyzer,
                 $arg_value_type,
@@ -248,9 +284,9 @@ class ArgumentAnalyzer
                 $context->self ?: 'fn-' . $context->calling_function_id
             );
 
-            $arg_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $arg_type = TemplateStandinTypeReplacer::replace(
                 $arg_type,
-                $empty_template_result,
+                $readonly_template_result,
                 $codebase,
                 $statements_analyzer,
                 $arg_value_type,
@@ -295,14 +331,17 @@ class ArgumentAnalyzer
                 }
             }
 
-            $param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $param_type = TemplateStandinTypeReplacer::replace(
                 $param_type,
                 $template_result,
                 $codebase,
                 $statements_analyzer,
                 $arg_type_param,
                 $argument_offset,
-                $context->self,
+                !$statements_analyzer->isStatic()
+                    && (!$method_id || $method_id->method_name !== '__construct')
+                    ? $context->self
+                    : null,
                 $context->calling_method_id ?: $context->calling_function_id
             );
 
@@ -311,46 +350,38 @@ class ArgumentAnalyzer
                     $template_result->upper_bounds
                         [$template_type->param_name]
                         [$template_type->defining_class]
-                )
-                    && !isset(
+                )) {
+                    if (isset(
                         $template_result->lower_bounds
-                        [$template_type->param_name]
-                        [$template_type->defining_class]
-                    )
-                ) {
-                    $template_result->upper_bounds[$template_type->param_name][$template_type->defining_class] = [
-                        clone $template_type->as,
-                        0
-                    ];
+                            [$template_type->param_name]
+                            [$template_type->defining_class]
+                    )) {
+                        $template_result->upper_bounds[$template_type->param_name][$template_type->defining_class]
+                            = new TemplateBound(
+                                clone $template_result->lower_bounds
+                                    [$template_type->param_name]
+                                    [$template_type->defining_class]->type
+                            );
+                    } else {
+                        $template_result->upper_bounds[$template_type->param_name][$template_type->defining_class]
+                            = new TemplateBound(
+                                clone $template_type->as
+                            );
+                    }
                 }
             }
+
+            $param_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
+                $codebase,
+                $param_type,
+                $classlike_storage ? $classlike_storage->name : null,
+                $static_classlike_storage ? $static_classlike_storage->name : null,
+                $parent_class,
+                true,
+                false,
+                $static_classlike_storage ? $static_classlike_storage->final : false
+            );
         }
-
-        $parent_class = null;
-
-        $classlike_storage = null;
-        $static_classlike_storage = null;
-
-        if ($self_fq_class_name) {
-            $classlike_storage = $codebase->classlike_storage_provider->get($self_fq_class_name);
-            $parent_class = $classlike_storage->parent_class;
-            $static_classlike_storage = $classlike_storage;
-
-            if ($static_fq_class_name && $static_fq_class_name !== $self_fq_class_name) {
-                $static_classlike_storage = $codebase->classlike_storage_provider->get($static_fq_class_name);
-            }
-        }
-
-        $fleshed_out_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
-            $codebase,
-            $param_type,
-            $classlike_storage ? $classlike_storage->name : null,
-            $static_classlike_storage ? $static_classlike_storage->name : null,
-            $parent_class,
-            true,
-            false,
-            $static_classlike_storage ? $static_classlike_storage->final : false
-        );
 
         $fleshed_out_signature_type = $function_param->signature_type
             ? \Psalm\Internal\Type\TypeExpander::expandUnion(
@@ -394,6 +425,7 @@ class ArgumentAnalyzer
                     self::processTaintedness(
                         $statements_analyzer,
                         $cased_method_id,
+                        $method_id,
                         $argument_offset,
                         $arg_location,
                         $function_call_location,
@@ -461,9 +493,10 @@ class ArgumentAnalyzer
         if (self::verifyType(
             $statements_analyzer,
             $arg_type,
-            $fleshed_out_type,
+            $param_type,
             $fleshed_out_signature_type,
             $cased_method_id,
+            $method_id,
             $argument_offset,
             new CodeLocation($statements_analyzer->getSource(), $arg->value),
             $arg->value,
@@ -491,6 +524,7 @@ class ArgumentAnalyzer
         Type\Union $param_type,
         ?Type\Union $signature_param_type,
         ?string $cased_method_id,
+        ?MethodIdentifier $method_id,
         int $argument_offset,
         CodeLocation $arg_location,
         PhpParser\Node\Expr $input_expr,
@@ -509,13 +543,9 @@ class ArgumentAnalyzer
                 && !$input_type->hasMixed()
                 && !$param_type->from_docblock
                 && !$param_type->had_template
-                && $cased_method_id
-                && strpos($cased_method_id, '::')
-                && !strpos($cased_method_id, '__')
+                && $method_id
+                && strpos($method_id->method_name, '__') !== 0
             ) {
-                $method_parts = explode('::', $cased_method_id);
-
-                $method_id = new \Psalm\Internal\MethodIdentifier($method_parts[0], strtolower($method_parts[1]));
                 $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
                 if ($declaring_method_id) {
@@ -538,6 +568,7 @@ class ArgumentAnalyzer
                 self::processTaintedness(
                     $statements_analyzer,
                     $cased_method_id,
+                    $method_id,
                     $argument_offset,
                     $arg_location,
                     $function_call_location,
@@ -603,6 +634,7 @@ class ArgumentAnalyzer
                 $input_type = self::processTaintedness(
                     $statements_analyzer,
                     $cased_method_id,
+                    $method_id,
                     $argument_offset,
                     $arg_location,
                     $function_call_location,
@@ -691,6 +723,7 @@ class ArgumentAnalyzer
             $input_type = self::processTaintedness(
                 $statements_analyzer,
                 $cased_method_id,
+                $method_id,
                 $argument_offset,
                 $arg_location,
                 $function_call_location,
@@ -1126,7 +1159,6 @@ class ArgumentAnalyzer
                                 if ($type_param->isEmpty() && isset($param_atomic_type->type_params[$i])) {
                                     $input_type_changed = true;
 
-                                    /** @psalm-suppress PropertyTypeCoercion */
                                     $input_atomic_type->type_params[$i] = clone $param_atomic_type->type_params[$i];
                                 }
                             }
@@ -1181,7 +1213,7 @@ class ArgumentAnalyzer
             }
 
             if ($context->inside_conditional && !isset($context->assigned_var_ids[$var_id])) {
-                $context->assigned_var_ids[$var_id] = false;
+                $context->assigned_var_ids[$var_id] = 0;
             }
 
             if ($was_cloned) {
@@ -1196,7 +1228,6 @@ class ArgumentAnalyzer
                     $context->vars_in_scope[$var_id] = new Type\Union([$unpacked_atomic_array]);
                 } elseif ($unpacked_atomic_array instanceof Type\Atomic\TArray) {
                     $unpacked_atomic_array = clone $unpacked_atomic_array;
-                    /** @psalm-suppress PropertyTypeCoercion */
                     $unpacked_atomic_array->type_params[1] = $input_type;
 
                     $context->vars_in_scope[$var_id] = new Type\Union([$unpacked_atomic_array]);
@@ -1224,6 +1255,7 @@ class ArgumentAnalyzer
     private static function processTaintedness(
         StatementsAnalyzer $statements_analyzer,
         string $cased_method_id,
+        ?MethodIdentifier $method_id,
         int $argument_offset,
         CodeLocation $arg_location,
         CodeLocation $function_call_location,
@@ -1238,6 +1270,14 @@ class ArgumentAnalyzer
         if (!$statements_analyzer->data_flow_graph
             || ($statements_analyzer->data_flow_graph instanceof TaintFlowGraph
                 && \in_array('TaintedInput', $statements_analyzer->getSuppressedIssues()))
+        ) {
+            return $input_type;
+        }
+
+        // literal data can’t be tainted
+        if ($statements_analyzer->data_flow_graph instanceof TaintFlowGraph
+            && $input_type->isSingle()
+            && $input_type->hasLiteralValue()
         ) {
             return $input_type;
         }
@@ -1260,7 +1300,9 @@ class ArgumentAnalyzer
                 $cased_method_id,
                 $cased_method_id,
                 $argument_offset,
-                $function_param->location,
+                $statements_analyzer->data_flow_graph instanceof TaintFlowGraph
+                    ? $function_param->location
+                    : null,
                 $function_call_location
             );
         } else {
@@ -1268,12 +1310,19 @@ class ArgumentAnalyzer
                 $cased_method_id,
                 $cased_method_id,
                 $argument_offset,
-                $function_param->location
+                $statements_analyzer->data_flow_graph instanceof TaintFlowGraph
+                    ? $function_param->location
+                    : null
             );
 
-            if (strpos($cased_method_id, '::')) {
-                [$fq_classlike_name, $cased_method_name] = explode('::', $cased_method_id);
-                $method_name = strtolower($cased_method_name);
+            if ($statements_analyzer->data_flow_graph instanceof TaintFlowGraph
+                && $method_id
+                && $method_id->method_name !== '__construct'
+            ) {
+                $fq_classlike_name = $method_id->fq_class_name;
+                $method_name = $method_id->method_name;
+                $cased_method_name = explode('::', $cased_method_id)[1];
+
                 $class_storage = $codebase->classlike_storage_provider->get($fq_classlike_name);
 
                 foreach ($class_storage->dependent_classlikes as $dependent_classlike_lc => $_) {
@@ -1291,21 +1340,23 @@ class ArgumentAnalyzer
                     $statements_analyzer->data_flow_graph->addNode($new_sink);
                     $statements_analyzer->data_flow_graph->addPath($method_node, $new_sink, 'arg');
                 }
+            }
+        }
 
-                if (isset($class_storage->overridden_method_ids[$method_name])) {
-                    foreach ($class_storage->overridden_method_ids[$method_name] as $parent_method_id) {
-                        $new_sink = DataFlowNode::getForMethodArgument(
-                            (string) $parent_method_id,
-                            $codebase->methods->getCasedMethodId($parent_method_id),
-                            $argument_offset,
-                            $arg_location,
-                            null
-                        );
+        if ($method_id && $statements_analyzer->data_flow_graph instanceof TaintFlowGraph) {
+            $declaring_method_id = $codebase->methods->getDeclaringMethodId($method_id);
 
-                        $statements_analyzer->data_flow_graph->addNode($new_sink);
-                        $statements_analyzer->data_flow_graph->addPath($method_node, $new_sink, 'arg');
-                    }
-                }
+            if ($declaring_method_id && (string) $declaring_method_id !== (string) $method_id) {
+                $new_sink = DataFlowNode::getForMethodArgument(
+                    (string) $declaring_method_id,
+                    $codebase->methods->getCasedMethodId($declaring_method_id),
+                    $argument_offset,
+                    $arg_location,
+                    null
+                );
+
+                $statements_analyzer->data_flow_graph->addNode($new_sink);
+                $statements_analyzer->data_flow_graph->addPath($method_node, $new_sink, 'arg');
             }
         }
 
@@ -1319,29 +1370,6 @@ class ArgumentAnalyzer
         $statements_analyzer->data_flow_graph->addNode($argument_value_node);
 
         $statements_analyzer->data_flow_graph->addPath($argument_value_node, $method_node, 'arg');
-
-        if ($function_param->sinks && $statements_analyzer->data_flow_graph instanceof TaintFlowGraph) {
-            if ($specialize_taint) {
-                $sink = TaintSink::getForMethodArgument(
-                    $cased_method_id,
-                    $cased_method_id,
-                    $argument_offset,
-                    $function_param->location,
-                    $function_call_location
-                );
-            } else {
-                $sink = TaintSink::getForMethodArgument(
-                    $cased_method_id,
-                    $cased_method_id,
-                    $argument_offset,
-                    $function_param->location
-                );
-            }
-
-            $sink->taints = $function_param->sinks;
-
-            $statements_analyzer->data_flow_graph->addSink($sink);
-        }
 
         foreach ($input_type->parent_nodes as $parent_node) {
             $statements_analyzer->data_flow_graph->addNode($method_node);

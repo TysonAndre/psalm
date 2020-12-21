@@ -586,18 +586,6 @@ class FunctionTemplateTest extends TestCase
                         [rand(0, 1) ? 5 : false]
                     );',
             ],
-            'ignoreTooManyArrayArgs' => [
-                '<?php
-
-                    function takesArray(array $arr) : void {}
-
-                    /**
-                     * @psalm-suppress TooManyTemplateParams
-                     * @var array<int, int, int>
-                     */
-                    $b = [1, 2, 3];
-                    takesArray($b);',
-            ],
             'functionTemplateUnionType' => [
                 '<?php
                     /**
@@ -1401,6 +1389,60 @@ class FunctionTemplateTest extends TestCase
                             return new \IteratorIterator($input);
                         }
                     }'
+            ],
+            'doublyNestedFunctionTemplates' => [
+                '<?php
+                    /**
+                     * @psalm-template Tk
+                     * @psalm-template Tv
+                     *
+                     * @psalm-param iterable<Tk, Tv>                $iterable
+                     * @psalm-param (callable(Tk, Tv): bool)|null   $predicate
+                     *
+                     * @psalm-return iterable<Tk, Tv>
+                     */
+                    function filter_with_key(iterable $iterable, ?callable $predicate = null): iterable
+                    {
+                        return (static function () use ($iterable, $predicate): Generator {
+                            $predicate = $predicate ??
+                                /**
+                                 * @psalm-param Tk $_k
+                                 * @psalm-param Tv $v
+                                 *
+                                 * @return bool
+                                 */
+                                function($_k, $v) { return (bool) $v; };
+
+                            foreach ($iterable as $k => $v) {
+                                if ($predicate($k, $v)) {
+                                    yield $k => $v;
+                                }
+                            }
+                        })();
+                    }'
+            ],
+            'allowClosureParamLowerBoundAndUpperBound' => [
+                '<?php
+                    class Foo {}
+
+                    /**
+                     * @template TParam as Foo
+                     * @psalm-param Closure(TParam): void $func
+                     * @psalm-return Closure(TParam): TParam
+                     */
+                    function takesClosure(callable $func): callable {
+                        return
+                            /**
+                             * @psalm-param TParam $value
+                             * @psalm-return TParam
+                             */
+                            function ($value) use ($func) {
+                                $func($value);
+                                return $value;
+                            };
+                    }
+
+                    $value = takesClosure(function(Foo $foo) : void {})(new Foo());'
             ],
         ];
     }

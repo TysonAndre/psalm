@@ -31,8 +31,7 @@ class PropertyTypeTest extends TestCase
                 }
 
                 class X {
-                    /** @var ?int **/
-                    public $x;
+                    public ?int $x = null;
 
                     public function getX(): int {
                         $this->x = 5;
@@ -64,8 +63,7 @@ class PropertyTypeTest extends TestCase
                 }
 
                 class X {
-                    /** @var ?int **/
-                    public $x;
+                    public ?int $x = null;
 
                     public function getX(): int {
                         $this->x = 5;
@@ -80,7 +78,7 @@ class PropertyTypeTest extends TestCase
         $this->analyzeFile('somefile.php', new Context());
     }
 
-    public function testForgetPropertyAssignmentsInBranchWithThrow(): void
+    public function testForgetPropertyAssignmentsInBranch(): void
     {
         Config::getInstance()->remember_property_assignments_after_call = false;
 
@@ -99,18 +97,154 @@ class PropertyTypeTest extends TestCase
                 }
 
                 class X {
-                    /** @var ?int **/
-                    public $x;
+                    public ?int $x = null;
+                }
 
-                    public function getX(bool $b): int {
-                        $this->x = 5;
+                function testX(X $x): void {
+                    $x->x = 5;
 
-                        if ($b) {
-                            XCollector::modify();
-                            throw new \Exception("bad");
+                    if (rand(0, 1)) {
+                        XCollector::modify();
+                    }
+
+                    if ($x->x === null) {}
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testForgetFinalMethodCalls(): void
+    {
+        Config::getInstance()->remember_property_assignments_after_call = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class XCollector {
+                    /** @var X[] */
+                    private static array $xs = [];
+
+                    public static function modify() : void {
+                        foreach (self::$xs as $x) {
+                            $x->x = null;
                         }
+                    }
+                }
 
+                class X {
+                    public ?int $x = null;
+
+                    public function __construct(?int $x) {
+                        $this->x = $x;
+                    }
+
+                    public final function getX() : ?int {
                         return $this->x;
+                    }
+                }
+
+                function testX(X $x): void {
+                    if ($x->getX()) {
+                        XCollector::modify();
+                        if ($x->getX() === null) {}
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testRememberImmutableMethodCalls(): void
+    {
+        Config::getInstance()->remember_property_assignments_after_call = false;
+
+        $this->expectExceptionMessage('TypeDoesNotContainNull - somefile.php:22:29');
+        $this->expectException(\Psalm\Exception\CodeException::class);
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class XCollector {
+                    public static function modify() : void {}
+                }
+
+                /** @psalm-immutable */
+                class X {
+                    public ?int $x = null;
+
+                    public function __construct(?int $x) {
+                        $this->x = $x;
+                    }
+
+                    public function getX() : ?int {
+                        return $this->x;
+                    }
+                }
+
+                function testX(X $x): void {
+                    if ($x->getX()) {
+                        XCollector::modify();
+                        if ($x->getX() === null) {}
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testRememberImmutableProperties(): void
+    {
+        Config::getInstance()->remember_property_assignments_after_call = false;
+
+        $this->expectExceptionMessage('TypeDoesNotContainNull - somefile.php:18:29');
+        $this->expectException(\Psalm\Exception\CodeException::class);
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class XCollector {
+                    public static function modify() : void {}
+                }
+
+                /** @psalm-immutable */
+                class X {
+                    public ?int $x = null;
+
+                    public function __construct(?int $x) {
+                        $this->x = $x;
+                    }
+                }
+
+                function testX(X $x): void {
+                    if ($x->x) {
+                        XCollector::modify();
+                        if ($x->x === null) {}
+                    }
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new Context());
+    }
+
+    public function testNoCrashInTryCatch(): void
+    {
+        Config::getInstance()->remember_property_assignments_after_call = false;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                function maybeMutates() : void {}
+
+                class X {
+                    public int $f = 0;
+
+                    public function validate(): void {
+                        try {
+                        } finally {
+                            $this->f = 1;
+                            maybeMutates();
+                        }
                     }
                 }'
         );
@@ -2124,6 +2258,136 @@ class PropertyTypeTest extends TestCase
                             return $this->foo;
                         }
                     }'
+            ],
+            'skipConstructor' => [
+                '<?php
+                    class A {
+                        protected string $s;
+
+                        public function __construct() {
+                            $this->s = "hello";
+                        }
+                    }
+
+                    class B extends A {}
+
+                    class C extends B {
+                        public function __construct()
+                        {
+                            parent::__construct();
+
+                            echo $this->s;
+                        }
+                    }'
+            ],
+            'getPropertyThatMayNotBeSet' => [
+                '<?php
+                    /**
+                     * @psalm-suppress MissingConstructor
+                     */
+                    class A {
+                        public string $bar;
+
+                        public function getBar() : string {
+                            /** @psalm-suppress RedundantPropertyInitializationCheck */
+                            if (!isset($this->bar)) {
+                                return "hello";
+                            }
+
+                            return $this->bar;
+                        }
+
+                        public function getBarAgain() : string {
+                            /** @psalm-suppress RedundantPropertyInitializationCheck */
+                            if (isset($this->bar)) {
+                                return $this->bar;
+                            }
+
+                            return "hello";
+                        }
+                    }',
+            ],
+            'memoizePropertyAfterSetting' => [
+                '<?php
+                    class A {
+                        public function foo() : void {
+                            /** @psalm-suppress UndefinedThisPropertyAssignment */
+                            $this->b = "c";
+                            echo strlen($this->b);
+                        }
+                    }'
+            ],
+            'noErrorForSplatArgs' => [
+                '<?php
+                    class Foo {
+                        protected array $b;
+
+                        protected function __construct(?string ...$bb) {
+                            $this->b = $bb;
+                        }
+                    }
+
+                    class Bar extends Foo {}'
+            ],
+            'noUndefinedPropertyIssueAfterSuppressingOnInterface' => [
+                '<?php
+                    interface I {}
+
+                    function bar(I $i) : void {
+                        /**
+                         * @psalm-suppress NoInterfaceProperties
+                         * @psalm-suppress MixedArgument
+                         */
+                        echo $i->foo;
+                    }'
+            ],
+            'noRedundantCastWhenCheckingProperties' => [
+                '<?php
+                    class Foo
+                    {
+                        public array $map;
+
+                        public function __construct()
+                        {
+                            $this->map = [];
+                            $this->map["test"] = "test";
+
+                            $this->useMap();
+                        }
+
+                        public function useMap(): void
+                        {
+                            $keys = array_keys($this->map);
+                            $key = reset($keys);
+                            echo (string) $key;
+                        }
+                    }'
+            ],
+            'ignoreUndefinedMethodOnUnion' => [
+                '<?php
+                    class NullObject {
+                        /**
+                         * @return null
+                         */
+                        public function __get(string $s) {
+                            return null;
+                        }
+                    }
+
+                    class User {
+                        public string $name = "Dave";
+                    }
+
+                    function takesNullableUser(User|NullObject $user) : ?string {
+                        $name = $user->name;
+
+                        if ($name === null) {}
+
+                        return $name;
+                    }',
+                [],
+                [],
+                '8.0'
             ],
         ];
     }

@@ -36,7 +36,7 @@ You can also specify that an array is non-empty with the special type `non-empty
 
 ### PHPDoc syntax
 
-PHPDoc [allows you to specify](https://phpdoc.org/docs/latest/references/phpdoc/types.html#arrays) the  type of values a generic array holds with the annotation:
+PHPDoc [allows you to specify](https://docs.phpdoc.org/latest/guide/references/phpdoc/types.html#arrays) the  type of values a generic array holds with the annotation:
 ```php
 /** @return ValueType[] */
 ```
@@ -92,7 +92,7 @@ takesList([1 => "hello"]); // triggers warning in Psalm
 
 ## Object-like arrays
 
-Psalm supports a special format for arrays where the key offsets are known: object-like arrays.
+Psalm supports a special format for arrays where the key offsets are known: object-like arrays, also known as **array shapes**.
 
 Given an array
 

@@ -47,24 +47,10 @@ class GenericTypeComparator
                 $container_class = $container_type_part->value;
 
                 // attempt to transform it
-                if (isset($class_storage->template_type_extends[$container_class])) {
-                    $extends_list = $class_storage->template_type_extends[$container_class];
-
-                    $generic_params = [];
-
-                    foreach ($extends_list as $key => $value) {
-                        if (is_string($key)) {
-                            $generic_params[] = $value;
-                        }
-                    }
-
-                    if (!$generic_params) {
-                        return false;
-                    }
-
+                if (!empty($class_storage->template_extended_params[$container_class])) {
                     $input_type_part = new TGenericObject(
                         $input_type_part->value,
-                        $generic_params
+                        \array_values($class_storage->template_extended_params[$container_class])
                     );
                 }
             }
@@ -88,7 +74,7 @@ class GenericTypeComparator
 
         $container_type_params_covariant = [];
 
-        $input_type_params = \Psalm\Internal\Type\UnionTemplateHandler::getMappedGenericTypeParams(
+        $input_type_params = \Psalm\Internal\Type\TemplateStandinTypeReplacer::getMappedGenericTypeParams(
             $codebase,
             $input_type_part,
             $container_type_part,

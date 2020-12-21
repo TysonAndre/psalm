@@ -613,20 +613,7 @@ class IssetTest extends \Psalm\Tests\TestCase
                         throw new \Exception("bad");
                     }'
             ],
-            'arrayKeyExistsOnStringArrayShouldInformArrayness' => [
-                '<?php
-                    /**
-                     * @param string[] $a
-                     * @return array{b: string}
-                     */
-                    function foo(array $a) {
-                        if (array_key_exists("b", $a)) {
-                            return $a;
-                        }
 
-                        throw new \Exception("bad");
-                    }'
-            ],
             'issetOnArrayTwice' => [
                 '<?php
                     function foo(array $options): void {
@@ -782,6 +769,7 @@ class IssetTest extends \Psalm\Tests\TestCase
                         public $foo;
 
                         public function init() : void {
+                            /** @psalm-suppress RedundantPropertyInitializationCheck */
                             if (isset($this->foo)) {
                                 return;
                             }
@@ -898,7 +886,6 @@ class IssetTest extends \Psalm\Tests\TestCase
                     }
 
                     /**
-                     * @psalm-suppress MixedArrayAccess
                      * @psalm-suppress MixedArgument
                      */
                     echo $payload["b"];'
@@ -966,34 +953,57 @@ class IssetTest extends \Psalm\Tests\TestCase
                         assert($dt);
                     }'
             ],
-            'arrayKeyExistsThrice' => [
+            'issetOnNullableMixed' => [
                 '<?php
-                    function three(array $a): void {
-                        if (!array_key_exists("a", $a)
-                            || !array_key_exists("b", $a)
-                            || !array_key_exists("c", $a)
-                            || (!is_string($a["a"]) && !is_int($a["a"]))
-                            || (!is_string($a["b"]) && !is_int($a["b"]))
-                            || (!is_string($a["c"]) && !is_int($a["c"]))
-                        ) {
-                            throw new \Exception();
+                    function processParam(mixed $param) : void {
+                        if (rand(0, 1)) {
+                            $param = null;
                         }
 
-                        echo $a["a"];
-                        echo $a["b"];
+                        if (isset($param["name"])) {
+                            /**
+                             * @psalm-suppress MixedArgument
+                             */
+                            echo $param["name"];
+                        }
+                    }',
+                [],
+                [],
+                '8.0'
+            ],
+            'assertComplex' => [
+                '<?php
+                    function returnsInt(?int $a, ?int $b): int {
+                        assert($a !== null || $b !== null);
+                        return isset($a) ? $a : $b;
                     }'
             ],
-            'arrayKeyExistsTwice' => [
+            'assertComplexWithNullCoalesce' => [
                 '<?php
-                    function two(array $a): void {
-                        if (!array_key_exists("a", $a) || !(is_string($a["a"]) || is_int($a["a"])) ||
-                            !array_key_exists("b", $a) || !(is_string($a["b"]) || is_int($a["b"]))
-                        ) {
-                            throw new \Exception();
-                        }
+                    function returnsInt(?int $a, ?int $b): int {
+                        assert($a !== null || $b !== null);
+                        return $a ?? $b;
+                    }'
+            ],
+            'nullCoalesceSimpleArrayOffset' => [
+                '<?php
+                    function a(array $arr) : void {
+                        /** @psalm-suppress MixedArgument */
+                        echo isset($arr["a"]["b"]) ? $arr["a"]["b"] : 0;
+                    }
 
-                        echo $a["a"];
-                        echo $a["b"];
+                    function b(array $arr) : void {
+                        /** @psalm-suppress MixedArgument */
+                        echo $arr["a"]["b"] ?? 0;
+                    }'
+            ],
+            'coalescePreserveContext' => [
+                '<?php
+                    function foo(array $test) : void {
+                        /** @psalm-suppress MixedArgument */
+                        echo $test[0] ?? ( $test[0] = 1 );
+                        /** @psalm-suppress MixedArgument */
+                        echo $test[0];
                     }'
             ],
         ];
@@ -1073,7 +1083,7 @@ class IssetTest extends \Psalm\Tests\TestCase
                         }
                         return "bar";
                     }',
-                'error_message' => 'TypeDoesNotContainType'
+                'error_message' => 'TypeDoesNotContainNull'
             ],
             'issetOnArrayOfArraysReturningString' => [
                 '<?php

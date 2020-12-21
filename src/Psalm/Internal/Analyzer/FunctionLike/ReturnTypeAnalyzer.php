@@ -18,6 +18,7 @@ use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
+use Psalm\Issue\ImplicitToStringCast;
 use Psalm\Issue\InvalidFalsableReturnType;
 use Psalm\Issue\InvalidNullableReturnType;
 use Psalm\Issue\InvalidParent;
@@ -362,6 +363,8 @@ class ReturnTypeAnalyzer
 
         $parent_class = null;
 
+        $classlike_storage = null;
+
         if ($self_fq_class_name) {
             $classlike_storage = $codebase->classlike_storage_provider->get($self_fq_class_name);
             $parent_class = $classlike_storage->parent_class;
@@ -377,6 +380,7 @@ class ReturnTypeAnalyzer
             true,
             true,
             $function_like_storage instanceof MethodStorage && $function_like_storage->final
+                || ($classlike_storage && $classlike_storage->final)
         );
 
         if (!$inferred_return_type_parts
@@ -540,64 +544,83 @@ class ReturnTypeAnalyzer
                         }
                     }
                 }
-            } elseif ($codebase->alter_code
-                && isset($project_analyzer->getIssuesToFix()['LessSpecificReturnType'])
-                && !in_array('LessSpecificReturnType', $suppressed_issues)
-                && !($function_like_storage instanceof MethodStorage && $function_like_storage->inheritdoc)
-            ) {
-                if (!UnionTypeComparator::isContainedBy(
+            } elseif (!$inferred_return_type->hasMixed()
+                && !UnionTypeComparator::isContainedBy(
                     $codebase,
                     $declared_return_type,
                     $inferred_return_type,
                     false,
                     false
-                )) {
-                    self::addOrUpdateReturnType(
-                        $function,
-                        $project_analyzer,
-                        $inferred_return_type,
-                        $source,
-                        $compatible_method_ids
-                            || (($project_analyzer->only_replace_php_types_with_non_docblock_types
-                                    || $unsafe_return_type)
-                                && $inferred_return_type->from_docblock),
-                        $function_like_storage
-                    );
-
-                    return null;
-                }
-            } elseif (!$inferred_return_type->hasMixed()
-                && ((!$inferred_return_type->isNullable() && $declared_return_type->isNullable())
-                    || (!$inferred_return_type->isFalsable() && $declared_return_type->isFalsable()))
+                )
             ) {
-                if ($function instanceof Function_
-                    || $function instanceof Closure
-                    || $function instanceof ArrowFunction
-                    || $function->isPrivate()
-                ) {
-                    $check_for_less_specific_type = true;
-                } elseif ($source instanceof StatementsAnalyzer) {
-                    if ($function_like_storage instanceof MethodStorage) {
-                        $check_for_less_specific_type = !$function_like_storage->overridden_somewhere;
+                if ($codebase->alter_code) {
+                    if (isset($project_analyzer->getIssuesToFix()['LessSpecificReturnType'])
+                        && !in_array('LessSpecificReturnType', $suppressed_issues)
+                        && !($function_like_storage instanceof MethodStorage && $function_like_storage->inheritdoc)
+                    ) {
+                        self::addOrUpdateReturnType(
+                            $function,
+                            $project_analyzer,
+                            $inferred_return_type,
+                            $source,
+                            $compatible_method_ids
+                                || (($project_analyzer->only_replace_php_types_with_non_docblock_types
+                                        || $unsafe_return_type)
+                                    && $inferred_return_type->from_docblock),
+                            $function_like_storage
+                        );
+                    }
+                } else {
+                    if ($function instanceof Function_
+                        || $function instanceof Closure
+                        || $function instanceof ArrowFunction
+                        || $function->isPrivate()
+                    ) {
+                        $check_for_less_specific_type = true;
+                    } elseif ($source instanceof StatementsAnalyzer) {
+                        if ($function_like_storage instanceof MethodStorage) {
+                            $check_for_less_specific_type = !$function_like_storage->overridden_somewhere;
+                        } else {
+                            $check_for_less_specific_type = false;
+                        }
                     } else {
                         $check_for_less_specific_type = false;
                     }
-                } else {
-                    $check_for_less_specific_type = false;
-                }
 
-                if ($check_for_less_specific_type) {
-                    if (IssueBuffer::accepts(
-                        new LessSpecificReturnType(
-                            'The inferred return type \'' . $inferred_return_type . '\' for ' . $cased_method_id .
-                                ' is more specific than the declared return type \'' . $declared_return_type . '\'',
-                            $return_type_location
-                        ),
-                        $suppressed_issues,
-                        !($function_like_storage instanceof MethodStorage && $function_like_storage->inheritdoc)
-                    )) {
-                        return false;
+                    if ($check_for_less_specific_type
+                        && (\Psalm\Config::getInstance()->restrict_return_types
+                            || (!$inferred_return_type->isNullable() && $declared_return_type->isNullable())
+                            || (!$inferred_return_type->isFalsable() && $declared_return_type->isFalsable()))
+                    ) {
+                        if (IssueBuffer::accepts(
+                            new LessSpecificReturnType(
+                                'The inferred return type \''
+                                    . $inferred_return_type->getId()
+                                    . '\' for ' . $cased_method_id
+                                    . ' is more specific than the declared return type \''
+                                    . $declared_return_type->getId() . '\'',
+                                $return_type_location
+                            ),
+                            $suppressed_issues,
+                            !($function_like_storage instanceof MethodStorage && $function_like_storage->inheritdoc)
+                        )) {
+                            return false;
+                        }
                     }
+                }
+            }
+
+            if ($union_comparison_results->to_string_cast) {
+                if (IssueBuffer::accepts(
+                    new ImplicitToStringCast(
+                        'The declared return type for ' . $cased_method_id . ' expects \'' .
+                        $declared_return_type . '\', ' . '\'' . $inferred_return_type .
+                        '\' provided with a __toString method',
+                        $return_type_location
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
                 }
             }
 
@@ -738,7 +761,10 @@ class ReturnTypeAnalyzer
                 $storage->return_type_location,
                 $storage->suppressed_issues,
                 [],
-                false
+                false,
+                false,
+                false,
+                $context->calling_method_id
             );
 
             return null;
@@ -794,7 +820,7 @@ class ReturnTypeAnalyzer
                 $codebase->classlike_storage_provider->get($context->self),
                 strtolower($function->name->name),
                 new Type\Atomic\TNamedObject($context->self),
-                '$this'
+                true
             );
 
             $class_template_params = $class_template_params ?: [];
@@ -805,7 +831,7 @@ class ReturnTypeAnalyzer
                     []
                 );
 
-                $fleshed_out_return_type = \Psalm\Internal\Type\UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $fleshed_out_return_type = \Psalm\Internal\Type\TemplateStandinTypeReplacer::replace(
                     $fleshed_out_return_type,
                     $template_result,
                     $codebase,
@@ -907,7 +933,7 @@ class ReturnTypeAnalyzer
                 $source->getFQCLN(),
                 true
             ),
-            $inferred_return_type->canBeFullyExpressedInPhp(),
+            $inferred_return_type->canBeFullyExpressedInPhp($codebase->php_major_version, $codebase->php_minor_version),
             $function_like_storage ? $function_like_storage->return_type_description : null
         );
     }

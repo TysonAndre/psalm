@@ -60,11 +60,19 @@ class Creator
             self::TEMPLATE
         );
 
-        $template = str_replace(
-            '<directory name="vendor" />',
-            '<directory name="' . $vendor_dir . '" />',
-            $template
-        );
+        if (is_dir($current_dir . DIRECTORY_SEPARATOR . $vendor_dir)) {
+            $template = str_replace(
+                '<directory name="vendor" />',
+                '<directory name="' . $vendor_dir . '" />',
+                $template
+            );
+        } else {
+            $template = str_replace(
+                '<directory name="vendor" />',
+                '',
+                $template
+            );
+        }
 
         $template = str_replace(
             'errorLevel="1"',
@@ -79,10 +87,10 @@ class Creator
         string $current_dir,
         ?string $suggested_dir,
         string $vendor_dir
-    ) : void {
+    ) : \Psalm\Config {
         $config_contents = self::getContents($current_dir, $suggested_dir, 1, $vendor_dir);
 
-        \Psalm\Config::loadFromXML($current_dir, $config_contents);
+        return \Psalm\Config::loadFromXML($current_dir, $config_contents);
     }
 
     /**
@@ -173,7 +181,6 @@ class Creator
                 );
             }
 
-            /** @psalm-suppress MixedAssignment */
             if (!$composer_json = json_decode(file_get_contents($composer_json_location), true)) {
                 throw new ConfigCreationException('Invalid composer.json at ' . $composer_json_location);
             }
@@ -198,6 +205,7 @@ class Creator
      * @return list<string>
      * @psalm-suppress MixedAssignment
      * @psalm-suppress MixedArgument
+     * @psalm-suppress PossiblyUndefinedArrayOffset
      */
     private static function getPsr4Or0Paths(string $current_dir, array $composer_json) : array
     {

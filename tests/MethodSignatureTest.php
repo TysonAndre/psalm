@@ -457,30 +457,30 @@ class MethodSignatureTest extends TestCase
             'allowVoidToNullConversion' => [
                 '<?php
                     class A {
-                      /** @return ?string */
-                      public function foo() {
-                        return rand(0, 1) ? "hello" : null;
-                      }
+                        /** @return ?string */
+                        public function foo() {
+                            return rand(0, 1) ? "hello" : null;
+                        }
                     }
 
                     class B extends A {
-                      public function foo(): void {
-                        return;
-                      }
+                        public function foo(): void {
+                            return;
+                        }
                     }
 
                     class C extends A {
-                      /** @return void */
-                      public function foo() {
-                        return;
-                      }
+                        /** @return void */
+                        public function foo() {
+                            return;
+                        }
                     }
 
                     class D extends A {
-                      /** @return null */
-                      public function foo() {
-                        return null;
-                      }
+                        /** @return null */
+                        public function foo() {
+                            return null;
+                        }
                     }',
             ],
             'allowNoChildClassPropertyWhenMixed' => [
@@ -496,7 +496,7 @@ class MethodSignatureTest extends TestCase
                         {
                             [
                                 $this->id,
-                            ] = (array) \unserialize((string) $serialized);
+                            ] = (array) \unserialize($serialized);
                         }
 
                         public function serialize() : string
@@ -828,6 +828,47 @@ class MethodSignatureTest extends TestCase
                 [],
                 '8.0'
             ],
+            'suppressDocblockFinal' => [
+                '<?php
+                    /**
+                     * @final
+                     */
+                    class A {
+                       public function foo(): void {}
+                    }
+
+                    /**
+                     * @psalm-suppress InvalidExtendClass
+                     */
+                    class B extends A {
+                        /**
+                         * @psalm-suppress MethodSignatureMismatch
+                         */
+                        public function foo(): void {}
+                    }'
+            ],
+            'inheritParamTypeWhenSignatureReturnTypeChanged' => [
+                '<?php
+                    class A {
+                        public function __construct(string $s) {}
+                    }
+
+                    class AChild extends A {}
+
+                    interface B  {
+                        /** @param string $data */
+                        public function create($data): A;
+                    }
+
+                    class C implements B {
+                        public function create($data): AChild {
+                            return new AChild($data);
+                        }
+                    }',
+                [],
+                [],
+                '7.4'
+            ],
         ];
     }
 
@@ -955,18 +996,18 @@ class MethodSignatureTest extends TestCase
                     }',
                 'error_message' => 'MoreSpecificImplementedParamType',
             ],
-            'disallowVoidToNullConversionSignature' => [
+            'preventVoidToNullConversionSignature' => [
                 '<?php
                     class A {
-                      public function foo(): ?string {
-                        return rand(0, 1) ? "hello" : null;
-                      }
+                        public function foo(): ?string {
+                            return rand(0, 1) ? "hello" : null;
+                        }
                     }
 
                     class B extends A {
-                      public function foo(): void {
-                        return;
-                      }
+                        public function foo(): void {
+                            return;
+                        }
                     }',
                 'error_message' => 'MethodSignatureMismatch',
             ],
@@ -1236,7 +1277,7 @@ class MethodSignatureTest extends TestCase
                         public function unserialize(string $serialized) {}
                         public function serialize() {}
                     }',
-                'error_message' => 'MethodSignatureMismatch',
+                'error_message' => 'InvalidReturnType',
             ],
             'preventImplementingSerializableWithWrongDocblockType' => [
                 '<?php

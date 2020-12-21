@@ -10,6 +10,7 @@ use Psalm\CodeLocation;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Fetch\VariableFetchAnalyzer;
 use Psalm\Internal\Analyzer\TraitAnalyzer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Internal\Type\Comparator\AtomicTypeComparator;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Issue\DocblockTypeContradiction;
@@ -43,7 +44,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
      *  - notEmpty(Object|false) => Object
      *
      * @param   string[]            $suppressed_issues
-     * @param   array<string, array<string, array{Type\Union}>> $template_type_map
+     * @param   array<string, array<string, Type\Union>> $template_type_map
      * @param-out   0|1|2   $failed_reconciliation
      */
     public static function reconcile(
@@ -83,6 +84,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
             $is_equality = true;
         }
 
+        $original_assertion = $assertion;
+
         if ($assertion[0] === '>') {
             $assertion = 'falsy';
             $is_negation = true;
@@ -96,37 +99,13 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if ($existing_var_type === null) {
-            if (($assertion === 'isset' && !$is_negation)
-                || ($assertion === 'empty' && $is_negation)
-            ) {
-                return Type::getMixed($inside_loop);
-            }
-
-            if ($assertion === 'array-key-exists'
-                || $assertion === 'non-empty-countable'
-                || strpos($assertion, 'has-at-least-') === 0
-                || strpos($assertion, 'has-exactly-') === 0
-            ) {
-                return Type::getMixed();
-            }
-
-            if (!$is_negation && $assertion !== 'falsy' && $assertion !== 'empty') {
-                if ($is_equality) {
-                    $bracket_pos = strpos($assertion, '(');
-
-                    if ($bracket_pos) {
-                        $assertion = substr($assertion, 0, $bracket_pos);
-                    }
-                }
-
-                try {
-                    return Type::parseString($assertion, null, $template_type_map);
-                } catch (\Exception $e) {
-                    return Type::getMixed();
-                }
-            }
-
-            return Type::getMixed();
+            return self::getMissingType(
+                $assertion,
+                $is_negation,
+                $inside_loop,
+                $is_equality,
+                $template_type_map
+            );
         }
 
         $old_var_type_string = $existing_var_type->getId();
@@ -167,141 +146,21 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if (substr($assertion, 0, 4) === 'isa-') {
-            $assertion = substr($assertion, 4);
+            $should_return = false;
 
-            $allow_string_comparison = false;
+            $new_type = self::handleIsA(
+                $codebase,
+                $existing_var_type,
+                $assertion,
+                $template_type_map,
+                $code_location,
+                $key,
+                $suppressed_issues,
+                $should_return
+            );
 
-            if (substr($assertion, 0, 7) === 'string-') {
-                $assertion = substr($assertion, 7);
-                $allow_string_comparison = true;
-            }
-
-            if ($existing_var_type->hasMixed()) {
-                $type = new Type\Union([
-                    new Type\Atomic\TNamedObject($assertion),
-                ]);
-
-                if ($allow_string_comparison) {
-                    $type->addType(
-                        new Type\Atomic\TClassString(
-                            $assertion,
-                            new Type\Atomic\TNamedObject($assertion)
-                        )
-                    );
-                }
-
-                return $type;
-            }
-
-            $existing_has_object = $existing_var_type->hasObjectType();
-            $existing_has_string = $existing_var_type->hasString();
-
-            if ($existing_has_object && !$existing_has_string) {
-                $new_type = Type::parseString($assertion, null, $template_type_map);
-            } elseif ($existing_has_string && !$existing_has_object) {
-                if (!$allow_string_comparison && $code_location) {
-                    if (IssueBuffer::accepts(
-                        new TypeDoesNotContainType(
-                            'Cannot allow string comparison to object for ' . $key,
-                            $code_location,
-                            null
-                        ),
-                        $suppressed_issues
-                    )) {
-                        // fall through
-                    }
-
-                    $new_type = Type::getMixed();
-                } else {
-                    $new_type_has_interface_string = $codebase->interfaceExists($assertion);
-
-                    $old_type_has_interface_string = false;
-
-                    foreach ($existing_var_type->getAtomicTypes() as $existing_type_part) {
-                        if ($existing_type_part instanceof TClassString
-                            && $existing_type_part->as_type
-                            && $codebase->interfaceExists($existing_type_part->as_type->value)
-                        ) {
-                            $old_type_has_interface_string = true;
-                            break;
-                        }
-                    }
-
-                    if (isset($template_type_map[$assertion])) {
-                        $new_type = Type::parseString(
-                            'class-string<' . $assertion . '>',
-                            null,
-                            $template_type_map
-                        );
-                    } else {
-                        $new_type = Type::getClassString($assertion);
-                    }
-
-                    if ((
-                        $new_type_has_interface_string
-                            && !UnionTypeComparator::isContainedBy(
-                                $codebase,
-                                $existing_var_type,
-                                $new_type
-                            )
-                    )
-                        || (
-                            $old_type_has_interface_string
-                            && !UnionTypeComparator::isContainedBy(
-                                $codebase,
-                                $new_type,
-                                $existing_var_type
-                            )
-                        )
-                    ) {
-                        $new_type_part = Atomic::create($assertion, null, $template_type_map);
-
-                        $acceptable_atomic_types = [];
-
-                        foreach ($existing_var_type->getAtomicTypes() as $existing_var_type_part) {
-                            if (!$new_type_part instanceof TNamedObject
-                                || !$existing_var_type_part instanceof TClassString
-                            ) {
-                                $acceptable_atomic_types = [];
-
-                                break;
-                            }
-
-                            if (!$existing_var_type_part->as_type instanceof TNamedObject) {
-                                $acceptable_atomic_types = [];
-
-                                break;
-                            }
-
-                            $existing_var_type_part = $existing_var_type_part->as_type;
-
-                            if (AtomicTypeComparator::isContainedBy(
-                                $codebase,
-                                $existing_var_type_part,
-                                $new_type_part
-                            )) {
-                                $acceptable_atomic_types[] = clone $existing_var_type_part;
-                                continue;
-                            }
-
-                            if ($codebase->classExists($existing_var_type_part->value)
-                                || $codebase->interfaceExists($existing_var_type_part->value)
-                            ) {
-                                $existing_var_type_part = clone $existing_var_type_part;
-                                $existing_var_type_part->addIntersectionType($new_type_part);
-                                $acceptable_atomic_types[] = $existing_var_type_part;
-                            }
-                        }
-
-                        if (count($acceptable_atomic_types) === 1) {
-                            return new Type\Union([
-                                new TClassString('object', $acceptable_atomic_types[0]),
-                            ]);
-                        }
-                    }
-                }
-            } else {
-                $new_type = Type::getMixed();
+            if ($should_return) {
+                return $new_type;
             }
         } elseif (substr($assertion, 0, 9) === 'getclass-') {
             $assertion = substr($assertion, 9);
@@ -323,6 +182,10 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 );
             }
 
+            if ($assertion === 'loaded-class-string') {
+                $assertion = 'class-string';
+            }
+
             $new_type = Type::parseString($assertion, null, $template_type_map);
         }
 
@@ -339,6 +202,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         return self::refine(
             $statements_analyzer,
             $assertion,
+            $original_assertion,
             $new_type,
             $existing_var_type,
             $template_type_map,
@@ -353,14 +217,58 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
     }
 
     /**
+     * @param array<string, array<string, Type\Union>> $template_type_map
+     */
+    private static function getMissingType(
+        string $assertion,
+        bool $is_negation,
+        bool $inside_loop,
+        bool $is_equality,
+        array $template_type_map
+    ) : Union {
+        if (($assertion === 'isset' && !$is_negation)
+            || ($assertion === 'empty' && $is_negation)
+        ) {
+            return Type::getMixed($inside_loop);
+        }
+
+        if ($assertion === 'array-key-exists'
+            || $assertion === 'non-empty-countable'
+            || strpos($assertion, 'has-at-least-') === 0
+            || strpos($assertion, 'has-exactly-') === 0
+        ) {
+            return Type::getMixed();
+        }
+
+        if (!$is_negation && $assertion !== 'falsy' && $assertion !== 'empty') {
+            if ($is_equality) {
+                $bracket_pos = strpos($assertion, '(');
+
+                if ($bracket_pos) {
+                    $assertion = substr($assertion, 0, $bracket_pos);
+                }
+            }
+
+            try {
+                return Type::parseString($assertion, null, $template_type_map);
+            } catch (\Exception $e) {
+                return Type::getMixed();
+            }
+        }
+
+        return Type::getMixed();
+    }
+
+    /**
      * @param 0|1|2         $failed_reconciliation
      * @param   string[]    $suppressed_issues
-     * @param   array<string, array<string, array{Type\Union}>> $template_type_map
+     * @param   array<string, array<string, Type\Union>> $template_type_map
      * @param-out   0|1|2   $failed_reconciliation
      */
     private static function refine(
         StatementsAnalyzer $statements_analyzer,
         string $assertion,
+        string $original_assertion,
         Union $new_type,
         Union $existing_var_type,
         array $template_type_map,
@@ -538,6 +446,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 && $code_location
                 && $new_type->getId() === $existing_var_type->getId()
                 && !$is_equality
+                && !($original_assertion === 'loaded-class-string' && $old_var_type_string === 'class-string')
                 && (!($statements_analyzer->getSource()->getSource() instanceof TraitAnalyzer)
                     || ($key !== '$this'
                         && !($existing_var_type->hasLiteralClassString() && $new_type->hasLiteralClassString())))
@@ -546,7 +455,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                     $existing_var_type,
                     $old_var_type_string,
                     $key,
-                    $assertion,
+                    $original_assertion,
                     true,
                     $negated,
                     $code_location,
@@ -567,14 +476,19 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                 && UnionTypeComparator::isContainedBy(
                     $codebase,
                     $existing_var_type,
-                    $new_type
+                    $new_type,
+                    false,
+                    false,
+                    null,
+                    false,
+                    false
                 )
             ) {
                 self::triggerIssueForImpossible(
                     $existing_var_type,
                     $old_var_type_string,
                     $key,
-                    $assertion,
+                    $original_assertion,
                     true,
                     $negated,
                     $code_location,
@@ -659,10 +573,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         return $new_type;
     }
 
-
-
     /**
-     * @param array<string, array<string, array{0:Type\Union, 1?: int}>> $template_type_map
+     * @param array<string, array<string, Type\Union>> $template_type_map
      */
     private static function filterTypeWithAnother(
         Codebase $codebase,
@@ -823,7 +735,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                         );
 
                         if ($template_type_map) {
-                            $new_param->replaceTemplateTypesWithArgTypes(
+                            TemplateInferredTypeReplacer::replace(
+                                $new_param,
                                 new TemplateResult([], $template_type_map),
                                 $codebase
                             );
@@ -834,6 +747,7 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                         if ($has_param_match
                             && $existing_type_part->type_params[$i]->getId() !== $new_param->getId()
                         ) {
+                            /** @psalm-suppress PropertyTypeCoercion */
                             $existing_type_part->type_params[$i] = $new_param;
 
                             if (!$has_local_match) {
@@ -870,7 +784,8 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
                     );
 
                     if ($template_type_map) {
-                        $new_param->replaceTemplateTypesWithArgTypes(
+                        TemplateInferredTypeReplacer::replace(
+                            $new_param,
                             new TemplateResult([], $template_type_map),
                             $codebase
                         );
@@ -1295,5 +1210,162 @@ class AssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         return $existing_var_type;
+    }
+
+    /**
+     * @param array<string, array<string, Type\Union>> $template_type_map
+     * @param array<string>           $suppressed_issues
+     */
+    private static function handleIsA(
+        Codebase $codebase,
+        Union $existing_var_type,
+        string &$assertion,
+        array &$template_type_map,
+        ?CodeLocation $code_location,
+        ?string $key,
+        array $suppressed_issues,
+        bool &$should_return
+    ): Union {
+        $assertion = substr($assertion, 4);
+
+        $allow_string_comparison = false;
+
+        if (substr($assertion, 0, 7) === 'string-') {
+            $assertion = substr($assertion, 7);
+            $allow_string_comparison = true;
+        }
+
+        if ($existing_var_type->hasMixed()) {
+            $type = new Type\Union([
+                new Type\Atomic\TNamedObject($assertion),
+            ]);
+
+            if ($allow_string_comparison) {
+                $type->addType(
+                    new Type\Atomic\TClassString(
+                        $assertion,
+                        new Type\Atomic\TNamedObject($assertion)
+                    )
+                );
+            }
+
+            $should_return = true;
+            return $type;
+        }
+
+        $existing_has_object = $existing_var_type->hasObjectType();
+        $existing_has_string = $existing_var_type->hasString();
+
+        if ($existing_has_object && !$existing_has_string) {
+            return Type::parseString($assertion, null, $template_type_map);
+        } elseif ($existing_has_string && !$existing_has_object) {
+            if (!$allow_string_comparison && $code_location) {
+                if (IssueBuffer::accepts(
+                    new TypeDoesNotContainType(
+                        'Cannot allow string comparison to object for ' . $key,
+                        $code_location,
+                        null
+                    ),
+                    $suppressed_issues
+                )) {
+                    // fall through
+                }
+
+                return Type::getMixed();
+            } else {
+                $new_type_has_interface_string = $codebase->interfaceExists($assertion);
+
+                $old_type_has_interface_string = false;
+
+                foreach ($existing_var_type->getAtomicTypes() as $existing_type_part) {
+                    if ($existing_type_part instanceof TClassString
+                        && $existing_type_part->as_type
+                        && $codebase->interfaceExists($existing_type_part->as_type->value)
+                    ) {
+                        $old_type_has_interface_string = true;
+                        break;
+                    }
+                }
+
+                if (isset($template_type_map[$assertion])) {
+                    $new_type = Type::parseString(
+                        'class-string<' . $assertion . '>',
+                        null,
+                        $template_type_map
+                    );
+                } else {
+                    $new_type = Type::getClassString($assertion);
+                }
+
+                if ((
+                        $new_type_has_interface_string
+                        && !UnionTypeComparator::isContainedBy(
+                            $codebase,
+                            $existing_var_type,
+                            $new_type
+                        )
+                    )
+                    || (
+                        $old_type_has_interface_string
+                        && !UnionTypeComparator::isContainedBy(
+                            $codebase,
+                            $new_type,
+                            $existing_var_type
+                        )
+                    )
+                ) {
+                    $new_type_part = Atomic::create($assertion, null, $template_type_map);
+
+                    $acceptable_atomic_types = [];
+
+                    foreach ($existing_var_type->getAtomicTypes() as $existing_var_type_part) {
+                        if (!$new_type_part instanceof TNamedObject
+                            || !$existing_var_type_part instanceof TClassString
+                        ) {
+                            $acceptable_atomic_types = [];
+
+                            break;
+                        }
+
+                        if (!$existing_var_type_part->as_type instanceof TNamedObject) {
+                            $acceptable_atomic_types = [];
+
+                            break;
+                        }
+
+                        $existing_var_type_part = $existing_var_type_part->as_type;
+
+                        if (AtomicTypeComparator::isContainedBy(
+                            $codebase,
+                            $existing_var_type_part,
+                            $new_type_part
+                        )) {
+                            $acceptable_atomic_types[] = clone $existing_var_type_part;
+                            continue;
+                        }
+
+                        if ($codebase->classExists($existing_var_type_part->value)
+                            || $codebase->interfaceExists($existing_var_type_part->value)
+                        ) {
+                            $existing_var_type_part = clone $existing_var_type_part;
+                            $existing_var_type_part->addIntersectionType($new_type_part);
+                            $acceptable_atomic_types[] = $existing_var_type_part;
+                        }
+                    }
+
+                    if (count($acceptable_atomic_types) === 1) {
+                        $should_return = true;
+
+                        return new Type\Union([
+                            new TClassString('object', $acceptable_atomic_types[0]),
+                        ]);
+                    }
+                }
+            }
+
+            return $new_type;
+        } else {
+            return Type::getMixed();
+        }
     }
 }

@@ -9,8 +9,9 @@ use Psalm\Internal\Analyzer\Statements\Expression\CallAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Codebase\InternalCallMapHandler;
-use Psalm\Internal\Type\TypeCombination;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TypeCombiner;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\CodeLocation;
 use Psalm\Context;
@@ -118,7 +119,7 @@ class ArrayFunctionArgumentsAnalyzer
     }
 
     /**
-     * @param   array<int, PhpParser\Node\Arg>          $args
+     * @param   list<PhpParser\Node\Arg>          $args
      *
      * @return  false|null
      */
@@ -317,7 +318,7 @@ class ArrayFunctionArgumentsAnalyzer
     }
 
     /**
-     * @param   array<int, PhpParser\Node\Arg>          $args
+     * @param   list<PhpParser\Node\Arg>          $args
      *
      * @return  false|null
      */
@@ -441,7 +442,7 @@ class ArrayFunctionArgumentsAnalyzer
                 }
             }
 
-            $by_ref_type = TypeCombination::combineTypes([$array_type, $replacement_array_type]);
+            $by_ref_type = TypeCombiner::combine([$array_type, $replacement_array_type]);
 
             AssignmentAnalyzer::assignByRefParam(
                 $statements_analyzer,
@@ -531,7 +532,6 @@ class ArrayFunctionArgumentsAnalyzer
                         }
 
                         $array_type->addType($array_atomic_type);
-                        $context->removeDescendents($var_id, $array_type);
                     } elseif ($array_atomic_type instanceof TNonEmptyList) {
                         if (!$context->inside_loop && $array_atomic_type->count !== null) {
                             if ($array_atomic_type->count === 0) {
@@ -549,10 +549,10 @@ class ArrayFunctionArgumentsAnalyzer
                         }
 
                         $array_type->addType($array_atomic_type);
-                        $context->removeDescendents($var_id, $array_type);
                     }
                 }
 
+                $context->removeDescendents($var_id, $array_type);
                 $context->vars_in_scope[$var_id] = $array_type;
             }
         }
@@ -826,11 +826,11 @@ class ArrayFunctionArgumentsAnalyzer
 
                 foreach ($closure_param_type->getTemplateTypes() as $template_type) {
                     $template_result->template_types[$template_type->param_name] = [
-                        ($template_type->defining_class) => [$template_type->as]
+                        ($template_type->defining_class) => $template_type->as
                     ];
                 }
 
-                $closure_param_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $closure_param_type = TemplateStandinTypeReplacer::replace(
                     $closure_param_type,
                     $template_result,
                     $codebase,
@@ -841,7 +841,7 @@ class ArrayFunctionArgumentsAnalyzer
                     $context->calling_method_id ?: $context->calling_function_id
                 );
 
-                $closure_type->return_type->replaceTemplateTypesWithArgTypes(
+                $closure_type->replaceTemplateTypesWithArgTypes(
                     $template_result,
                     $codebase
                 );

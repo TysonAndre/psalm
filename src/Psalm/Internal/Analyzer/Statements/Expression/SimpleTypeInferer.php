@@ -13,6 +13,9 @@ use function count;
 use function array_shift;
 use function reset;
 
+/**
+ * This class takes a statement and return its type by analyzing each part of the statement if necessary
+ */
 class SimpleTypeInferer
 {
     /**
@@ -100,7 +103,13 @@ class SimpleTypeInferer
             }
 
             if ($stmt instanceof PhpParser\Node\Expr\BinaryOp\Spaceship) {
-                return Type::getInt();
+                return new Type\Union(
+                    [
+                        new Type\Atomic\TLiteralInt(-1),
+                        new Type\Atomic\TLiteralInt(0),
+                        new Type\Atomic\TLiteralInt(1)
+                    ]
+                );
             }
 
             $stmt_left_type = self::infer(
@@ -142,6 +151,11 @@ class SimpleTypeInferer
                 || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mod
                 || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Mul
                 || $stmt instanceof PhpParser\Node\Expr\BinaryOp\Pow
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftRight
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\ShiftLeft
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseXor
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseOr
+                || $stmt instanceof PhpParser\Node\Expr\BinaryOp\BitwiseAnd
             ) {
                 NonDivArithmeticOpAnalyzer::analyze(
                     $file_source instanceof StatementsSource ? $file_source : null,

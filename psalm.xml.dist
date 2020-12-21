@@ -14,6 +14,7 @@
     ensureArrayIntOffsetsExist="false"
     resolveFromConfigFile="true"
     xsi:schemaLocation="https://getpsalm.org/schema/config config.xsd"
+    limitMethodComplexity="true"
 >
     <projectFiles>
         <directory name="src"/>
@@ -66,9 +67,6 @@
             <errorLevel type="suppress">
                 <directory name="examples"/>
             </errorLevel>
-            <errorLevel type="info">
-                <directory name="src/Psalm/Type/Atomic"/>
-            </errorLevel>
         </PossiblyUnusedParam>
 
         <UnusedClass>
@@ -85,6 +83,14 @@
                 <directory name="tests"/>
             </errorLevel>
         </MissingConstructor>
+
+        <PossiblyUndefinedIntArrayOffset errorLevel="suppress">
+            <errorLevel type="error">
+                <directory name="src/Psalm/Internal/Provider/ReturnTypeProvider"/>
+            </errorLevel>
+        </PossiblyUndefinedIntArrayOffset>
+
+        <ComplexMethod errorLevel="info" />
 
         <MissingThrowsDocblock errorLevel="info"/>
 

@@ -60,6 +60,7 @@ class ExitAnalyzer
                     new Type\Union([new TInt(), new TString()]),
                     null,
                     'exit',
+                    null,
                     0,
                     new CodeLocation($statements_analyzer->getSource(), $stmt->expr),
                     $stmt->expr,
@@ -77,6 +78,8 @@ class ExitAnalyzer
 
             $context->inside_call = false;
         }
+
+        $statements_analyzer->node_data->setType($stmt, \Psalm\Type::getEmpty());
 
         return true;
     }

@@ -2,10 +2,12 @@
 namespace Psalm\Internal\Analyzer\Statements\Expression;
 
 use PhpParser;
+use Psalm\Internal\Algebra\FormulaGenerator;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
+use Psalm\Internal\Type\TemplateBound;
 use Psalm\Internal\Type\TemplateResult;
 use Psalm\CodeLocation;
 use Psalm\Context;
@@ -31,6 +33,7 @@ use function str_replace;
 use function is_int;
 use function substr;
 use function array_merge;
+use function array_map;
 
 /**
  * @internal
@@ -186,17 +189,24 @@ class CallAnalyzer
                 $local_vars_in_scope = [];
                 $local_vars_possibly_in_scope = [];
 
-                foreach ($context->vars_in_scope as $var => $_) {
-                    if (strpos($var, '$this->') !== 0 && $var !== '$this') {
-                        $local_vars_in_scope[$var] = $context->vars_in_scope[$var];
+                foreach ($context->vars_in_scope as $var_id => $type) {
+                    if (strpos($var_id, '$this->') === 0) {
+                        if ($type->initialized) {
+                            $local_vars_in_scope[$var_id] = $context->vars_in_scope[$var_id];
+
+                            if (isset($context->vars_possibly_in_scope[$var_id])) {
+                                $local_vars_possibly_in_scope[$var_id] = $context->vars_possibly_in_scope[$var_id];
+                            }
+
+                            unset($context->vars_in_scope[$var_id]);
+                            unset($context->vars_possibly_in_scope[$var_id]);
+                        }
+                    } elseif ($var_id !== '$this') {
+                        $local_vars_in_scope[$var_id] = $context->vars_in_scope[$var_id];
                     }
                 }
 
-                foreach ($context->vars_possibly_in_scope as $var => $_) {
-                    if (strpos($var, '$this->') !== 0 && $var !== '$this') {
-                        $local_vars_possibly_in_scope[$var] = $context->vars_possibly_in_scope[$var];
-                    }
-                }
+                $local_vars_possibly_in_scope = $context->vars_possibly_in_scope;
 
                 $old_calling_method_id = $context->calling_method_id;
 
@@ -230,7 +240,7 @@ class CallAnalyzer
     }
 
     /**
-     * @param  array<int, PhpParser\Node\Arg>   $args
+     * @param  list<PhpParser\Node\Arg>   $args
      */
     public static function checkMethodArgs(
         ?\Psalm\Internal\MethodIdentifier $method_id,
@@ -340,43 +350,41 @@ class CallAnalyzer
     }
 
     /**
-     * @return array<string, array<string, array{Type\Union}>>
-     * @param array<string, non-empty-array<string, array{Type\Union}>> $existing_template_types
+     * This gets all the template params (and their types) that we think
+     * we'll need to know about
+     *
+     * @return array<string, array<string, Type\Union>>
+     * @param array<string, non-empty-array<string, Type\Union>> $existing_template_types
+     * @param array<string, array<string, Type\Union>> $class_template_params
      */
     public static function getTemplateTypesForCall(
         \Psalm\Codebase $codebase,
         ?ClassLikeStorage $declaring_class_storage,
         ?string $appearing_class_name,
         ?ClassLikeStorage $calling_class_storage,
-        array $existing_template_types = []
+        array $existing_template_types = [],
+        array $class_template_params = []
     ) : array {
         $template_types = $existing_template_types;
 
         if ($declaring_class_storage) {
             if ($calling_class_storage
                 && $declaring_class_storage !== $calling_class_storage
-                && $calling_class_storage->template_type_extends
+                && $calling_class_storage->template_extended_params
             ) {
-                foreach ($calling_class_storage->template_type_extends as $class_name => $type_map) {
+                foreach ($calling_class_storage->template_extended_params as $class_name => $type_map) {
                     foreach ($type_map as $template_name => $type) {
-                        if (is_string($template_name) && $class_name === $declaring_class_storage->name) {
+                        if ($class_name === $declaring_class_storage->name) {
                             $output_type = null;
 
                             foreach ($type->getAtomicTypes() as $atomic_type) {
-                                if ($atomic_type instanceof Type\Atomic\TTemplateParam
-                                    && isset(
-                                        $calling_class_storage
-                                            ->template_type_extends
-                                                [$atomic_type->defining_class]
-                                                [$atomic_type->param_name]
-                                    )
-                                ) {
-                                    $output_type_candidate = $calling_class_storage
-                                        ->template_type_extends
-                                            [$atomic_type->defining_class]
-                                            [$atomic_type->param_name];
-                                } elseif ($atomic_type instanceof Type\Atomic\TTemplateParam) {
-                                    $output_type_candidate = $atomic_type->as;
+                                if ($atomic_type instanceof Type\Atomic\TTemplateParam) {
+                                    $output_type_candidate = self::getGenericParamForOffset(
+                                        $atomic_type->defining_class,
+                                        $atomic_type->param_name,
+                                        $calling_class_storage->template_extended_params,
+                                        $class_template_params + $template_types
+                                    );
                                 } else {
                                     $output_type_candidate = new Type\Union([$atomic_type]);
                                 }
@@ -391,14 +399,15 @@ class CallAnalyzer
                                 }
                             }
 
-                            $template_types[$template_name][$declaring_class_storage->name] = [$output_type];
+                            $template_types[$template_name][$declaring_class_storage->name] = $output_type;
                         }
                     }
                 }
             } elseif ($declaring_class_storage->template_types) {
                 foreach ($declaring_class_storage->template_types as $template_name => $type_map) {
-                    foreach ($type_map as $key => [$type]) {
-                        $template_types[$template_name][$key] = [$type];
+                    foreach ($type_map as $key => $type) {
+                        $template_types[$template_name][$key]
+                            = $class_template_params[$template_name][$key] ?? $type;
                     }
                 }
             }
@@ -406,9 +415,9 @@ class CallAnalyzer
 
         foreach ($template_types as $key => $type_map) {
             foreach ($type_map as $class => $type) {
-                $template_types[$key][$class][0] = \Psalm\Internal\Type\TypeExpander::expandUnion(
+                $template_types[$key][$class] = \Psalm\Internal\Type\TypeExpander::expandUnion(
                     $codebase,
-                    $type[0],
+                    $type,
                     $appearing_class_name,
                     $calling_class_storage ? $calling_class_storage->name : null,
                     null,
@@ -420,6 +429,53 @@ class CallAnalyzer
         }
 
         return $template_types;
+    }
+
+    /**
+     * @param  array<string, array<string, Type\Union>>  $template_extended_params
+     * @param  array<string, array<string, Type\Union>>  $found_generic_params
+     */
+    public static function getGenericParamForOffset(
+        string $fq_class_name,
+        string $template_name,
+        array $template_extended_params,
+        array $found_generic_params,
+        bool $mapped = false
+    ): Type\Union {
+        if (isset($found_generic_params[$template_name][$fq_class_name])) {
+            if (!$mapped && isset($template_extended_params[$fq_class_name][$template_name])) {
+                foreach ($template_extended_params[$fq_class_name][$template_name]->getAtomicTypes() as $t) {
+                    if ($t instanceof Type\Atomic\TTemplateParam) {
+                        if ($t->param_name !== $template_name) {
+                            return $t->as;
+                        }
+                    }
+                }
+            }
+
+            return $found_generic_params[$template_name][$fq_class_name];
+        }
+
+        foreach ($template_extended_params as $type_map) {
+            foreach ($type_map as $extended_template_name => $extended_type) {
+                foreach ($extended_type->getAtomicTypes() as $extended_atomic_type) {
+                    if ($extended_atomic_type instanceof Type\Atomic\TTemplateParam
+                        && $extended_atomic_type->param_name === $template_name
+                        && $extended_template_name !== $template_name
+                    ) {
+                        return self::getGenericParamForOffset(
+                            $fq_class_name,
+                            $extended_template_name,
+                            $template_extended_params,
+                            $found_generic_params,
+                            true
+                        );
+                    }
+                }
+            }
+        }
+
+        return Type::getMixed();
     }
 
     /**
@@ -578,16 +634,16 @@ class CallAnalyzer
      * @param PhpParser\Node\Identifier|PhpParser\Node\Name $expr
      * @param  \Psalm\Storage\Assertion[] $assertions
      * @param  string $thisName
-     * @param  array<int, PhpParser\Node\Arg> $args
-     * @param  array<string, array<string, array{Type\Union}>> $template_type_map,
+     * @param  list<PhpParser\Node\Arg> $args
+     * @param  array<string, array<string, TemplateBound>> $inferred_upper_bounds,
      *
      */
-    protected static function applyAssertionsToContext(
+    public static function applyAssertionsToContext(
         PhpParser\NodeAbstract $expr,
         ?string $thisName,
         array $assertions,
         array $args,
-        array $template_type_map,
+        array $inferred_upper_bounds,
         Context $context,
         StatementsAnalyzer $statements_analyzer
     ): void {
@@ -616,6 +672,11 @@ class CallAnalyzer
                 $assertion_var_id = $thisName;
             } elseif (strpos($assertion->var_id, '$this->') === 0 && $thisName !== null) {
                 $assertion_var_id = $thisName . str_replace('$this->', '->', $assertion->var_id);
+            } elseif (strpos($assertion->var_id, 'self::') === 0 && $context->self) {
+                $assertion_var_id = $context->self . str_replace('self::', '::', $assertion->var_id);
+            } elseif (strpos($assertion->var_id, '::$') !== false) {
+                // allow assertions to bring external static props into scope
+                $assertion_var_id = $assertion->var_id;
             } elseif (isset($context->vars_in_scope[$assertion->var_id])) {
                 $assertion_var_id = $assertion->var_id;
             }
@@ -637,13 +698,13 @@ class CallAnalyzer
                     $rule = substr($rule, 1);
                 }
 
-                if (isset($template_type_map[$rule])) {
-                    foreach ($template_type_map[$rule] as $template_map) {
-                        if ($template_map[0]->hasMixed()) {
+                if (isset($inferred_upper_bounds[$rule])) {
+                    foreach ($inferred_upper_bounds[$rule] as $template_map) {
+                        if ($template_map->type->hasMixed()) {
                             continue 2;
                         }
 
-                        $replacement_atomic_types = $template_map[0]->getAtomicTypes();
+                        $replacement_atomic_types = $template_map->type->getAtomicTypes();
 
                         if (count($replacement_atomic_types) > 1) {
                             continue 2;
@@ -692,7 +753,7 @@ class CallAnalyzer
                         new PhpParser\Node\Expr\ConstFetch(new PhpParser\Node\Name('true'))
                     );
 
-                    $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                    $assert_clauses = FormulaGenerator::getFormula(
                         \mt_rand(0, 1000000),
                         \mt_rand(0, 1000000),
                         $conditional,
@@ -701,7 +762,7 @@ class CallAnalyzer
                         $statements_analyzer->getCodebase()
                     );
                 } else {
-                    $assert_clauses = \Psalm\Type\Algebra::getFormula(
+                    $assert_clauses = FormulaGenerator::getFormula(
                         \spl_object_id($arg_value),
                         \spl_object_id($arg_value),
                         $arg_value,
@@ -711,18 +772,18 @@ class CallAnalyzer
                     );
                 }
 
-                $simplified_clauses = \Psalm\Type\Algebra::simplifyCNF(
+                $simplified_clauses = \Psalm\Internal\Algebra::simplifyCNF(
                     array_merge($context->clauses, $assert_clauses)
                 );
 
-                $assert_type_assertions = \Psalm\Type\Algebra::getTruthsFromFormula(
+                $assert_type_assertions = \Psalm\Internal\Algebra::getTruthsFromFormula(
                     $simplified_clauses
                 );
 
                 $type_assertions = array_merge($type_assertions, $assert_type_assertions);
             } elseif ($arg_value && $assertion->rule === [['falsy']]) {
-                $assert_clauses = \Psalm\Type\Algebra::negateFormula(
-                    \Psalm\Type\Algebra::getFormula(
+                $assert_clauses = \Psalm\Internal\Algebra::negateFormula(
+                    FormulaGenerator::getFormula(
                         \spl_object_id($arg_value),
                         \spl_object_id($arg_value),
                         $arg_value,
@@ -732,11 +793,11 @@ class CallAnalyzer
                     )
                 );
 
-                $simplified_clauses = \Psalm\Type\Algebra::simplifyCNF(
+                $simplified_clauses = \Psalm\Internal\Algebra::simplifyCNF(
                     array_merge($context->clauses, $assert_clauses)
                 );
 
-                $assert_type_assertions = \Psalm\Type\Algebra::getTruthsFromFormula(
+                $assert_type_assertions = \Psalm\Internal\Algebra::getTruthsFromFormula(
                     $simplified_clauses
                 );
 
@@ -751,17 +812,27 @@ class CallAnalyzer
         }
 
         if ($type_assertions) {
+            $template_type_map = array_map(
+                function ($type_map) {
+                    return array_map(
+                        function ($bound) {
+                            return $bound->type;
+                        },
+                        $type_map
+                    );
+                },
+                $inferred_upper_bounds
+            );
+
             foreach (($statements_analyzer->getTemplateTypeMap() ?: []) as $template_name => $map) {
-                foreach ($map as $ref => [$type]) {
-                    $template_type_map[$template_name][$ref] = [
-                        new Type\Union([
-                            new Type\Atomic\TTemplateParam(
-                                $template_name,
-                                $type,
-                                $ref
-                            )
-                        ])
-                    ];
+                foreach ($map as $ref => $type) {
+                    $template_type_map[$template_name][$ref] = new Type\Union([
+                        new Type\Atomic\TTemplateParam(
+                            $template_name,
+                            $type,
+                            $ref
+                        )
+                    ]);
                 }
             }
 
@@ -806,6 +877,16 @@ class CallAnalyzer
                         );
                     }
 
+                    if ($template_type_map) {
+                        $readonly_template_result = new TemplateResult($template_type_map, $template_type_map);
+
+                         \Psalm\Internal\Type\TemplateInferredTypeReplacer::replace(
+                             $op_vars_in_scope[$var_id],
+                             $readonly_template_result,
+                             $codebase
+                         );
+                    }
+
                     $op_vars_in_scope[$var_id]->from_docblock = true;
 
                     foreach ($op_vars_in_scope[$var_id]->getAtomicTypes() as $changed_atomic_type) {
@@ -834,9 +915,10 @@ class CallAnalyzer
     ) : void {
         if ($template_result->upper_bounds && $template_result->lower_bounds) {
             foreach ($template_result->lower_bounds as $template_name => $defining_map) {
-                foreach ($defining_map as $defining_id => [$lower_bound_type]) {
+                foreach ($defining_map as $defining_id => $lower_bound) {
                     if (isset($template_result->upper_bounds[$template_name][$defining_id])) {
-                        $upper_bound_type = $template_result->upper_bounds[$template_name][$defining_id][0];
+                        $upper_bound_type = $template_result->upper_bounds[$template_name][$defining_id]->type;
+                        $lower_bound_type = $lower_bound->type;
 
                         $union_comparison_result = new \Psalm\Internal\Type\Comparator\TypeComparisonResult();
 
@@ -906,7 +988,9 @@ class CallAnalyzer
                             }
                         }
                     } else {
-                        $template_result->upper_bounds[$template_name][$defining_id][0] = clone $lower_bound_type;
+                        $template_result->upper_bounds[$template_name][$defining_id] = new TemplateBound(
+                            clone $lower_bound->type
+                        );
                     }
                 }
             }

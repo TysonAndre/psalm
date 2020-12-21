@@ -17,7 +17,7 @@ class FunctionReturnTypeProvider
      *   array<\Closure(
      *     StatementsSource,
      *     non-empty-string,
-     *     array<PhpParser\Node\Arg>,
+     *     list<PhpParser\Node\Arg>,
      *     Context,
      *     CodeLocation
      *   ) : ?Type\Union>
@@ -48,6 +48,7 @@ class FunctionReturnTypeProvider
         $this->registerClass(ReturnTypeProvider\IteratorToArrayReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ParseUrlReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\StrReplaceReturnTypeProvider::class);
+        $this->registerClass(ReturnTypeProvider\StrTrReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\VersionCompareReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\MktimeReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ExplodeReturnTypeProvider::class);
@@ -75,7 +76,7 @@ class FunctionReturnTypeProvider
      * @param \Closure(
      *     StatementsSource,
      *     non-empty-string,
-     *     array<PhpParser\Node\Arg>,
+     *     list<PhpParser\Node\Arg>,
      *     Context,
      *     CodeLocation
      *   ) : ?Type\Union $c
@@ -93,7 +94,7 @@ class FunctionReturnTypeProvider
 
     /**
      * @param  non-empty-string $function_id
-     * @param  array<PhpParser\Node\Arg>  $call_args
+     * @param  list<PhpParser\Node\Arg>  $call_args
      *
      */
     public function getReturnType(

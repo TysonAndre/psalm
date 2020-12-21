@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `object` type
+ */
 class TObject extends \Psalm\Type\Atomic
 {
     public function __toString(): string
@@ -29,7 +32,7 @@ class TObject extends \Psalm\Type\Atomic
             : null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return true;
     }

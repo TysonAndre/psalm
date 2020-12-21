@@ -10,6 +10,7 @@ use Psalm\Config\IssueHandler;
 use Psalm\Config\ProjectFileFilter;
 use Psalm\Config\TaintAnalysisFileFilter;
 use Psalm\Exception\ConfigException;
+use Psalm\Exception\ConfigNotFoundException;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
 use Psalm\Internal\Analyzer\FileAnalyzer;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
@@ -85,6 +86,11 @@ use const LIBXML_NONET;
 use const PHP_EOL;
 use const SCANDIR_SORT_NONE;
 use function array_map;
+use function rtrim;
+use function str_replace;
+use function array_shift;
+use function array_pad;
+use function implode;
 
 /**
  * @psalm-suppress PropertyNotSetInConstructor
@@ -256,6 +262,11 @@ class Config
     /**
      * @var array<string, string>
      */
+    private $preloaded_stub_files = [];
+
+    /**
+     * @var array<string, string>
+     */
     private $stub_files = [];
 
     /**
@@ -422,6 +433,26 @@ class Config
      * @var bool
      */
     public $resolve_from_config_file = true;
+
+    /**
+     * @var bool
+     */
+    public $restrict_return_types = false;
+
+    /**
+     * @var bool
+     */
+    public $limit_method_complexity = false;
+
+    /**
+     * @var int
+     */
+    public $max_graph_size = 200;
+
+    /**
+     * @var int
+     */
+    public $max_avg_path_length = 70;
 
     /**
      * @var string[]
@@ -628,17 +659,12 @@ class Config
      * @throws ConfigException if a config path is not found
      *
      */
-    public static function getConfigForPath(string $path, string $current_dir, string $output_format): Config
+    public static function getConfigForPath(string $path, string $current_dir): Config
     {
         $config_path = self::locateConfigFile($path);
 
         if (!$config_path) {
-            if (in_array($output_format, [\Psalm\Report::TYPE_CONSOLE, \Psalm\Report::TYPE_PHP_STORM])) {
-                echo 'Could not locate a config XML file in path ' . $path
-                    . '. Have you run \'psalm --init\' ?' . PHP_EOL;
-                exit(1);
-            }
-            throw new ConfigException('Config not found for path ' . $path);
+            throw new ConfigNotFoundException('Config not found for path ' . $path);
         }
 
         return self::loadFromXMLFile($config_path, $current_dir);
@@ -655,7 +681,7 @@ class Config
         $dir_path = realpath($path);
 
         if ($dir_path === false) {
-            throw new ConfigException('Config not found for path ' . $path);
+            throw new ConfigNotFoundException('Config not found for path ' . $path);
         }
 
         if (!is_dir($dir_path)) {
@@ -832,6 +858,8 @@ class Config
             'allowNamedArgumentCalls' => 'allow_named_arg_calls',
             'findUnusedPsalmSuppress' => 'find_unused_psalm_suppress',
             'reportInfo' => 'report_info',
+            'restrictReturnTypes' => 'restrict_return_types',
+            'limitMethodComplexity' => 'limit_method_complexity',
         ];
 
         foreach ($booleanAttributes as $xmlName => $internalName) {
@@ -1033,7 +1061,17 @@ class Config
                     );
                 }
 
-                $config->addStubFile($file_path);
+                if (isset($stub_file['preloadClasses'])) {
+                    $preload_classes = (string)$stub_file['preloadClasses'];
+
+                    if ($preload_classes === 'true' || $preload_classes === '1') {
+                        $config->addPreloadedStubFile($file_path);
+                    } else {
+                        $config->addStubFile($file_path);
+                    }
+                } else {
+                    $config->addStubFile($file_path);
+                }
             }
         }
 
@@ -1298,9 +1336,42 @@ class Config
         return $fq_class_name;
     }
 
-    public function shortenFileName(string $file_name): string
+    public function shortenFileName(string $to): string
     {
-        return preg_replace('/^' . preg_quote($this->base_dir, '/') . '/', '', $file_name);
+        if (!is_file($to)) {
+            return preg_replace('/^' . preg_quote($this->base_dir, '/') . '/', '', $to);
+        }
+
+        $from = $this->base_dir;
+
+        // some compatibility fixes for Windows paths
+        $from = is_dir($from) ? rtrim($from, '\/') . '/' : $from;
+        $to   = is_dir($to)   ? rtrim($to, '\/') . '/'   : $to;
+        $from = str_replace('\\', '/', $from);
+        $to   = str_replace('\\', '/', $to);
+
+        $from     = explode('/', $from);
+        $to       = explode('/', $to);
+        $relPath  = $to;
+
+        foreach ($from as $depth => $dir) {
+            // find first non-matching dir
+            if ($dir === $to[$depth]) {
+                // ignore this directory
+                array_shift($relPath);
+            } else {
+                // get number of remaining dirs to $from
+                $remaining = count($from) - $depth;
+                if ($remaining > 1) {
+                    // add traversals up to first matching dir
+                    $padLength = (count($relPath) + $remaining - 1) * -1;
+                    $relPath = array_pad($relPath, $padLength, '..');
+                    break;
+                }
+            }
+        }
+
+        return implode('/', $relPath);
     }
 
     public function reportIssueInFile(string $issue_type, string $file_path): bool
@@ -1449,6 +1520,10 @@ class Config
             return $stripped_issue_type;
         }
 
+        if (strpos($issue_type, 'Tainted') === 0) {
+            return 'TaintedInput';
+        }
+
         if (preg_match('/^(False|Null)[A-Z]/', $issue_type) && !strpos($issue_type, 'Reference')) {
             return preg_replace('/^(False|Null)/', 'Invalid', $issue_type);
         }
@@ -1485,12 +1560,24 @@ class Config
             return 'UnusedParam';
         }
 
+        if ($issue_type === 'UnusedConstructor') {
+            return 'UnusedMethod';
+        }
+
         if ($issue_type === 'StringIncrement') {
             return 'InvalidOperand';
         }
 
         if ($issue_type === 'InvalidLiteralArgument') {
             return 'InvalidArgument';
+        }
+
+        if ($issue_type === 'RedundantConditionGivenDocblockType') {
+            return 'RedundantCondition';
+        }
+
+        if ($issue_type === 'RedundantCastGivenDocblockType') {
+            return 'RedundantCast';
         }
 
         if ($issue_type === 'TraitMethodSignatureMismatch') {
@@ -1665,6 +1752,46 @@ class Config
         return $this->mock_classes;
     }
 
+    public function visitPreloadedStubFiles(Codebase $codebase, ?Progress $progress = null): void
+    {
+        if ($progress === null) {
+            $progress = new VoidProgress();
+        }
+
+        $core_generic_files = [];
+
+        if (\PHP_VERSION_ID < 80000 && $codebase->php_major_version >= 8) {
+            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php80.php';
+
+            if (!file_exists($stringable_path)) {
+                throw new \UnexpectedValueException('Cannot locate PHP 8.0 classes');
+            }
+
+            $core_generic_files[] = $stringable_path;
+        }
+
+        $stub_files = array_merge($core_generic_files, $this->preloaded_stub_files);
+
+        if (!$stub_files) {
+            return;
+        }
+
+        foreach ($stub_files as $file_path) {
+            $file_path = \str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file_path);
+            $codebase->scanner->addFileToDeepScan($file_path);
+        }
+
+        $progress->debug('Registering preloaded stub files' . "\n");
+
+        $codebase->register_stub_files = true;
+
+        $codebase->scanFiles();
+
+        $codebase->register_stub_files = false;
+
+        $progress->debug('Finished registering preloaded stub files' . "\n");
+    }
+
     public function visitStubFiles(Codebase $codebase, ?Progress $progress = null): void
     {
         if ($progress === null) {
@@ -1696,17 +1823,57 @@ class Config
 
         $core_generic_files = [$generic_stubs_path, $generic_classes_path, $immutable_classes_path];
 
+        if (\PHP_VERSION_ID >= 80000 && $codebase->php_major_version >= 8) {
+            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php80.php';
+
+            if (!file_exists($stringable_path)) {
+                throw new \UnexpectedValueException('Cannot locate PHP 8.0 classes');
+            }
+
+            $core_generic_files[] = $stringable_path;
+        }
+
+        if (\extension_loaded('PDO')) {
+            $ext_pdo_path = dirname(__DIR__, 2) . '/stubs/pdo.php';
+
+            if (!file_exists($ext_pdo_path)) {
+                throw new \UnexpectedValueException('Cannot locate pdo classes');
+            }
+
+            $core_generic_files[] = $ext_pdo_path;
+        }
+
+        if (\extension_loaded('soap')) {
+            $ext_pdo_path = dirname(__DIR__, 2) . '/stubs/soap.php';
+
+            if (!file_exists($ext_pdo_path)) {
+                throw new \UnexpectedValueException('Cannot locate soap classes');
+            }
+
+            $core_generic_files[] = $ext_pdo_path;
+        }
+
         if (\extension_loaded('ds')) {
             $ext_ds_path = dirname(__DIR__, 2) . '/stubs/ext-ds.php';
 
             if (!file_exists($ext_ds_path)) {
-                throw new \UnexpectedValueException('Cannot locate core generic classes');
+                throw new \UnexpectedValueException('Cannot locate ext-ds classes');
             }
 
             $core_generic_files[] = $ext_ds_path;
         }
 
         $stub_files = array_merge($core_generic_files, $this->stub_files);
+
+        if ($this->load_xdebug_stub) {
+            $xdebug_stub_path = dirname(__DIR__, 2) . '/stubs/Xdebug.php';
+
+            if (!file_exists($xdebug_stub_path)) {
+                throw new \UnexpectedValueException('Cannot locate Xdebug stub');
+            }
+
+            $stub_files[] = $xdebug_stub_path;
+        }
 
         $phpstorm_meta_path = $this->base_dir . DIRECTORY_SEPARATOR . '.phpstorm.meta.php';
 
@@ -1722,16 +1889,6 @@ class Config
                     }
                 }
             }
-        }
-
-        if ($this->load_xdebug_stub) {
-            $xdebug_stub_path = dirname(__DIR__, 2) . '/stubs/Xdebug.php';
-
-            if (!file_exists($xdebug_stub_path)) {
-                throw new \UnexpectedValueException('Cannot locate XDebug stub');
-            }
-
-            $stub_files[] = $xdebug_stub_path;
         }
 
         foreach ($stub_files as $file_path) {
@@ -1969,6 +2126,11 @@ class Config
     public function getStubFiles(): array
     {
         return $this->stub_files;
+    }
+
+    public function addPreloadedStubFile(string $stub_file): void
+    {
+        $this->preloaded_stub_files[$stub_file] = $stub_file;
     }
 
     public function getPhpVersion(): ?string

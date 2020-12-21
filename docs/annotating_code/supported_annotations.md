@@ -6,23 +6,23 @@ Psalm supports a wide range of docblock annotations.
 
 Psalm uses the following PHPDoc tags to understand your code:
 
-- [`@var`](https://docs.phpdoc.org/latest/references/phpdoc/tags/var.html)
-  Used for specifying the types of properties and variables
-- [`@return`](https://docs.phpdoc.org/latest/references/phpdoc/tags/return.html)
+- [`@var`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/var.html)
+  Used for specifying the types of properties and variables@
+- [`@return`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/return.html)
   Used for specifying the return types of functions, methods and closures
-- [`@param`](https://docs.phpdoc.org/latest/references/phpdoc/tags/param.html)
+- [`@param`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/param.html)
   Used for specifying types of parameters passed to functions, methods and closures
-- [`@property`](https://docs.phpdoc.org/latest/references/phpdoc/tags/property.html)
+- [`@property`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/property.html)
   Used to specify what properties can be accessed on an object that uses `__get` and `__set`
-- [`@property-read`](https://docs.phpdoc.org/latest/references/phpdoc/tags/property-read.html)
+- [`@property-read`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/property-read.html)
   Used to specify what properties can be read on object that uses `__get`
-- [`@property-write`](https://docs.phpdoc.org/latest/references/phpdoc/tags/property-write.html)
+- [`@property-write`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/property-write.html)
   Used to specify what properties can be written on object that uses `__set`
-- [`@method`](https://docs.phpdoc.org/latest/references/phpdoc/tags/method.html)
+- [`@method`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/method.html)
   Used to specify which magic methods are available on object that uses `__call`.
-- [`@deprecated`](https://docs.phpdoc.org/latest/references/phpdoc/tags/deprecated.html)
+- [`@deprecated`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/deprecated.html)
   Used to mark functions, methods, classes and interfaces as being deprecated
-- [`@internal`](https://docs.phpdoc.org/latest/references/phpdoc/tags/internal.html)
+- [`@internal`](https://docs.phpdoc.org/latest/guide/references/phpdoc/tags/internal.html)
    used to mark classes, functions and properties that are internal to an application or library.
 
 ### Off-label usage of the `@var` tag
@@ -51,7 +51,7 @@ function bat(): string {
 
 There are a number of custom tags that determine how Psalm treats your code.
 
-### `@param-out`
+### `@param-out`, `@psalm-param-out`
 
 This is used to specify that a by-ref type is different from the one that entered. In the function below the first param can be null, but once the function has executed the by-ref value is not null.
 
@@ -68,7 +68,7 @@ function addFoo(?string &$s) : void {
 }
 ```
 
-### `@psalm-var`, `@psalm-param`, `@psalm-return`, `@psalm-property`, `@psalm-property-read`, `@psalm-property-write`
+### `@psalm-var`, `@psalm-param`, `@psalm-return`, `@psalm-property`, `@psalm-property-read`, `@psalm-property-write`, `@psalm-method`
 
 When specifying types in a format not supported by phpDocumentor ([but supported by Psalm](#type-syntax)) you may wish to prepend `@psalm-` to the PHPDoc tag, so as to avoid confusing your IDE. If a `@psalm`-prefixed tag is given, Psalm will use it in place of its non-prefixed counterpart.
 
@@ -475,8 +475,40 @@ class User {
 }
 ```
 
+### `@psalm-require-extends`
+
+The @psalm-require-extends-annotation allows you to define a requirements that a trait imposes on the using class.
+
+```php
+abstract class DatabaseModel {
+  // methods, properties, etc.
+}
+
+/**
+ * @psalm-require-extends DatabaseModel
+ */
+trait SoftDeletingTrait {
+  // useful but scoped functionality, that depends on methods/properties from DatabaseModel
+}
+
+
+class MyModel extends DatabaseModel {
+  // valid
+  use SoftDeletingTrait;
+}
+
+class NormalClass {
+  // triggers an error
+  use SoftDeletingTrait;
+}
+```
+
+### `@psalm-require-implements`
+
+Behaves the same way as `@psalm-require-extends`, but for interfaces.
+
 ## Type Syntax
 
-Psalm supports PHPDoc’s [type syntax](https://docs.phpdoc.org/latest/guides/types.html), and also the [proposed PHPDoc PSR type syntax](https://github.com/php-fig/fig-standards/blob/master/proposed/phpdoc.md#appendix-a-types).
+Psalm supports PHPDoc’s [type syntax](https://docs.phpdoc.org/latest/guide/guides/types.html), and also the [proposed PHPDoc PSR type syntax](https://github.com/php-fig/fig-standards/blob/master/proposed/phpdoc.md#appendix-a-types).
 
 A detailed write-up is found in [Typing in Psalm](typing_in_psalm.md)

@@ -7,10 +7,18 @@ use Psalm\Type\Atomic;
 use function substr;
 use function array_merge;
 
+/**
+ * denotes the `iterable` type(which can also result from an `is_iterable` check).
+ */
 class TIterable extends Atomic
 {
     use HasIntersectionTrait;
     use GenericTrait;
+
+    /**
+     * @var array{\Psalm\Type\Union, \Psalm\Type\Union}
+     */
+    public $type_params;
 
     /**
      * @var string
@@ -27,14 +35,14 @@ class TIterable extends Atomic
      */
     public function __construct(array $type_params = [])
     {
-        if ($type_params) {
+        if (count($type_params) === 2) {
             $this->has_docblock_params = true;
             $this->type_params = $type_params;
         } else {
             $this->type_params = [\Psalm\Type::getMixed(), \Psalm\Type::getMixed()];
         }
     }
-    
+
     public function getKey(bool $include_extra = true): string
     {
         if ($include_extra && $this->extra_types) {
@@ -86,7 +94,7 @@ class TIterable extends Atomic
             : null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return $this->type_params[0]->isMixed() && $this->type_params[1]->isMixed();
     }

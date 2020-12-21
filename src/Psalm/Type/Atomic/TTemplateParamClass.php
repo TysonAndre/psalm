@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes a `class-string` corresponding to a template parameter previously specified in a `@template` tag.
+ */
 class TTemplateParamClass extends TClassString
 {
     /**
@@ -58,7 +61,7 @@ class TTemplateParamClass extends TClassString
         return 'string';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

@@ -72,7 +72,7 @@ class ForeachAnalyzer
             } catch (DocblockParseException $e) {
                 if (IssueBuffer::accepts(
                     new InvalidDocblock(
-                        (string)$e->getMessage(),
+                        $e->getMessage(),
                         new CodeLocation($statements_analyzer, $stmt)
                     )
                 )) {
@@ -414,12 +414,22 @@ class ForeachAnalyzer
                     }
                     $iterator_atomic_type = $iterator_atomic_type->getGenericArrayType();
                 } elseif ($iterator_atomic_type instanceof Type\Atomic\TList) {
+                    $list_var_id = ExpressionIdentifier::getArrayVarId(
+                        $stmt->expr,
+                        $statements_analyzer->getFQCLN(),
+                        $statements_analyzer
+                    );
+
                     if (!$iterator_atomic_type instanceof Type\Atomic\TNonEmptyList) {
                         $always_non_empty_array = false;
                     }
 
                     $iterator_atomic_type = new Type\Atomic\TArray([
-                        Type::getInt(),
+                        $list_var_id
+                            ? new Type\Union([
+                                new Type\Atomic\TDependentListKey($list_var_id)
+                            ])
+                            : Type::getInt(),
                         $iterator_atomic_type->type_param
                     ]);
                 } elseif (!$iterator_atomic_type instanceof Type\Atomic\TNonEmptyArray) {
@@ -447,14 +457,6 @@ class ForeachAnalyzer
                 } else {
                     $key_type = Type::combineUnionTypes($key_type, $key_type_part);
                 }
-
-                ArrayFetchAnalyzer::taintArrayFetch(
-                    $statements_analyzer,
-                    $stmt->expr,
-                    null,
-                    $key_type,
-                    Type::getMixed()
-                );
 
                 $has_valid_iterator = true;
                 continue;
@@ -839,11 +841,11 @@ class ForeachAnalyzer
                                     // The collection might be an iterator, in which case
                                     // we want to call the iterator function
                                     /** @psalm-suppress PossiblyUndefinedStringArrayOffset */
-                                    if (!isset($generic_storage->template_type_extends['Traversable'])
+                                    if (!isset($generic_storage->template_extended_params['Traversable'])
                                         || ($generic_storage
-                                                ->template_type_extends['Traversable']['TKey']->isMixed()
+                                                ->template_extended_params['Traversable']['TKey']->isMixed()
                                             && $generic_storage
-                                                ->template_type_extends['Traversable']['TValue']->isMixed())
+                                                ->template_extended_params['Traversable']['TValue']->isMixed())
                                     ) {
                                         self::handleIterable(
                                             $statements_analyzer,
@@ -1000,7 +1002,7 @@ class ForeachAnalyzer
                 $iterator_atomic_type->value
             );
 
-            if (!isset($generic_storage->template_type_extends['Traversable'])) {
+            if (!isset($generic_storage->template_extended_params['Traversable'])) {
                 return;
             }
 
@@ -1013,13 +1015,9 @@ class ForeachAnalyzer
                     ? $iterator_atomic_type->type_params
                     : array_values(
                         array_map(
-                            /** @param array<string, array{0:Type\Union}> $arr */
+                            /** @param array<string, Type\Union> $arr */
                             function (array $arr) use ($iterator_atomic_type) : Type\Union {
-                                if (isset($arr[$iterator_atomic_type->value])) {
-                                    return $arr[$iterator_atomic_type->value][0];
-                                }
-
-                                return Type::getMixed();
+                                return $arr[$iterator_atomic_type->value] ?? Type::getMixed();
                             },
                             $generic_storage->template_types
                         )
@@ -1032,7 +1030,7 @@ class ForeachAnalyzer
                 'TKey',
                 'Traversable',
                 $generic_storage->name,
-                $generic_storage->template_type_extends,
+                $generic_storage->template_extended_params,
                 $generic_storage->template_types,
                 $passed_type_params
             );
@@ -1041,7 +1039,7 @@ class ForeachAnalyzer
                 'TValue',
                 'Traversable',
                 $generic_storage->name,
-                $generic_storage->template_type_extends,
+                $generic_storage->template_extended_params,
                 $generic_storage->template_types,
                 $passed_type_params
             );
@@ -1103,15 +1101,15 @@ class ForeachAnalyzer
     }
 
     /**
-     * @param  array<string, array<int|string, Type\Union>>  $template_type_extends
-     * @param  array<string, array<string, array{Type\Union}>>  $class_template_types
+     * @param  array<string, array<string, Type\Union>>  $template_extended_params
+     * @param  array<string, array<string, Type\Union>>  $class_template_types
      * @param  array<int, Type\Union> $calling_type_params
      */
     private static function getExtendedType(
         string $template_name,
         string $template_class,
         string $calling_class,
-        array $template_type_extends,
+        array $template_extended_params,
         ?array $class_template_types = null,
         ?array $calling_type_params = null
     ): ?Type\Union {
@@ -1127,8 +1125,8 @@ class ForeachAnalyzer
             return null;
         }
 
-        if (isset($template_type_extends[$template_class][$template_name])) {
-            $extended_type = $template_type_extends[$template_class][$template_name];
+        if (isset($template_extended_params[$template_class][$template_name])) {
+            $extended_type = $template_extended_params[$template_class][$template_name];
 
             $return_type = null;
 
@@ -1150,7 +1148,7 @@ class ForeachAnalyzer
                     $extended_atomic_type->param_name,
                     $extended_atomic_type->defining_class,
                     $calling_class,
-                    $template_type_extends,
+                    $template_extended_params,
                     $class_template_types,
                     $calling_type_params
                 );

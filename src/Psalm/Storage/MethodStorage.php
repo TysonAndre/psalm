@@ -23,6 +23,11 @@ class MethodStorage extends FunctionLikeStorage
     /**
      * @var bool
      */
+    public $final_from_docblock = false;
+
+    /**
+     * @var bool
+     */
     public $abstract = false;
 
     /**
@@ -41,7 +46,7 @@ class MethodStorage extends FunctionLikeStorage
     public $inheritdoc = false;
 
     /**
-     * @var bool
+     * @var ?bool
      */
     public $inherited_return_type = false;
 
@@ -58,7 +63,17 @@ class MethodStorage extends FunctionLikeStorage
     /**
      * @var bool
      */
+    public $has_docblock_return_type = false;
+
+    /**
+     * @var bool
+     */
     public $external_mutation_free = false;
+
+    /**
+     * @var bool
+     */
+    public $immutable = false;
 
     /**
      * @var bool
@@ -74,4 +89,9 @@ class MethodStorage extends FunctionLikeStorage
      * @var Type\Union|null
      */
     public $self_out_type = null;
+
+    /**
+     * @var bool
+     */
+    public $stubbed = false;
 }

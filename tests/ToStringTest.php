@@ -169,6 +169,21 @@ class ToStringTest extends TestCase
                 [],
                 '8.0'
             ],
+            'implicitStringable' => [
+                '<?php
+                    function foo(Stringable $s): void {}
+
+                    class Bar {
+                        public function __toString() {
+                            return "foo";
+                        }
+                    }
+
+                    foo(new Bar());',
+                [],
+                [],
+                '8.0',
+            ],
         ];
     }
 
@@ -203,6 +218,19 @@ class ToStringTest extends TestCase
                         function __toString() { }
                     }',
                 'error_message' => 'InvalidToString',
+            ],
+            'invalidInferredToStringReturnTypeWithTruePhp8' => [
+                '<?php
+                    class A {
+                        function __toString() {
+                            /** @psalm-suppress InvalidReturnStatement */
+                            return true;
+                        }
+                    }',
+                'error_message' => 'InvalidToString',
+                [],
+                false,
+                '8.0'
             ],
             'implicitCastWithStrictTypes' => [
                 '<?php declare(strict_types=1);
@@ -360,6 +388,25 @@ class ToStringTest extends TestCase
                     /** @psalm-suppress UndefinedFunction */
                     fora((string) $address);',
                 'error_message' => 'UndefinedGlobalVariable',
+            ],
+            'implicitStringableDisallowed' => [
+                '<?php
+                    interface Stringable {
+                        function __toString() {}
+                    }
+                    function foo(Stringable $s): void {}
+
+                    class Bar {
+                        public function __toString() {
+                            return "foo";
+                        }
+                    }
+
+                    foo(new Bar());',
+                'error_message' => 'InvalidArgument',
+                [],
+                false,
+                '7.4',
             ],
         ];
     }

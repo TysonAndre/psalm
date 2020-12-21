@@ -1,5 +1,5 @@
 <?php
-namespace Psalm\Type;
+namespace Psalm\Internal;
 
 use function array_filter;
 use function array_keys;
@@ -10,13 +10,7 @@ use function array_unique;
 use function array_values;
 use function count;
 use function in_array;
-use PhpParser;
-use Psalm\Codebase;
 use Psalm\Exception\ComplicatedExpressionException;
-use Psalm\FileSource;
-use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
-use Psalm\Internal\Clause;
-use function strlen;
 use function substr;
 
 class Algebra
@@ -78,341 +72,6 @@ class Algebra
     }
 
     /**
-     * @return list<Clause>
-     */
-    public static function getFormula(
-        int $conditional_object_id,
-        int $creating_object_id,
-        PhpParser\Node\Expr $conditional,
-        ?string $this_class_name,
-        FileSource $source,
-        ?Codebase $codebase = null,
-        bool $inside_negation = false,
-        bool $cache = true
-    ): array {
-        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd ||
-            $conditional instanceof PhpParser\Node\Expr\BinaryOp\LogicalAnd
-        ) {
-            $left_assertions = self::getFormula(
-                $conditional_object_id,
-                \spl_object_id($conditional->left),
-                $conditional->left,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
-
-            $right_assertions = self::getFormula(
-                $conditional_object_id,
-                \spl_object_id($conditional->right),
-                $conditional->right,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
-
-            return array_merge(
-                $left_assertions,
-                $right_assertions
-            );
-        }
-
-        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr ||
-            $conditional instanceof PhpParser\Node\Expr\BinaryOp\LogicalOr
-        ) {
-            $left_clauses = self::getFormula(
-                $conditional_object_id,
-                \spl_object_id($conditional->left),
-                $conditional->left,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
-
-            $right_clauses = self::getFormula(
-                $conditional_object_id,
-                \spl_object_id($conditional->right),
-                $conditional->right,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
-
-            return self::combineOredClauses($left_clauses, $right_clauses, $conditional_object_id);
-        }
-
-        if ($conditional instanceof PhpParser\Node\Expr\BooleanNot) {
-            if ($conditional->expr instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr) {
-                $and_expr = new PhpParser\Node\Expr\BinaryOp\BooleanAnd(
-                    new PhpParser\Node\Expr\BooleanNot(
-                        $conditional->expr->left,
-                        $conditional->getAttributes()
-                    ),
-                    new PhpParser\Node\Expr\BooleanNot(
-                        $conditional->expr->right,
-                        $conditional->getAttributes()
-                    ),
-                    $conditional->expr->getAttributes()
-                );
-
-                return self::getFormula(
-                    $conditional_object_id,
-                    $conditional_object_id,
-                    $and_expr,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    $inside_negation,
-                    false
-                );
-            }
-
-            if ($conditional->expr instanceof PhpParser\Node\Expr\Isset_
-                && count($conditional->expr->vars) > 1
-            ) {
-                $assertions = null;
-
-                if ($cache && $source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
-                    $assertions = $source->node_data->getAssertions($conditional->expr);
-                }
-
-                if ($assertions === null) {
-                    $assertions = AssertionFinder::scrapeAssertions(
-                        $conditional->expr,
-                        $this_class_name,
-                        $source,
-                        $codebase,
-                        $inside_negation,
-                        $cache
-                    );
-
-                    if ($cache && $source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
-                        $source->node_data->setAssertions($conditional->expr, $assertions);
-                    }
-                }
-
-                $clauses = [];
-
-                foreach ($assertions as $var => $anded_types) {
-                    $redefined = false;
-
-                    if ($var[0] === '=') {
-                        /** @var string */
-                        $var = substr($var, 1);
-                        $redefined = true;
-                    }
-
-                    foreach ($anded_types as $orred_types) {
-                        $clauses[] = new Clause(
-                            [$var => $orred_types],
-                            $conditional_object_id,
-                            \spl_object_id($conditional->expr),
-                            false,
-                            true,
-                            $orred_types[0][0] === '='
-                                || $orred_types[0][0] === '~'
-                                || (strlen($orred_types[0]) > 1
-                                    && ($orred_types[0][1] === '='
-                                        || $orred_types[0][1] === '~')),
-                            $redefined ? [$var => true] : []
-                        );
-                    }
-                }
-
-                return self::negateFormula($clauses);
-            }
-
-            if ($conditional->expr instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd) {
-                $and_expr = new PhpParser\Node\Expr\BinaryOp\BooleanOr(
-                    new PhpParser\Node\Expr\BooleanNot(
-                        $conditional->expr->left,
-                        $conditional->getAttributes()
-                    ),
-                    new PhpParser\Node\Expr\BooleanNot(
-                        $conditional->expr->right,
-                        $conditional->getAttributes()
-                    ),
-                    $conditional->expr->getAttributes()
-                );
-
-                return self::getFormula(
-                    $conditional_object_id,
-                    \spl_object_id($conditional->expr),
-                    $and_expr,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    $inside_negation,
-                    false
-                );
-            }
-
-            return self::negateFormula(
-                self::getFormula(
-                    $conditional_object_id,
-                    \spl_object_id($conditional->expr),
-                    $conditional->expr,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    !$inside_negation
-                )
-            );
-        }
-
-        if ($conditional instanceof PhpParser\Node\Expr\BinaryOp\Identical
-            || $conditional instanceof PhpParser\Node\Expr\BinaryOp\Equal
-        ) {
-            $false_pos = AssertionFinder::hasFalseVariable($conditional);
-            $true_pos = AssertionFinder::hasTrueVariable($conditional);
-
-            if ($false_pos === AssertionFinder::ASSIGNMENT_TO_RIGHT
-                && ($conditional->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
-                    || $conditional->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr)
-            ) {
-                $inside_negation = !$inside_negation;
-
-                return self::getFormula(
-                    $conditional_object_id,
-                    \spl_object_id($conditional->left),
-                    $conditional->left,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    $inside_negation,
-                    $cache
-                );
-            }
-
-            if ($false_pos === AssertionFinder::ASSIGNMENT_TO_LEFT
-                && ($conditional->right instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
-                    || $conditional->right instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr)
-            ) {
-                $inside_negation = !$inside_negation;
-
-                return self::getFormula(
-                    $conditional_object_id,
-                    \spl_object_id($conditional->right),
-                    $conditional->right,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    $inside_negation,
-                    $cache
-                );
-            }
-
-            if ($true_pos === AssertionFinder::ASSIGNMENT_TO_RIGHT
-                && ($conditional->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
-                    || $conditional->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr)
-            ) {
-                return self::getFormula(
-                    $conditional_object_id,
-                    \spl_object_id($conditional->left),
-                    $conditional->left,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    $inside_negation,
-                    $cache
-                );
-            }
-
-            if ($true_pos === AssertionFinder::ASSIGNMENT_TO_LEFT
-                && ($conditional->right instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd
-                    || $conditional->right instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr)
-            ) {
-                return self::getFormula(
-                    $conditional_object_id,
-                    \spl_object_id($conditional->right),
-                    $conditional->right,
-                    $this_class_name,
-                    $source,
-                    $codebase,
-                    $inside_negation,
-                    $cache
-                );
-            }
-        }
-
-        if ($conditional instanceof PhpParser\Node\Expr\Cast\Bool_) {
-            return self::getFormula(
-                $conditional_object_id,
-                \spl_object_id($conditional->expr),
-                $conditional->expr,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
-        }
-
-        $assertions = null;
-
-        if ($cache && $source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
-            $assertions = $source->node_data->getAssertions($conditional);
-        }
-
-        if ($assertions === null) {
-            $assertions = AssertionFinder::scrapeAssertions(
-                $conditional,
-                $this_class_name,
-                $source,
-                $codebase,
-                $inside_negation,
-                $cache
-            );
-
-            if ($cache && $source instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
-                $source->node_data->setAssertions($conditional, $assertions);
-            }
-        }
-
-        if ($assertions) {
-            $clauses = [];
-
-            foreach ($assertions as $var => $anded_types) {
-                $redefined = false;
-
-                if ($var[0] === '=') {
-                    /** @var string */
-                    $var = substr($var, 1);
-                    $redefined = true;
-                }
-
-                foreach ($anded_types as $orred_types) {
-                    $clauses[] = new Clause(
-                        [$var => $orred_types],
-                        $conditional_object_id,
-                        $creating_object_id,
-                        false,
-                        true,
-                        $orred_types[0][0] === '='
-                            || $orred_types[0][0] === '~'
-                            || (strlen($orred_types[0]) > 1
-                                && ($orred_types[0][1] === '='
-                                    || $orred_types[0][1] === '~')),
-                        $redefined ? [$var => true] : []
-                    );
-                }
-            }
-
-            return $clauses;
-        }
-
-        return [new Clause([], $conditional_object_id, $creating_object_id, true)];
-    }
-
-    /**
      * This is a very simple simplification heuristic
      * for CNF formulae.
      *
@@ -437,12 +96,53 @@ class Algebra
         }
 
         // remove impossible types
-        foreach ($cloned_clauses as $clause_a) {
-            if (count($clause_a->possibilities) !== 1 || count(array_values($clause_a->possibilities)[0]) !== 1) {
+        foreach ($cloned_clauses as $clause_a_hash => $clause_a) {
+            if (!$clause_a->reconcilable || $clause_a->wedge) {
                 continue;
             }
 
-            if (!$clause_a->reconcilable || $clause_a->wedge) {
+            if (count($clause_a->possibilities) !== 1 || count(array_values($clause_a->possibilities)[0]) !== 1) {
+                foreach ($cloned_clauses as $clause_b) {
+                    if ($clause_a === $clause_b || !$clause_b->reconcilable || $clause_b->wedge) {
+                        continue;
+                    }
+
+                    if (array_keys($clause_a->possibilities) === array_keys($clause_b->possibilities)) {
+                        $opposing_keys = [];
+
+                        foreach ($clause_a->possibilities as $key => $a_possibilities) {
+                            $b_possibilities = $clause_b->possibilities[$key];
+
+                            if ($a_possibilities === $b_possibilities) {
+                                continue;
+                            }
+
+                            if (count($a_possibilities) === 1 && count($b_possibilities) === 1) {
+                                if ($a_possibilities[0] === '!' . $b_possibilities[0]
+                                    || $b_possibilities[0] === '!' . $a_possibilities[0]
+                                ) {
+                                    $opposing_keys[] = $key;
+                                    continue;
+                                }
+                            }
+
+                            continue 2;
+                        }
+
+                        if (count($opposing_keys) === 1) {
+                            unset($cloned_clauses[$clause_a_hash]);
+
+                            $clause_a = $clause_a->removePossibilities($opposing_keys[0]);
+
+                            if (!$clause_a) {
+                                continue 2;
+                            }
+
+                            $cloned_clauses[$clause_a->hash] = $clause_a;
+                        }
+                    }
+                }
+
                 continue;
             }
 
@@ -450,7 +150,7 @@ class Algebra
             $only_type = array_pop(array_values($clause_a->possibilities)[0]);
             $negated_clause_type = self::negateType($only_type);
 
-            foreach ($cloned_clauses as $clause_hash => $clause_b) {
+            foreach ($cloned_clauses as $clause_b_hash => $clause_b) {
                 if ($clause_a === $clause_b || !$clause_b->reconcilable || $clause_b->wedge) {
                     continue;
                 }
@@ -467,7 +167,7 @@ class Algebra
                         )
                     );
 
-                    unset($cloned_clauses[$clause_hash]);
+                    unset($cloned_clauses[$clause_b_hash]);
 
                     if (!$clause_var_possibilities) {
                         $updated_clause = $clause_b->removePossibilities($clause_var);
@@ -538,13 +238,17 @@ class Algebra
         }
 
         foreach ($clauses as $clause) {
-            if (!$clause->reconcilable) {
+            if (!$clause->reconcilable || count($clause->possibilities) !== 1) {
                 continue;
             }
 
             foreach ($clause->possibilities as $var => $possible_types) {
+                if ($var[0] === '*') {
+                    continue;
+                }
+
                 // if there's only one possible type, return it
-                if (count($clause->possibilities) === 1 && count($possible_types) === 1) {
+                if (count($possible_types) === 1) {
                     $possible_type = array_pop($possible_types);
 
                     if (isset($truths[$var]) && !isset($clause->redefined_vars[$var])) {
@@ -560,7 +264,7 @@ class Algebra
 
                         $active_truths[$var][count($truths[$var]) - 1] = [$possible_type];
                     }
-                } elseif (count($clause->possibilities) === 1) {
+                } else {
                     // if there's only one active clause, return all the non-negation clause members ORed together
                     $things_that_can_be_said = array_filter(
                         $possible_types,
@@ -644,9 +348,46 @@ class Algebra
                         $new_clause_possibilities = $grouped_clause->possibilities;
 
                         if (isset($grouped_clause->possibilities[$var])) {
-                            $new_clause_possibilities[$var][] = $impossible_type;
+                            $new_clause_possibilities[$var] = array_values(
+                                array_unique(
+                                    array_merge([$impossible_type], $new_clause_possibilities[$var])
+                                )
+                            );
+
+                            $removed_indexes = [];
+
+                            for ($i = 0, $l = count($new_clause_possibilities[$var]); $i < $l; $i++) {
+                                for ($j = $i + 1; $j < $l; $j++) {
+                                    $ith = $new_clause_possibilities[$var][$i];
+                                    $jth = $new_clause_possibilities[$var][$j];
+
+                                    if ($ith === '!' . $jth || $jth === '!' . $ith) {
+                                        $removed_indexes[$i] = true;
+                                        $removed_indexes[$j] = true;
+                                    }
+                                }
+                            }
+
+                            if ($removed_indexes) {
+                                $new_possibilities = array_values(
+                                    \array_diff_key(
+                                        $new_clause_possibilities[$var],
+                                        $removed_indexes
+                                    )
+                                );
+
+                                if (!$new_possibilities) {
+                                    unset($new_clause_possibilities[$var]);
+                                } else {
+                                    $new_clause_possibilities[$var] = $new_possibilities;
+                                }
+                            }
                         } else {
                             $new_clause_possibilities[$var] = [$impossible_type];
+                        }
+
+                        if (!$new_clause_possibilities) {
+                            continue;
                         }
 
                         $new_clause = new Clause(
@@ -809,6 +550,13 @@ class Algebra
      */
     public static function negateFormula(array $clauses): array
     {
+        $clauses = array_filter(
+            $clauses,
+            function ($clause) {
+                return $clause->reconcilable;
+            }
+        );
+
         if (!$clauses) {
             $cond_id = \mt_rand(0, 100000000);
             return [new Clause([], $cond_id, $cond_id, true)];

@@ -13,7 +13,7 @@ use Psalm\Exception\TypeParseTreeException;
 use Psalm\Internal\Analyzer\ProjectAnalyzer;
 use Psalm\Internal\Analyzer\TypeAnalyzer;
 use Psalm\Internal\Type\Comparator\AtomicTypeComparator;
-use Psalm\Internal\Type\TypeCombination;
+use Psalm\Internal\Type\TypeCombiner;
 use Psalm\Internal\Type\TypeParser;
 use Psalm\Internal\Type\TypeTokenizer;
 use Psalm\Type\Atomic\TArray;
@@ -44,6 +44,7 @@ use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTrue;
 use Psalm\Type\Atomic\TVoid;
 use Psalm\Type\Union;
+use function get_class;
 use function stripos;
 use function strlen;
 use function strpos;
@@ -54,7 +55,7 @@ abstract class Type
      * Parses a string type representation
      *
      * @param  array{int,int}|null   $php_version
-     * @param  array<string, array<string, array{Type\Union}>> $template_type_map
+     * @param  array<string, array<string, Type\Union>> $template_type_map
      *
      * @throws TypeParseTreeException
      */
@@ -112,9 +113,13 @@ abstract class Type
         ?string $namespace,
         array $aliased_classes,
         ?string $this_class,
-        bool $allow_self = false
+        bool $allow_self = false,
+        bool $was_static = false
     ) : string {
         if ($allow_self && $value === $this_class) {
+            if ($was_static) {
+                return 'static';
+            }
             return 'self';
         }
 
@@ -433,7 +438,7 @@ abstract class Type
                 return $type_1;
             }
 
-            $combined_type = TypeCombination::combineTypes(
+            $combined_type = TypeCombiner::combine(
                 array_merge(
                     array_values($type_1->getAtomicTypes()),
                     array_values($type_2->getAtomicTypes())
@@ -446,10 +451,6 @@ abstract class Type
 
             if (!$type_1->initialized || !$type_2->initialized) {
                 $combined_type->initialized = false;
-            }
-
-            if ($type_1->possibly_undefined_from_try || $type_2->possibly_undefined_from_try) {
-                $combined_type->possibly_undefined_from_try = true;
             }
 
             if ($type_1->from_docblock || $type_2->from_docblock) {
@@ -483,6 +484,10 @@ abstract class Type
 
         if ($type_1->possibly_undefined || $type_2->possibly_undefined) {
             $combined_type->possibly_undefined = true;
+        }
+
+        if ($type_1->possibly_undefined_from_try || $type_2->possibly_undefined_from_try) {
+            $combined_type->possibly_undefined_from_try = true;
         }
 
         if ($type_1->parent_nodes || $type_2->parent_nodes) {
@@ -537,7 +542,21 @@ abstract class Type
                         if ($type_1_atomic instanceof TNamedObject
                             && $type_2_atomic instanceof TNamedObject
                         ) {
-                            if (AtomicTypeComparator::isContainedBy(
+                            if (($type_1_atomic->value === $type_2_atomic->value
+                                && get_class($type_1_atomic) === TNamedObject::class
+                                && get_class($type_2_atomic) !== TNamedObject::class)
+                            ) {
+                                $combined_type->removeType($t1_key);
+                                $combined_type->addType(clone $type_2_atomic);
+                                $intersection_performed = true;
+                            } elseif (($type_1_atomic->value === $type_2_atomic->value
+                                && get_class($type_2_atomic) === TNamedObject::class
+                                && get_class($type_1_atomic) !== TNamedObject::class)
+                            ) {
+                                $combined_type->removeType($t2_key);
+                                $combined_type->addType(clone $type_1_atomic);
+                                $intersection_performed = true;
+                            } elseif (AtomicTypeComparator::isContainedBy(
                                 $codebase,
                                 $type_2_atomic,
                                 $type_1_atomic

@@ -9,6 +9,7 @@ use Psalm\Internal\Analyzer\TraitAnalyzer;
 use Psalm\Internal\Type\Comparator\AtomicTypeComparator;
 use Psalm\Issue\DocblockTypeContradiction;
 use Psalm\Issue\TypeDoesNotContainType;
+use Psalm\Issue\RedundantPropertyInitializationCheck;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\IssueBuffer;
 use Psalm\Type;
@@ -26,7 +27,7 @@ use function substr;
 class NegatedAssertionReconciler extends Reconciler
 {
     /**
-     * @param  array<string, array<string, array{Type\Union}>> $template_type_map
+     * @param  array<string, array<string, Type\Union>> $template_type_map
      * @param  string[]   $suppressed_issues
      * @param  0|1|2      $failed_reconciliation
      *
@@ -89,7 +90,18 @@ class NegatedAssertionReconciler extends Reconciler
                             $failed_reconciliation = 2;
 
                             if ($code_location) {
-                                if ($existing_var_type->from_docblock) {
+                                if ($existing_var_type->from_property) {
+                                    if (IssueBuffer::accepts(
+                                        new RedundantPropertyInitializationCheck(
+                                            'Property type ' . $key . ' with type '
+                                                . $existing_var_type . ' should already be set in the constructor',
+                                            $code_location
+                                        ),
+                                        $suppressed_issues
+                                    )) {
+                                        // fall through
+                                    }
+                                } elseif ($existing_var_type->from_docblock) {
                                     if (IssueBuffer::accepts(
                                         new DocblockTypeContradiction(
                                             'Cannot resolve types for ' . $key . ' with docblock-defined type '

@@ -759,24 +759,6 @@ class ConstantTest extends TestCase
                         echo A::C[$s];
                     }'
             ],
-            'arrayKeyExistsWithClassConst' => [
-                '<?php
-                    class C {}
-                    class D {}
-
-                    class A {
-                        const FLAGS = [
-                            0 => [C::class => "foo"],
-                            1 => [D::class => "bar"],
-                        ];
-
-                        private function foo(int $i) : void {
-                            if (array_key_exists(C::class, self::FLAGS[$i])) {
-                                echo self::FLAGS[$i][C::class];
-                            }
-                        }
-                    }'
-            ],
             'getClassConstantOffset' => [
                 '<?php
                     class C {
@@ -834,19 +816,6 @@ class ConstantTest extends TestCase
                     }
 
                     echo B::VALUES["there"];'
-            ],
-            'constantArrayKeyExistsWithClassConstant' => [
-                '<?php
-                    class Foo {
-                        public const F = "key";
-                    }
-
-                    /** @param array{key?: string} $a */
-                    function one(array $a): void {
-                        if (array_key_exists(Foo::F, $a)) {
-                            echo $a[Foo::F];
-                        }
-                    }'
             ],
             'internalConstWildcard' => [
                 '<?php
@@ -1197,6 +1166,21 @@ class ConstantTest extends TestCase
                     $a->foo(5);
                     ',
                 'error_message' => 'InvalidArgument'
+            ],
+            'correctMessage' => [
+                '<?php
+                    class S {
+                        public const ZERO = 0;
+                        public const ONE  = 1;
+                    }
+
+                    /**
+                     * @param S::* $s
+                     */
+                    function foo(int $s): string {
+                        return [1 => "a", 2 => "b"][$s];
+                    }',
+                'error_message' => 'offset value of 1|0'
             ],
         ];
     }

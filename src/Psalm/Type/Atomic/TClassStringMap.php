@@ -5,7 +5,8 @@ use function get_class;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\TemplateResult;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Union;
@@ -122,7 +123,7 @@ class TClassStringMap extends \Psalm\Type\Atomic
         return 'array';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }
@@ -170,7 +171,7 @@ class TClassStringMap extends \Psalm\Type\Atomic
                 $input_type_param = clone $input_type->type_param;
             }
 
-            $value_param = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $value_param = TemplateStandinTypeReplacer::replace(
                 $type_param,
                 $template_result,
                 $codebase,
@@ -196,7 +197,11 @@ class TClassStringMap extends \Psalm\Type\Atomic
         TemplateResult $template_result,
         ?Codebase $codebase
     ) : void {
-        $this->value_param->replaceTemplateTypesWithArgTypes($template_result, $codebase);
+        TemplateInferredTypeReplacer::replace(
+            $this->value_param,
+            $template_result,
+            $codebase
+        );
     }
 
     public function getChildNodes() : array

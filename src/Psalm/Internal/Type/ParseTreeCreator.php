@@ -30,7 +30,7 @@ class ParseTreeCreator
     private $t = 0;
 
     /**
-     * @param list<array{0: string, 1: int}> $type_tokens
+     * @param list<array{0: string, 1: int, 2?: string}> $type_tokens
      */
     public function __construct(array $type_tokens)
     {
@@ -157,10 +157,10 @@ class ParseTreeCreator
         $default = '';
 
         if ($current_token[0] === '&') {
-            throw new TypeParseTreeException('Magic args cannot be passed by reference');
-        }
-
-        if ($current_token[0] === '...') {
+            $byref = true;
+            ++$this->t;
+            $current_token = $this->t < $this->type_token_count ? $this->type_tokens[$this->t] : null;
+        } elseif ($current_token[0] === '...') {
             $variadic = true;
 
             ++$this->t;
@@ -648,7 +648,7 @@ class ParseTreeCreator
 
         $current_parent = $this->current_leaf->parent;
 
-        if ($this->current_leaf instanceof ParseTree\MethodTree && $current_parent) {
+        if ($current_parent && $current_parent instanceof ParseTree\MethodTree) {
             $this->createMethodParam($this->type_tokens[$this->t], $current_parent);
             return;
         }
@@ -715,7 +715,7 @@ class ParseTreeCreator
         }
     }
 
-    /** @param array{0: string, 1: int} $type_token */
+    /** @param array{0: string, 1: int, 2?: string} $type_token */
     private function handleValue(array $type_token) : void
     {
         $new_parent = !$this->current_leaf instanceof ParseTree\Root ? $this->current_leaf : null;
@@ -793,6 +793,7 @@ class ParseTreeCreator
                     $type_token[0] . '::' . $nexter_token[0],
                     $type_token[1],
                     $type_token[1] + 2 + strlen($nexter_token[0]),
+                    $type_token[2] ?? null,
                     $new_parent
                 );
 
@@ -809,6 +810,7 @@ class ParseTreeCreator
                     $type_token[0],
                     $type_token[1],
                     $type_token[1] + strlen($type_token[0]),
+                    $type_token[2] ?? null,
                     $new_parent
                 );
                 break;

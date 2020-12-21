@@ -237,38 +237,6 @@ class TypeAlgebraTest extends \Psalm\Tests\TestCase
                         }
                     }',
             ],
-            'repeatedSet' => [
-                '<?php
-                    function foo(): void {
-                        if ($a = rand(0, 1) ? "" : null) {
-                            return;
-                        }
-
-                        if (rand(0, 1)) {
-                            $a = rand(0, 1) ? "hello" : null;
-
-                            if ($a) {
-
-                            }
-                        }
-                    }',
-            ],
-            'repeatedSetInsideWhile' => [
-                '<?php
-                    function foo(): void {
-                        if ($a = rand(0, 1) ? "" : null) {
-                            return;
-                        } else {
-                            while (rand(0, 1)) {
-                                $a = rand(0, 1) ? "hello" : null;
-                            }
-
-                            if ($a) {
-
-                            }
-                        }
-                    }',
-            ],
             'byRefAssignment' => [
                 '<?php
                     function foo(): void {
@@ -564,16 +532,6 @@ class TypeAlgebraTest extends \Psalm\Tests\TestCase
 
                     if ($a->foo === "somestring") {}',
             ],
-            'propertyFetchAfterNotNullCheckInElseif' => [
-                '<?php
-                    class A {
-                        /** @var ?string */
-                        public $foo;
-                    }
-
-                    if (rand(0, 10) > 5) {
-                    } elseif (($a = rand(0, 1) ? new A : null) && $a->foo) {}',
-            ],
             'noParadoxForGetopt' => [
                 '<?php
                     $options = getopt("t:");
@@ -716,14 +674,6 @@ class TypeAlgebraTest extends \Psalm\Tests\TestCase
                                 $foo->bar();
                             }
                         }
-                    }',
-            ],
-            'noParadoxAfterConditionalAssignment' => [
-                '<?php
-                    if ($a = rand(0, 5)) {
-                        echo $a;
-                    } elseif ($a = rand(0, 5)) {
-                        echo $a;
                     }',
             ],
             'callWithNonNullInTernary' => [
@@ -1039,6 +989,76 @@ class TypeAlgebraTest extends \Psalm\Tests\TestCase
                         return $b ? "a" : ($b === null ? "foo" : "b");
                     }',
             ],
+            'cancelOutSameStatement' => [
+                '<?php
+                    function edit(?string $a, ?string $b): string {
+                        if ((!$a && !$b) || ($a && !$b)) {
+                            return "";
+                        }
+
+                        return $b;
+                    }'
+            ],
+            'cancelOutDifferentStatement' => [
+                '<?php
+                    function edit(?string $a, ?string $b): string {
+                        if (!$a && !$b) {
+                            return "";
+                        }
+
+                        if ($a && !$b) {
+                            return "";
+                        }
+
+                        return $b;
+                    }'
+            ],
+            'moreChecks' => [
+                '<?php
+                    class B {}
+                    class C {}
+
+                    function foo(?B $b, ?C $c): B|C {
+                        if (!$b && !$c) {
+                            throw new Exception("bad");
+                        }
+
+                        if ($b && $c) {
+                            return rand(0, 1) ? $b : $c;
+                        }
+
+                        if ($b) {
+                            return $b;
+                        }
+
+                        return $c;
+                    }'
+            ],
+            'dependentType' => [
+                '<?php
+                    class A {
+                        public function isValid() : bool {
+                            return (bool) rand(0, 1);
+                        }
+
+                        public function foo() : void {}
+                    }
+
+                    function takesA(?A $a) : void {
+                        $is_valid_a = $a && $a->isValid();
+
+                        if ($is_valid_a) {
+                            $a->foo();
+                        }
+                    }'
+            ],
+            'assignSameName' => [
+                '<?php
+                    function foo(string $value): string {
+                        $value = "yes" === $value;
+                        return !$value ? "foo" : "bar";
+                    }'
+            ],
         ];
     }
 
@@ -1280,6 +1300,42 @@ class TypeAlgebraTest extends \Psalm\Tests\TestCase
                         return $input === "a" ? "bar" : ($input === "a" ? "foo" : "b");
                     }',
                 'error_message' => 'ParadoxicalCondition',
+            ],
+            'mismatchingChecks' => [
+                '<?php
+                    function doesntFindBug(?string $old, ?string $new): void {
+                        if (empty($old) && empty($new)) {
+                            return;
+                        }
+
+                        if (($old && empty($new)) || ($new && empty($old))) {
+                            return;
+                        }
+                    }',
+                'error_message' => 'RedundantCondition',
+            ],
+            'dependentTypeInvalidated' => [
+                '<?php
+                    class A {
+                        public function isValid() : bool {
+                            return (bool) rand(0, 1);
+                        }
+
+                        public function foo() : void {}
+                    }
+
+                    function takesA(?A $a) : void {
+                        $is_valid_a = $a && $a->isValid();
+
+                        if (rand(0, 1)) {
+                            $is_valid_a = false;
+                        }
+
+                        if ($is_valid_a) {
+                            $a->foo();
+                        }
+                    }',
+                'error_message' => 'PossiblyNullReference',
             ],
         ];
     }

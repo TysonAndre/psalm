@@ -557,7 +557,7 @@ class ReturnTypeManipulationTest extends FileManipulationTest
                 '<?php
                     class A {
                         /**
-                         * @return self
+                         * @return static
                          */
                         public function getMe() {
                             return $this;
@@ -604,6 +604,38 @@ class ReturnTypeManipulationTest extends FileManipulationTest
                     }',
                 '7.3',
                 ['InvalidReturnType'],
+                false,
+                true,
+            ],
+            'tryCatchReturn' => [
+                '<?php
+                    function scope(){
+                        try{
+                            return func();
+                        }
+                        catch(Exception $e){
+                            return null;
+                        }
+                    }
+
+                    function func(): stdClass{
+                        return new stdClass();
+                    }',
+                '<?php
+                    function scope(): ?stdClass{
+                        try{
+                            return func();
+                        }
+                        catch(Exception $e){
+                            return null;
+                        }
+                    }
+
+                    function func(): stdClass{
+                        return new stdClass();
+                    }',
+                '7.3',
+                ['MissingReturnType'],
                 false,
                 true,
             ],

@@ -18,7 +18,7 @@ use function str_replace;
 class PhpStormMetaScanner
 {
     /**
-     * @param  array<PhpParser\Node\Arg> $args
+     * @param  list<PhpParser\Node\Arg> $args
      */
     public static function handleOverride(array $args, Codebase $codebase): void
     {
@@ -89,7 +89,7 @@ class PhpStormMetaScanner
                 $codebase->methods->return_type_provider->registerClosure(
                     $meta_fq_classlike_name,
                     /**
-                     * @param array<PhpParser\Node\Arg> $call_args
+                     * @param list<PhpParser\Node\Arg> $call_args
                      */
                     function (
                         \Psalm\StatementsSource $statements_analyzer,
@@ -146,7 +146,7 @@ class PhpStormMetaScanner
                 $codebase->methods->return_type_provider->registerClosure(
                     $meta_fq_classlike_name,
                     /**
-                     * @param array<PhpParser\Node\Arg> $call_args
+                     * @param list<PhpParser\Node\Arg> $call_args
                      */
                     function (
                         \Psalm\StatementsSource $statements_analyzer,
@@ -156,7 +156,6 @@ class PhpStormMetaScanner
                         Context $_context,
                         CodeLocation $_code_location
                     ) use (
-                        $map,
                         $type_offset,
                         $meta_fq_classlike_name,
                         $meta_method_name
@@ -185,7 +184,7 @@ class PhpStormMetaScanner
                 $codebase->methods->return_type_provider->registerClosure(
                     $meta_fq_classlike_name,
                     /**
-                     * @param array<PhpParser\Node\Arg> $call_args
+                     * @param list<PhpParser\Node\Arg> $call_args
                      */
                     function (
                         \Psalm\StatementsSource $statements_analyzer,
@@ -195,7 +194,6 @@ class PhpStormMetaScanner
                         Context $_context,
                         CodeLocation $_code_location
                     ) use (
-                        $map,
                         $element_type_offset,
                         $meta_fq_classlike_name,
                         $meta_method_name
@@ -252,7 +250,7 @@ class PhpStormMetaScanner
                     $function_id,
                     /**
                      * @param non-empty-string $function_id
-                     * @param array<PhpParser\Node\Arg> $call_args
+                     * @param list<PhpParser\Node\Arg> $call_args
                      */
                     function (
                         \Psalm\StatementsSource $statements_analyzer,
@@ -307,7 +305,7 @@ class PhpStormMetaScanner
                     $function_id,
                     /**
                      * @param non-empty-string $function_id
-                     * @param array<PhpParser\Node\Arg> $call_args
+                     * @param list<PhpParser\Node\Arg> $call_args
                      */
                     function (
                         \Psalm\StatementsSource $statements_analyzer,
@@ -316,7 +314,6 @@ class PhpStormMetaScanner
                         Context $_context,
                         CodeLocation $_code_location
                     ) use (
-                        $map,
                         $type_offset
                     ) : Type\Union {
                         if (!$statements_analyzer instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {
@@ -343,7 +340,7 @@ class PhpStormMetaScanner
                     $function_id,
                     /**
                      * @param non-empty-string $function_id
-                     * @param array<PhpParser\Node\Arg> $call_args
+                     * @param list<PhpParser\Node\Arg> $call_args
                      */
                     function (
                         \Psalm\StatementsSource $statements_analyzer,
@@ -352,7 +349,6 @@ class PhpStormMetaScanner
                         Context $_context,
                         CodeLocation $_code_location
                     ) use (
-                        $map,
                         $element_type_offset
                     ) : Type\Union {
                         if (!$statements_analyzer instanceof \Psalm\Internal\Analyzer\StatementsAnalyzer) {

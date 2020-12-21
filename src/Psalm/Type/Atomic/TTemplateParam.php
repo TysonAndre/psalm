@@ -7,6 +7,9 @@ use Psalm\Internal\Type\TemplateResult;
 use Psalm\Type\Union;
 use function array_map;
 
+/**
+ * denotes a template parameter that has been previously specified in a `@template` tag.
+ */
 class TTemplateParam extends \Psalm\Type\Atomic
 {
     use HasIntersectionTrait;
@@ -115,7 +118,7 @@ class TTemplateParam extends \Psalm\Type\Atomic
         return [$this->as];
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

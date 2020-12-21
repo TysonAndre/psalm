@@ -174,9 +174,9 @@ class BinaryOperationTest extends TestCase
                 'assertions' => [
                     '$a' => 'int',
                     '$b' => 'int',
-                    '$c' => 'positive-int',
-                    '$d' => 'positive-int',
-                    '$e' => 'positive-int',
+                    '$c' => 'int',
+                    '$d' => 'int',
+                    '$e' => 'int',
                     '$f' => 'string',
                 ],
             ],
@@ -187,8 +187,8 @@ class BinaryOperationTest extends TestCase
                     $c = (true xor false);
                     $d = (false xor false);',
                 'assertions' => [
-                    '$a' => 'positive-int',
-                    '$b' => 'positive-int',
+                    '$a' => 'int',
+                    '$b' => 'int',
                     '$c' => 'bool',
                     '$d' => 'bool',
                 ],
@@ -216,11 +216,9 @@ class BinaryOperationTest extends TestCase
             ],
             'exponent' => [
                 '<?php
-                    $a = "x" ^ "y";
-                    $b = 4 ^ 5;',
+                    $b = 4 ** 5;',
                 'assertions' => [
-                    '$a' => 'string',
-                    '$b' => 'positive-int',
+                    '$b' => 'int',
                 ],
             ],
             'bitwiseNot' => [
@@ -304,6 +302,37 @@ class BinaryOperationTest extends TestCase
                         if (is_int($s)) {}
                     }'
             ],
+            'interpolatedStringNotEmpty' => [
+                '<?php
+                    /**
+                     * @psalm-param non-empty-string $i
+                     */
+                    function func($i): string
+                    {
+                        return $i;
+                    }
+
+                    function foo(string $a) : void {
+                        func("asdasdasd $a");
+                    }'
+            ],
+            'spaceshipOpIsLiteralUnionType' => [
+                '<?php
+                    /**
+                     * @psalm-param -1|0|1 $i
+                     */
+                     function onlyZeroOrPlusMinusOne(int $i): int {
+                         return $i;
+                     }
+
+                     /**
+                      * @psalm-param mixed $a
+                      * @psalm-param mixed $b
+                      */
+                     function foo($a, $b): void {
+                         onlyZeroOrPlusMinusOne($a <=> $b);
+                     }'
+            ]
         ];
     }
 

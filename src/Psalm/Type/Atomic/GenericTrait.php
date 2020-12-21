@@ -6,7 +6,8 @@ use function implode;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\TemplateResult;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Union;
@@ -168,7 +169,7 @@ trait GenericTrait
             && ($this instanceof Atomic\TGenericObject || $this instanceof Atomic\TIterable)
             && $codebase
         ) {
-            $input_object_type_params = UnionTemplateHandler::getMappedGenericTypeParams(
+            $input_object_type_params = TemplateStandinTypeReplacer::getMappedGenericTypeParams(
                 $codebase,
                 $input_type,
                 $this
@@ -201,7 +202,7 @@ trait GenericTrait
             }
 
             /** @psalm-suppress PropertyTypeCoercion */
-            $atomic->type_params[$offset] = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $atomic->type_params[$offset] = TemplateStandinTypeReplacer::replace(
                 $type_param,
                 $template_result,
                 $codebase,
@@ -224,7 +225,11 @@ trait GenericTrait
         ?Codebase $codebase
     ) : void {
         foreach ($this->type_params as $offset => $type_param) {
-            $type_param->replaceTemplateTypesWithArgTypes($template_result, $codebase);
+            TemplateInferredTypeReplacer::replace(
+                $type_param,
+                $template_result,
+                $codebase
+            );
 
             if ($this instanceof Atomic\TArray && $offset === 0 && $type_param->isMixed()) {
                 $this->type_params[0] = \Psalm\Type::getArrayKey();

@@ -270,7 +270,7 @@ class Functions
     }
 
     /**
-     * @param ?array<int, \PhpParser\Node\Arg> $args
+     * @param ?list<\PhpParser\Node\Arg> $args
      */
     public function isCallMapFunctionPure(
         Codebase $codebase,
@@ -281,12 +281,13 @@ class Functions
     ) : bool {
         $impure_functions = [
             // file io
-            'chdir', 'chgrp', 'chmod', 'chown', 'chroot', 'copy', 'file_put_contents',
+            'chdir', 'chgrp', 'chmod', 'chown', 'chroot', 'copy', 'file_get_contents', 'file_put_contents',
             'opendir', 'readdir', 'closedir', 'rewinddir', 'scandir',
             'fopen', 'fread', 'fwrite', 'fclose', 'touch', 'fpassthru', 'fputs', 'fscanf', 'fseek',
             'ftruncate', 'fprintf', 'symlink', 'mkdir', 'unlink', 'rename', 'rmdir', 'popen', 'pclose',
-            'fgetcsv', 'fputcsv', 'umask', 'finfo_close', 'readline_add_history', 'stream_set_timeout',
-            'fgets', 'fflush', 'move_uploaded_file', 'file_exists', 'realpath', 'glob',
+            'fgetcsv', 'fputcsv', 'umask', 'finfo_open', 'finfo_close', 'finfo_file', 'readline_add_history',
+            'stream_set_timeout', 'fgets', 'fflush', 'move_uploaded_file', 'file_exists', 'realpath', 'glob',
+            'is_readable', 'is_dir', 'is_file',
 
             // stream/socket io
             'stream_context_set_option', 'socket_write', 'stream_set_blocking', 'socket_close',
@@ -419,7 +420,7 @@ class Functions
             }
         }
 
-        $function_callable = \Psalm\Internal\Codebase\InternalCallMapHandler::getCallableFromCallMapById(
+        $function_callable = InternalCallMapHandler::getCallableFromCallMapById(
             $codebase,
             $function_id,
             $args ?: [],

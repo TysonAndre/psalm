@@ -7,7 +7,7 @@ use Psalm\DocComment;
 use Psalm\Exception\DocblockParseException;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\FileManipulation\PropertyDocblockManipulator;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Codebase;
 use Psalm\CodeLocation;
@@ -314,8 +314,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 ) {
                     if (IssueBuffer::accepts(
                         new MissingImmutableAnnotation(
-                            $parent_fq_class_name . ' is marked immutable, but '
-                                . $fq_class_name . ' is not marked immutable',
+                            $parent_fq_class_name . ' is marked @psalm-immutable, but '
+                                . $fq_class_name . ' is not marked @psalm-immutable',
                             $code_location
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
@@ -329,7 +329,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 ) {
                     if (IssueBuffer::accepts(
                         new MutableDependency(
-                            $fq_class_name . ' is marked immutable but ' . $parent_fq_class_name . ' is not',
+                            $fq_class_name . ' is marked @psalm-immutable but ' . $parent_fq_class_name . ' is not',
                             $code_location
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
@@ -355,13 +355,13 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     true
                 );
 
-                if ($storage->template_type_extends_count !== null) {
+                if ($storage->template_extended_count !== null) {
                     $this->checkTemplateParams(
                         $codebase,
                         $storage,
                         $parent_class_storage,
                         $code_location,
-                        $storage->template_type_extends_count
+                        $storage->template_extended_count
                     );
                 }
             } catch (\InvalidArgumentException $e) {
@@ -484,6 +484,18 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             /** @var non-empty-array<int, Type\Atomic\TTemplateParam|Type\Atomic\TNamedObject> $mixins */
             $mixins = array_merge($storage->templatedMixins, $storage->namedMixins);
             $union = new Type\Union($mixins);
+
+            $static_self = new Type\Atomic\TNamedObject($storage->name);
+            $static_self->was_static = true;
+
+            $union = \Psalm\Internal\Type\TypeExpander::expandUnion(
+                $codebase,
+                $union,
+                $storage->name,
+                $static_self,
+                null
+            );
+
             $union->check(
                 $this,
                 new CodeLocation(
@@ -496,8 +508,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             );
         }
 
-        if ($storage->template_type_extends) {
-            foreach ($storage->template_type_extends as $type_map) {
+        if ($storage->template_extended_params) {
+            foreach ($storage->template_extended_params as $type_map) {
                 foreach ($type_map as $atomic_type) {
                     $atomic_type->check(
                         $this,
@@ -551,8 +563,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             ) {
                 if (IssueBuffer::accepts(
                     new MissingImmutableAnnotation(
-                        $interface_name . ' is marked immutable, but '
-                            . $fq_class_name . ' is not marked immutable',
+                        $interface_name . ' is marked @psalm-immutable, but '
+                            . $fq_class_name . ' is not marked @psalm-immutable',
                         $code_location
                     ),
                     $storage->suppressed_issues + $this->getSuppressedIssues()
@@ -717,6 +729,16 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     }
                 }
             }
+        }
+
+        foreach ($storage->attributes as $attribute) {
+            AttributeAnalyzer::analyze(
+                $this,
+                $attribute,
+                $storage->suppressed_issues + $this->getSuppressedIssues(),
+                1,
+                $storage
+            );
         }
 
         self::addContextProperties(
@@ -944,6 +966,8 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
         }
 
+
+
         $plugin_classes = $codebase->config->after_classlike_checks;
 
         if ($plugin_classes) {
@@ -1025,16 +1049,19 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $property_type = clone $property_storage->type;
 
                 if (!$property_type->isMixed()
+                    && !$property_storage->is_promoted
                     && !$property_storage->has_default
                     && !($property_type->isNullable() && $property_type->from_docblock)
                 ) {
                     $property_type->initialized = false;
+                    $property_type->from_property = true;
                 }
             } else {
                 $property_type = Type::getMixed();
 
-                if (!$property_storage->has_default) {
+                if (!$property_storage->has_default && !$property_storage->is_promoted) {
                     $property_type->initialized = false;
+                    $property_type->from_property = true;
                 }
             }
 
@@ -1059,7 +1086,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $storage,
                 null,
                 new Type\Atomic\TNamedObject($fq_class_name),
-                '$this'
+                true
             );
 
             $template_result = new \Psalm\Internal\Type\TemplateResult(
@@ -1068,7 +1095,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             );
 
             if ($class_template_params) {
-                $fleshed_out_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                $fleshed_out_type = TemplateStandinTypeReplacer::replace(
                     $fleshed_out_type,
                     $template_result,
                     $codebase,
@@ -1080,15 +1107,17 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
 
             if ($property_type_location && !$fleshed_out_type->isMixed()) {
-                $stmt = array_filter($stmts, function ($stmt) use ($property_name): bool {
-                    return $stmt instanceof PhpParser\Node\Stmt\Property
-                        && isset($stmt->props[0]->name->name)
-                        && $stmt->props[0]->name->name === $property_name;
-                });
+                $stmt = array_filter(
+                    $stmts,
+                    function ($stmt) use ($property_name): bool {
+                        return $stmt instanceof PhpParser\Node\Stmt\Property
+                            && isset($stmt->props[0]->name->name)
+                            && $stmt->props[0]->name->name === $property_name;
+                    }
+                );
 
                 $suppressed = [];
                 if (count($stmt) > 0) {
-                    /** @var PhpParser\Node\Stmt\Property $stmt */
                     $stmt = array_pop($stmt);
 
                     $docComment = $stmt->getDocComment();
@@ -1284,45 +1313,67 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             $fake_param->setType((string)$param->signature_type);
                         }
 
-                        return $fake_param->getNode();
+                        $node = $fake_param->getNode();
+
+                        $attributes = $param->location
+                            ? [
+                                'startFilePos' => $param->location->raw_file_start,
+                                'endFilePos' => $param->location->raw_file_end,
+                                'startLine' => $param->location->raw_line_number
+                            ]
+                            : [];
+
+                        $node->setAttributes($attributes);
+
+                        return $node;
                     },
                     $constructor_storage->params
                 );
 
                 $fake_constructor_stmt_args = array_map(
                     function (FunctionLikeParameter $param) : PhpParser\Node\Arg {
-                        return new PhpParser\Node\Arg(new PhpParser\Node\Expr\Variable($param->name));
+                        $attributes = $param->location
+                            ? [
+                                'startFilePos' => $param->location->raw_file_start,
+                                'endFilePos' => $param->location->raw_file_end,
+                                'startLine' => $param->location->raw_line_number
+                            ]
+                            : [];
+
+                        return new PhpParser\Node\Arg(
+                            new PhpParser\Node\Expr\Variable($param->name, $attributes),
+                            false,
+                            $param->is_variadic,
+                            $attributes
+                        );
                     },
                     $constructor_storage->params
                 );
+
+                $fake_constructor_attributes = [
+                    'startLine' => $class->extends->getLine(),
+                    'startFilePos' => $class->extends->getAttribute('startFilePos'),
+                    'endFilePos' => $class->extends->getAttribute('endFilePos'),
+                ];
+
+                $fake_call_attributes = $fake_constructor_attributes
+                    + [
+                        'comments' => [new PhpParser\Comment\Doc(
+                            '/** @psalm-suppress InaccessibleMethod */',
+                            $class->extends->getLine(),
+                            (int) $class->extends->getAttribute('startFilePos')
+                        )],
+                    ];
 
                 $fake_constructor_stmts = [
                     new PhpParser\Node\Stmt\Expression(
                         new PhpParser\Node\Expr\StaticCall(
                             new PhpParser\Node\Name\FullyQualified($constructor_declaring_fqcln),
-                            new PhpParser\Node\Identifier('__construct'),
+                            new PhpParser\Node\Identifier('__construct', $fake_constructor_attributes),
                             $fake_constructor_stmt_args,
-                            [
-                                'startLine' => $class->extends->getLine(),
-                                'startFilePos' => $class->extends->getAttribute('startFilePos'),
-                                'endFilePos' => $class->extends->getAttribute('endFilePos'),
-                                'comments' => [new PhpParser\Comment\Doc(
-                                    '/** @psalm-suppress InaccessibleMethod */',
-                                    $class->extends->getLine(),
-                                    (int) $class->extends->getAttribute('startFilePos')
-                                )],
-                            ]
+                            $fake_call_attributes
                         ),
-                        [
-                            'startLine' => $class->extends->getLine(),
-                            'startFilePos' => $class->extends->getAttribute('startFilePos'),
-                            'endFilePos' => $class->extends->getAttribute('endFilePos'),
-                            'comments' => [new PhpParser\Comment\Doc(
-                                '/** @psalm-suppress InaccessibleMethod */',
-                                $class->extends->getLine(),
-                                (int) $class->extends->getAttribute('startFilePos')
-                            )],
-                        ]
+                        $fake_call_attributes
                     ),
                 ];
 
@@ -1333,11 +1384,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                         'params' => $fake_constructor_params,
                         'stmts' => $fake_constructor_stmts,
                     ],
-                    [
-                        'startLine' => $class->extends->getLine(),
-                        'startFilePos' => $class->extends->getAttribute('startFilePos'),
-                        'endFilePos' => $class->extends->getAttribute('endFilePos'),
-                    ]
+                    $fake_constructor_attributes
                 );
 
                 $codebase->analyzer->disableMixedCounts();
@@ -1585,7 +1632,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 if ($storage->mutation_free && !$trait_storage->mutation_free) {
                     if (IssueBuffer::accepts(
                         new MutableDependency(
-                            $storage->name . ' is marked immutable but ' . $fq_trait_name . ' is not',
+                            $storage->name . ' is marked @psalm-immutable but ' . $fq_trait_name . ' is not',
                             new CodeLocation($previous_trait_analyzer ?: $this, $trait_name)
                         ),
                         $storage->suppressed_issues + $this->getSuppressedIssues()
@@ -1647,7 +1694,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
     }
 
     private function checkForMissingPropertyType(
-        StatementsSource $source,
+        SourceAnalyzer $source,
         PhpParser\Node\Stmt\Property $stmt,
         Context $context
     ): void {
@@ -1675,6 +1722,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         $class_storage = $codebase->classlike_storage_provider->get($fq_class_name);
 
         $property_storage = $class_storage->properties[$property_name];
+
+        foreach ($property_storage->attributes as $attribute) {
+            AttributeAnalyzer::analyze(
+                $source,
+                $attribute,
+                $this->source->getSuppressedIssues(),
+                8
+            );
+        }
 
         if ($class_property_type && ($property_storage->type_location || !$codebase->alter_code)) {
             return;
@@ -1782,7 +1838,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 $source->getFQCLN(),
                 true
             ),
-            $inferred_type->canBeFullyExpressedInPhp()
+            $inferred_type->canBeFullyExpressedInPhp($codebase->php_major_version, $codebase->php_minor_version)
         );
     }
 
@@ -1918,9 +1974,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
         );
 
         $method_context = clone $class_context;
+
         foreach ($method_context->vars_in_scope as $context_var_id => $context_type) {
             $method_context->vars_in_scope[$context_var_id] = clone $context_type;
+
+            if ($context_type->from_property && $stmt->name->name !== '__construct') {
+                $method_context->vars_in_scope[$context_var_id]->initialized = true;
+            }
         }
+
         $method_context->collect_exceptions = $config->check_for_throws_docblock;
 
         $type_provider = new \Psalm\Internal\Provider\NodeDataProvider();
@@ -1989,7 +2051,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             $method_analyzer
         );
 
-        if ($return_type && $class_storage->template_type_extends) {
+        if ($return_type && $class_storage->template_extended_params) {
             $declaring_method_id = $codebase->methods->getDeclaringMethodId($analyzed_method_id);
 
             if ($declaring_method_id) {
@@ -2007,7 +2069,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                     $template_params[] = new Type\Union([
                         new Type\Atomic\TTemplateParam(
                             $param_name,
-                            \reset($template_map)[0],
+                            \reset($template_map),
                             $key
                         )
                     ]);
@@ -2034,7 +2096,7 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                 []
             );
 
-            $return_type = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $return_type = TemplateStandinTypeReplacer::replace(
                 $return_type,
                 $template_result,
                 $codebase,
@@ -2137,15 +2199,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
             }
         }
 
-        if ($parent_storage->template_types && $storage->template_type_extends) {
+        if ($parent_storage->template_types && $storage->template_extended_params) {
             $i = 0;
 
             $previous_extended = [];
 
             foreach ($parent_storage->template_types as $template_name => $type_map) {
                 foreach ($type_map as $declaring_class => $template_type) {
-                    if (isset($storage->template_type_extends[$parent_storage->name][$template_name])) {
-                        $extended_type = $storage->template_type_extends[$parent_storage->name][$template_name];
+                    if (isset($storage->template_extended_params[$parent_storage->name][$template_name])) {
+                        $extended_type = $storage->template_extended_params[$parent_storage->name][$template_name];
 
                         if (isset($parent_storage->template_covariants[$i])
                             && !$parent_storage->template_covariants[$i]
@@ -2173,15 +2235,15 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                             }
                         }
 
-                        if (!$template_type[0]->isMixed()) {
-                            $template_type_copy = clone $template_type[0];
+                        if (!$template_type->isMixed()) {
+                            $template_type_copy = clone $template_type;
 
                             $template_result = new \Psalm\Internal\Type\TemplateResult(
                                 $previous_extended ?: [],
                                 []
                             );
 
-                            $template_type_copy = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+                            $template_type_copy = TemplateStandinTypeReplacer::replace(
                                 $template_type_copy,
                                 $template_result,
                                 $codebase,
@@ -2205,12 +2267,12 @@ class ClassAnalyzer extends ClassLikeAnalyzer
                                 }
                             } else {
                                 $previous_extended[$template_name] = [
-                                    $declaring_class => [$extended_type]
+                                    $declaring_class => $extended_type
                                 ];
                             }
                         } else {
                             $previous_extended[$template_name] = [
-                                $declaring_class => [$extended_type]
+                                $declaring_class => $extended_type
                             ];
                         }
                     }

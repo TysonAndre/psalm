@@ -3,6 +3,9 @@ namespace Psalm\Type\Atomic;
 
 use Psalm\Type\Union;
 
+/**
+ * Represents the type used when using TKeyOfClassConstant when the type of the class constant array is a template
+ */
 class TTemplateKeyOf extends TArrayKey
 {
     /**
@@ -61,14 +64,13 @@ class TTemplateKeyOf extends TArrayKey
     /**
      * @return false
      */
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }
 
     /**
-     * @param  array<string> $aliased_classes
-     *
+     * @param array<string> $aliased_classes
      */
     public function toNamespacedString(
         ?string $namespace,

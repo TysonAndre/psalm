@@ -116,7 +116,7 @@ class IncludeAnalyzer
                 $arg_location
             );
 
-            $include_param_sink->taints = [\Psalm\Type\TaintKind::INPUT_TEXT];
+            $include_param_sink->taints = [\Psalm\Type\TaintKind::INPUT_INCLUDE];
 
             $statements_analyzer->data_flow_graph->addSink($include_param_sink);
 
@@ -179,7 +179,6 @@ class IncludeAnalyzer
                 try {
                     $include_file_analyzer->analyze(
                         $context,
-                        false,
                         $global_context
                     );
                 } catch (\Psalm\Exception\UnpreparedAnalysisException $e) {

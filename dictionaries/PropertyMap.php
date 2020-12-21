@@ -260,7 +260,7 @@ return [
         'field_count' => 'int',
         'host_info' => 'string',
         'info' => 'string',
-        'insert_id' => 'int',
+        'insert_id' => 'int|string',
         'protocol_version' => 'string',
         'server_info' => 'string',
         'server_version' => 'int',
@@ -443,10 +443,10 @@ return [
         'name' => 'string',
     ],
     'phpparser\\node\\expr\\funccall' => [
-        'args' => 'array<int, PhpParser\Node\Arg>',
+        'args' => 'list<PhpParser\Node\Arg>',
     ],
     'phpparser\\node\\expr\\new_' => [
-        'args' => 'array<int, PhpParser\Node\Arg>',
+        'args' => 'list<PhpParser\Node\Arg>',
     ],
     'phpparser\\node\\expr\\array_' => [
         'items' => 'array<int, PhpParser\Node\Expr\ArrayItem|null>',
@@ -455,10 +455,16 @@ return [
         'items' => 'array<int, PhpParser\Node\Expr\ArrayItem|null>',
     ],
     'phpparser\\node\\expr\\methodcall' => [
-        'args' => 'array<int, PhpParser\Node\Arg>',
+        'args' => 'list<PhpParser\Node\Arg>',
     ],
     'phpparser\\node\\expr\\staticcall' => [
-        'args' => 'array<int, PhpParser\Node\Arg>',
+        'args' => 'list<PhpParser\Node\Arg>',
+    ],
+    'phpparser\\node\\expr\\arrowfunction' => [
+        'params' => 'list<PhpParser\Node\Param>',
+    ],
+    'phpparser\\node\\expr\\closure' => [
+        'params' => 'list<PhpParser\Node\Param>',
     ],
     'phpparser\\node\\name' => [
         'parts' => 'non-empty-array<non-empty-string>',
@@ -520,5 +526,13 @@ return [
         'offset' => 'int',
         'timestamp' => 'int',
         'headers' => 'array<string, string>|null',
+    ],
+    'soapfault' => [
+        'faultcode' => 'string',
+        'faultstring' => 'string',
+        'faultactor' => 'string',
+        'detail' => 'string',
+        '_name' => 'string',
+        'headerfault' => 'string',
     ],
 ];

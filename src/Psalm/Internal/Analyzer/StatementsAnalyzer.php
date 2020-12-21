@@ -5,7 +5,7 @@ use PhpParser;
 use Psalm\Internal\Analyzer\Statements\Block\DoAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\ForAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Block\IfAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\IfElseAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\SwitchAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\TryAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\WhileAnalyzer;
@@ -30,6 +30,8 @@ use Psalm\DocComment;
 use Psalm\Exception\DocblockParseException;
 use Psalm\FileManipulation;
 use Psalm\Internal\FileManipulation\FileManipulationBuffer;
+use Psalm\Issue\ComplexFunction;
+use Psalm\Issue\ComplexMethod;
 use Psalm\Issue\InvalidDocblock;
 use Psalm\Issue\MissingDocblockType;
 use Psalm\Issue\Trace;
@@ -38,7 +40,6 @@ use Psalm\Issue\UnevaluatedCode;
 use Psalm\Issue\UnrecognizedStatement;
 use Psalm\Issue\UnusedVariable;
 use Psalm\IssueBuffer;
-use Psalm\StatementsSource;
 use Psalm\Type;
 use function strtolower;
 use function fwrite;
@@ -55,6 +56,7 @@ use function trim;
 use function array_column;
 use function array_combine;
 use function array_keys;
+use function round;
 
 /**
  * @internal
@@ -173,6 +175,7 @@ class StatementsAnalyzer extends SourceAnalyzer
 
         if ($root_scope
             && !$context->collect_initializations
+            && !$context->collect_mutations
             && $codebase->find_unused_variables
             && $context->check_variables
         ) {
@@ -433,7 +436,7 @@ class StatementsAnalyzer extends SourceAnalyzer
                 } catch (\Psalm\Exception\IncorrectDocblockException $e) {
                     if (IssueBuffer::accepts(
                         new MissingDocblockType(
-                            (string)$e->getMessage(),
+                            $e->getMessage(),
                             new CodeLocation($statements_analyzer->getSource(), $stmt)
                         )
                     )) {
@@ -442,7 +445,7 @@ class StatementsAnalyzer extends SourceAnalyzer
                 } catch (\Psalm\Exception\DocblockParseException $e) {
                     if (IssueBuffer::accepts(
                         new InvalidDocblock(
-                            (string)$e->getMessage(),
+                            $e->getMessage(),
                             new CodeLocation($statements_analyzer->getSource(), $stmt)
                         )
                     )) {
@@ -464,7 +467,7 @@ class StatementsAnalyzer extends SourceAnalyzer
         }
 
         if ($stmt instanceof PhpParser\Node\Stmt\If_) {
-            if (IfAnalyzer::analyze($statements_analyzer, $stmt, $context) === false) {
+            if (IfElseAnalyzer::analyze($statements_analyzer, $stmt, $context) === false) {
                 return false;
             }
         } elseif ($stmt instanceof PhpParser\Node\Stmt\TryCatch) {
@@ -645,7 +648,7 @@ class StatementsAnalyzer extends SourceAnalyzer
         } catch (DocblockParseException $e) {
             if (IssueBuffer::accepts(
                 new InvalidDocblock(
-                    (string)$e->getMessage(),
+                    $e->getMessage(),
                     new CodeLocation($this->getSource(), $stmt, null, true)
                 )
             )) {
@@ -694,6 +697,47 @@ class StatementsAnalyzer extends SourceAnalyzer
 
         $unused_var_remover = new Statements\UnusedAssignmentRemover();
 
+        if ($this->data_flow_graph instanceof VariableUseGraph
+            && $codebase->config->limit_method_complexity
+            && $source instanceof FunctionLikeAnalyzer
+            && !$source instanceof ClosureAnalyzer
+            && $function_storage
+            && $function_storage->location
+        ) {
+            [$count, , $unique_destinations, $mean] = $this->data_flow_graph->getEdgeStats();
+
+            $average_destination_branches_converging = $unique_destinations > 0 ? $count / $unique_destinations : 0;
+
+            if ($count > $codebase->config->max_graph_size
+                && $mean > $codebase->config->max_avg_path_length
+                && $average_destination_branches_converging > 1.1
+            ) {
+                if ($source instanceof FunctionAnalyzer) {
+                    if (IssueBuffer::accepts(
+                        new ComplexFunction(
+                            'This function’s complexity is greater than the project limit'
+                                . ' (method graph size = ' . $count .', average path length = ' . round($mean). ')',
+                            $function_storage->location
+                        ),
+                        $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                } elseif ($source instanceof MethodAnalyzer) {
+                    if (IssueBuffer::accepts(
+                        new ComplexMethod(
+                            'This method’s complexity is greater than the project limit'
+                                . ' (method graph size = ' . $count .', average path length = ' . round($mean) . ')',
+                            $function_storage->location
+                        ),
+                        $this->getSuppressedIssues()
+                    )) {
+                        // fall through
+                    }
+                }
+            }
+        }
+
         foreach ($this->unused_var_locations as [$var_id, $original_location]) {
             if (substr($var_id, 0, 2) === '$_') {
                 continue;
@@ -721,7 +765,7 @@ class StatementsAnalyzer extends SourceAnalyzer
                 && !$this->data_flow_graph->isVariableUsed($assignment_node)
             ) {
                 $issue = new UnusedVariable(
-                    'Variable ' . $var_id . ' is never referenced',
+                    $var_id . ' is never referenced or the value is not used',
                     $original_location
                 );
 

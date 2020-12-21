@@ -8,10 +8,8 @@ use Psalm\Type\Atomic\TArrayKey;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TMixed;
-use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
-use function get_class;
 use function array_merge;
 
 /**
@@ -29,7 +27,8 @@ class UnionTypeComparator
         bool $ignore_null = false,
         bool $ignore_false = false,
         ?TypeComparisonResult $union_comparison_result = null,
-        bool $allow_interface_equality = false
+        bool $allow_interface_equality = false,
+        bool $allow_float_int_equality = true
     ) : bool {
         if ($union_comparison_result) {
             $union_comparison_result->scalar_type_match_found = true;
@@ -111,7 +110,7 @@ class UnionTypeComparator
                     $input_type_part,
                     $container_type_part,
                     $allow_interface_equality,
-                    true,
+                    $allow_float_int_equality,
                     $atomic_comparison_result
                 );
 
@@ -299,50 +298,6 @@ class UnionTypeComparator
         }
 
         return false;
-    }
-
-    /**
-     * Used for comparing docblock types to signature types before we know about all types
-     *
-     */
-    public static function isSimplyContainedBy(
-        Type\Union $input_type,
-        Type\Union $container_type
-    ) : bool {
-        if ($input_type->getId() === $container_type->getId()) {
-            return true;
-        }
-
-        if ($input_type->isNullable() && !$container_type->isNullable()) {
-            return false;
-        }
-
-        $input_type_not_null = clone $input_type;
-        $input_type_not_null->removeType('null');
-
-        $container_type_not_null = clone $container_type;
-        $container_type_not_null->removeType('null');
-
-        foreach ($input_type->getAtomicTypes() as $input_key => $input_type_part) {
-            foreach ($container_type->getAtomicTypes() as $container_key => $container_type_part) {
-                if (get_class($container_type_part) === TNamedObject::class
-                    && $input_type_part instanceof TNamedObject
-                    && $input_type_part->value === $container_type_part->value
-                ) {
-                    continue 2;
-                }
-
-                if ($input_key === $container_key) {
-                    continue 2;
-                }
-            }
-
-            return false;
-        }
-
-
-
-        return true;
     }
 
     /**

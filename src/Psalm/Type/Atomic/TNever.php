@@ -1,6 +1,10 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `no-return`/`never-return` type for functions that never return, either throwing an exception or
+ * terminating (like the builtin `exit()`).
+ */
 class TNever extends \Psalm\Type\Atomic
 {
     public function __toString(): string
@@ -26,7 +30,7 @@ class TNever extends \Psalm\Type\Atomic
         return null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

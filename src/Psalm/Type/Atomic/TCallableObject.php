@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes an object that is also `callable` (i.e. it has `__invoke` defined).
+ */
 class TCallableObject extends TObject
 {
     public function __toString(): string
@@ -28,7 +31,7 @@ class TCallableObject extends TObject
             ? 'object' : null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

@@ -230,6 +230,13 @@ class TaintTest extends TestCase
                         echo $a;
                     }'
             ],
+            'taintLdapEscape' => [
+                '<?php
+                    $ds = ldap_connect(\'example.com\');
+                    $dn = \'o=Psalm, c=US\';
+                    $filter = ldap_escape($_GET[\'filter\']);
+                    ldap_search($ds, $dn, $filter, []);'
+            ],
             'taintOnStrReplaceCallRemovedInFunction' => [
                 '<?php
                     class U {
@@ -376,27 +383,27 @@ class TaintTest extends TestCase
                     UserUpdater::doDelete(new PDO(), $userObj);'
             ],
             'taintPropertyWithoutPassingObject' => [
-                '<?phps
-                    /** @psalm-immutable */
+                '<?php
+                    /** @psalm-taint-specialize */
                     class User {
                         public string $id;
 
                         public function __construct(string $userId) {
                             $this->id = $userId;
                         }
-                    }
 
-                    class UserUpdater {
-                        public static function doDelete(PDO $pdo, User $user) : void {
-                            self::deleteUser($pdo, $user->id);
-                        }
-
-                        public static function deleteUser(PDO $pdo, string $userId) : void {
-                            $pdo->exec("delete from users where user_id = " . $userId);
+                        public function setId(string $userId) : void {
+                            $this->id = $userId;
                         }
                     }
 
-                    $userObj = new User((string) $_GET["user_id"]);',
+                    function echoId(User $u2) : void {
+                        echo $u2->id;
+                    }
+
+                    $u = new User("5");
+                    echoId($u);
+                    $u->setId($_GET["user_id"]);',
             ],
             'specializeStaticMethod' => [
                 '<?php
@@ -480,7 +487,115 @@ class TaintTest extends TestCase
 
 
                     echo $a;'
-            ]
+            ],
+            'dontPropagateTaintToChildConstructor' => [
+                '<?php
+                    class A {
+                        public function __construct(string $a) {}
+                    }
+
+                    class B extends A {
+                        public function __construct(string $a) {
+                            echo $a;
+                        }
+                    }
+
+                    new A($_GET["foo"]);'
+            ],
+            'dontTaintThroughChildConstructorWhenMethodOverridden' => [
+                '<?php //--taint-analysis
+                    class A {
+                        private $taint;
+
+                        public function __construct($taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    class B extends A {
+                        public function __construct($taint) {}
+                    }
+
+                    $b = new B($_GET["bar"]);
+                    echo $b->getTaint();'
+            ],
+            'immutableClassTrackInputThroughMethod' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class A {
+                        private string $taint = "";
+
+                        public function __construct(string $taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    $b = new A($_GET["bar"]);
+                    $a = new A("bar");
+                    echo $a->getTaint();',
+            ],
+            'literalStringCannotCarryTaint' => [
+                '<?php
+                    $file = $_GET["foo"];
+
+                    if ($file !== "") {
+                        /**
+                         * @psalm-taint-escape input
+                         */
+                        $file = basename($file);
+                    }
+
+                    echo $file;'
+            ],
+            'strTrNotTainted' => [
+                '<?php
+                $input = strtr(\'data\', \'data\', \'data\');
+                setcookie($input, \'value\');',
+            ],
+            'conditionallyEscapedTaintPassedTrue' => [
+                '<?php
+                    /**
+                     * @psalm-taint-escape ($escape is true ? "html" : null)
+                     */
+                    function foo(string $string, bool $escape = true): string {
+                        if ($escape) {
+                            $string = htmlspecialchars($string);
+                        }
+
+                        return $string;
+                    }
+
+                    echo foo($_GET["foo"], true);
+                    echo foo($_GET["foo"]);'
+            ],
+            'conditionallyEscapedTaintPassedTrueStaticCall' => [
+                '<?php
+                    class U {
+                        /**
+                         * @psalm-taint-escape ($escape is true ? "html" : null)
+                         */
+                        public static function foo(string $string, bool $escape = true): string {
+                            if ($escape) {
+                                $string = htmlspecialchars($string);
+                            }
+
+                            return $string;
+                        }
+                    }
+
+                    echo U::foo($_GET["foo"], true);
+                    echo U::foo($_GET["foo"]);'
+            ],
         ];
     }
 
@@ -506,7 +621,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputFromFunctionReturnType' => [
                 '<?php
@@ -515,7 +630,7 @@ class TaintTest extends TestCase
                     }
 
                     echo getName();',
-                'error_message' => 'TaintedInput - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:26 - Detected tainted html in path: $_GET -> $_GET[\'name\'] (src/somefile.php:3:32) -> coalesce (src/somefile.php:3:32) -> getName (src/somefile.php:2:42) -> call to echo (src/somefile.php:6:26) -> echo#1',
+                'error_message' => 'TaintedHtml - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:26 - Detected tainted HTML in path: $_GET -> $_GET[\'name\'] (src/somefile.php:3:32) -> coalesce (src/somefile.php:3:32) -> getName (src/somefile.php:2:42) -> call to echo (src/somefile.php:6:26) -> echo#1',
             ],
             'taintedInputFromExplicitTaintSource' => [
                 '<?php
@@ -527,7 +642,7 @@ class TaintTest extends TestCase
                     }
 
                     echo getName();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputFromExplicitTaintSourceStaticMethod' => [
                 '<?php
@@ -542,7 +657,7 @@ class TaintTest extends TestCase
 
 
                     echo Request::getName();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputFromGetArray' => [
                 '<?php
@@ -553,20 +668,20 @@ class TaintTest extends TestCase
                     $name = getName($_GET);
 
                     echo $name;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputFromReturnToInclude' => [
                 '<?php
                     $a = (string) $_GET["file"];
                     $b = "hello" . $a;
                     include str_replace("a", "b", $b);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedInclude',
             ],
             'taintedInputFromReturnToEval' => [
                 '<?php
                     $a = $_GET["file"];
                     eval("<?php" . $a);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedEval',
             ],
             'taintedInputFromReturnTypeToEcho' => [
                 '<?php
@@ -584,7 +699,7 @@ class TaintTest extends TestCase
                             echo $userId;
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputInCreatedArrayIsEchoed' => [
                 '<?php
@@ -593,7 +708,7 @@ class TaintTest extends TestCase
                     $data = ["name" => $name];
 
                     echo "<h1>" . $data["name"] . "</h1>";',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'testTaintedInputInAssignedArrayIsEchoed' => [
                 '<?php
@@ -603,7 +718,7 @@ class TaintTest extends TestCase
                     $data["name"] = $name;
 
                     echo "<h1>" . $data["name"] . "</h1>";',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputDirectly' => [
                 '<?php
@@ -613,7 +728,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputFromReturnTypeWithBranch' => [
                 '<?php
@@ -639,7 +754,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'sinkAnnotation' => [
                 '<?php
@@ -664,7 +779,7 @@ class TaintTest extends TestCase
                          */
                         public function exec(string $sql) : void {}
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputFromParam' => [
                 '<?php
@@ -686,7 +801,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput - src' . DIRECTORY_SEPARATOR . 'somefile.php:17:40 - Detected tainted sql in path: $_GET -> $_GET[\'user_id\'] (src/somefile.php:4:45) -> A::getUserId (src/somefile.php:3:55) -> concat (src/somefile.php:8:36) -> A::getAppendedUserId (src/somefile.php:7:63) -> $userId (src/somefile.php:12:29) -> call to A::deleteUser (src/somefile.php:13:53) -> A::deleteUser#2 (src/somefile.php:16:69) -> $userId (src/somefile.php:16:69) -> concat (src/somefile.php:17:40) -> call to PDO::exec (src/somefile.php:17:40) -> PDO::exec#1',
+                'error_message' => 'TaintedSql - src' . DIRECTORY_SEPARATOR . 'somefile.php:17:40 - Detected tainted SQL in path: $_GET -> $_GET[\'user_id\'] (src/somefile.php:4:45) -> A::getUserId (src/somefile.php:3:55) -> concat (src/somefile.php:8:36) -> A::getAppendedUserId (src/somefile.php:7:63) -> $userId (src/somefile.php:12:29) -> call to A::deleteUser (src/somefile.php:13:53) -> $userId (src/somefile.php:16:69) -> call to PDO::exec (src/somefile.php:17:40) -> PDO::exec#1',
             ],
             'taintedInputToParam' => [
                 '<?php
@@ -706,7 +821,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputToParamAfterAssignment' => [
                 '<?php
@@ -727,7 +842,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId2);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputToParamAlternatePath' => [
                 '<?php
@@ -756,7 +871,7 @@ class TaintTest extends TestCase
                             }
                         }
                     }',
-                'error_message' => 'TaintedInput - src' . DIRECTORY_SEPARATOR . 'somefile.php:23:44 - Detected tainted sql in path: $_GET -> $_GET[\'user_id\'] (src/somefile.php:7:67) -> call to A::getAppendedUserId (src/somefile.php:7:58) -> A::getAppendedUserId#1 (src/somefile.php:11:66) -> $user_id (src/somefile.php:11:66) -> concat (src/somefile.php:12:36) -> A::getAppendedUserId (src/somefile.php:11:78) -> call to A::deleteUser (src/somefile.php:7:33) -> A::deleteUser#3 (src/somefile.php:19:85) -> $userId2 (src/somefile.php:19:85) -> concat (src/somefile.php:23:44) -> call to PDO::exec (src/somefile.php:23:44) -> PDO::exec#1',
+                'error_message' => 'TaintedSql - src' . DIRECTORY_SEPARATOR . 'somefile.php:23:44 - Detected tainted SQL in path: $_GET -> $_GET[\'user_id\'] (src/somefile.php:7:67) -> call to A::getAppendedUserId (src/somefile.php:7:58) -> $user_id (src/somefile.php:11:66) -> concat (src/somefile.php:12:36) -> A::getAppendedUserId (src/somefile.php:11:78) -> call to A::deleteUser (src/somefile.php:7:33) -> $userId2 (src/somefile.php:19:85) -> call to PDO::exec (src/somefile.php:23:44) -> PDO::exec#1',
             ],
             'taintedInParentLoader' => [
                 '<?php
@@ -787,7 +902,7 @@ class TaintTest extends TestCase
                     }
 
                     (new C)->foo((string) $_GET["user_id"]);',
-                'error_message' => 'TaintedInput - src' . DIRECTORY_SEPARATOR . 'somefile.php:16:44 - Detected tainted sql in path: $_GET -> $_GET[\'user_id\'] (src/somefile.php:28:43) -> call to C::foo (src/somefile.php:28:34) -> C::foo#1 (src/somefile.php:23:52) -> $user_id (src/somefile.php:23:52) -> call to AGrandChild::loadFull (src/somefile.php:24:51) -> AGrandChild::loadFull#1 (src/somefile.php:5:64) -> A::loadFull#1 (src/somefile.php:24:51) -> $sink (src/somefile.php:5:64) -> call to A::loadPartial (src/somefile.php:6:49) -> A::loadPartial#1 (src/somefile.php:3:76) -> AChild::loadPartial#1 (src/somefile.php:6:49) -> $sink (src/somefile.php:15:67) -> concat (src/somefile.php:16:44) -> call to PDO::exec (src/somefile.php:16:44) -> PDO::exec#1',
+                'error_message' => 'TaintedSql - src' . DIRECTORY_SEPARATOR . 'somefile.php:16:44 - Detected tainted SQL in path: $_GET -> $_GET[\'user_id\'] (src/somefile.php:28:43) -> call to C::foo (src/somefile.php:28:34) -> $user_id (src/somefile.php:23:52) -> call to AGrandChild::loadFull (src/somefile.php:24:51) -> AGrandChild::loadFull#1 (src/somefile.php:5:64) -> A::loadFull#1 (src/somefile.php:24:51) -> $sink (src/somefile.php:5:64) -> call to A::loadPartial (src/somefile.php:6:49) -> A::loadPartial#1 (src/somefile.php:3:76) -> AChild::loadPartial#1 (src/somefile.php:6:49) -> $sink (src/somefile.php:15:67) -> call to PDO::exec (src/somefile.php:16:44) -> PDO::exec#1',
             ],
             'taintedInputFromProperty' => [
                 '<?php
@@ -811,7 +926,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputFromPropertyViaMixin' => [
                 '<?php
@@ -856,7 +971,7 @@ class TaintTest extends TestCase
                             $pdo->exec("delete from users where user_id = " . $userId);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintedInputViaStaticFunction' => [
                 '<?php
@@ -871,7 +986,7 @@ class TaintTest extends TestCase
                             echo(Utils::shorten((string) $_GET["user_id"]));
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputViaPureStaticFunction' => [
                 '<?php
@@ -889,7 +1004,7 @@ class TaintTest extends TestCase
                             echo(Utils::shorten((string) $_GET["user_id"]));
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'untaintedInputViaStaticFunctionWithoutSafePath' => [
                 '<?php
@@ -911,7 +1026,7 @@ class TaintTest extends TestCase
                             echo(Utils::shorten("hello"));
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInputFromMagicProperty' => [
                 '<?php
@@ -936,7 +1051,7 @@ class TaintTest extends TestCase
                         $a->userId = (string) $_GET["user_id"];
                         echo $a->userId;
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintOverMixed' => [
                 '<?php
@@ -948,7 +1063,7 @@ class TaintTest extends TestCase
                         $a = $_GET["bad"];
                         echo $a;
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintStrConversion' => [
                 '<?php
@@ -956,7 +1071,7 @@ class TaintTest extends TestCase
                         $a = strtoupper(strtolower((string) $_GET["bad"]));
                         echo $a;
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintIntoExec' => [
                 '<?php
@@ -964,7 +1079,7 @@ class TaintTest extends TestCase
                         $a = (string) $_GET["bad"];
                         exec($a);
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedShell',
             ],
             'taintIntoExecMultipleConcat' => [
                 '<?php
@@ -972,7 +1087,7 @@ class TaintTest extends TestCase
                         $a = "9" . "a" . "b" . "c" . ((string) $_GET["bad"]) . "d" . "e" . "f";
                         exec($a);
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedShell',
             ],
             'taintIntoNestedArrayUnnestedSeparately' => [
                 '<?php
@@ -980,7 +1095,7 @@ class TaintTest extends TestCase
                         $a = [[(string) $_GET["bad"]]];
                         exec($a[0][0]);
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedShell',
             ],
             'taintIntoArrayAndThenOutAgain' => [
                 '<?php
@@ -994,7 +1109,7 @@ class TaintTest extends TestCase
                             exec(self::foo()[0]);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedShell',
             ],
             'taintAppendedToArray' => [
                 '<?php
@@ -1009,7 +1124,7 @@ class TaintTest extends TestCase
                             exec(self::foo()[0]);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedShell',
             ],
             'taintOnSubstrCall' => [
                 '<?php
@@ -1035,7 +1150,7 @@ class TaintTest extends TestCase
                             echo U::shorten($o->s);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintOnStrReplaceCallSimple' => [
                 '<?php
@@ -1061,7 +1176,7 @@ class TaintTest extends TestCase
                             echo U::shorten($o->s);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintOnPregReplaceCall' => [
                 '<?php
@@ -1087,7 +1202,7 @@ class TaintTest extends TestCase
                             echo U::shorten($o->s);
                         }
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'IndirectGetAssignment' => [
                 '<?php
@@ -1152,7 +1267,7 @@ class TaintTest extends TestCase
                     }
 
                     echo (new InputFilter("hello"))->getArg("get", "string");',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintPropertyPassingObject' => [
                 '<?php
@@ -1177,7 +1292,7 @@ class TaintTest extends TestCase
 
                     $userObj = new User((string) $_GET["user_id"]);
                     UserUpdater::doDelete(new PDO(), $userObj);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedSql',
             ],
             'taintPropertyPassingObjectSettingValueLater' => [
                 '<?php
@@ -1194,20 +1309,14 @@ class TaintTest extends TestCase
                         }
                     }
 
-                    class UserUpdater {
-                        public static function doDelete(PDO $pdo, User $user) : void {
-                            self::deleteUser($pdo, $user->id);
-                        }
-
-                        public static function deleteUser(PDO $pdo, string $userId) : void {
-                            $pdo->exec("delete from users where user_id = " . $userId);
-                        }
+                    function echoId(User $u2) : void {
+                        echo $u2->id;
                     }
 
-                    $userObj = new User("5");
-                    $userObj->setId((string) $_GET["user_id"]);
-                    UserUpdater::doDelete(new PDO(), $userObj);',
-                'error_message' => 'TaintedInput',
+                    $u = new User("5");
+                    $u->setId($_GET["user_id"]);
+                    echoId($u);',
+                'error_message' => 'TaintedHtml',
             ],
             'ImplodeExplode' => [
                 '<?php
@@ -1215,14 +1324,14 @@ class TaintTest extends TestCase
                     $b = explode(" ", $a);
                     $c = implode(" ", $b);
                     echo $c;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'ImplodeIndirect' => [
                 '<?php
                     /** @var array $unsafe */
                     $unsafe = $_GET[\'unsafe\'];
                     echo implode(" ", $unsafe);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintThroughPregReplaceCallback' => [
                 '<?php
@@ -1237,7 +1346,7 @@ class TaintTest extends TestCase
                     );
 
                     echo $b;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedFunctionWithNoTypes' => [
                 '<?php
@@ -1246,7 +1355,7 @@ class TaintTest extends TestCase
                     }
 
                     echo rawinput();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedStaticCallWithNoTypes' => [
                 '<?php
@@ -1257,7 +1366,7 @@ class TaintTest extends TestCase
                     }
 
                     echo A::rawinput();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintedInstanceCallWithNoTypes' => [
                 '<?php
@@ -1268,25 +1377,25 @@ class TaintTest extends TestCase
                     }
 
                     echo (new A())->rawinput();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintStringObtainedUsingStrval' => [
                 '<?php
                     $unsafe = strval($_GET[\'unsafe\']);
                     echo $unsafe',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintStringObtainedUsingSprintf' => [
                 '<?php
                     $unsafe = sprintf("%s", strval($_GET[\'unsafe\']));
                     echo $unsafe;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'encapsulatedString' => [
                 '<?php
                     $unsafe = $_GET[\'unsafe\'];
                     echo "$unsafe";',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'encapsulatedToStringMagic' => [
                 '<?php
@@ -1297,7 +1406,7 @@ class TaintTest extends TestCase
                     }
                     $unsafe = new MyClass();
                     echo "unsafe: $unsafe";',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'castToStringMagic' => [
                 '<?php
@@ -1308,7 +1417,7 @@ class TaintTest extends TestCase
                     }
                     $unsafe = new MyClass();
                     echo $unsafe;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'castToStringViaArgument' => [
                 '<?php
@@ -1325,7 +1434,7 @@ class TaintTest extends TestCase
                     $unsafe = new MyClass();
 
                     doesEcho($unsafe);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'toStringTaintInSubclass' => [
                 '<?php // --taint-analysis
@@ -1338,7 +1447,7 @@ class TaintTest extends TestCase
                     class TaintedSubclass extends TaintedBaseClass {}
                     $x = new TaintedSubclass();
                     echo "Caught: $x\n";',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'implicitToStringMagic' => [
                 '<?php
@@ -1349,7 +1458,7 @@ class TaintTest extends TestCase
                     }
                     $unsafe = new MyClass();
                     echo $unsafe;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'namespacedFunction' => [
                 '<?php
@@ -1360,12 +1469,12 @@ class TaintTest extends TestCase
                     }
 
                     echo identity($_GET[\'userinput\']);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'print' => [
                 '<?php
                     print($_GET["name"]);',
-                'error_message' => 'TaintedInput - src' . DIRECTORY_SEPARATOR . 'somefile.php:2:27 - Detected tainted html in path: $_GET -> $_GET[\'name\'] (src/somefile.php:2:27) -> call to print (src/somefile.php:2:27) -> print#1',
+                'error_message' => 'TaintedHtml - src' . DIRECTORY_SEPARATOR . 'somefile.php:2:27 - Detected tainted HTML in path: $_GET -> $_GET[\'name\'] (src/somefile.php:2:27) -> call to print (src/somefile.php:2:27) -> print#1',
             ],
             'unpackArgs' => [
                 '<?php
@@ -1373,7 +1482,7 @@ class TaintTest extends TestCase
                         echo $args[0];
                     }
                     test(...$_GET["other"]);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'foreachArg' => [
                 '<?php
@@ -1382,7 +1491,7 @@ class TaintTest extends TestCase
                     foreach ($a as $arg) {
                         echo $arg;
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'magicPropertyType' => [
                 '<?php
@@ -1401,7 +1510,7 @@ class TaintTest extends TestCase
                     $m = new Magic();
                     $m->taint = $_GET["input"];
                     echo $m->taint;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintNestedArrayWithOffsetAccessedInForeach' => [
                 '<?php
@@ -1411,7 +1520,7 @@ class TaintTest extends TestCase
                     foreach ($a as $m) {
                         echo $m["a"];
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintNestedArrayWithOffsetAccessedExplicitly' => [
                 '<?php
@@ -1419,39 +1528,39 @@ class TaintTest extends TestCase
                     $a[] = ["a" => $_GET["name"], "b" => "foo"];
 
                     echo $a[0]["a"];',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintThroughArrayMapExplicitClosure' => [
                 '<?php
                     $get = array_map(function($str) { return trim($str);}, $_GET);
                     echo $get["test"];',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintThroughArrayMapExplicitTypedClosure' => [
                 '<?php
                     $get = array_map(function(string $str) : string { return trim($str);}, $_GET);
                     echo $get["test"];',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintThroughArrayMapExplicitArrowFunction' => [
                 '<?php
                     $get = array_map(fn($str) => trim($str), $_GET);
                     echo $get["test"];',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintThroughArrayMapImplicitFunctionCall' => [
                 '<?php
                     $a = ["test" => $_GET["name"]];
                     $get = array_map("trim", $a);
                     echo $get["test"];',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintFilterVar' => [
                 '<?php
                     $get = filter_var($_GET, FILTER_CALLBACK, ["options" => "trim"]);
 
                     echo $get["test"];',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintAfterReconciledType' => [
                 '<?php
@@ -1459,7 +1568,7 @@ class TaintTest extends TestCase
                     if (is_string($input)) {
                         echo "$input";
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintExit' => [
                 '<?php
@@ -1468,7 +1577,7 @@ class TaintTest extends TestCase
                     } else {
                         die($_GET[\'b\']);
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintSpecializedMethod' => [
                 '<?php
@@ -1480,9 +1589,9 @@ class TaintTest extends TestCase
                     }
                     $a = new Unsafe();
                     echo $a->isUnsafe();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
-            'taintSpecializedInstanceProperty' => [
+            'doTaintSpecializedInstanceProperty' => [
                 '<?php
                     /** @psalm-taint-specialize */
                     class StringHolder {
@@ -1496,23 +1605,23 @@ class TaintTest extends TestCase
                     $b = new StringHolder($_GET["x"]);
 
                     echo $b->x;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintUnserialize' => [
                 '<?php
                     $cb = unserialize($_POST[\'x\']);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedUnserialize',
             ],
             'taintCreateFunction' => [
                 '<?php
                     $cb = create_function(\'$a\', $_GET[\'x\']);',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedEval',
             ],
             'taintException' => [
                 '<?php
                     $e = new Exception();
                     echo $e;',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintError' => [
                 '<?php
@@ -1522,7 +1631,7 @@ class TaintTest extends TestCase
                     } catch (TypeError $e) {
                         echo "Caught: {$e->getTraceAsString()}\n";
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             'taintThrowable' => [
                 '<?php
@@ -1532,7 +1641,360 @@ class TaintTest extends TestCase
                     } catch (Throwable $e) {
                         echo "Caught: $e";  // TODO: ("Caught" . $e) does not work.
                     }',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintReturnedArray' => [
+                '<?php
+                    function processParams(array $params) : array {
+                        if (isset($params["foo"])) {
+                            return $params;
+                        }
+
+                        return [];
+                    }
+
+                    $params = processParams($_GET);
+
+                    echo $params["foo"];',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintFlow' => [
+                '<?php
+                    /**
+                     * @psalm-flow ($r) -> return
+                     */
+                    function some_stub(string $r): string {}
+
+                    $r = $_GET["untrusted"];
+
+                    echo some_stub($r);',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintFlowProxy' => [
+                '<?php
+                    /**
+                     * @psalm-taint-sink callable $in
+                     */
+                    function dummy_taint_sink(string $in): void {}
+
+                    /**
+                     * @psalm-flow proxy dummy_taint_sink($r)
+                     */
+                    function some_stub(string $r): string {}
+
+                    $r = $_GET["untrusted"];
+
+                    some_stub($r);',
+                'error_message' => 'TaintedCallable',
+            ],
+            'taintFlowProxyAndReturn' => [
+                '<?php
+                    function dummy_taintable(string $in): string {
+                        return $in;
+                    }
+
+                    /**
+                     * @psalm-flow proxy dummy_taintable($r) -> return
+                     */
+                    function some_stub(string $r): string {}
+
+                    $r = $_GET["untrusted"];
+
+                    echo some_stub($r);',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintFlowMethodProxyAndReturn' => [
+                '<?php
+                    class dummy {
+                        public function taintable(string $in): string {
+                            return $in;
+                        }
+                    }
+
+                    /**
+                     * @psalm-flow proxy dummy::taintable($r) -> return
+                     */
+                    function some_stub(string $r): string {}
+
+                    $r = $_GET["untrusted"];
+
+                    echo some_stub($r);',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintPopen' => [
+                '<?php
+                    $cb = popen($_POST[\'x\'], \'r\');',
+                'error_message' => 'TaintedShell',
+            ],
+            'taintProcOpen' => [
+                '<?php
+                    $arr = [];
+                    $cb = proc_open($_POST[\'x\'], [], $arr);',
+                'error_message' => 'TaintedShell',
+            ],
+            'taintedCurlInit' => [
+                '<?php
+                    $ch = curl_init($_GET[\'url\']);',
+                'error_message' => 'TaintedSSRF',
+            ],
+            'taintedCurlSetOpt' => [
+                '<?php
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $_GET[\'url\']);',
+                'error_message' => 'TaintedSSRF',
+            ],
+            'taintThroughChildConstructorWithoutMethodOverride' => [
+                '<?php //--taint-analysis
+                    class A {
+                        private $taint;
+
+                        public function __construct($taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    class B extends A {}
+
+
+                    $b = new B($_GET["bar"]);
+                    echo $b->getTaint();',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintThroughChildConstructorCallingParentMethod' => [
+                '<?php //--taint-analysis
+                    class A {
+                        private $taint;
+
+                        public function __construct($taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    class B extends A {}
+
+                    class C extends B {}
+
+                    $c = new C($_GET["bar"]);
+
+                    function foo(B $b) {
+                        echo $b->getTaint();
+                    }',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintThroughChildConstructorCallingGrandParentMethod' => [
+                '<?php //--taint-analysis
+                    class A {
+                        private $taint;
+
+                        public function __construct($taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    class B extends A {}
+
+                    class C extends B {}
+
+                    $c = new C($_GET["bar"]);
+
+                    function foo(A $a) {
+                        echo $a->getTaint();
+                    }',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintThroughChildConstructorWhenMethodOverriddenWithParentConstructorCall' => [
+                '<?php //--taint-analysis
+                    class A {
+                        private $taint;
+
+                        public function __construct($taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    class B extends A {
+                        public function __construct($taint) {
+                            parent::__construct($taint);
+                        }
+                    }
+
+                    $b = new B($_GET["bar"]);
+                    echo $b->getTaint();',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintedLdapSearch' => [
+                '<?php
+                    $ds = ldap_connect(\'example.com\');
+                    $dn = \'o=Psalm, c=US\';
+                    $filter = $_GET[\'filter\'];
+                    ldap_search($ds, $dn, $filter, []);',
+                'error_message' => 'TaintedLdap',
+            ],
+            'taintedFile' => [
+                '<?php
+                file_get_contents($_GET[\'taint\']);',
+            'error_message' => 'TaintedFile',
+            ],
+            'taintedHeader' => [
+                '<?php
+                header($_GET[\'taint\']);',
+            'error_message' => 'TaintedHeader',
+            ],
+            'taintedCookie' => [
+                '<?php
+                setcookie($_GET[\'taint\'], \'value\');',
+            'error_message' => 'TaintedCookie',
+            ],
+            'variadicTaintPropagation' => [
+                '<?php
+
+                /**
+                 * @psalm-pure
+                 *
+                 * @param string|int|float $args
+                 *
+                 * @psalm-flow ($format, $args) -> return
+                 */
+                function variadic_test(string $format, ...$args) : string {
+                }
+
+                echo variadic_test(\'\', \'\', $_GET[\'taint\'], \'\');',
+                'error_message' => 'TaintedHtml'
+            ],
+            'potentialTaintThroughChildClassSettingProperty' => [
+                '<?php
+                    class A {
+                        public string $taint = "";
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    class B extends A {
+                        public function __construct(string $taint) {
+                            $this->taint = $taint;
+                        }
+                    }
+
+                    $b = new B($_GET["bar"]);
+                    echo $b->getTaint();',
+                'error_message' => 'TaintedHtml',
+            ],
+            'immutableClassTrackInputThroughMethod' => [
+                '<?php
+                    /**
+                     * @psalm-immutable
+                     */
+                    class A {
+                        private string $taint = "";
+
+                        public function __construct(string $taint) {
+                            $this->taint = $taint;
+                        }
+
+                        public function getTaint() : string {
+                            return $this->taint;
+                        }
+                    }
+
+                    $a = new A($_GET["bar"]);
+                    echo $a->getTaint();',
+                'error_message' => 'TaintedHtml',
+            ],
+            'strTrReturnTypeTaint' => [
+                '<?php
+                    $input = strtr(\'data\', $_GET[\'taint\'], \'data\');
+                    setcookie($input, \'value\');',
+                'error_message' => 'TaintedCookie',
+            ],
+            'conditionallyEscapedTaintPassedFalse' => [
+                '<?php
+                    /**
+                     * @psalm-taint-escape ($escape is true ? "html" : null)
+                     */
+                    function foo(string $string, bool $escape = true): string {
+                        if ($escape) {
+                            $string = htmlspecialchars($string);
+                        }
+
+                        return $string;
+                    }
+
+                    echo foo($_GET["foo"], false);',
+                'error_message' => 'TaintedHtml',
+            ],
+            'suppressOneCatchAnother' => [
+                '<?php
+                    /** @psalm-taint-specialize */
+                    function data(array $data, string $key) {
+                        return $data[$key];
+                    }
+
+                    function get(string $key) {
+                        return data($_GET, $key);
+                    }
+
+                    function post(string $key) {
+                        return data($_POST, $key);
+                    }
+
+                    echo get("x");
+                    /** @psalm-suppress TaintedInput */
+                    echo post("x");',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintSpecializedTwice' => [
+                '<?php
+                    /** @psalm-taint-specialize */
+                    function data(array $data, string $key) {
+                        return $data[$key];
+                    }
+
+                    /** @psalm-taint-specialize */
+                    function get(string $key) {
+                        return data($_GET, $key);
+                    }
+
+                    echo get("x");',
+                'error_message' => 'TaintedHtml',
+            ],
+            'conditionallyEscapedTaintsAll' => [
+                '<?php
+                    /** @psalm-taint-escape ($type is "int" ? "html" : null) */
+                    function cast(mixed $value, string $type): mixed
+                    {
+                        if ("int" === $type) {
+                            return (int) $value;
+                        }
+                        return (string) $value;
+                    }
+
+                    /** @psalm-taint-specialize */
+                    function data(array $data, string $key, string $type) {
+                        return cast($data[$key], $type);
+                    }
+
+                    // technically a false-positive, but desired behaviour in lieu
+                    // of better information
+                    echo data($_GET, "x", "int");',
+                'error_message' => 'TaintedHtml',
             ],
             /*
             // TODO: Stubs do not support this type of inference even with $this->message = $message.
@@ -1541,7 +2003,7 @@ class TaintTest extends TestCase
                 '<?php
                     $x = new Exception($_GET["x"]);
                     echo $x->getMessage();',
-                'error_message' => 'TaintedInput',
+                'error_message' => 'TaintedHtml',
             ],
             */
         ];

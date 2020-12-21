@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes a class constant whose value might not yet be known.
+ */
 class TScalarClassConstant extends Scalar
 {
     /** @var string */
@@ -43,7 +46,7 @@ class TScalarClassConstant extends Scalar
         return null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

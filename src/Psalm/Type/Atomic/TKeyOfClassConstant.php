@@ -7,6 +7,9 @@ use function stripos;
 use function strpos;
 use function strtolower;
 
+/**
+ * Represents an offset of a class constant array.
+ */
 class TKeyOfClassConstant extends Scalar
 {
     /** @var string */
@@ -49,7 +52,7 @@ class TKeyOfClassConstant extends Scalar
         return null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

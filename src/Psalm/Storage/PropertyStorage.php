@@ -86,6 +86,16 @@ class PropertyStorage
      */
     public $getter_method = null;
 
+    /**
+     * @var bool
+     */
+    public $is_promoted = false;
+
+    /**
+     * @var list<AttributeStorage>
+     */
+    public $attributes = [];
+
     public function getInfo() : string
     {
         switch ($this->visibility) {

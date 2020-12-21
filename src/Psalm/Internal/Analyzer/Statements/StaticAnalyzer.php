@@ -62,7 +62,7 @@ class StaticAnalyzer
                 } catch (\Psalm\Exception\IncorrectDocblockException $e) {
                     if (IssueBuffer::accepts(
                         new \Psalm\Issue\MissingDocblockType(
-                            (string)$e->getMessage(),
+                            $e->getMessage(),
                             new CodeLocation($statements_analyzer, $var)
                         )
                     )) {
@@ -71,7 +71,7 @@ class StaticAnalyzer
                 } catch (DocblockParseException $e) {
                     if (IssueBuffer::accepts(
                         new InvalidDocblock(
-                            (string)$e->getMessage(),
+                            $e->getMessage(),
                             new CodeLocation($statements_analyzer->getSource(), $var)
                         )
                     )) {
@@ -131,7 +131,7 @@ class StaticAnalyzer
                     } catch (\UnexpectedValueException $e) {
                         if (IssueBuffer::accepts(
                             new InvalidDocblock(
-                                (string)$e->getMessage(),
+                                $e->getMessage(),
                                 new CodeLocation($statements_analyzer, $var)
                             )
                         )) {
@@ -173,7 +173,7 @@ class StaticAnalyzer
             if ($context->check_variables) {
                 $context->vars_in_scope[$var_id] = $comment_type ? clone $comment_type : Type::getMixed();
                 $context->vars_possibly_in_scope[$var_id] = true;
-                $context->assigned_var_ids[$var_id] = true;
+                $context->assigned_var_ids[$var_id] = (int) $stmt->getAttribute('startFilePos');
                 $statements_analyzer->byref_uses[$var_id] = true;
 
                 $location = new CodeLocation($statements_analyzer, $var);

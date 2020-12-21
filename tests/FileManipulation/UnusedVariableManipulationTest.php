@@ -107,6 +107,7 @@ class UnusedVariableManipulationTest extends FileManipulationTest
                     class A {
                         public function foo() : void {
                             $b = "b";
+                            file_get_contents("foo.php");
                             echo $b;
                         }
                     }',
@@ -640,6 +641,25 @@ class UnusedVariableManipulationTest extends FileManipulationTest
                             // this class is not stringable
                         }
                     }',
+                '7.1',
+                ['UnusedVariable'],
+                true,
+            ],
+            'dontRemoveUnusedClosureUse' => [
+                '<?php
+                    $b = 5;
+                    echo $b;
+                    $a = function() use ($b) : void {
+                        echo 4;
+                    };
+                    $a();',
+                '<?php
+                    $b = 5;
+                    echo $b;
+                    $a = function() use ($b) : void {
+                        echo 4;
+                    };
+                    $a();',
                 '7.1',
                 ['UnusedVariable'],
                 true,

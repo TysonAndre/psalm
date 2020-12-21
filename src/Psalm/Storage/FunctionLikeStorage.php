@@ -102,7 +102,15 @@ abstract class FunctionLikeStorage
     public $global_types = [];
 
     /**
-     * @var array<string, non-empty-array<string, array{Type\Union}>>|null
+     * An array holding the class template "as" types.
+     *
+     * It's the de-facto list of all templates on a given class.
+     *
+     * The name of the template is the first key. The nested array is keyed by a unique
+     * function identifier. This allows operations with the same-named template defined
+     * across multiple classes and/or functions to not run into trouble.
+     *
+     * @var array<string, non-empty-array<string, Type\Union>>|null
      */
     public $template_types;
 
@@ -195,6 +203,11 @@ abstract class FunctionLikeStorage
     public $removed_taints = [];
 
     /**
+     * @var array<Type\Union>
+     */
+    public $conditionally_removed_taints = [];
+
+    /**
      * @var array<int, string>
      */
     public $return_source_params = [];
@@ -203,6 +216,16 @@ abstract class FunctionLikeStorage
      * @var bool
      */
     public $allow_named_arg_calls = true;
+
+    /**
+     * @var list<AttributeStorage>
+     */
+    public $attributes = [];
+
+    /**
+     * @var list<array{fqn: string, params: array<int>, return: bool}>|null
+     */
+    public $proxy_calls = [];
 
     public function __toString(): string
     {

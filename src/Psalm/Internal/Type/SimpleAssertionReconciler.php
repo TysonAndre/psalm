@@ -66,36 +66,16 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if ($assertion === 'isset') {
-            $existing_var_type->removeType('null');
-
-            if (empty($existing_var_type->getAtomicTypes())) {
-                $failed_reconciliation = 2;
-
-                if ($code_location) {
-                    if (IssueBuffer::accepts(
-                        new TypeDoesNotContainType(
-                            'Cannot resolve types for ' . $key . ' on null var',
-                            $code_location,
-                            null
-                        ),
-                        $suppressed_issues
-                    )) {
-                        // fall through
-                    }
-                }
-
-                return Type::getEmpty();
-            }
-
-            if ($existing_var_type->hasType('empty')) {
-                $existing_var_type->removeType('empty');
-                $existing_var_type->addType(new TMixed($inside_loop));
-            }
-
-            $existing_var_type->possibly_undefined = false;
-            $existing_var_type->possibly_undefined_from_try = false;
-
-            return $existing_var_type;
+            return self::reconcileIsset(
+                $existing_var_type,
+                $key,
+                $negated,
+                $code_location,
+                $suppressed_issues,
+                $failed_reconciliation,
+                $is_equality,
+                $inside_loop
+            );
         }
 
         if ($assertion === 'array-key-exists') {
@@ -418,6 +398,71 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         return null;
+    }
+
+    /**
+     * @param   string[]  $suppressed_issues
+     * @param   0|1|2    $failed_reconciliation
+     */
+    private static function reconcileIsset(
+        Union $existing_var_type,
+        ?string $key,
+        bool $negated,
+        ?CodeLocation $code_location,
+        array $suppressed_issues,
+        int &$failed_reconciliation,
+        bool $is_equality,
+        bool $inside_loop
+    ) : Union {
+        $old_var_type_string = $existing_var_type->getId();
+
+        // if key references an array offset
+        $did_remove_type = ($key && strpos($key, '['))
+            || !$existing_var_type->initialized
+            || $existing_var_type->possibly_undefined
+            || $key === '$_SESSION'
+            || $existing_var_type->ignore_isset;
+
+        if ($existing_var_type->isNullable()) {
+            $existing_var_type->removeType('null');
+
+            $did_remove_type = true;
+        }
+
+        if (!$existing_var_type->hasMixed()
+            && !$is_equality
+            && (!$did_remove_type || empty($existing_var_type->getAtomicTypes()))
+            && $key
+            && $code_location
+        ) {
+            self::triggerIssueForImpossible(
+                $existing_var_type,
+                $old_var_type_string,
+                $key,
+                'isset',
+                !$did_remove_type,
+                $negated,
+                $code_location,
+                $suppressed_issues
+            );
+
+            if (empty($existing_var_type->getAtomicTypes())) {
+                $failed_reconciliation = 2;
+                return Type::getEmpty();
+            }
+        }
+
+        if ($existing_var_type->hasType('empty')) {
+            $existing_var_type->removeType('empty');
+            $existing_var_type->addType(new TMixed($inside_loop));
+        }
+
+        $existing_var_type->from_property = false;
+        $existing_var_type->possibly_undefined = false;
+        $existing_var_type->possibly_undefined_from_try = false;
+        $existing_var_type->ignore_isset = false;
+
+        return $existing_var_type;
     }
 
     /**
@@ -1208,6 +1253,14 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
                 }
 
                 $did_remove_type = true;
+            } elseif ($type instanceof Atomic\TIterable) {
+                $clone_type = clone $type;
+
+                self::refineArrayKey($clone_type->type_params[0]);
+
+                $object_types[] = new Type\Atomic\TGenericObject('Traversable', $clone_type->type_params);
+
+                $did_remove_type = true;
             } else {
                 $did_remove_type = true;
             }
@@ -1589,7 +1642,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
 
         $existing_var_atomic_types = $existing_var_type->getAtomicTypes();
 
-        if ($existing_var_type->hasMixed() || $existing_var_type->hasTemplate()) {
+        if ($existing_var_type->hasMixed()) {
             return Type::getArray();
         }
 
@@ -1612,6 +1665,24 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
                 self::refineArrayKey($clone_type->type_params[0]);
 
                 $array_types[] = new TArray($clone_type->type_params);
+
+                $did_remove_type = true;
+            } elseif ($type instanceof TTemplateParam) {
+                if ($type->as->hasArray() || $type->as->hasMixed()) {
+                    $type = clone $type;
+
+                    $type->as = self::reconcileArray(
+                        $type->as,
+                        null,
+                        false,
+                        null,
+                        $suppressed_issues,
+                        $failed_reconciliation,
+                        $is_equality
+                    );
+
+                    $array_types[] = $type;
+                }
 
                 $did_remove_type = true;
             } else {
@@ -1639,7 +1710,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if ($array_types) {
-            return \Psalm\Internal\Type\TypeCombination::combineTypes($array_types);
+            return \Psalm\Internal\Type\TypeCombiner::combine($array_types);
         }
 
         $failed_reconciliation = 2;
@@ -1647,27 +1718,6 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         return $existing_var_type->from_docblock
             ? Type::getMixed()
             : Type::getEmpty();
-    }
-
-    private static function refineArrayKey(Union $key_type) : void
-    {
-        foreach ($key_type->getAtomicTypes() as $key => $cat) {
-            if ($cat instanceof TTemplateParam) {
-                self::refineArrayKey($cat->as);
-                $key_type->bustCache();
-            } elseif ($cat instanceof TScalar || $cat instanceof TMixed) {
-                $key_type->removeType($key);
-                $key_type->addType(new Type\Atomic\TArrayKey());
-            } elseif (!$cat instanceof TString && !$cat instanceof TInt) {
-                $key_type->removeType($key);
-                $key_type->addType(new Type\Atomic\TArrayKey());
-            }
-        }
-
-        if (!$key_type->getAtomicTypes()) {
-            // this should ideally prompt some sort of error
-            $key_type->addType(new Type\Atomic\TArrayKey());
-        }
     }
 
     /**
@@ -1758,7 +1808,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if ($array_types) {
-            return \Psalm\Internal\Type\TypeCombination::combineTypes($array_types);
+            return \Psalm\Internal\Type\TypeCombiner::combine($array_types);
         }
 
         $failed_reconciliation = 2;
@@ -1885,7 +1935,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if ($array_types) {
-            return \Psalm\Internal\Type\TypeCombination::combineTypes($array_types);
+            return \Psalm\Internal\Type\TypeCombiner::combine($array_types);
         }
 
         $failed_reconciliation = 2;
@@ -1982,7 +2032,7 @@ class SimpleAssertionReconciler extends \Psalm\Type\Reconciler
         }
 
         if ($callable_types) {
-            return \Psalm\Internal\Type\TypeCombination::combineTypes($callable_types);
+            return \Psalm\Internal\Type\TypeCombiner::combine($callable_types);
         }
 
         $failed_reconciliation = 2;

@@ -11,7 +11,12 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     /** @var SplObjectStorage<PhpParser\Node, Union> */
     private $node_types;
 
-    /** @var SplObjectStorage<PhpParser\Node, array<string, non-empty-list<non-empty-list<string>>>|null> */
+    /**
+     * @var SplObjectStorage<
+     *     PhpParser\Node,
+     *     list<non-empty-array<string, non-empty-list<non-empty-list<string>>>>|null
+     * >
+     */
     private $node_assertions;
 
     /** @var SplObjectStorage<PhpParser\Node, array<int, \Psalm\Storage\Assertion>> */
@@ -25,13 +30,9 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
 
     public function __construct()
     {
-        /** @psalm-suppress PropertyTypeCoercion */
         $this->node_types = new SplObjectStorage();
-        /** @psalm-suppress PropertyTypeCoercion */
         $this->node_assertions = new SplObjectStorage();
-        /** @psalm-suppress PropertyTypeCoercion */
         $this->node_if_true_assertions = new SplObjectStorage();
-        /** @psalm-suppress PropertyTypeCoercion */
         $this->node_if_false_assertions = new SplObjectStorage();
     }
 
@@ -52,7 +53,7 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     }
 
     /**
-     * @param array<string, non-empty-list<non-empty-list<string>>>|null $assertions
+     * @param list<non-empty-array<string, non-empty-list<non-empty-list<string>>>>|null $assertions
      */
     public function setAssertions(PhpParser\Node\Expr $node, ?array $assertions) : void
     {
@@ -64,7 +65,7 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     }
 
     /**
-     * @return array<string, non-empty-list<non-empty-list<string>>>|null
+     * @return list<non-empty-array<string, non-empty-list<non-empty-list<string>>>>|null
      */
     public function getAssertions(PhpParser\Node\Expr $node) : ?array
     {
@@ -76,8 +77,11 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     }
 
     /**
-     * @param PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall|PhpParser\Node\Expr\StaticCall $node
-     * @param array<int, \Psalm\Storage\Assertion> $assertions
+     * @param PhpParser\Node\Expr\FuncCall
+     *        |PhpParser\Node\Expr\MethodCall
+     *        |PhpParser\Node\Expr\StaticCall
+     *        |PhpParser\Node\Expr\New_             $node
+     * @param array<int, \Psalm\Storage\Assertion>  $assertions
      */
     public function setIfTrueAssertions(PhpParser\Node\Expr $node, array $assertions) : void
     {
@@ -85,7 +89,10 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     }
 
     /**
-     * @param PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall|PhpParser\Node\Expr\StaticCall $node
+     * @param PhpParser\Node\Expr\FuncCall
+     *        |PhpParser\Node\Expr\MethodCall
+     *        |PhpParser\Node\Expr\StaticCall
+     *        |PhpParser\Node\Expr\New_             $node
      * @return array<int, \Psalm\Storage\Assertion>|null
      */
     public function getIfTrueAssertions(PhpParser\Node\Expr $node) : ?array
@@ -94,8 +101,11 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     }
 
     /**
-     * @param PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall|PhpParser\Node\Expr\StaticCall $node
-     * @param array<int, \Psalm\Storage\Assertion> $assertions
+     * @param PhpParser\Node\Expr\FuncCall
+     *        |PhpParser\Node\Expr\MethodCall
+     *        |PhpParser\Node\Expr\StaticCall
+     *        |PhpParser\Node\Expr\New_             $node
+     * @param array<int, \Psalm\Storage\Assertion>  $assertions
      */
     public function setIfFalseAssertions(PhpParser\Node\Expr $node, array $assertions) : void
     {
@@ -103,7 +113,10 @@ class NodeDataProvider implements \Psalm\NodeTypeProvider
     }
 
     /**
-     * @param PhpParser\Node\Expr\FuncCall|PhpParser\Node\Expr\MethodCall|PhpParser\Node\Expr\StaticCall $node
+     * @param PhpParser\Node\Expr\FuncCall
+     *        |PhpParser\Node\Expr\MethodCall
+     *        |PhpParser\Node\Expr\StaticCall
+     *        |PhpParser\Node\Expr\New_             $node
      * @return array<int, \Psalm\Storage\Assertion>|null
      */
     public function getIfFalseAssertions(PhpParser\Node\Expr $node) : ?array

@@ -69,16 +69,15 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                 '<?php
                     /** @param int $i */
                     function foo($i): void {
+                        /** @psalm-suppress RedundantConditionGivenDocblockType */
                         if ($i !== null) {
+                            /** @psalm-suppress RedundantCastGivenDocblockType */
                             $i = (int) $i;
 
                             if ($i) {}
                         }
                     }',
                 'assertions' => [],
-                'error_levels' => [
-                    'RedundantConditionGivenDocblockType',
-                ],
             ],
             'noRedundantConditionAfterDocblockTypeNullCheck' => [
                 '<?php
@@ -373,6 +372,7 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                         $options = ["option" => true];
                     }
 
+                    /** @psalm-suppress PossiblyUndefinedGlobalVariable */
                     $option = $options["option"] ?? false;
 
                     if ($option) {}',
@@ -455,15 +455,6 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                     }
                     if ($x) {
                         var_export($x);
-                    }',
-            ],
-            'arrayKeyExistsAccess' => [
-                '<?php
-                    /** @param array<int, string> $arr */
-                    function foo(array $arr) : void {
-                        if (array_key_exists(1, $arr)) {
-                            $a = ($arr[1] === "b") ? true : false;
-                        }
                     }',
             ],
             'noRedundantConditionStringNotFalse' => [
@@ -799,6 +790,12 @@ class RedundantConditionTest extends \Psalm\Tests\TestCase
                             return function() : void {};
                         }
                     }'
+            ],
+            'noRedundantCastAfterCalculation' => [
+                '<?php
+                    function x(string $x): int {
+                        return (int) (hexdec($x) + 1);
+                    }',
             ],
         ];
     }

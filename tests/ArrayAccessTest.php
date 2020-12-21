@@ -216,6 +216,29 @@ class ArrayAccessTest extends TestCase
         $this->analyzeFile('somefile.php', new \Psalm\Context());
     }
 
+    public function testEnsureOffsetExistsAfterNestedIsset(): void
+    {
+        \Psalm\Config::getInstance()->ensure_array_string_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                class A {
+                    public int $foo = 0;
+                }
+
+                /**
+                 * @param array<string, A> $value
+                 */
+                function test(array $value): int
+                {
+                    return isset($value["a"]->foo) ? $value["a"]->foo : 0;
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
     public function testEnsureListOffsetExistsAfterCountValueInRange(): void
     {
         \Psalm\Config::getInstance()->ensure_array_int_offsets_exist = true;
@@ -366,7 +389,9 @@ class ArrayAccessTest extends TestCase
                 '<?php
                     /** @psalm-suppress UndefinedClass */
                     $a = new A();
-                    /** @psalm-suppress UndefinedClass */
+                    /**
+                     * @psalm-suppress UndefinedClass
+                     */
                     if (!isset($a->arr["bat"]) || strlen($a->arr["bat"])) { }',
                 'assertions' => [],
                 'error_levels' => ['MixedArgument', 'MixedArrayAccess'],
@@ -506,7 +531,6 @@ class ArrayAccessTest extends TestCase
                 '<?php
                     /**
                      * @psalm-suppress MixedAssignment
-                     * @psalm-suppress MixedArrayAccess
                      * @psalm-suppress MixedOperand
                      * @psalm-suppress MixedArrayAssignment
                      * @param mixed[] $line
@@ -662,6 +686,13 @@ class ArrayAccessTest extends TestCase
             ],
             'arrayAccessOnObjectWithNullGet' => [
                 '<?php
+                    $array = new C([]);
+                    $array["key"] = [];
+                    /** @psalm-suppress PossiblyInvalidArrayAssignment */
+                    $array["key"][] = "testing";
+
+                    $c = isset($array["foo"]) ? $array["foo"] : null;
+
                     class C implements ArrayAccess
                     {
                         /**
@@ -736,14 +767,7 @@ class ArrayAccessTest extends TestCase
                         {
                             $this->__unset($offset);
                         }
-                    }
-
-                    $array = new C([]);
-                    $array["key"] = [];
-                    /** @psalm-suppress PossiblyInvalidArrayAssignment */
-                    $array["key"][] = "testing";
-
-                    $c = isset($array["foo"]) ? $array["foo"] : null;',
+                    }',
                 [
                     '$c' => 'C|null|scalar',
                 ]
@@ -751,67 +775,6 @@ class ArrayAccessTest extends TestCase
             'singleLetterOffset' => [
                 '<?php
                     ["s" => "str"]["str"[0]];',
-            ],
-            'assertConstantOffsetsInMethod' => [
-                '<?php
-                    class C {
-                        public const ARR = [
-                            "a" => ["foo" => true],
-                            "b" => []
-                        ];
-
-                        public function bar(string $key): bool {
-                            if (!array_key_exists($key, self::ARR) || !array_key_exists("foo", self::ARR[$key])) {
-                                return false;
-                            }
-
-                            return self::ARR[$key]["foo"];
-                        }
-                    }',
-                [],
-                ['MixedReturnStatement', 'MixedInferredReturnType'],
-            ],
-            'assertSelfClassConstantOffsetsInFunction' => [
-                '<?php
-                    namespace Ns;
-
-                    class C {
-                        public const ARR = [
-                            "a" => ["foo" => true],
-                            "b" => []
-                        ];
-
-                        public function bar(?string $key): bool {
-                            if ($key === null || !array_key_exists($key, self::ARR) || !array_key_exists("foo", self::ARR[$key])) {
-                                return false;
-                            }
-
-                            return self::ARR[$key]["foo"];
-                        }
-                    }',
-                [],
-                ['MixedReturnStatement', 'MixedInferredReturnType'],
-            ],
-            'assertNamedClassConstantOffsetsInFunction' => [
-                '<?php
-                    namespace Ns;
-
-                    class C {
-                        public const ARR = [
-                            "a" => ["foo" => true],
-                            "b" => [],
-                        ];
-                    }
-
-                    function bar(?string $key): bool {
-                        if ($key === null || !array_key_exists($key, C::ARR) || !array_key_exists("foo", C::ARR[$key])) {
-                            return false;
-                        }
-
-                        return C::ARR[$key]["foo"];
-                    }',
-                [],
-                ['MixedReturnStatement', 'MixedInferredReturnType'],
             ],
             'arrayAccessAfterByRefArrayOffsetAssignment' => [
                 '<?php
@@ -970,11 +933,47 @@ class ArrayAccessTest extends TestCase
                      * @param arraylike-object<int, string>|array<int, string> $arr
                      */
                     function test($arr): string {
-                        return $arr[0] ?? "";
+                        return $arr[0];
                     }
 
                     test(["a", "b"]);
                     test(new ArrayObject(["a", "b"]));'
+            ],
+            'nullCoalesceArrayAccess' => [
+                '<?php
+                    /** @param ArrayAccess<int, string> $a */
+                    function foo(?ArrayAccess $a) : void {
+                        echo $a[0] ?? "default";
+                    }'
+            ],
+            'allowUnsettingNested' => [
+                '<?php
+                    /** @psalm-immutable */
+                    final class test {
+                        public function __construct(public int $value) {}
+                    }
+                    $test = new test(1);
+                    $a = [1 => $test];
+                    unset($a[$test->value]);'
+            ],
+            'arrayAssertionShouldNotBeNull' => [
+                '<?php
+                    function foo(?array $arr, string $s) : void {
+                        /**
+                         * @psalm-suppress PossiblyNullArrayAccess
+                         * @psalm-suppress MixedArrayAccess
+                         */
+                        if ($arr[$s]["b"] !== true) {
+                            return;
+                        }
+
+                        /**
+                         * @psalm-suppress MixedArgument
+                         * @psalm-suppress MixedArrayAccess
+                         * @psalm-suppress PossiblyNullArrayAccess
+                         */
+                        echo $arr[$s]["c"];
+                    }'
             ],
         ];
     }
@@ -1254,6 +1253,19 @@ class ArrayAccessTest extends TestCase
                     [$width, $height, $depth] = size();',
                 'error_message' => 'InvalidArrayOffset',
             ],
+            'negativeListAccess' => [
+                '<?php
+                    class HelloWorld
+                    {
+                        public function sayHello(): void
+                        {
+                            $a = explode("/", "a/b/c");
+                            $x = $a[-3];
+                            echo $x;
+                        }
+                    }',
+                'error_message' => 'InvalidArrayOffset'
+            ]
         ];
     }
 }

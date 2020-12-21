@@ -477,7 +477,7 @@ class ClassTemplateExtendsTest extends TestCase
             'extendsTwiceDifferentNameUnbrokenChain' => [
                 '<?php
                     /**
-                     * @template T1
+                     * @psalm-template T1
                      */
                     class Container
                     {
@@ -485,6 +485,7 @@ class ClassTemplateExtendsTest extends TestCase
                          * @var T1
                          */
                         private $v;
+
                         /**
                          * @param T1 $v
                          */
@@ -492,6 +493,7 @@ class ClassTemplateExtendsTest extends TestCase
                         {
                             $this->v = $v;
                         }
+
                         /**
                          * @return T1
                          */
@@ -502,14 +504,14 @@ class ClassTemplateExtendsTest extends TestCase
                     }
 
                     /**
-                     * @template T2
-                     * @template-extends Container<T2>
+                     * @psalm-template T2
+                     * @extends Container<T2>
                      */
                     class ChildContainer extends Container {}
 
                     /**
-                     * @template T3
-                     * @template-extends ChildContainer<T3>
+                     * @psalm-template T3
+                     * @extends ChildContainer<T3>
                      */
                     class GrandChildContainer extends ChildContainer {}
 
@@ -916,133 +918,7 @@ class ClassTemplateExtendsTest extends TestCase
                         public function valid(): bool { return false; }
                     }',
             ],
-            'traitUseNotExtended' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait CollectionTrait
-                    {
-                        /**
-                         * @return array<T>
-                         */
-                        abstract function elements() : array;
 
-                        /**
-                         * @return T|null
-                         */
-                        public function first()
-                        {
-                            return $this->elements()[0] ?? null;
-                        }
-                    }
-
-                    class Service
-                    {
-                        /**
-                         * @use CollectionTrait<int>
-                         */
-                        use CollectionTrait;
-
-                        /**
-                         * @return array<int>
-                         */
-                        public function elements(): array
-                        {
-                            return [1, 2, 3, 4];
-                        }
-                    }',
-            ],
-            'extendedTraitUse' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait CollectionTrait
-                    {
-                        /**
-                         * @return array<T>
-                         */
-                        abstract function elements() : array;
-
-                        /**
-                         * @return T|null
-                         */
-                        public function first()
-                        {
-                            return $this->elements()[0] ?? null;
-                        }
-                    }
-
-                    /**
-                     * @template TValue
-                     */
-                    trait BridgeTrait
-                    {
-                        /**
-                         * @use CollectionTrait<TValue>
-                         */
-                        use CollectionTrait;
-                    }
-
-                    class Service
-                    {
-                        /**
-                         * @use BridgeTrait<int>
-                         */
-                        use BridgeTrait;
-
-                        /**
-                         * @return array<int>
-                         */
-                        public function elements(): array
-                        {
-                            return [1, 2, 3, 4];
-                        }
-                    }',
-            ],
-            'extendedTraitUseAlreadyBound' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait CollectionTrait
-                    {
-                        /**
-                         * @return array<T>
-                         */
-                        abstract function elements() : array;
-
-                        /**
-                         * @return T|null
-                         */
-                        public function first()
-                        {
-                            return $this->elements()[0] ?? null;
-                        }
-                    }
-
-                    trait BridgeTrait
-                    {
-                        /**
-                         * @use CollectionTrait<int>
-                         */
-                        use CollectionTrait;
-                    }
-
-                    class Service
-                    {
-                        use BridgeTrait;
-
-                        /**
-                         * @return array<int>
-                         */
-                        public function elements(): array
-                        {
-                            return [1, 2, 3, 4];
-                        }
-                    }',
-            ],
             'extendClassThatParameterizesTemplatedParent' => [
                 '<?php
                     /**
@@ -1598,31 +1474,6 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }',
             ],
-            'badTemplateUseUnionType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait T {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     */
-                    class B {
-                        /**
-                         * @template-use T<int|string>
-                         */
-                        use T;
-                    }',
-            ],
             'extendWithEnoughArgs' => [
                 '<?php
                     /**
@@ -1864,100 +1715,6 @@ class ClassTemplateExtendsTest extends TestCase
 
                     ord((new Child())->example("str"));',
             ],
-            'allowTraitExtendAndImplementWithExplicitParamType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait ValueObjectTrait
-                    {
-                        /**
-                         * @psalm-var ?T
-                         */
-                        protected $value;
-
-                        /**
-                         * @psalm-param T $value
-                         *
-                         * @param $value
-                         */
-                        private function setValue($value): void {
-                            $this->validate($value);
-
-                            $this->value = $value;
-                        }
-
-                        /**
-                         * @psalm-param T $value
-                         *
-                         * @param $value
-                         */
-                        abstract protected function validate($value): void;
-                    }
-
-                    final class StringValidator {
-                        /**
-                         * @template-use ValueObjectTrait<string>
-                         */
-                        use ValueObjectTrait;
-
-                        /**
-                         * @param string $value
-                         */
-                        protected function validate($value): void
-                        {
-                            if (strlen($value) > 30) {
-                                throw new \Exception("bad");
-                            }
-                        }
-                    }',
-            ],
-            'allowTraitExtendAndImplementWithoutExplicitParamType' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait ValueObjectTrait
-                    {
-                        /**
-                         * @psalm-var ?T
-                         */
-                        protected $value;
-
-                        /**
-                         * @psalm-param T $value
-                         *
-                         * @param $value
-                         */
-                        private function setValue($value): void {
-                            $this->validate($value);
-
-                            $this->value = $value;
-                        }
-
-                        /**
-                         * @psalm-param T $value
-                         *
-                         * @param $value
-                         */
-                        abstract protected function validate($value): void;
-                    }
-
-                    final class StringValidator {
-                        /**
-                         * @template-use ValueObjectTrait<string>
-                         */
-                        use ValueObjectTrait;
-
-                        protected function validate($value): void
-                        {
-                            if (strlen($value) > 30) {
-                                throw new \Exception("bad");
-                            }
-                        }
-                    }',
-            ],
-
             'keyOfClassTemplateExtended' => [
                 '<?php
                     /**
@@ -2312,31 +2069,6 @@ class ClassTemplateExtendsTest extends TestCase
 
                     foreach ($c->getIterator() as $k => $v) { atan($v); strlen($k); }',
             ],
-            'traitInImplicitExtendedClass' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    interface Foo {
-                        /**
-                         * @return T
-                         */
-                        public function getItem();
-                    }
-
-                    trait FooTrait {
-                        public function getItem() {
-                            return "hello";
-                        }
-                    }
-
-                    /**
-                     * @template-implements Foo<string>
-                     */
-                    class Bar implements Foo {
-                        use FooTrait;
-                    }',
-            ],
             'extendedPropertyType' => [
                 '<?php
                     interface I {}
@@ -2666,104 +2398,6 @@ class ClassTemplateExtendsTest extends TestCase
                         /** @param class-string<T> $c */
                         public function __construct(string $c) {
                             $this->c = $c;
-                        }
-                    }'
-            ],
-            'useTraitReturnTypeForInheritedInterface' => [
-                '<?php
-                    /**
-                     * @template TValue
-                     * @template TNormalizedValue
-                     */
-                    interface Normalizer
-                    {
-                        /**
-                         * @param TValue $v
-                         * @return TNormalizedValue
-                         */
-                        function normalize($v);
-                    }
-
-                    /**
-                     * @template TTraitValue
-                     * @template TTraitNormalizedValue
-                     */
-                    trait NormalizerTrait
-                    {
-                        /**
-                         * @param TTraitValue $v
-                         * @return TTraitNormalizedValue
-                         */
-                        function normalize($v)
-                        {
-                            return $this->doNormalize($v);
-                        }
-
-                        /**
-                         * @param TTraitValue $v
-                         * @return TTraitNormalizedValue
-                         */
-                        abstract protected function doNormalize($v);
-                    }
-
-                    /** @implements Normalizer<string, string> */
-                    class StringNormalizer implements Normalizer
-                    {
-                        /** @use NormalizerTrait<string, string> */
-                        use NormalizerTrait;
-
-                        protected function doNormalize($v): string
-                        {
-                            return trim($v);
-                        }
-                    }'
-            ],
-            'useTraitReturnTypeForInheritedClass' => [
-                '<?php
-                    /**
-                     * @template TValue
-                     * @template TNormalizedValue
-                     */
-                    abstract class Normalizer
-                    {
-                        /**
-                         * @param TValue $v
-                         * @return TNormalizedValue
-                         */
-                        abstract function normalize($v);
-                    }
-
-                    /**
-                     * @template TTraitValue
-                     * @template TTraitNormalizedValue
-                     */
-                    trait NormalizerTrait
-                    {
-                        /**
-                         * @param TTraitValue $v
-                         * @return TTraitNormalizedValue
-                         */
-                        function normalize($v)
-                        {
-                            return $this->doNormalize($v);
-                        }
-
-                        /**
-                         * @param TTraitValue $v
-                         * @return TTraitNormalizedValue
-                         */
-                        abstract protected function doNormalize($v);
-                    }
-
-                    /** @extends Normalizer<string, string> */
-                    class StringNormalizer extends Normalizer
-                    {
-                        /** @use NormalizerTrait<string, string> */
-                        use NormalizerTrait;
-
-                        protected function doNormalize($v): string
-                        {
-                            return trim($v);
                         }
                     }'
             ],
@@ -3132,9 +2766,6 @@ class ClassTemplateExtendsTest extends TestCase
                          */
                         protected $c;
 
-                        /**
-                         * @param T $p
-                         */
                         public function filter($p) : C {
                             return $this->c->filter($p);
                         }
@@ -3339,9 +2970,6 @@ class ClassTemplateExtendsTest extends TestCase
                      * @implements X<T>
                      */
                     class A implements X {
-                        /**
-                         * @return T
-                         */
                         public function boo($x) {
                             return $x[0];
                         }
@@ -3925,46 +3553,6 @@ class ClassTemplateExtendsTest extends TestCase
                 [],
                 '7.4'
             ],
-            'inheritTraitPropertyTKeyedArray' => [
-                '<?php
-                    /** @template TValue */
-                    trait A {
-                        /** @psalm-var array{TValue} */
-                        private $foo;
-
-                        /** @psalm-param array{TValue} $foo */
-                        public function __construct(array $foo)
-                        {
-                            $this->foo = $foo;
-                        }
-                    }
-
-                    /** @template TValue */
-                    class B {
-                        /** @use A<TValue> */
-                        use A;
-                    }'
-            ],
-            'inheritTraitPropertyArray' => [
-                '<?php
-                    /** @template TValue */
-                    trait A {
-                        /** @psalm-var array<TValue> */
-                        private $foo;
-
-                        /** @psalm-param array<TValue> $foo */
-                        public function __construct(array $foo)
-                        {
-                            $this->foo = $foo;
-                        }
-                    }
-
-                    /** @template TValue */
-                    class B {
-                        /** @use A<TValue> */
-                        use A;
-                    }'
-            ],
             'staticShouldBeBoundInCall' => [
                 '<?php
                     /**
@@ -4159,28 +3747,6 @@ class ClassTemplateExtendsTest extends TestCase
                         }
                     }'
             ],
-            'applyTemplatedValueInTraitProperty' => [
-                '<?php
-                    /** @template T */
-                    trait ValueTrait {
-                        /** @psalm-param T $value */
-                        public function setValue($value): void {
-                            $this->value = $value;
-                        }
-                    }
-
-                    class C {
-                        /** @use ValueTrait<string> */
-                        use ValueTrait;
-
-                        /** @var string */
-                        private $value;
-
-                        public function __construct(string $value) {
-                            $this->value = $value;
-                        }
-                    }'
-            ],
             'classStringTemplatedExtends' => [
                 '<?php
                     /** @template T */
@@ -4232,35 +3798,6 @@ class ClassTemplateExtendsTest extends TestCase
                          * @psalm-return \Closure(array<TKey>): void
                          */
                         public function i(): Closure;
-                    }'
-            ],
-            'traitSelfAsParam' => [
-                '<?php
-                    trait InstancePool {
-                        /**
-                         * @template T as self
-                         * @param callable():?T $callback
-                         * @return ?T
-                         */
-                        public static function getInstance(callable $callback)
-                        {
-                            return $callback();
-                        }
-                    }
-
-                    class Foo
-                    {
-                        use InstancePool;
-                    }
-
-                    class Bar
-                    {
-                        public function a(): void
-                        {
-                            Foo::getInstance(function () {
-                                return new Foo();
-                            });
-                        }
                     }'
             ],
             'extendsWithArraySameObject' => [
@@ -4503,6 +4040,246 @@ class ClassTemplateExtendsTest extends TestCase
                      */
                     function c(): Promise {
                         return new Success("a");
+                    }'
+            ],
+            'multiLineTemplateExtends' => [
+                '<?php
+                    interface IdInterface {}
+
+                    /**
+                     * @template D of array<string, scalar|null>
+                     */
+                    interface WriteModelInterface
+                    {
+                        /**
+                         * Returns the values to be stored when saving.
+                         *
+                         * @psalm-return D
+                         */
+                        public function valuesToSave(): array;
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     * @template D of array<string, scalar|null>
+                     * @implements WriteModelInterface<D>
+                     */
+                    abstract class WriteModel implements WriteModelInterface
+                    {
+                    }
+
+                    /**
+                     * @extends WriteModelInterface<
+                     *     array{
+                     *         ulid: string,
+                     *         senderPersonId: int
+                     *     }
+                     * >
+                     */
+                    interface EmailWriteModelInterface extends WriteModelInterface
+                    {
+                    }
+
+                    /**
+                     * @psalm-immutable
+                     * @extends WriteModel<array{
+                     *    ulid: string,
+                     *    senderPersonId: int
+                     * }>
+                     */
+                    final class EmailWriteModel extends WriteModel implements EmailWriteModelInterface
+                    {
+                        public function valuesToSave(): array
+                        {
+                            return [
+                                "ulid" => "a string",
+                                "senderPersonId" => 1,
+                            ];
+                        }
+                    }'
+            ],
+            'inheritCorrectParams' => [
+                '<?php
+                    interface ToBeIgnored
+                    {
+                        /**
+                         * @param mixed $value
+                         * @return mixed
+                         */
+                        public static function of($value);
+                    }
+
+                    interface ToBeUsed extends ToBeIgnored
+                    {
+                        /**
+                         * @template U
+                         * @param U $value
+                         * @return U
+                         */
+                        public static function of($value);
+                    }
+
+                    interface ExtendsToBeUsed extends ToBeUsed {}
+
+                    class Foo implements ExtendsToBeUsed {
+                        /** @psalm-suppress InvalidReturnType */
+                        public static function of($value) {}
+                    }
+
+                    function bar(Foo $f, string $s) : string {
+                        return $f::of($s);
+                    }'
+            ],
+            'functor' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface Functor
+                    {
+                        /**
+                         * @template F
+                         * @param callable(T): F $function
+                         * @return Functor<F>
+                         */
+                        public function map(callable $function): Functor;
+                    }
+
+                    /**
+                     * @template T
+                     * @implements Functor<T>
+                     */
+                    class FakeFunctor implements Functor
+                    {
+                        /**
+                         * @var T
+                         */
+                        private $value;
+
+                        /**
+                         * @psalm-param T $value
+                         */
+                        public function __construct($value)
+                        {
+                            $this->value = $value;
+                        }
+
+                        public function map(callable $function): Functor
+                        {
+                            return new FakeFunctor($function($this->value));
+                        }
+                    }
+
+                    /** @return Functor<int> */
+                    function foo(string $s) : Functor {
+                        $foo = new FakeFunctor($s);
+                        $function = function (string $a): int {
+                            return strlen($a);
+                        };
+                        return $foo->map($function);
+                    }'
+            ],
+            'extendStubbedInterfaceTwice' => [
+                '<?php
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     */
+                    interface AA {}
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     * @extends ArrayAccess<Tk, Tv>
+                     */
+                    interface A extends ArrayAccess {
+                        /**
+                         * @psalm-param Tk $k
+                         * @psalm-return Tv
+                         */
+                        public function at($k);
+                    }
+
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     *
+                     * @extends A<Tk, Tv>
+                     */
+                    interface B extends A {}
+
+                    /**
+                     * @template Tk of array-key
+                     * @template Tv
+                     *
+                     * @implements B<Tk, Tv>
+                     */
+                    abstract class C implements B
+                    {
+                        /**
+                         * @psalm-param  Tk $k
+                         * @psalm-return Tv
+                         */
+                        public function at($k) { /** @var Tv */ return 1;  }
+                    }'
+            ],
+            'inheritSubstitutedParamFromInterface' => [
+                '<?php
+                    /** @psalm-template T */
+                    interface BuilderInterface {
+                        /** @psalm-param T $data */
+                        public function create($data): Exception;
+                    }
+
+                    /** @implements BuilderInterface<string> */
+                    class CovariantUserBuilder implements BuilderInterface {
+                        public function create($data): RuntimeException {
+                            return new RuntimeException($data);
+                        }
+                    }',
+                [],
+                [],
+                '7.4'
+            ],
+            'inheritInterfacesManyTimes' => [
+                '<?php
+                    /**
+                     * @template Tv
+                     *
+                     * @extends IteratorAggregate<int, Tv>
+                     */
+                    interface C1 extends \IteratorAggregate
+                    {
+                    }
+
+                    /**
+                     * @template Tv
+                     *
+                     * @extends C1<Tv>
+                     */
+                    interface C2 extends C1
+                    {
+                    }
+
+                    /**
+                     * @template Tv
+                     *
+                     * @extends C2<Tv>
+                     */
+                    interface C3 extends C2
+                    {
+                    }
+
+                    /**
+                     * @template Tv
+                     *
+                     * @extends C3<Tv>
+                     */
+                    interface C4 extends C3
+                    {
+                        /**
+                         * @psalm-return Traversable<int, Tv>
+                         */
+                        function getIterator(): Traversable;
                     }'
             ],
         ];
@@ -4905,110 +4682,6 @@ class ClassTemplateExtendsTest extends TestCase
                     class B implements I {}',
                 'error_message' => 'InvalidDocblock',
             ],
-            'badTemplateUse' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait T {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     */
-                    class B {
-                        /**
-                         * @template-use T<Z>
-                         */
-                        use T;
-                    }',
-                'error_message' => 'UndefinedDocblockClass',
-            ],
-            'badTemplateUseBadFormat' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait T {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     */
-                    class B {
-                        /**
-                         * @template-use T< >
-                         */
-                        use T;
-                    }',
-                'error_message' => 'InvalidDocblock',
-            ],
-            'badTemplateUseInt' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait T {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     */
-                    class B {
-                        /**
-                         * @template-use int
-                         */
-                        use T;
-                    }',
-                'error_message' => 'InvalidDocblock',
-            ],
-            'badTemplateExtendsShouldBeUse' => [
-                '<?php
-                    /**
-                     * @template T
-                     */
-                    trait T {
-                        /** @var T */
-                        public $t;
-
-                        /** @param T $t */
-                        public function __construct($t) {
-                            $this->t = $t;
-                        }
-                    }
-
-                    /**
-                     * @template TT
-                     */
-                    class B {
-                        /**
-                         * @template-extends T<int>
-                         */
-                        use T;
-                    }',
-                'error_message' => 'InvalidDocblock',
-            ],
             'templateExtendsWithoutAllParams' => [
                 '<?php
                     /**
@@ -5330,116 +5003,6 @@ class ClassTemplateExtendsTest extends TestCase
                     }',
                 'error_message' => 'InvalidReturnStatement'
             ],
-            'possiblyNullReferenceOnTraitDefinedMethod' => [
-                '<?php
-                    /**
-                     * @template TKey as array-key
-                     * @template TValue
-                     */
-                    trait T1 {
-                        /**
-                         * @var array<TKey, TValue>
-                         */
-                        protected $mocks = [];
-
-                        /**
-                         * @param TKey $offset
-                         * @return TValue|null
-                         * @psalm-suppress LessSpecificImplementedReturnType
-                         * @psalm-suppress ImplementedParamTypeMismatch
-                         */
-                        public function offsetGet($offset) {
-                            return $this->mocks[$offset] ?? null;
-                        }
-                    }
-
-                    /**
-                     * @template TKey as array-key
-                     * @template TValue
-                     */
-                    interface Arr {
-                        /**
-                         * @param TKey $offset
-                         * @return TValue|null
-                         */
-                        public function offsetGet($offset);
-                    }
-
-                    /**
-                     * @template TKey as array-key
-                     * @template TValue
-                     * @implements Arr<TKey, TValue>
-                     */
-                    class C implements Arr {
-                        /** @use T1<TKey, TValue> */
-                        use T1;
-
-                        /**
-                         * @param TKey $offset
-                         * @psalm-suppress MixedMethodCall
-                         */
-                        public function foo($offset) : void {
-                            $this->offsetGet($offset)->bar();
-                        }
-                    }',
-                'error_message' => 'PossiblyNullReference'
-            ],
-            'possiblyNullReferenceOnTraitDefinedMethodExtended' => [
-                '<?php
-                    /**
-                     * @template TKey as array-key
-                     * @template TValue
-                     */
-                    trait T1 {
-                        /**
-                         * @var array<TKey, TValue>
-                         */
-                        protected $mocks = [];
-
-                        /**
-                         * @param TKey $offset
-                         * @return TValue|null
-                         * @psalm-suppress LessSpecificImplementedReturnType
-                         * @psalm-suppress ImplementedParamTypeMismatch
-                         */
-                        public function offsetGet($offset) {
-                            return $this->mocks[$offset] ?? null;
-                        }
-                    }
-
-                    /**
-                     * @template TKey as array-key
-                     * @template TValue
-                     */
-                    interface Arr {
-                        /**
-                         * @param TKey $offset
-                         * @return TValue|null
-                         */
-                        public function offsetGet($offset);
-                    }
-
-                    /**
-                     * @template TKey as array-key
-                     * @template TValue
-                     * @implements Arr<TKey, TValue>
-                     */
-                    class C implements Arr {
-                        /** @use T1<TKey, TValue> */
-                        use T1;
-                    }
-
-                    class D extends C {
-                        /**
-                         * @param mixed $offset
-                         * @psalm-suppress MixedArgument
-                         */
-                        public function foo($offset) : void {
-                            $this->offsetGet($offset)->bar();
-                        }
-                    }',
-                'error_message' => 'MixedMethodCall'
-            ],
             'preventExtendingWithTemplatedClassWithExplicitTypeGiven' => [
                 '<?php
                     /**
@@ -5515,7 +5078,7 @@ class ClassTemplateExtendsTest extends TestCase
                     }
 
                     new Foo(new DoStuffX());',
-                'error_message' => 'InvalidArgument'
+                'error_message' => 'MixedArgumentTypeCoercion'
             ],
             'concreteDefinesSignatureTypesDifferent' => [
                 '<?php
@@ -5759,6 +5322,44 @@ class ClassTemplateExtendsTest extends TestCase
                     /** @extends BaseRepository<StudentViewData, TeacherModel> */
                     class StudentRepository extends BaseRepository {}',
                 'error_message' => 'InvalidTemplateParam'
+            ],
+            'detectIssueInDoublyInheritedMethod' => [
+                '<?php
+                    class Foo {}
+                    class FooChild extends Foo {}
+
+                    /**
+                     * @template T0
+                     */
+                    interface A {
+                        /**
+                         * @template U
+                         * @param callable(T0): U $func
+                         * @return U
+                         */
+                        function test(callable $func);
+                    }
+
+                    /**
+                     * @template T1
+                     * @template-extends A<T1>
+                     */
+                    interface B extends A {}
+
+                    /**
+                     * @template T2
+                     * @template-extends B<T2>
+                     */
+                    interface C extends B {}
+
+                    /**
+                     * @param C<Foo> $c
+                     */
+                    function second(C $c) : void {
+                        $f = function (FooChild $foo) : FooChild { return $foo; };
+                        $c->test($f);
+                    }',
+                'error_message' => 'ArgumentTypeCoercion'
             ],
         ];
     }

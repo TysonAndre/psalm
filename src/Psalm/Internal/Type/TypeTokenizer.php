@@ -62,6 +62,7 @@ class TypeTokenizer
         'no-return' => true,
         'never-return' => true,
         'never-returns' => true,
+        'never' => true,
         'array-key' => true,
         'key-of' => true,
         'value-of' => true,
@@ -73,6 +74,8 @@ class TypeTokenizer
         'closed-resource' => true,
         'associative-array' => true,
         'arraylike-object' => true,
+        'int-mask' => true,
+        'int-mask-of' => true,
     ];
 
     /**
@@ -81,7 +84,12 @@ class TypeTokenizer
     private static $memoized_tokens = [];
 
     /**
-     * @return list<array{0: string, 1: int}>
+     * Tokenises a type string into an array of tuples where the first element
+     * contains the string token and the second element contains its offset,
+     *
+     * @return list<array{string, int}>
+     *
+     * @psalm-suppress ComplexMethod
      */
     public static function tokenize(string $string_type, bool $ignore_space = true): array
     {
@@ -328,7 +336,7 @@ class TypeTokenizer
      * @param  array<string, mixed>|null       $template_type_map
      * @param  array<string, TypeAlias>|null   $type_aliases
      *
-     * @return list<array{0: string, 1: int}>
+     * @return list<array{0: string, 1: int, 2?: string}>
      */
     public static function getFullyQualifiedTokens(
         string $string_type,
@@ -444,9 +452,11 @@ class TypeTokenizer
                 continue;
             }
 
-            if ($string_type_token[0] === 'func_num_args()') {
+            if ($string_type_token[0] === 'func_num_args()' || $string_type_token[0] === 'PHP_MAJOR_VERSION') {
                 continue;
             }
+
+            $type_tokens[$i][2] = $string_type_token[0];
 
             if (isset($type_aliases[$string_type_token[0]])) {
                 $type_alias = $type_aliases[$string_type_token[0]];
@@ -472,7 +482,7 @@ class TypeTokenizer
             }
         }
 
-        /** @var list<array{0: string, 1: int}> */
+        /** @var list<array{0: string, 1: int, 2?: string}> */
         return $type_tokens;
     }
 

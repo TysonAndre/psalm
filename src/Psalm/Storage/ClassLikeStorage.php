@@ -53,7 +53,7 @@ class ClassLikeStorage
     public $templatedMixins = [];
 
     /**
-     * @var Type\Atomic\TNamedObject[]
+     * @var list<Type\Atomic\TNamedObject>
      */
     public $namedMixins = [];
 
@@ -102,7 +102,7 @@ class ClassLikeStorage
     /**
      * Interfaces this class implements directly
      *
-     * @var array<string, string>
+     * @var array<lowercase-string, string>
      */
     public $direct_class_interfaces = [];
 
@@ -165,6 +165,11 @@ class ClassLikeStorage
      * @var bool
      */
     public $final = false;
+
+    /**
+     * @var bool
+     */
+    public $final_from_docblock = false;
 
     /**
      * @var array<lowercase-string, string>
@@ -292,7 +297,15 @@ class ClassLikeStorage
     public $overridden_property_ids = [];
 
     /**
-     * @var array<string, non-empty-array<string, array{Type\Union}>>|null
+     * An array holding the class template "as" types.
+     *
+     * It's the de-facto list of all templates on a given class.
+     *
+     * The name of the template is the first key. The nested array is keyed by the defining class
+     * (i.e. the same as the class name). This allows operations with the same-named template defined
+     * across multiple classes to not run into trouble.
+     *
+     * @var array<string, non-empty-array<string, Type\Union>>|null
      */
     public $template_types;
 
@@ -302,14 +315,36 @@ class ClassLikeStorage
     public $template_covariants;
 
     /**
-     * @var array<string, array<int|string, Type\Union>>|null
+     * A map of which generic classlikes are extended or implemented by this class or interface.
+     *
+     * This is only used in the populator, which poulates the $template_extended_params property below.
+     *
+     * @internal
+     *
+     * @var array<string, non-empty-array<int, Type\Union>>|null
      */
-    public $template_type_extends;
+    public $template_extended_offsets;
+
+    /**
+     * A map of which generic classlikes are extended or implemented by this class or interface.
+     *
+     * The annotation "@extends Traversable<SomeClass, SomeOtherClass>" would generate an entry of
+     *
+     * [
+     *     "Traversable" => [
+     *         "TKey" => new Union([new TNamedObject("SomeClass")]),
+     *         "TValue" => new Union([new TNamedObject("SomeOtherClass")])
+     *     ]
+     * ]
+     *
+     * @var array<string, array<string, Type\Union>>|null
+     */
+    public $template_extended_params;
 
     /**
      * @var ?int
      */
-    public $template_type_extends_count;
+    public $template_extended_count;
 
     /**
      * @var array<string, int>|null
@@ -377,6 +412,11 @@ class ClassLikeStorage
      * @var array<int, string>
      */
     public $implementation_requirements = [];
+
+    /**
+     * @var list<AttributeStorage>
+     */
+    public $attributes = [];
 
     public function __construct(string $name)
     {

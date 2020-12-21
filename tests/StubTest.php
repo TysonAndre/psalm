@@ -510,6 +510,7 @@ class StubTest extends TestCase
         $this->addFile(
             $file_path,
             '<?php
+                /** @psalm-suppress MixedArgument */
                 echo CODE_DIR;'
         );
 
@@ -1174,6 +1175,73 @@ class StubTest extends TestCase
         );
 
         $this->expectException(\Psalm\Exception\InvalidMethodOverrideException::class);
+
+        $this->analyzeFile($file_path, new Context());
+    }
+
+    public function testStubReplacingInterfaceDocblock(): void
+    {
+        $this->project_analyzer = $this->getProjectAnalyzerWithConfig(
+            TestConfig::loadFromXML(
+                dirname(__DIR__),
+                '<?xml version="1.0"?>
+                <psalm>
+                    <projectFiles>
+                        <directory name="src" />
+                    </projectFiles>
+                    <stubs>
+                        <file name="tests/fixtures/stubs/Doctrine.php" />
+                    </stubs>
+                </psalm>'
+            )
+        );
+
+        $this->addFile(
+            getcwd() . '/vendor/doctrine/import.php',
+            '<?php
+                namespace Doctrine\ORM;
+
+                interface EntityManagerInterface
+                {
+                    /**
+                     * @param string $entityName The name of the entity type.
+                     * @param mixed  $id         The entity identifier.
+                     *
+                     * @return object|null The entity reference.
+                     */
+                    public function getReference($entityName, $id);
+                }
+
+                class EntityManager implements EntityManagerInterface
+                {
+                    /**
+                     * @psalm-suppress InvalidReturnType
+                     */
+                    public function getReference($entityName, $id) {
+                        /**
+                         * @psalm-suppress InvalidReturnStatement
+                         */
+                        return new \stdClass;
+                    }
+                }'
+        );
+
+        $file_path = getcwd() . '/src/somefile.php';
+
+        $this->addFile(
+            $file_path,
+            '<?php
+                use Doctrine\ORM\EntityManager;
+
+                interface I {}
+
+                function em(EntityManager $em) : void {
+                    echo $em->getReference(I::class, 1);
+                }'
+        );
+
+        $this->expectException(\Psalm\Exception\CodeException::class);
+        $this->expectExceptionMessage('I|null');
 
         $this->analyzeFile($file_path, new Context());
     }

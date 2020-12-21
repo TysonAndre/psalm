@@ -308,8 +308,8 @@ class CodeLocation
         $newlines = substr_count($this->text, "\n");
 
         if ($newlines) {
-            $this->column_to = $this->selection_end -
-                (int)strrpos($file_contents, "\n", $this->selection_end - strlen($file_contents));
+            $last_newline_pos = strrpos($file_contents, "\n", $this->selection_end - strlen($file_contents) - 1);
+            $this->column_to = $this->selection_end - (int)$last_newline_pos;
         } else {
             $this->column_to = $this->column_from + strlen($this->text);
         }
@@ -379,7 +379,7 @@ class CodeLocation
 
     public function getHash(): string
     {
-        return (string) $this->file_start;
+        return $this->file_name . ' ' . $this->raw_file_start . $this->raw_file_end;
     }
 
     public function getShortSummary() : string

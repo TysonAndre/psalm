@@ -236,7 +236,7 @@ class Context
     /**
      * A list of vars that have been assigned to
      *
-     * @var array<string, bool>
+     * @var array<string, int>
      */
     public $assigned_var_ids = [];
 
@@ -483,6 +483,8 @@ class Context
 
         foreach ($new_context->vars_in_scope as $var_id => $context_type) {
             if (!isset($original_context->vars_in_scope[$var_id])
+                || ($original_context->assigned_var_ids[$var_id] ?? 0)
+                    !== ($new_context->assigned_var_ids[$var_id] ?? 0)
                 || !$original_context->vars_in_scope[$var_id]->equals($context_type)
             ) {
                 $redefined_var_ids[] = $var_id;
@@ -511,7 +513,7 @@ class Context
      * @param Clause[]             $clauses
      * @param array<string, bool>  $changed_var_ids
      *
-     * @return array{0: list<Clause>, list<Clause>}
+     * @return array{list<Clause>, list<Clause>}
      *
      * @psalm-pure
      */
@@ -645,6 +647,8 @@ class Context
             return;
         }
 
+        $existing_type->allow_mutations = true;
+
         $this->removeVarFromConflictingClauses(
             $remove_var_id,
             $existing_type->hasMixed()
@@ -654,19 +658,29 @@ class Context
             $statements_analyzer
         );
 
-        foreach ($this->vars_in_scope as $var_id => $_) {
+        foreach ($this->vars_in_scope as $var_id => $type) {
             if (preg_match('/' . preg_quote($remove_var_id, '/') . '[\]\[\-]/', $var_id)) {
                 unset($this->vars_in_scope[$var_id]);
+            }
+
+            foreach ($type->getAtomicTypes() as $atomic_type) {
+                if ($atomic_type instanceof Type\Atomic\DependentType
+                    && $atomic_type->getVarId() === $remove_var_id
+                ) {
+                    $type->addType($atomic_type->getReplacement());
+                }
             }
         }
     }
 
-    public function removeAllObjectVars(): void
+    public function removeMutableObjectVars(): void
     {
         $vars_to_remove = [];
 
-        foreach ($this->vars_in_scope as $var_id => $_) {
-            if (strpos($var_id, '->') !== false || strpos($var_id, '::') !== false) {
+        foreach ($this->vars_in_scope as $var_id => $type) {
+            if ($type->has_mutations
+                && (strpos($var_id, '->') !== false || strpos($var_id, '::') !== false)
+            ) {
                 $vars_to_remove[] = $var_id;
             }
         }

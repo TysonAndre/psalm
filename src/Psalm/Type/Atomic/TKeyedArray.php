@@ -10,15 +10,16 @@ use function is_int;
 use function sort;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Type\TypeCombination;
+use Psalm\Internal\Type\TypeCombiner;
 use Psalm\Internal\Type\TemplateResult;
-use Psalm\Internal\Type\UnionTemplateHandler;
+use Psalm\Internal\Type\TemplateStandinTypeReplacer;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Union;
 
 /**
- * Represents an array where we know its key values
+ * Represents an 'object-like array' - an array with known keys.
  */
 class TKeyedArray extends \Psalm\Type\Atomic
 {
@@ -194,7 +195,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
         return $this->getKey();
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }
@@ -213,7 +214,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
             }
         }
 
-        $key_type = TypeCombination::combineTypes($key_types);
+        $key_type = TypeCombiner::combine($key_types);
 
         $key_type->possibly_undefined = false;
 
@@ -278,7 +279,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
             // throw new \UnexpectedValueException('$value_type should not be null here');
         }
 
-        $key_type = TypeCombination::combineTypes($key_types);
+        $key_type = TypeCombiner::combine($key_types);
 
         if ($this->previous_value_type) {
             $value_type = Type::combineUnionTypes($this->previous_value_type, $value_type);
@@ -335,7 +336,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
                 $input_type_param = $input_type->properties[$offset];
             }
 
-            $object_like->properties[$offset] = UnionTemplateHandler::replaceTemplateTypesWithStandins(
+            $object_like->properties[$offset] = TemplateStandinTypeReplacer::replace(
                 $property,
                 $template_result,
                 $codebase,
@@ -358,7 +359,8 @@ class TKeyedArray extends \Psalm\Type\Atomic
         ?Codebase $codebase
     ) : void {
         foreach ($this->properties as $property) {
-            $property->replaceTemplateTypesWithArgTypes(
+            TemplateInferredTypeReplacer::replace(
+                $property,
                 $template_result,
                 $codebase
             );

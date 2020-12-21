@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `void` type, normally just used to annotate a function/method that returns nothing
+ */
 class TVoid extends \Psalm\Type\Atomic
 {
     public function __toString(): string
@@ -28,7 +31,7 @@ class TVoid extends \Psalm\Type\Atomic
             ? $this->getKey() : null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return true;
     }

@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Denotes the `resource` type that has been closed (e.g. a file handle through `fclose()`).
+ */
 class TClosedResource extends \Psalm\Type\Atomic
 {
     public function __toString(): string
@@ -31,7 +34,7 @@ class TClosedResource extends \Psalm\Type\Atomic
         return null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

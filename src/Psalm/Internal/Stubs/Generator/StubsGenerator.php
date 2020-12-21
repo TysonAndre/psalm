@@ -178,7 +178,7 @@ class StubsGenerator
         $docblock = new ParsedDocblock('', []);
 
         foreach ($function_storage->template_types ?: [] as $template_name => $map) {
-            $type = array_values($map)[0][0];
+            $type = array_values($map)[0];
 
             $docblock->tags['template'][] = $template_name . ' as ' . $type->toNamespacedString(
                 $namespace_name,
@@ -341,6 +341,27 @@ class StubsGenerator
 
             if ($atomic_type instanceof Type\Atomic\TArray) {
                 return new PhpParser\Node\Expr\Array_([]);
+            }
+
+            if ($atomic_type instanceof Type\Atomic\TKeyedArray) {
+                $new_items = [];
+
+                foreach ($atomic_type->properties as $property_name => $property_type) {
+                    if ($atomic_type->is_list) {
+                        $key_type = null;
+                    } elseif (\is_int($property_name)) {
+                        $key_type = new PhpParser\Node\Scalar\LNumber($property_name);
+                    } else {
+                        $key_type = new PhpParser\Node\Scalar\String_($property_name);
+                    }
+
+                    $new_items[] = new PhpParser\Node\Expr\ArrayItem(
+                        self::getExpressionFromType($property_type),
+                        $key_type
+                    );
+                }
+
+                return new PhpParser\Node\Expr\Array_($new_items);
             }
         }
 

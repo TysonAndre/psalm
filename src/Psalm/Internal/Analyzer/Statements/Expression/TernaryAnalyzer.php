@@ -2,14 +2,15 @@
 namespace Psalm\Internal\Analyzer\Statements\Expression;
 
 use PhpParser;
+use Psalm\Internal\Algebra\FormulaGenerator;
 use Psalm\Internal\Analyzer\AlgebraAnalyzer;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
-use \Psalm\Internal\Analyzer\Statements\Block\IfAnalyzer;
+use Psalm\Internal\Analyzer\Statements\Block\IfConditionalAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Type;
-use Psalm\Type\Algebra;
+use Psalm\Internal\Algebra;
 use Psalm\Type\Reconciler;
 use Psalm\Internal\Type\AssertionReconciler;
 use function array_merge;
@@ -35,7 +36,7 @@ class TernaryAnalyzer
         $if_scope = new \Psalm\Internal\Scope\IfScope();
 
         try {
-            $if_conditional_scope = IfAnalyzer::analyzeIfConditional(
+            $if_conditional_scope = IfConditionalAnalyzer::analyze(
                 $statements_analyzer,
                 $stmt->cond,
                 $context,
@@ -47,7 +48,7 @@ class TernaryAnalyzer
             $if_context = $if_conditional_scope->if_context;
 
             $cond_referenced_var_ids = $if_conditional_scope->cond_referenced_var_ids;
-            $cond_assigned_var_ids = $if_conditional_scope->cond_assigned_var_ids;
+            $assigned_in_conditional_var_ids = $if_conditional_scope->assigned_in_conditional_var_ids;
         } catch (\Psalm\Exception\ScopeAnalysisException $e) {
             return false;
         }
@@ -56,7 +57,7 @@ class TernaryAnalyzer
 
         $cond_id = \spl_object_id($stmt->cond);
 
-        $if_clauses = \Psalm\Type\Algebra::getFormula(
+        $if_clauses = FormulaGenerator::getFormula(
             $cond_id,
             $cond_id,
             $stmt->cond,
@@ -109,7 +110,7 @@ class TernaryAnalyzer
             $if_clauses,
             $statements_analyzer,
             $stmt->cond,
-            $cond_assigned_var_ids
+            $assigned_in_conditional_var_ids
         );
 
         $ternary_clauses = array_merge($context->clauses, $if_clauses);

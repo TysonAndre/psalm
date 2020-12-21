@@ -1,6 +1,9 @@
 <?php
 namespace Psalm\Type\Atomic;
 
+/**
+ * Represents a value of a class constant array.
+ */
 class TValueOfClassConstant extends \Psalm\Type\Atomic
 {
     /** @var string */
@@ -43,7 +46,7 @@ class TValueOfClassConstant extends \Psalm\Type\Atomic
         return null;
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

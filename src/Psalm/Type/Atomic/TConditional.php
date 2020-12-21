@@ -3,8 +3,12 @@ namespace Psalm\Type\Atomic;
 
 use Psalm\Codebase;
 use Psalm\Internal\Type\TemplateResult;
+use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Type\Union;
 
+/**
+ * Internal representation of a conditional return type in phpdoc. For example ($param1 is int ? int : string)
+ */
 class TConditional extends \Psalm\Type\Atomic
 {
     /**
@@ -124,7 +128,7 @@ class TConditional extends \Psalm\Type\Atomic
         return [$this->conditional_type, $this->if_type, $this->else_type];
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }
@@ -133,6 +137,10 @@ class TConditional extends \Psalm\Type\Atomic
         TemplateResult $template_result,
         ?Codebase $codebase
     ) : void {
-        $this->conditional_type->replaceTemplateTypesWithArgTypes($template_result, $codebase);
+        TemplateInferredTypeReplacer::replace(
+            $this->conditional_type,
+            $template_result,
+            $codebase
+        );
     }
 }

@@ -6,7 +6,7 @@ use Psalm\Type\Union;
 /**
  * Represents a string whose value is a fully-qualified class found by get_class($var)
  */
-class TDependentGetClass extends TString
+class TDependentGetClass extends TString implements DependentType
 {
     /**
      * Used to hold information as to what this refers to
@@ -37,7 +37,24 @@ class TDependentGetClass extends TString
             : 'class-string<' . $this->as_type->getId() . '>';
     }
 
-    public function canBeFullyExpressedInPhp(): bool
+    public function getKey(bool $include_extra = true): string
+    {
+        return 'get-class-of<' . $this->typeof
+            . (!$this->as_type->isMixed() && !$this->as_type->hasObject() ? ', ' . $this->as_type->getId() : '')
+            . '>';
+    }
+
+    public function getVarId() : string
+    {
+        return $this->typeof;
+    }
+
+    public function getReplacement() : \Psalm\Type\Atomic
+    {
+        return new TClassString();
+    }
+
+    public function canBeFullyExpressedInPhp(int $php_major_version, int $php_minor_version): bool
     {
         return false;
     }

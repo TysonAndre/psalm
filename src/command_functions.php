@@ -137,7 +137,7 @@ function requireAutoloaders($current_dir, $has_explicit_root, $vendor_dir, bool 
         exit(1);
     }
 
-    define('PSALM_VERSION', (string)\PackageVersions\Versions::getVersion('vimeo/psalm'));
+    define('PSALM_VERSION', \PackageVersions\Versions::getVersion('vimeo/psalm'));
     define('PHP_PARSER_VERSION', \PackageVersions\Versions::getVersion('nikic/php-parser'));
 
     return $first_autoloader;
@@ -164,7 +164,8 @@ function getVendorDir(string $current_dir): string
         exit(1);
     }
 
-    if (isset($composer_json['config'])
+    if (is_array($composer_json)
+        && isset($composer_json['config'])
         && is_array($composer_json['config'])
         && isset($composer_json['config']['vendor-dir'])
         && is_string($composer_json['config']['vendor-dir'])
@@ -383,7 +384,7 @@ Output:
     --output-format=console
         Changes the output format.
         Available formats: compact, console, text, emacs, json, pylint, xml, checkstyle, junit, sonarqube, github,
-                           phpstorm
+                           phpstorm, codeclimate
 
     --no-progress
         Disable the progress indicator
@@ -398,7 +399,7 @@ Reports:
     --report=PATH
         The path where to output report file. The output format is based on the file extension.
         (Currently supported formats: ".json", ".xml", ".txt", ".emacs", ".pylint", ".console",
-        "checkstyle.xml", "sonarqube.json", "summary.json", "junit.xml")
+        ".sarif", "checkstyle.xml", "sonarqube.json", "summary.json", "junit.xml")
 
     --report-show-info[=BOOLEAN]
         Whether the report should include non-errors in its output (defaults to true)
@@ -469,16 +470,41 @@ function initialiseConfig(
     ?string $path_to_config,
     string $current_dir,
     string $output_format,
-    ?ClassLoader $first_autoloader
+    ?ClassLoader $first_autoloader,
+    bool $create_if_non_existent = false
 ): Config {
     try {
         if ($path_to_config) {
             $config = Config::loadFromXMLFile($path_to_config, $current_dir);
         } else {
-            $config = Config::getConfigForPath($current_dir, $current_dir, $output_format);
+            try {
+                $config = Config::getConfigForPath($current_dir, $current_dir);
+            } catch (\Psalm\Exception\ConfigNotFoundException $e) {
+                if (!$create_if_non_existent) {
+                    if (in_array($output_format, [\Psalm\Report::TYPE_CONSOLE, \Psalm\Report::TYPE_PHP_STORM])) {
+                        fwrite(
+                            STDERR,
+                            'Could not locate a config XML file in path ' . $current_dir
+                                . '. Have you run \'psalm --init\' ?' . PHP_EOL
+                        );
+                        exit(1);
+                    }
+
+                    throw $e;
+                }
+
+                $config = \Psalm\Config\Creator::createBareConfig(
+                    $current_dir,
+                    null,
+                    \Psalm\getVendorDir($current_dir)
+                );
+            }
         }
     } catch (\Psalm\Exception\ConfigException $e) {
-        fwrite(STDERR, $e->getMessage() . PHP_EOL);
+        fwrite(
+            STDERR,
+            $e->getMessage() . PHP_EOL
+        );
         exit(1);
     }
 

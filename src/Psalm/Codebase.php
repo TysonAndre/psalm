@@ -803,7 +803,7 @@ class Codebase
 
     /**
      * @param  string|\Psalm\Internal\MethodIdentifier $method_id
-     * @param  array<int, PhpParser\Node\Arg> $call_args
+     * @param  list<PhpParser\Node\Arg> $call_args
      *
      */
     public function getMethodReturnType($method_id, ?string &$self_class, array $call_args = []): ?Type\Union
@@ -846,7 +846,9 @@ class Codebase
      */
     public function getDeclaringMethodId($method_id): ?string
     {
-        return $this->methods->getDeclaringMethodId(Internal\MethodIdentifier::wrap($method_id));
+        $new_method_id = $this->methods->getDeclaringMethodId(Internal\MethodIdentifier::wrap($method_id));
+
+        return $new_method_id ? (string) $new_method_id : null;
     }
 
     /**
@@ -857,7 +859,9 @@ class Codebase
      */
     public function getAppearingMethodId($method_id): ?string
     {
-        return $this->methods->getAppearingMethodId(Internal\MethodIdentifier::wrap($method_id));
+        $new_method_id = $this->methods->getAppearingMethodId(Internal\MethodIdentifier::wrap($method_id));
+
+        return $new_method_id ? (string) $new_method_id : null;
     }
 
     /**

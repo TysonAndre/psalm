@@ -8,7 +8,6 @@ use PhpParser;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
-use Psalm\Internal\Analyzer\Statements\Expression\AssertionFinder;
 use Psalm\Internal\Analyzer\Statements\Expression\ExpressionIdentifier;
 use Psalm\Issue\InvalidReturnType;
 use Psalm\IssueBuffer;
@@ -25,7 +24,7 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
     }
 
     /**
-     * @param  array<PhpParser\Node\Arg>    $call_args
+     * @param  list<PhpParser\Node\Arg>    $call_args
      */
     public static function getFunctionReturnType(
         StatementsSource $statements_source,
@@ -34,7 +33,9 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
         Context $context,
         CodeLocation $code_location
     ) : Type\Union {
-        if (!$statements_source instanceof StatementsAnalyzer) {
+        if (!$statements_source instanceof StatementsAnalyzer
+            || !$call_args
+        ) {
             return Type::getMixed();
         }
 
@@ -228,9 +229,12 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
                     return Type::getArray();
                 }
 
-                if (count($function_call_arg->value->getStmts()) === 1 && count($function_call_arg->value->params)) {
+                /** @var list<PhpParser\Node\Stmt> */
+                $function_call_stmts = $function_call_arg->value->getStmts();
+
+                if (count($function_call_stmts) === 1 && count($function_call_arg->value->params)) {
                     $first_param = $function_call_arg->value->params[0];
-                    $stmt = $function_call_arg->value->getStmts()[0];
+                    $stmt = $function_call_stmts[0];
 
                     if ($first_param->variadic === false
                         && $first_param->var instanceof PhpParser\Node\Expr\Variable
@@ -240,11 +244,20 @@ class ArrayFilterReturnTypeProvider implements \Psalm\Plugin\Hook\FunctionReturn
                     ) {
                         $codebase = $statements_source->getCodebase();
 
-                        $assertions = AssertionFinder::scrapeAssertions(
+                        $cond_object_id = \spl_object_id($stmt->expr);
+
+                        $filter_clauses = \Psalm\Internal\Algebra\FormulaGenerator::getFormula(
+                            $cond_object_id,
+                            $cond_object_id,
                             $stmt->expr,
-                            null,
+                            $context->self,
                             $statements_source,
                             $codebase
+                        );
+
+                        $assertions = \Psalm\Internal\Algebra::getTruthsFromFormula(
+                            $filter_clauses,
+                            $cond_object_id
                         );
 
                         if (isset($assertions['$' . $first_param->var->name])) {

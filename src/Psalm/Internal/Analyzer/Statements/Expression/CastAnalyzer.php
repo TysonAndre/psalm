@@ -9,6 +9,8 @@ use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Issue\InvalidCast;
 use Psalm\Issue\PossiblyInvalidCast;
+use Psalm\Issue\RedundantCast;
+use Psalm\Issue\RedundantCastGivenDocblockType;
 use Psalm\Issue\UnrecognizedExpression;
 use Psalm\IssueBuffer;
 use Psalm\Type;
@@ -22,7 +24,7 @@ use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TString;
-use Psalm\Internal\Type\TypeCombination;
+use Psalm\Internal\Type\TypeCombiner;
 use function get_class;
 use function count;
 use function array_merge;
@@ -45,6 +47,26 @@ class CastAnalyzer
             $maybe_type = $statements_analyzer->node_data->getType($stmt->expr);
 
             if ($maybe_type) {
+                if ($maybe_type->isInt()) {
+                    if (!$maybe_type->from_calculation) {
+                        if ($maybe_type->from_docblock) {
+                            $issue = new RedundantCastGivenDocblockType(
+                                'Redundant cast to ' . $maybe_type->getKey() . ' given docblock-provided type',
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            );
+                        } else {
+                            $issue = new RedundantCast(
+                                'Redundant cast to ' . $maybe_type->getKey(),
+                                new CodeLocation($statements_analyzer->getSource(), $stmt)
+                            );
+                        }
+
+                        if (IssueBuffer::accepts($issue, $statements_analyzer->getSuppressedIssues())) {
+                            // fall through
+                        }
+                    }
+                }
+
                 $maybe = $maybe_type->getAtomicTypes();
 
                 if (count($maybe) === 1 && current($maybe) instanceof Type\Atomic\TBool) {
@@ -76,7 +98,37 @@ class CastAnalyzer
                 return false;
             }
 
-            $statements_analyzer->node_data->setType($stmt, Type::getFloat());
+            $maybe_type = $statements_analyzer->node_data->getType($stmt->expr);
+
+            if ($maybe_type) {
+                if ($maybe_type->isFloat()) {
+                    if ($maybe_type->from_docblock) {
+                        $issue = new RedundantCastGivenDocblockType(
+                            'Redundant cast to ' . $maybe_type->getKey() . ' given docblock-provided type',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    } else {
+                        $issue = new RedundantCast(
+                            'Redundant cast to ' . $maybe_type->getKey(),
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    }
+
+                    if (IssueBuffer::accepts($issue, $statements_analyzer->getSuppressedIssues())) {
+                        // fall through
+                    }
+                }
+            }
+
+            $type = Type::getFloat();
+
+            if ($statements_analyzer->data_flow_graph
+                && $statements_analyzer->data_flow_graph instanceof \Psalm\Internal\Codebase\VariableUseGraph
+            ) {
+                $type->parent_nodes = $maybe_type ? $maybe_type->parent_nodes : [];
+            }
+
+            $statements_analyzer->node_data->setType($stmt, $type);
 
             return true;
         }
@@ -86,7 +138,37 @@ class CastAnalyzer
                 return false;
             }
 
-            $statements_analyzer->node_data->setType($stmt, Type::getBool());
+            $maybe_type = $statements_analyzer->node_data->getType($stmt->expr);
+
+            if ($maybe_type) {
+                if ($maybe_type->isBool()) {
+                    if ($maybe_type->from_docblock) {
+                        $issue = new RedundantCastGivenDocblockType(
+                            'Redundant cast to ' . $maybe_type->getKey() . ' given docblock-provided type',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    } else {
+                        $issue = new RedundantCast(
+                            'Redundant cast to ' . $maybe_type->getKey(),
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    }
+
+                    if (IssueBuffer::accepts($issue, $statements_analyzer->getSuppressedIssues())) {
+                        // fall through
+                    }
+                }
+            }
+
+            $type = Type::getBool();
+
+            if ($statements_analyzer->data_flow_graph
+                && $statements_analyzer->data_flow_graph instanceof \Psalm\Internal\Codebase\VariableUseGraph
+            ) {
+                $type->parent_nodes = $maybe_type ? $maybe_type->parent_nodes : [];
+            }
+
+            $statements_analyzer->node_data->setType($stmt, $type);
 
             return true;
         }
@@ -99,6 +181,24 @@ class CastAnalyzer
             $stmt_expr_type = $statements_analyzer->node_data->getType($stmt->expr);
 
             if ($stmt_expr_type) {
+                if ($stmt_expr_type->isString()) {
+                    if ($stmt_expr_type->from_docblock) {
+                        $issue = new RedundantCastGivenDocblockType(
+                            'Redundant cast to ' . $stmt_expr_type->getKey() . ' given docblock-provided type',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    } else {
+                        $issue = new RedundantCast(
+                            'Redundant cast to ' . $stmt_expr_type->getKey(),
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    }
+
+                    if (IssueBuffer::accepts($issue, $statements_analyzer->getSuppressedIssues())) {
+                        // fall through
+                    }
+                }
+
                 $stmt_type = self::castStringAttempt(
                     $statements_analyzer,
                     $context,
@@ -123,7 +223,17 @@ class CastAnalyzer
             }
             $context->inside_use = $was_inside_use;
 
-            $statements_analyzer->node_data->setType($stmt, new Type\Union([new TNamedObject('stdClass')]));
+            $type = new Type\Union([new TNamedObject('stdClass')]);
+
+            $maybe_type = $statements_analyzer->node_data->getType($stmt->expr);
+
+            if ($statements_analyzer->data_flow_graph
+                && $statements_analyzer->data_flow_graph instanceof \Psalm\Internal\Codebase\VariableUseGraph
+            ) {
+                $type->parent_nodes = $maybe_type ? $maybe_type->parent_nodes : [];
+            }
+
+            $statements_analyzer->node_data->setType($stmt, $type);
 
             return true;
         }
@@ -140,6 +250,24 @@ class CastAnalyzer
             $all_permissible = false;
 
             if ($stmt_expr_type = $statements_analyzer->node_data->getType($stmt->expr)) {
+                if ($stmt_expr_type->isArray()) {
+                    if ($stmt_expr_type->from_docblock) {
+                        $issue = new RedundantCastGivenDocblockType(
+                            'Redundant cast to ' . $stmt_expr_type->getKey() . ' given docblock-provided type',
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    } else {
+                        $issue = new RedundantCast(
+                            'Redundant cast to ' . $stmt_expr_type->getKey(),
+                            new CodeLocation($statements_analyzer->getSource(), $stmt)
+                        );
+                    }
+
+                    if (IssueBuffer::accepts($issue, $statements_analyzer->getSuppressedIssues())) {
+                        // fall through
+                    }
+                }
+
                 $all_permissible = true;
 
                 foreach ($stmt_expr_type->getAtomicTypes() as $type) {
@@ -160,13 +288,18 @@ class CastAnalyzer
             }
 
             if ($permissible_atomic_types && $all_permissible) {
-                $statements_analyzer->node_data->setType(
-                    $stmt,
-                    TypeCombination::combineTypes($permissible_atomic_types)
-                );
+                $type = TypeCombiner::combine($permissible_atomic_types);
             } else {
-                $statements_analyzer->node_data->setType($stmt, Type::getArray());
+                $type = Type::getArray();
             }
+
+            if ($statements_analyzer->data_flow_graph
+                && $statements_analyzer->data_flow_graph instanceof \Psalm\Internal\Codebase\VariableUseGraph
+            ) {
+                $type->parent_nodes = $stmt_expr_type ? $stmt_expr_type->parent_nodes : [];
+            }
+
+            $statements_analyzer->node_data->setType($stmt, $type);
 
             return true;
         }
@@ -352,7 +485,7 @@ class CastAnalyzer
         if (!$valid_types) {
             $str_type = Type::getString();
         } else {
-            $str_type = \Psalm\Internal\Type\TypeCombination::combineTypes(
+            $str_type = \Psalm\Internal\Type\TypeCombiner::combine(
                 $valid_types,
                 $codebase
             );
