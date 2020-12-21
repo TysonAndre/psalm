@@ -48,7 +48,7 @@ class APIFilterPlugin implements
      * @override
      */
     public static function afterClassLikeVisit(
-        ClassLike $class_node,
+        ClassLike $stmt,
         ClassLikeStorage $storage,
         FileSource $statements_source,
         Codebase $codebase,
@@ -56,7 +56,7 @@ class APIFilterPlugin implements
     ) {
         // var_export($storage);
         if (isset($storage->public_class_constants[self::METHOD_FILTERS_CONST_NAME])) {
-            $method_filters_node = self::extractMethodFiltersNode($class_node);
+            $method_filters_node = self::extractMethodFiltersNode($stmt);
             if (!$method_filters_node) {
                 return;
             }
@@ -77,8 +77,8 @@ class APIFilterPlugin implements
     /**
      * @return ?PhpParser\Node (Expected to be PhpParser\Expr\Node\Array_ by convention)
      */
-    private static function extractMethodFiltersNode(ClassLike $class_node) {
-        foreach ($class_node->stmts as $stmt) {
+    private static function extractMethodFiltersNode(ClassLike $stmt) {
+        foreach ($stmt->stmts as $stmt) {
             if (!($stmt instanceof ClassConst)) {
                 continue;
             }
@@ -157,7 +157,7 @@ class APIFilterPlugin implements
         // TODO warn if variadic (unlikely)
         $old_type = $param_storage->type;
         if ($old_type) {
-            foreach ($old_type->getTypes() as $type) {
+            foreach ($old_type->getAtomicTypes() as $type) {
                 // If the phpdoc type explicitly contains @param {field:string} $param, don't run this plugin.
                 if ($type instanceof TKeyedArray) {
                     // TODO: Could warn if field name is inconsistent or if the new type is more permissive?

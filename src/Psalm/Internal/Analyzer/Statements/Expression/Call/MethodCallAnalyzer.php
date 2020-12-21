@@ -141,7 +141,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         ) {
             // TODO: Make this more generic and configurable
             $should_check = true;
-            foreach ($class_type->getTypes() as $type) {
+            foreach ($class_type->getAtomicTypes() as $type) {
                 if ($type instanceof TNamedObject && strcasecmp($type->value, 'User') === 0) {
                     $should_check = false;
                     break;
