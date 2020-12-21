@@ -342,6 +342,9 @@ class Analyzer
              * @return list<\Psalm\Internal\Analyzer\IssueData>
              */
             function (int $_, string $file_path) use ($project_analyzer, $filetype_analyzers): array {
+                if ($this->config->mustBeIgnored($file_path)) {
+                    return [];
+                }
                 $file_analyzer = $this->getFileAnalyzer($project_analyzer, $file_path, $filetype_analyzers);
 
                 $this->progress->debug('Analyzing ' . $file_analyzer->getFilePath() . "\n");
