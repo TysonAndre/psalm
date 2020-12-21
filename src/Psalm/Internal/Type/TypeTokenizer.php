@@ -315,6 +315,24 @@ class TypeTokenizer
             case 'null':
             case 'mixed':
                 return $type_string_lc;
+
+            // FIXME make these patches configurable
+            case 'arrays':
+            case 'associative':
+                return 'array';
+            case 'char':
+            case 'str':
+            case 'url':
+                return 'string';
+            case 'function':
+                return 'callable';
+            case 'long':
+                return 'int';
+            case 'number':
+                return 'float';
+            case 'unknown':
+            case 'unknown_type':
+                return 'mixed';
         }
 
         switch ($type_string) {
