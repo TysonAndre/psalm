@@ -31,7 +31,7 @@ class TLiteralClassString extends TLiteralString
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -53,14 +53,13 @@ class TLiteralClassString extends TLiteralString
         return $this->value . '::class';
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return $this->getKey();
     }
 
     /**
-     * @param  array<string> $aliased_classes
-     *
+     * @param array<lowercase-string, string> $aliased_classes
      */
     public function toNamespacedString(
         ?string $namespace,

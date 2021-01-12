@@ -2145,7 +2145,6 @@ class AssertionFinder
 
     /**
      * @param int $null_position
-     * @param array $if_types
      * @return list<non-empty-array<string, non-empty-list<non-empty-list<string>>>>
      */
     private static function getNullInequalityAssertions(
@@ -3493,7 +3492,7 @@ class AssertionFinder
                 );
 
             if ($identical) {
-                $if_types[$var_name] = [['=' . $var_type->getAssertionString()]];
+                $if_types[$var_name] = [['=' . $var_type->getAssertionString(true)]];
             } else {
                 $if_types[$var_name] = [['~' . $var_type->getAssertionString()]];
             }

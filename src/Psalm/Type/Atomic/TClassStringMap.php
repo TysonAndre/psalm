@@ -76,7 +76,7 @@ class TClassStringMap extends \Psalm\Type\Atomic
     }
 
     /**
-     * @param  array<string, string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      *
      */
     public function toNamespacedString(
@@ -111,7 +111,7 @@ class TClassStringMap extends \Psalm\Type\Atomic
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -222,7 +222,7 @@ class TClassStringMap extends \Psalm\Type\Atomic
         return true;
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return $this->getKey();
     }

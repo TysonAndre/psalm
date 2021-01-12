@@ -2,7 +2,6 @@
 namespace Psalm\Tests;
 
 use Psalm\Context;
-use Psalm\Issue\InvalidArrayOffset;
 
 class ArrayAssignmentTest extends TestCase
 {
@@ -1065,15 +1064,6 @@ class ArrayAssignmentTest extends TestCase
                         if (is_int($value["a"])) {}
                     }'
             ],
-            'falseArrayAssignment' => [
-                '<?php
-                    function foo(): array {
-                        $array = [];
-                        $array[false] = "";
-                        echo $array[0];
-                        return $array;
-                    }',
-            ],
             'coercePossiblyNullKeyToZero' => [
                 '<?php
                     function int_or_null(): ?int {
@@ -1799,9 +1789,23 @@ class ArrayAssignmentTest extends TestCase
                 ',
                 'error_message' => 'InvalidArrayOffset'
             ],
+            'ArrayDimOffsetObject' => [
+                '<?php
+                    $_a = [];
+                    $_a[new stdClass] = "a";
+                ',
+                'error_message' => 'InvalidArrayOffset'
+            ],
             'ArrayCreateOffsetResource' => [
                 '<?php
                     $_a = [fopen("", "") => "a"];
+                ',
+                'error_message' => 'InvalidArrayOffset'
+            ],
+            'ArrayDimOffsetResource' => [
+                '<?php
+                    $_a = [];
+                    $_a[fopen("", "")] = "a";
                 ',
                 'error_message' => 'InvalidArrayOffset'
             ],
@@ -1811,10 +1815,24 @@ class ArrayAssignmentTest extends TestCase
                 ',
                 'error_message' => 'InvalidArrayOffset'
             ],
+            'ArrayDimOffsetBool' => [
+                '<?php
+                    $_a = [];
+                    $_a[true] = "a";
+                ',
+                'error_message' => 'InvalidArrayOffset'
+            ],
             'ArrayCreateOffsetStringable' => [
                 '<?php
                     $a = new class{public function __toString(){return "";}};
                     $_a = [$a => "a"];',
+                'error_message' => 'InvalidArrayOffset',
+            ],
+            'ArrayDimOffsetStringable' => [
+                '<?php
+                    $_a = [];
+                    $a = new class{public function __toString(){return "";}};
+                    $_a[$a] = "a";',
                 'error_message' => 'InvalidArrayOffset',
             ],
             'coerceListToArray' => [
@@ -1876,7 +1894,17 @@ class ArrayAssignmentTest extends TestCase
                         return $arr;
                     }',
                 'error_message' => 'MixedArrayOffset'
-            ]
+            ],
+            'falseArrayAssignment' => [
+                '<?php
+                    function foo(): array {
+                        $array = [];
+                        $array[false] = "";
+                        echo $array[0];
+                        return $array;
+                    }',
+                'error_message' => 'InvalidArrayOffset'
+            ],
         ];
     }
 }

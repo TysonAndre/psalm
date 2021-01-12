@@ -17,7 +17,7 @@ class TCallableObject extends TObject
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -36,7 +36,7 @@ class TCallableObject extends TObject
         return false;
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'object';
     }

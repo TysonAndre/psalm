@@ -1,10 +1,6 @@
 <?php
 namespace Psalm\Tests;
 
-use const DIRECTORY_SEPARATOR;
-use Psalm\Config;
-use Psalm\Context;
-
 class AttributeTest extends TestCase
 {
     use Traits\InvalidCodeAnalysisTestTrait;
@@ -117,6 +113,15 @@ class AttributeTest extends TestCase
                     #[Route(methods: ["GET"])]
                     class HealthController
                     {}',
+                [],
+                [],
+                '8.0'
+            ],
+            'allowsRepeatableFlag' => [
+                '<?php
+                    #[Attribute(Attribute::TARGET_ALL|Attribute::IS_REPEATABLE)] // results in int(127)
+                    class A {}
+                ',
                 [],
                 [],
                 '8.0'

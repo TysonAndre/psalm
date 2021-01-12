@@ -52,7 +52,7 @@ class TIterable extends Atomic
         return 'iterable';
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'iterable';
     }
@@ -79,7 +79,7 @@ class TIterable extends Atomic
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,

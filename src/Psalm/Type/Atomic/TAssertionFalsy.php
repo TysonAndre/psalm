@@ -16,13 +16,13 @@ class TAssertionFalsy extends \Psalm\Type\Atomic
         return 'falsy';
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'falsy';
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,

@@ -26,7 +26,6 @@ use function strtolower;
 use function strpos;
 use function count;
 use function in_array;
-use function is_string;
 use function preg_match;
 use function preg_replace;
 use function str_replace;
@@ -724,7 +723,7 @@ class CallAnalyzer
                             } elseif ($replacement_atomic_type instanceof Type\Atomic\TNamedObject) {
                                 $ored_type_assertions[] = $prefix . $replacement_atomic_type->value;
                             } elseif ($replacement_atomic_type instanceof Type\Atomic\Scalar) {
-                                $ored_type_assertions[] = $prefix . $replacement_atomic_type->getId();
+                                $ored_type_assertions[] = $prefix . $replacement_atomic_type->getAssertionString();
                             } elseif ($replacement_atomic_type instanceof Type\Atomic\TNull) {
                                 $ored_type_assertions[] = $prefix . 'null';
                             } elseif ($replacement_atomic_type instanceof Type\Atomic\TTemplateParam) {

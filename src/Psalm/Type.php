@@ -1,6 +1,7 @@
 <?php
 namespace Psalm;
 
+use Psalm\Plugin\EventHandler\Event\StringInterpreterEvent;
 use function array_merge;
 use function array_pop;
 use function array_shift;
@@ -34,6 +35,7 @@ use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
+use Psalm\Type\Atomic\TNumericString;
 use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TObjectWithProperties;
 use Psalm\Type\Atomic\TResource;
@@ -104,7 +106,7 @@ abstract class Type
     }
 
     /**
-     * @param array<string, string> $aliased_classes
+     * @param array<lowercase-string, string> $aliased_classes
      *
      * @psalm-pure
      */
@@ -175,10 +177,6 @@ abstract class Type
         return $union;
     }
 
-    /**
-     * @param int|null $value
-     *
-     */
     public static function getPositiveInt(bool $from_calculation = false): Union
     {
         $union = new Union([new Type\Atomic\TPositiveInt()]);
@@ -194,6 +192,13 @@ abstract class Type
         return new Union([$type]);
     }
 
+    public static function getNumericString(): Union
+    {
+        $type = new TNumericString;
+
+        return new Union([$type]);
+    }
+
     public static function getString(?string $value = null): Union
     {
         $type = null;
@@ -201,13 +206,9 @@ abstract class Type
         if ($value !== null) {
             $config = \Psalm\Config::getInstance();
 
-            if ($config->string_interpreters) {
-                foreach ($config->string_interpreters as $string_interpreter) {
-                    if ($type = $string_interpreter::getTypeFromValue($value)) {
-                        break;
-                    }
-                }
-            }
+            $event = new StringInterpreterEvent($value);
+
+            $type = $config->eventDispatcher->dispatchStringInterpreter($event);
 
             if (!$type) {
                 if (strlen($value) < $config->max_string_length) {

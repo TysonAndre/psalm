@@ -1,18 +1,28 @@
 <?php
 namespace Psalm\Internal\Provider;
 
-use PhpParser;
 use Psalm\CodeLocation;
 use Psalm\Context;
-use Psalm\Plugin\Hook\MethodVisibilityProviderInterface;
+use Psalm\Plugin\EventHandler\Event\MethodVisibilityProviderEvent;
+use Psalm\Plugin\EventHandler\MethodVisibilityProviderInterface;
+use Psalm\Plugin\Hook\MethodVisibilityProviderInterface as LegacyMethodVisibilityProviderInterface;
 use Psalm\StatementsSource;
 use function strtolower;
+use function is_subclass_of;
 
 class MethodVisibilityProvider
 {
     /**
      * @var array<
-     *   string,
+     *   lowercase-string,
+     *   array<\Closure(MethodVisibilityProviderEvent) : ?bool>
+     * >
+     */
+    private static $handlers = [];
+
+    /**
+     * @var array<
+     *   lowercase-string,
      *   array<\Closure(
      *     StatementsSource,
      *     string,
@@ -22,28 +32,44 @@ class MethodVisibilityProvider
      *   ) : ?bool>
      * >
      */
-    private static $handlers = [];
+    private static $legacy_handlers = [];
 
     public function __construct()
     {
         self::$handlers = [];
+        self::$legacy_handlers = [];
     }
 
     /**
-     * @param  class-string<MethodVisibilityProviderInterface> $class
-     *
+     * @param class-string<LegacyMethodVisibilityProviderInterface>
+     *     |class-string<MethodVisibilityProviderInterface> $class
      */
     public function registerClass(string $class): void
     {
-        $callable = \Closure::fromCallable([$class, 'isMethodVisible']);
+        if (is_subclass_of($class, LegacyMethodVisibilityProviderInterface::class, true)) {
+            $callable = \Closure::fromCallable([$class, 'isMethodVisible']);
 
-        foreach ($class::getClassLikeNames() as $fq_classlike_name) {
-            $this->registerClosure($fq_classlike_name, $callable);
+            foreach ($class::getClassLikeNames() as $fq_classlike_name) {
+                $this->registerLegacyClosure($fq_classlike_name, $callable);
+            }
+        } elseif (is_subclass_of($class, MethodVisibilityProviderInterface::class, true)) {
+            $callable = \Closure::fromCallable([$class, 'isMethodVisible']);
+
+            foreach ($class::getClassLikeNames() as $fq_classlike_name) {
+                $this->registerClosure($fq_classlike_name, $callable);
+            }
         }
     }
 
     /**
-     * /**
+     * @param \Closure(MethodVisibilityProviderEvent) : ?bool $c
+     */
+    public function registerClosure(string $fq_classlike_name, \Closure $c): void
+    {
+        self::$handlers[strtolower($fq_classlike_name)][] = $c;
+    }
+
+    /**
      * @param \Closure(
      *     StatementsSource,
      *     string,
@@ -51,22 +77,18 @@ class MethodVisibilityProvider
      *     Context,
      *     ?CodeLocation
      *   ) : ?bool $c
-     *
      */
-    public function registerClosure(string $fq_classlike_name, \Closure $c): void
+    public function registerLegacyClosure(string $fq_classlike_name, \Closure $c): void
     {
-        self::$handlers[strtolower($fq_classlike_name)][] = $c;
+        self::$legacy_handlers[strtolower($fq_classlike_name)][] = $c;
     }
 
     public function has(string $fq_classlike_name) : bool
     {
-        return isset(self::$handlers[strtolower($fq_classlike_name)]);
+        return isset(self::$handlers[strtolower($fq_classlike_name)]) ||
+            isset(self::$legacy_handlers[strtolower($fq_classlike_name)]);
     }
 
-    /**
-     * @param  list<PhpParser\Node\Arg>  $call_args
-     *
-     */
     public function isMethodVisible(
         StatementsSource $source,
         string $fq_classlike_name,
@@ -74,7 +96,22 @@ class MethodVisibilityProvider
         Context $context,
         ?CodeLocation $code_location = null
     ): ?bool {
-        foreach (self::$handlers[strtolower($fq_classlike_name)] as $method_handler) {
+        foreach (self::$handlers[strtolower($fq_classlike_name)] ?? [] as $method_handler) {
+            $event = new MethodVisibilityProviderEvent(
+                $source,
+                $fq_classlike_name,
+                $method_name,
+                $context,
+                $code_location
+            );
+            $method_visible = $method_handler($event);
+
+            if ($method_visible !== null) {
+                return $method_visible;
+            }
+        }
+
+        foreach (self::$legacy_handlers[strtolower($fq_classlike_name)] ?? [] as $method_handler) {
             $method_visible = $method_handler(
                 $source,
                 $fq_classlike_name,

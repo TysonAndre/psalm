@@ -12,9 +12,6 @@ use Psalm\Type\Atomic\TScalarClassConstant;
 use function array_merge;
 use function array_search;
 use function array_keys;
-use function array_values;
-use function array_filter;
-use function is_string;
 
 class ClassTemplateParamCollector
 {
@@ -91,15 +88,13 @@ class ClassTemplateParamCollector
         $e = $static_class_storage->template_extended_params;
 
         if ($lhs_type_part instanceof TGenericObject) {
-            if ($class_storage === $static_class_storage && $static_class_storage->template_types) {
+            if ($class_storage === $static_class_storage && $class_storage->template_types) {
                 $i = 0;
 
-                foreach ($static_class_storage->template_types as $type_name => $_) {
+                foreach ($class_storage->template_types as $type_name => $_) {
                     if (isset($lhs_type_part->type_params[$i])) {
-                        if (!$self_call || $static_fq_class_name !== $static_class_storage->name) {
-                            $class_template_params[$type_name][$static_class_storage->name]
-                                = $lhs_type_part->type_params[$i];
-                        }
+                        $class_template_params[$type_name][$class_storage->name]
+                            = $lhs_type_part->type_params[$i];
                     }
 
                     $i++;

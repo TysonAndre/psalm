@@ -3551,6 +3551,14 @@ class PropertyTypeTest extends TestCase
                     echo (new A)->foo;',
                 'error_message' => 'InaccessibleProperty',
             ],
+            'overwritePropertyType' => [
+                '<?php
+                    class A {
+                        /** @var array */
+                        public string $s = [];
+                    }',
+                'error_message' => 'MismatchingDocblockPropertyType',
+            ],
         ];
     }
 }

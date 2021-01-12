@@ -53,7 +53,7 @@ use function substr;
  *     unchanged_signature_members:array<string, array<string, bool>>,
  *     diff_map:array<string, array<int, array{0:int, 1:int, 2:int, 3:int}>>,
  *     classlike_storage:array<string, \Psalm\Storage\ClassLikeStorage>,
- *     file_storage:array<string, \Psalm\Storage\FileStorage>,
+ *     file_storage:array<lowercase-string, \Psalm\Storage\FileStorage>,
  *     new_file_content_hashes: array<string, string>,
  *     taint_data: ?TaintFlowGraph
  * }
@@ -530,13 +530,18 @@ class Scanner
         string $file_path,
         array $filetype_scanners,
         bool $will_analyze = false
-    ): FileScanner {
+    ): void {
         $file_scanner = $this->getScannerForPath($file_path, $filetype_scanners, $will_analyze);
 
         if (isset($this->scanned_files[$file_path])
             && (!$will_analyze || $this->scanned_files[$file_path])
         ) {
             throw new \UnexpectedValueException('Should not be rescanning ' . $file_path);
+        }
+
+        if (!$this->file_provider->fileExists($file_path) && $this->config->mustBeIgnored($file_path)) {
+            // this should not happen, but might if the file was temporary
+            return;
         }
 
         $file_contents = $this->file_provider->getContents($file_path);
@@ -610,8 +615,6 @@ class Scanner
                 $this->codebase->classlikes->addClassAlias($unaliased_name, $aliased_name);
             }
         }
-
-        return $file_scanner;
     }
 
     /**

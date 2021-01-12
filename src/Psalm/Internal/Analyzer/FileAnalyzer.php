@@ -11,6 +11,8 @@ use Psalm\Internal\Type\TypeAlias\LinkableTypeAlias;
 use Psalm\Issue\InvalidTypeImport;
 use Psalm\Issue\UncaughtThrowInGlobalScope;
 use Psalm\IssueBuffer;
+use Psalm\Plugin\EventHandler\Event\AfterFileAnalysisEvent;
+use Psalm\Plugin\EventHandler\Event\BeforeFileAnalysisEvent;
 use Psalm\Type;
 use function implode;
 use function strtolower;
@@ -67,7 +69,7 @@ class FileAnalyzer extends SourceAnalyzer
     private $namespace_aliased_classes = [];
 
     /**
-     * @var array<string, array<string, string>>
+     * @var array<string, array<lowercase-string, string>>
      */
     private $namespace_aliased_classes_flipped = [];
 
@@ -77,7 +79,7 @@ class FileAnalyzer extends SourceAnalyzer
     private $namespace_aliased_classes_flipped_replaceable = [];
 
     /**
-     * @var array<string, InterfaceAnalyzer>
+     * @var array<lowercase-string, InterfaceAnalyzer>
      */
     public $interface_analyzers_to_analyze = [];
 
@@ -158,9 +160,10 @@ class FileAnalyzer extends SourceAnalyzer
         } catch (PhpParser\Error $e) {
             return;
         }
-        foreach ($codebase->config->before_file_checks as $plugin_class) {
-            $plugin_class::beforeAnalyzeFile($this, $this->context, $file_storage, $codebase);
-        }
+
+        $event = new BeforeFileAnalysisEvent($this, $this->context, $file_storage, $codebase);
+
+        $codebase->config->eventDispatcher->dispatchBeforeFileAnalysis($event);
 
         if ($codebase->alter_code) {
             foreach ($stmts as $stmt) {
@@ -268,9 +271,8 @@ class FileAnalyzer extends SourceAnalyzer
             }
         }
 
-        foreach ($codebase->config->after_file_checks as $plugin_class) {
-            $plugin_class::afterAnalyzeFile($this, $this->context, $file_storage, $codebase);
-        }
+        $event = new AfterFileAnalysisEvent($this, $this->context, $file_storage, $codebase, $stmts);
+        $codebase->config->eventDispatcher->dispatchAfterFileAnalysis($event);
 
         $this->class_analyzers_to_analyze = [];
         $this->interface_analyzers_to_analyze = [];
@@ -351,7 +353,7 @@ class FileAnalyzer extends SourceAnalyzer
 
             $fq_class_name = $class_analyzer->getFQCLN();
 
-            $this->interface_analyzers_to_analyze[$fq_class_name] = $class_analyzer;
+            $this->interface_analyzers_to_analyze[strtolower($fq_class_name)] = $class_analyzer;
         }
     }
 
@@ -448,7 +450,7 @@ class FileAnalyzer extends SourceAnalyzer
     }
 
     /**
-     * @return array<string, string>
+     * @return array<lowercase-string, string>
      */
     public function getAliasedClassesFlipped(?string $namespace_name = null): array
     {

@@ -131,12 +131,14 @@ class BinaryOperationTest extends TestCase
                     $a = 25 % 2;
                     $b = 25.4 % 2;
                     $c = 25 % 2.5;
-                    $d = 25.5 % 2.5;',
+                    $d = 25.5 % 2.5;
+                    $e = 25 % 1;',
                 'assertions' => [
                     '$a' => 'int',
                     '$b' => 'int',
                     '$c' => 'int',
                     '$d' => 'int',
+                    '$e' => 'int',
                 ],
             ],
             'numericAddition' => [
@@ -154,6 +156,20 @@ class BinaryOperationTest extends TestCase
             'concatenationWithNumberInWeakMode' => [
                 '<?php
                     $a = "hi" . 5;',
+            ],
+            'concatenationWithTwoLiteralInt' => [
+                '<?php
+                    $a = 7 . 5;',
+                'assertions' => [
+                    '$a' => 'string',//will contain "75"
+                ]
+            ],
+            'concatenationWithTwoInt' => [
+                '<?php
+                    /** @return numeric-string */
+                    function scope(int $a, int $b): string{
+                        return $a . $b;
+                    }',
             ],
             'possiblyInvalidAdditionOnBothSides' => [
                 '<?php

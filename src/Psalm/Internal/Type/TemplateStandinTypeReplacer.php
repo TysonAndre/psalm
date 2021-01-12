@@ -8,11 +8,9 @@ use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Type\Union;
 use Psalm\Type\Atomic;
 use Psalm\Internal\Type\Comparator\CallableTypeComparator;
-use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use function array_merge;
 use function array_values;
 use function count;
-use function is_string;
 use function strpos;
 use function substr;
 
@@ -20,6 +18,11 @@ class TemplateStandinTypeReplacer
 {
     /**
      * This replaces template types in unions with standins (normally the template as type)
+     *
+     * $input_type here is normally the argument passed to a templated function or method.
+     *
+     * This method fills in the values in $template_result based on how the various atomic types
+     * of $union_type match up to the types inside $input_type
      */
     public static function replace(
         Union $union_type,
@@ -37,6 +40,23 @@ class TemplateStandinTypeReplacer
         $atomic_types = [];
 
         $original_atomic_types = $union_type->getAtomicTypes();
+
+        // here we want to subtract atomic types from the input type
+        // when they're also in the union type, so those shared atomic
+        // types will never be inferred as part of the generic type
+        if ($input_type && !$input_type->isSingle()) {
+            $new_input_type = clone $input_type;
+
+            foreach ($original_atomic_types as $key => $_) {
+                if ($new_input_type->hasType($key)) {
+                    $new_input_type->removeType($key);
+                }
+            }
+
+            if ($new_input_type->getAtomicTypes()) {
+                $input_type = $new_input_type;
+            }
+        }
 
         $had_template = false;
 
@@ -112,7 +132,7 @@ class TemplateStandinTypeReplacer
         if ($atomic_type instanceof Atomic\TTemplateParam
             && isset($template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class])
         ) {
-            $a = self::handleTemplateParamStandin(
+            return self::handleTemplateParamStandin(
                 $atomic_type,
                 $key,
                 $input_type,
@@ -127,12 +147,10 @@ class TemplateStandinTypeReplacer
                 $depth,
                 $had_template
             );
-
-            return $a;
         }
 
         if ($atomic_type instanceof Atomic\TTemplateParamClass
-            && isset($template_result->template_types[$atomic_type->param_name])
+            && isset($template_result->template_types[$atomic_type->param_name][$atomic_type->defining_class])
         ) {
             if ($replace) {
                 return self::handleTemplateParamClassStandin(
@@ -776,8 +794,6 @@ class TemplateStandinTypeReplacer
 
         $atomic_types = [];
 
-        $atomic_types[] = $class_string;
-
         if ($input_type && !$template_result->readonly) {
             $valid_input_atomic_types = [];
 
@@ -837,6 +853,25 @@ class TemplateStandinTypeReplacer
                     );
                 }
             }
+        } else {
+            $template_type = $template_result->template_types
+                [$atomic_type->param_name]
+                [$atomic_type->defining_class];
+
+            foreach ($template_type->getAtomicTypes() as $atomic_type) {
+                if ($atomic_type instanceof Atomic\TNamedObject) {
+                    $atomic_types[] = new Atomic\TClassString(
+                        $atomic_type->value,
+                        $atomic_type
+                    );
+                } elseif ($atomic_type instanceof Atomic\TObject) {
+                    $atomic_types[] = new Atomic\TClassString();
+                }
+            }
+        }
+
+        if (!$atomic_types) {
+            $atomic_types[] = $class_string;
         }
 
         return $atomic_types;

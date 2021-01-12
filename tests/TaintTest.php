@@ -467,6 +467,35 @@ class TaintTest extends TestCase
 
                     echo $a->x;'
             ],
+            'dontTaintSpecializedCallsForAnonymousInstance' => [
+                '<?php
+
+                    class StringRenderer {
+                        /** @psalm-taint-specialize */
+                        public function render(string $x) {
+                            return $x;
+                        }
+                    }
+
+                    $notEchoed = (new StringRenderer())->render($_GET["untrusted"]);
+                    echo (new StringRenderer())->render("a");'
+            ],
+            'dontTaintSpecializedCallsForStubMadeInstance' => [
+                '<?php
+
+                    class StringRenderer {
+                        /** @psalm-taint-specialize */
+                        public function render(string $x) {
+                            return $x;
+                        }
+                    }
+
+                    /** @psalm-suppress InvalidReturnType */
+                    function stub(): StringRenderer { }
+
+                    $notEchoed = stub()->render($_GET["untrusted"]);
+                    echo stub()->render("a");'
+            ],
             'suppressTaintedInput' => [
                 '<?php
                     function unsafe() {
@@ -1589,6 +1618,32 @@ class TaintTest extends TestCase
                     }
                     $a = new Unsafe();
                     echo $a->isUnsafe();',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintSpecializedMethodForAnonymousInstance' => [
+                '<?php
+                    /** @psalm-taint-specialize */
+                    class Unsafe {
+                        public function isUnsafe() {
+                            return $_GET["unsafe"];
+                        }
+                    }
+                    echo (new Unsafe())->isUnsafe();',
+                'error_message' => 'TaintedHtml',
+            ],
+            'taintSpecializedMethodForStubMadeInstance' => [
+                '<?php
+                    /** @psalm-taint-specialize */
+                    class Unsafe {
+                        public function isUnsafe() {
+                            return $_GET["unsafe"];
+                        }
+                    }
+
+                    /** @psalm-suppress InvalidReturnType */
+                    function stub(): Unsafe { }
+
+                    echo stub()->isUnsafe();',
                 'error_message' => 'TaintedHtml',
             ],
             'doTaintSpecializedInstanceProperty' => [

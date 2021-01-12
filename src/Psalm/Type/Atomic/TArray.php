@@ -38,7 +38,7 @@ class TArray extends \Psalm\Type\Atomic
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -81,8 +81,12 @@ class TArray extends \Psalm\Type\Atomic
         return true;
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
-        return $this->getKey();
+        if (!$exact || $this->type_params[1]->isMixed()) {
+            return 'array';
+        }
+
+        return $this->toNamespacedString(null, [], null, false);
     }
 }

@@ -61,7 +61,7 @@ class TTypeAlias extends \Psalm\Type\Atomic
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -79,7 +79,7 @@ class TTypeAlias extends \Psalm\Type\Atomic
     }
 
     /**
-     * @param  array<string, string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      *
      */
     public function toNamespacedString(
@@ -91,7 +91,7 @@ class TTypeAlias extends \Psalm\Type\Atomic
         return $this->getKey();
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'mixed';
     }

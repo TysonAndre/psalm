@@ -28,8 +28,8 @@ class ClassTemplateTest extends TestCase
                     $value = $decoratorIterator->current();
                 ',
                 'assertions' => [
-                    '$key' => 'int',
-                    '$value' => 'string',
+                    '$key' => 'int|null',
+                    '$value' => 'null|string',
                     '$next' => 'bool',
                 ],
             ],
@@ -44,8 +44,8 @@ class ClassTemplateTest extends TestCase
                     $value = $decoratorIterator->current();
                 ',
                 'assertions' => [
-                    '$key' => 'int',
-                    '$value' => 'string',
+                    '$key' => 'int|null',
+                    '$value' => 'null|string',
                 ],
             ],
             'limitIterator' => [
@@ -59,8 +59,8 @@ class ClassTemplateTest extends TestCase
                     $value = $decoratorIterator->current();
                 ',
                 'assertions' => [
-                    '$key' => 'int',
-                    '$value' => 'string',
+                    '$key' => 'int|null',
+                    '$value' => 'null|string',
                 ],
             ],
             'callbackFilterIterator' => [
@@ -77,8 +77,8 @@ class ClassTemplateTest extends TestCase
                     $value = $decoratorIterator->current();
                 ',
                 'assertions' => [
-                    '$key' => 'int',
-                    '$value' => 'string',
+                    '$key' => 'int|null',
+                    '$value' => 'null|string',
                 ],
             ],
             'noRewindIterator' => [
@@ -92,8 +92,8 @@ class ClassTemplateTest extends TestCase
                     $value = $decoratorIterator->current();
                 ',
                 'assertions' => [
-                    '$key' => 'int',
-                    '$value' => 'string',
+                    '$key' => 'int|null',
+                    '$value' => 'null|string',
                 ],
             ],
             'classTemplate' => [
@@ -3253,6 +3253,29 @@ class ClassTemplateTest extends TestCase
                      */
                     function getFooA(): Foo {
                         return new Foo(Foo::A);
+                    }'
+            ],
+            'callTemplatedMethodOnSameClass' => [
+                '<?php
+                    /**
+                     * @template T as object
+                     */
+                    class Mapper {
+                        /**
+                         * @param T $e
+                         * @return T
+                         */
+                        public function foo($e) {
+                            return $e;
+                        }
+
+                        /**
+                         * @param T $e
+                         * @return T
+                         */
+                        public function passthru($e) {
+                            return $this->foo($e);
+                        }
                     }'
             ],
         ];

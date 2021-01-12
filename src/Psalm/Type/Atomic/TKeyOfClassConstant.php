@@ -40,7 +40,7 @@ class TKeyOfClassConstant extends Scalar
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -58,8 +58,7 @@ class TKeyOfClassConstant extends Scalar
     }
 
     /**
-     * @param  array<string> $aliased_classes
-     *
+     * @param array<lowercase-string, string> $aliased_classes
      */
     public function toNamespacedString(
         ?string $namespace,
@@ -98,7 +97,7 @@ class TKeyOfClassConstant extends Scalar
         return 'key-of<\\' . $this->fq_classlike_name . '::' . $this->const_name . '>';
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'mixed';
     }

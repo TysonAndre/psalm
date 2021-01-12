@@ -121,7 +121,7 @@ class TObjectWithProperties extends TObject
     }
 
     /**
-     * @param  array<string, string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      *
      */
     public function toNamespacedString(
@@ -165,7 +165,7 @@ class TObjectWithProperties extends TObject
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -275,7 +275,7 @@ class TObjectWithProperties extends TObject
         return array_merge($this->properties, $this->extra_types !== null ? array_values($this->extra_types) : []);
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return $this->getKey();
     }

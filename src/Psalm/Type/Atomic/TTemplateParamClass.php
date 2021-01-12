@@ -43,13 +43,13 @@ class TTemplateParamClass extends TClassString
         return 'class-string<' . $this->param_name . ':' . $this->defining_class . ' as ' . $this->as . '>';
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'class-string<' . $this->param_name . '>';
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -67,7 +67,7 @@ class TTemplateParamClass extends TClassString
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      *
      */
     public function toNamespacedString(

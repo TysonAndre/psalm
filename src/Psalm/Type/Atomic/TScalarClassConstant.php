@@ -34,7 +34,7 @@ class TScalarClassConstant extends Scalar
     }
 
     /**
-     * @param  array<string> $aliased_classes
+     * @param  array<lowercase-string, string> $aliased_classes
      */
     public function toPhpString(
         ?string $namespace,
@@ -52,7 +52,7 @@ class TScalarClassConstant extends Scalar
     }
 
     /**
-     * @param  array<string, string> $aliased_classes
+     * @param array<lowercase-string, string> $aliased_classes
      *
      */
     public function toNamespacedString(
@@ -70,7 +70,7 @@ class TScalarClassConstant extends Scalar
             . $this->const_name;
     }
 
-    public function getAssertionString(): string
+    public function getAssertionString(bool $exact = false): string
     {
         return 'mixed';
     }
