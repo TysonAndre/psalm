@@ -13,7 +13,7 @@ if [[ $? != 0 ]]; then
 fi
 echo "Running psalm in '$PWD' ..."
 rm $ACTUAL_PATH -f || exit 1
-../../../psalm --no-reflection-cache --output-format=pylint --no-vendor-autoloader | tee $ACTUAL_PATH
+../../../psalm --no-reflection-cache --output-format=pylint | tee $ACTUAL_PATH
 # NOTE: normalize any dynamic strings if applicable
 # Delete the summary of running time and memory
 sed -i '/^Checks took .* and used .*/,+1 d' $ACTUAL_PATH

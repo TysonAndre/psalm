@@ -21,7 +21,6 @@ This was customized for a narrow use case. It differs from the upstream repo psa
   That can easily be changed to be configurable.
 - PossiblyNullReference is disabled for nullable union types containing `User`
 - Error tolerance. This will proceed with analysis in many cases, whether or not a previous error was suppressed.
-- It adds `--no-vendor-autoloader` (may be broadly useful)
 
 # Psalm documentation
 
