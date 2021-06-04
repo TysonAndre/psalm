@@ -360,6 +360,7 @@ class ProjectAnalyzer
         $mapping = [
             'checkstyle.xml' => Report::TYPE_CHECKSTYLE,
             'sonarqube.json' => Report::TYPE_SONARQUBE,
+            'codeclimate.json' => Report::TYPE_CODECLIMATE,
             'summary.json' => Report::TYPE_JSON_SUMMARY,
             'junit.xml' => Report::TYPE_JUNIT,
             '.xml' => Report::TYPE_XML,
@@ -1258,7 +1259,7 @@ class ProjectAnalyzer
 
     public function setPhpVersion(string $version): void
     {
-        if (!preg_match('/^(5\.[456]|7\.[01234]|8\.[0])(\..*)?$/', $version)) {
+        if (!preg_match('/^(5\.[456]|7\.[01234]|8\.[01])(\..*)?$/', $version)) {
             throw new \UnexpectedValueException('Expecting a version number in the format x.y');
         }
 

@@ -1,7 +1,9 @@
 <?php
 namespace Psalm;
 
+use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\Plugin\EventHandler\Event\StringInterpreterEvent;
+use Psalm\Type\Atomic\TNever;
 use function array_merge;
 use function array_pop;
 use function array_shift;
@@ -31,8 +33,11 @@ use Psalm\Type\Atomic\TLiteralClassString;
 use Psalm\Type\Atomic\TLiteralFloat;
 use Psalm\Type\Atomic\TLiteralInt;
 use Psalm\Type\Atomic\TLiteralString;
+use Psalm\Type\Atomic\TLowercaseString;
 use Psalm\Type\Atomic\TMixed;
 use Psalm\Type\Atomic\TNamedObject;
+use Psalm\Type\Atomic\TNonEmptyLowercaseString;
+use Psalm\Type\Atomic\TNonEmptyString;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
@@ -177,12 +182,33 @@ abstract class Type
         return $union;
     }
 
+    public static function getLowercaseString(): Union
+    {
+        $type = new TLowercaseString();
+
+        return new Union([$type]);
+    }
+
     public static function getPositiveInt(bool $from_calculation = false): Union
     {
         $union = new Union([new Type\Atomic\TPositiveInt()]);
         $union->from_calculation = $from_calculation;
 
         return $union;
+    }
+
+    public static function getNonEmptyLowercaseString(): Union
+    {
+        $type = new TNonEmptyLowercaseString();
+
+        return new Union([$type]);
+    }
+
+    public static function getNonEmptyString(): Union
+    {
+        $type = new TNonEmptyString();
+
+        return new Union([$type]);
     }
 
     public static function getNumeric(): Union
@@ -276,6 +302,13 @@ abstract class Type
     public static function getEmpty(): Union
     {
         $type = new TEmpty();
+
+        return new Union([$type]);
+    }
+
+    public static function getNever(): Union
+    {
+        $type = new TNever();
 
         return new Union([$type]);
     }
@@ -617,6 +650,19 @@ abstract class Type
                             $intersection_performed = true;
                         }
                     }
+                }
+            }
+
+            //if a type is contained by the other, the intersection is the narrowest type
+            if (!$intersection_performed) {
+                $type_1_in_2 = UnionTypeComparator::isContainedBy($codebase, $type_1, $type_2);
+                $type_2_in_1 = UnionTypeComparator::isContainedBy($codebase, $type_2, $type_1);
+                if ($type_1_in_2) {
+                    $intersection_performed = true;
+                    $combined_type = $type_1;
+                } elseif ($type_2_in_1) {
+                    $intersection_performed = true;
+                    $combined_type = $type_2;
                 }
             }
 

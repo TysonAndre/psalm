@@ -63,7 +63,7 @@
         <xs:attribute name="strictBinaryOperands" type="xs:boolean" default="false" />
         <xs:attribute name="throwExceptionOnError" type="xs:boolean" default="false" />
         <xs:attribute name="totallyTyped" type="xs:boolean" default="false" />
-        <xs:attribute name="errorLevel" type="xs:integer" default="1" />
+        <xs:attribute name="errorLevel" type="xs:integer" default="2" />
         <xs:attribute name="reportMixedIssues" type="xs:boolean" default="true" />
         <xs:attribute name="useDocblockTypes" type="xs:boolean" default="true" />
         <xs:attribute name="useDocblockPropertyTypes" type="xs:boolean" default="false" />
@@ -268,6 +268,7 @@
             <xs:element name="InvalidTemplateParam" type="FunctionIssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidThrow" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidToString" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="InvalidTraversableImplementation" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="InvalidTypeImport" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="LessSpecificImplementedReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="LessSpecificReturnStatement" type="IssueHandlerType" minOccurs="0" />
@@ -311,9 +312,12 @@
             <xs:element name="MoreSpecificImplementedParamType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MoreSpecificReturnType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="MutableDependency" type="PropertyIssueHandlerType" minOccurs="0" />
+            <xs:element name="NamedArgumentNotAllowed" type="ArgumentIssueHandlerType" minOccurs="0" />
             <xs:element name="NoInterfaceProperties" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="NonStaticSelfCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NoValue" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="NonInvariantDocblockPropertyType" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="NonInvariantPropertyType" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NullableReturnStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="NullArgument" type="ArgumentIssueHandlerType" minOccurs="0" />
             <xs:element name="NullArrayAccess" type="IssueHandlerType" minOccurs="0" />
@@ -341,6 +345,7 @@
             <xs:element name="PossiblyInvalidArrayOffset" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidCast" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidClone" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="PossiblyInvalidDocblockTag" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidFunctionCall" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidIterator" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="PossiblyInvalidMethodCall" type="IssueHandlerType" minOccurs="0" />
@@ -435,6 +440,7 @@
             <xs:element name="UnrecognizedStatement" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnresolvableInclude" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnsafeInstantiation" type="IssueHandlerType" minOccurs="0" />
+            <xs:element name="UnsafeGenericInstantiation" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedClass" type="ClassIssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedClosureParam" type="IssueHandlerType" minOccurs="0" />
             <xs:element name="UnusedConstructor" type="MethodIssueHandlerType" minOccurs="0" />
@@ -457,12 +463,12 @@
                         <xs:element name="file" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="PluginIssueHandlerType">
@@ -474,12 +480,12 @@
                         <xs:element name="file" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
         <xs:attribute name="name" type="xs:string" use="required" />
     </xs:complexType>
 
@@ -493,12 +499,12 @@
                         <xs:element name="referencedMethod" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="FunctionIssueHandlerType">
@@ -511,12 +517,12 @@
                         <xs:element name="referencedFunction" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="ArgumentIssueHandlerType">
@@ -529,12 +535,12 @@
                         <xs:element name="referencedFunction" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="ClassIssueHandlerType">
@@ -547,12 +553,12 @@
                         <xs:element name="referencedClass" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="PropertyIssueHandlerType">
@@ -565,12 +571,12 @@
                         <xs:element name="referencedProperty" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="VariableIssueHandlerType">
@@ -583,12 +589,12 @@
                         <xs:element name="referencedVariable" minOccurs="0" maxOccurs="unbounded" type="NameAttributeType" />
                     </xs:choice>
 
-                    <xs:attribute name="type" type="xs:string" use="required" />
+                    <xs:attribute name="type" type="ErrorLevelType" use="required" />
                 </xs:complexType>
             </xs:element>
         </xs:sequence>
 
-        <xs:attribute name="errorLevel" type="xs:string" />
+        <xs:attribute name="errorLevel" type="ErrorLevelType" />
     </xs:complexType>
 
     <xs:complexType name="GlobalsType">
@@ -606,4 +612,12 @@
         <xs:attribute name="name" type="xs:string" use="required" />
         <xs:attribute name="onlyGlobalScope" type="xs:string" />
     </xs:complexType>
+
+    <xs:simpleType name="ErrorLevelType">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="error"/>
+            <xs:enumeration value="info"/>
+            <xs:enumeration value="suppress"/>
+        </xs:restriction>
+    </xs:simpleType>
 </xs:schema>

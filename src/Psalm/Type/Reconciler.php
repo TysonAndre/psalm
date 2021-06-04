@@ -41,7 +41,7 @@ use function array_merge;
 
 class Reconciler
 {
-    /** @var array<string, array<int, string>> */
+    /** @var array<string, non-empty-list<string>> */
     private static $broken_paths = [];
 
     /**
@@ -97,7 +97,8 @@ class Reconciler
             $has_falsyish = false;
             $has_empty = false;
             $has_count_check = false;
-            $is_equality = ($old_new_types[$key] ?? null) === $new_type_parts;
+            $is_real = ($old_new_types[$key] ?? null) === $new_type_parts;
+            $is_equality = $is_real;
 
             foreach ($new_type_parts as $new_type_part_parts) {
                 foreach ($new_type_part_parts as $new_type_part_part) {
@@ -161,9 +162,20 @@ class Reconciler
                 $orred_type = null;
 
                 foreach ($new_type_part_parts as $new_type_part_part) {
-                    if ($new_type_part_part[0] === '>') {
-                        /** @var array<string, array<int, array<int, string>>> */
-                        $data = \json_decode(substr($new_type_part_part, 1), true);
+                    if ($new_type_part_part[0] === '>'
+                        || ($new_type_part_part[0] === '!'
+                            && $new_type_part_part[1] === '>')
+                    ) {
+                        if ($new_type_part_part[0] === '!') {
+                            $nested_negated = !$negated;
+
+                            /** @var array<string, array<int, array<int, string>>> */
+                            $data = \json_decode(substr($new_type_part_part, 2), true);
+                        } else {
+                            $nested_negated = $negated;
+                            /** @var array<string, array<int, array<int, string>>> */
+                            $data = \json_decode(substr($new_type_part_part, 1), true);
+                        }
 
                         $existing_types = self::reconcileKeyedTypes(
                             $data,
@@ -175,10 +187,10 @@ class Reconciler
                             $template_type_map,
                             $inside_loop,
                             $code_location,
-                            $negated
+                            $nested_negated
                         );
 
-                        $new_type_part_part = '!falsy';
+                        $new_type_part_part = ($nested_negated ? '' : '!') . 'falsy';
                     }
 
                     $result_type_candidate = AssertionReconciler::reconcile(
@@ -261,6 +273,7 @@ class Reconciler
 
                         if (!isset($new_types[$new_key])
                             && preg_match('/' . preg_quote($key, '/') . '[\]\[\-]/', $new_key)
+                            && $is_real
                         ) {
                             unset($existing_types[$new_key]);
                         }
@@ -311,10 +324,6 @@ class Reconciler
                     || $type[0][0] === '!empty'
                 ) {
                     $key_parts = Reconciler::breakUpPathIntoParts($nk);
-
-                    if (!$key_parts) {
-                        throw new \UnexpectedValueException('There should be some key parts');
-                    }
 
                     $base_key = array_shift($key_parts);
 
@@ -408,7 +417,7 @@ class Reconciler
     }
 
     /**
-     * @return array<int, string>
+     * @return non-empty-list<string>
      */
     public static function breakUpPathIntoParts(string $path): array
     {
@@ -537,10 +546,6 @@ class Reconciler
         }
 
         $base_key = array_shift($key_parts);
-
-        if ($base_key === 'C::A' && isset($existing_keys[$base_key]) && $existing_keys[$base_key]->isMixed()) {
-            throw new \Exception("Error Processing Request", 1);
-        }
 
         if ($base_key[0] !== '$' && count($key_parts) > 2 && $key_parts[0] === '::$') {
             $base_key .= array_shift($key_parts);
@@ -896,15 +901,29 @@ class Reconciler
 
         if ($redundant) {
             if ($existing_var_type->from_property && $assertion === 'isset') {
-                if (IssueBuffer::accepts(
-                    new RedundantPropertyInitializationCheck(
-                        'Property type ' . $key . ' with type '
-                            . $old_var_type_string . ' should already be set in the constructor',
-                        $code_location
-                    ),
-                    $suppressed_issues
-                )) {
-                    // fall through
+                if ($existing_var_type->from_static_property) {
+                    if (IssueBuffer::accepts(
+                        new RedundantPropertyInitializationCheck(
+                            'Static property ' . $key . ' with type '
+                                . $old_var_type_string
+                                . ' has unexpected isset check — should it be nullable?',
+                            $code_location
+                        ),
+                        $suppressed_issues
+                    )) {
+                        // fall through
+                    }
+                } else {
+                    if (IssueBuffer::accepts(
+                        new RedundantPropertyInitializationCheck(
+                            'Property ' . $key . ' with type '
+                                . $old_var_type_string . ' should already be set in the constructor',
+                            $code_location
+                        ),
+                        $suppressed_issues
+                    )) {
+                        // fall through
+                    }
                 }
             } elseif ($from_docblock) {
                 if (IssueBuffer::accepts(

@@ -402,8 +402,19 @@ class MethodCallTest extends TestCase
                             return "mixed";
                         }
 
-                        return $type->getName();
+                        if ($type instanceof ReflectionUnionType) {
+                            return "union";
+                        }
+
+                        if ($type instanceof ReflectionNamedType) {
+                            return $type->getName();
+                        }
+
+                        throw new RuntimeException("unexpected type");
                     }',
+                    'assertions' => [],
+                    'error_levels' => [],
+                    'php_version' =>  '8.0'
             ],
             'PDOMethod' => [
                 '<?php
@@ -942,11 +953,58 @@ class MethodCallTest extends TestCase
 
                     if ($it->current() === null) {}'
             ],
+            'resolveFinalInParentCall' => [
+                '<?php
+                    abstract class A {
+                        protected static function create() : static {
+                            return new static();
+                        }
+
+                        final private function __construct() {}
+                    }
+
+                    final class B extends A {
+                        public static function new() : self {
+                            return parent::create();
+                        }
+                    }'
+            ],
+            'noCrashWhenCallingParent' => [
+                '<?php
+                    namespace FooBar;
+
+                    class Datetime extends \DateTime
+                    {
+                        public static function createFromInterface(\DatetimeInterface $datetime): \DateTime
+                        {
+                            return parent::createFromInterface($datetime);
+                        }
+                    }',
+                [],
+                ['MixedReturnStatement', 'MixedInferredReturnType'],
+                '8.0'
+            ],
+            'nullsafeShortCircuit' => [
+                '<?php
+                    interface Bar {
+                        public function doBaz(): void;
+                    }
+                    interface Foo {
+                        public function getBar(): Bar;
+                    }
+                    function fooOrNull(): ?Foo {
+                        return null;
+                    }
+                    fooOrNull()?->getBar()->doBaz();',
+                [],
+                [],
+                '8.0'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -1180,7 +1238,7 @@ class MethodCallTest extends TestCase
                             $bar::baz();
                         }
                     }',
-                'error_message' => 'UndefinedClass',
+                'error_message' => 'MissingConstructor',
             ],
             'checkMixedMethodCallStaticMethodCallArg' => [
                 '<?php
@@ -1436,6 +1494,44 @@ class MethodCallTest extends TestCase
                         echo strlen($a->getValue());
                     }',
                 'error_message' => 'InvalidScalarArgument',
+            ],
+            'possiblyNullReferenceInInvokedCall' => [
+                '<?php
+                    interface Location {
+                        public function getId(): int;
+                    }
+
+                    /** @psalm-immutable */
+                    interface Application {
+                        public function getLocation(): ?Location;
+                    }
+
+                    interface TakesId {
+                        public function __invoke(int $location): int;
+                    }
+
+                    function f(TakesId $takesId, Application $application): void {
+                       ($takesId)($application->getLocation()->getId());
+                    }',
+                'error_message' => 'PossiblyNullReference',
+            ],
+            'nullsafeShortCircuitInVariable' => [
+                '<?php
+                    interface Bar {
+                        public function doBaz(): void;
+                    }
+                    interface Foo {
+                        public function getBar(): Bar;
+                    }
+                    function fooOrNull(): ?Foo {
+                        return null;
+                    }
+                    $a = fooOrNull()?->getBar();
+                    $a->doBaz();',
+                'error_message' => 'PossiblyNullReference',
+                [],
+                false,
+                '8.0'
             ],
         ];
     }

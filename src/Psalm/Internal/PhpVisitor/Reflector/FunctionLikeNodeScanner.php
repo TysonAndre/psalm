@@ -297,7 +297,12 @@ class FunctionLikeNodeScanner
                             null
                         );
 
-                        $negated_formula = \Psalm\Internal\Algebra::negateFormula($if_clauses);
+                        try {
+                            $negated_formula = \Psalm\Internal\Algebra::negateFormula($if_clauses);
+                        } catch (\Psalm\Exception\ComplicatedExpressionException $e) {
+                            $var_assertions = [];
+                            break;
+                        }
 
                         $rules = \Psalm\Internal\Algebra::getTruthsFromFormula($negated_formula);
 
@@ -447,6 +452,18 @@ class FunctionLikeNodeScanner
                         && $docblock_info->since_php_minor_version > $this->codebase->php_minor_version
                     ) {
                         return false;
+                    }
+                }
+
+                if ($stmt instanceof PhpParser\Node\Expr\Closure
+                    || $stmt instanceof PhpParser\Node\Expr\ArrowFunction
+                ) {
+                    if ($docblock_info->templates !== []) {
+                        $docblock_info->templates = [];
+                        $storage->docblock_issues[] = new InvalidDocblock(
+                            'Templated closures are not supported',
+                            new CodeLocation($this->file_scanner, $stmt, null, true)
+                        );
                     }
                 }
 
@@ -747,6 +764,28 @@ class FunctionLikeNodeScanner
             throw new \UnexpectedValueException('Not expecting param name to be non-string');
         }
 
+        $default_type = null;
+
+        if ($param->default) {
+            $default_type = SimpleTypeInferer::infer(
+                $this->codebase,
+                new \Psalm\Internal\Provider\NodeDataProvider(),
+                $param->default,
+                $this->aliases,
+                null,
+                null,
+                $fq_classlike_name
+            );
+
+            if (!$default_type) {
+                $default_type = ExpressionResolver::getUnresolvedClassConstExpr(
+                    $param->default,
+                    $this->aliases,
+                    $fq_classlike_name
+                );
+            }
+        }
+
         return new FunctionLikeParameter(
             $param->var->name,
             $param->byRef,
@@ -772,17 +811,7 @@ class FunctionLikeNodeScanner
             $is_optional,
             $is_nullable,
             $param->variadic,
-            $param->default
-                ? SimpleTypeInferer::infer(
-                    $this->codebase,
-                    new \Psalm\Internal\Provider\NodeDataProvider(),
-                    $param->default,
-                    $this->aliases,
-                    null,
-                    null,
-                    $fq_classlike_name
-                )
-                : null
+            $default_type
         );
     }
 
@@ -926,6 +955,29 @@ class FunctionLikeNodeScanner
                     $duplicate_method_storage->has_visitor_issues = true;
 
                     return false;
+                } else {
+                    // skip methods based on @since docblock tag
+                    $doc_comment = $stmt->getDocComment();
+
+                    if ($doc_comment) {
+                        $docblock_info = null;
+                        try {
+                            $docblock_info = FunctionLikeDocblockParser::parse($doc_comment);
+                        } catch (IncorrectDocblockException|DocblockParseException $e) {
+                        }
+                        if ($docblock_info) {
+                            if ($docblock_info->since_php_major_version && !$this->aliases->namespace) {
+                                if ($docblock_info->since_php_major_version > $this->codebase->php_major_version) {
+                                    return false;
+                                }
+                                if ($docblock_info->since_php_major_version === $this->codebase->php_major_version
+                                    && $docblock_info->since_php_minor_version > $this->codebase->php_minor_version
+                                ) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 $is_functionlike_override = true;

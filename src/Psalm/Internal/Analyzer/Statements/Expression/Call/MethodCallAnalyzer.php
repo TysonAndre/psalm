@@ -138,6 +138,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
             && $class_type->isNullable()
             && !$class_type->ignore_nullable_issues
             && !($stmt->name->name === 'offsetGet' && $context->inside_isset)
+            && !self::hasNullsafe($stmt->var)
         ) {
             // TODO: Make this more generic and configurable
             $should_check = true;
@@ -193,6 +194,7 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
                 $stmt,
                 $codebase,
                 $context,
+                $class_type,
                 $lhs_type_part,
                 $lhs_type_part instanceof Type\Atomic\TNamedObject
                     || $lhs_type_part instanceof Type\Atomic\TTemplateParam
@@ -442,22 +444,29 @@ class MethodCallAnalyzer extends \Psalm\Internal\Analyzer\Statements\Expression\
         }
 
         if ($lhs_var_id) {
-            // TODO: Always defined? Always correct?
-            $method_id = $result->existent_method_ids[0];
-            if ($method_id instanceof MethodIdentifier) {
-                // TODO: When should a method have a storage?
-                if ($codebase->methods->hasStorage($method_id)) {
-                    $storage = $codebase->methods->getStorage($method_id);
-                    if ($storage->self_out_type) {
-                        $self_out_type = $storage->self_out_type;
-                        $context->vars_in_scope[$lhs_var_id] = $self_out_type;
-                    }
+            $method_id = MethodIdentifier::wrap($result->existent_method_ids[0]);
+            // TODO: When should a method have a storage?
+            if ($codebase->methods->hasStorage($method_id)) {
+                $storage = $codebase->methods->getStorage($method_id);
+                if ($storage->self_out_type) {
+                    $self_out_type = $storage->self_out_type;
+                    $context->vars_in_scope[$lhs_var_id] = $self_out_type;
                 }
-            } else {
-                // TODO: When is method_id a string?
             }
         }
 
         return true;
+    }
+
+    public static function hasNullsafe(PhpParser\Node\Expr $expr) : bool
+    {
+        if ($expr instanceof PhpParser\Node\Expr\MethodCall
+            || $expr instanceof PhpParser\Node\Expr\PropertyFetch
+        ) {
+            return self::hasNullsafe($expr->var);
+        }
+
+        return $expr instanceof PhpParser\Node\Expr\NullsafeMethodCall
+            || $expr instanceof PhpParser\Node\Expr\NullsafePropertyFetch;
     }
 }

@@ -15,6 +15,20 @@ use Psalm\Issue\ParadoxicalCondition;
 use Psalm\IssueBuffer;
 use Psalm\Internal\Scope\CaseScope;
 use Psalm\Internal\Scope\SwitchScope;
+use Psalm\Node\Expr\BinaryOp\VirtualBooleanOr;
+use Psalm\Node\Expr\BinaryOp\VirtualEqual;
+use Psalm\Node\Expr\BinaryOp\VirtualIdentical;
+use Psalm\Node\Expr\VirtualArray;
+use Psalm\Node\Expr\VirtualArrayItem;
+use Psalm\Node\Expr\VirtualBooleanNot;
+use Psalm\Node\Expr\VirtualConstFetch;
+use Psalm\Node\Expr\VirtualFuncCall;
+use Psalm\Node\Expr\VirtualVariable;
+use Psalm\Node\Name\VirtualFullyQualified;
+use Psalm\Node\Scalar\VirtualLNumber;
+use Psalm\Node\Stmt\VirtualIf;
+use Psalm\Node\VirtualArg;
+use Psalm\Node\VirtualName;
 use Psalm\Type;
 use Psalm\Internal\Algebra;
 use Psalm\Type\Reconciler;
@@ -68,7 +82,7 @@ class SwitchCaseAnalyzer
         $fake_switch_condition = false;
 
         if ($switch_var_id && substr($switch_var_id, 0, 15) === '$__tmp_switch__') {
-            $switch_condition = new PhpParser\Node\Expr\Variable(
+            $switch_condition = new VirtualVariable(
                 substr($switch_var_id, 1),
                 $stmt->cond->getAttributes()
             );
@@ -124,11 +138,11 @@ class SwitchCaseAnalyzer
 
                 foreach ($switch_var_type->getAtomicTypes() as $type) {
                     if ($type instanceof Type\Atomic\TDependentGetClass) {
-                        $type_statements[] = new PhpParser\Node\Expr\FuncCall(
-                            new PhpParser\Node\Name(['get_class']),
+                        $type_statements[] = new VirtualFuncCall(
+                            new VirtualName(['get_class']),
                             [
-                                new PhpParser\Node\Arg(
-                                    new PhpParser\Node\Expr\Variable(
+                                new VirtualArg(
+                                    new VirtualVariable(
                                         substr($type->typeof, 1),
                                         $stmt->cond->getAttributes()
                                     ),
@@ -140,11 +154,11 @@ class SwitchCaseAnalyzer
                             $stmt->cond->getAttributes()
                         );
                     } elseif ($type instanceof Type\Atomic\TDependentGetType) {
-                        $type_statements[] = new PhpParser\Node\Expr\FuncCall(
-                            new PhpParser\Node\Name(['gettype']),
+                        $type_statements[] = new VirtualFuncCall(
+                            new VirtualName(['gettype']),
                             [
-                                new PhpParser\Node\Arg(
-                                    new PhpParser\Node\Expr\Variable(
+                                new VirtualArg(
+                                    new VirtualVariable(
                                         substr($type->typeof, 1),
                                         $stmt->cond->getAttributes()
                                     ),
@@ -156,11 +170,11 @@ class SwitchCaseAnalyzer
                             $stmt->cond->getAttributes()
                         );
                     } elseif ($type instanceof Type\Atomic\TDependentGetDebugType) {
-                        $type_statements[] = new PhpParser\Node\Expr\FuncCall(
-                            new PhpParser\Node\Name(['get_debug_type']),
+                        $type_statements[] = new VirtualFuncCall(
+                            new VirtualName(['get_debug_type']),
                             [
-                                new PhpParser\Node\Arg(
-                                    new PhpParser\Node\Expr\Variable(
+                                new VirtualArg(
+                                    new VirtualVariable(
                                         substr($type->typeof, 1),
                                         $stmt->cond->getAttributes()
                                     ),
@@ -189,20 +203,24 @@ class SwitchCaseAnalyzer
                 }
             }
 
-            if (($switch_condition_type = $statements_analyzer->node_data->getType($switch_condition))
+            if ($switch_condition instanceof PhpParser\Node\Expr\ConstFetch
+                && $switch_condition->name->parts === ['true']
+            ) {
+                $case_equality_expr = $case->cond;
+            } elseif (($switch_condition_type = $statements_analyzer->node_data->getType($switch_condition))
                 && ($case_cond_type = $statements_analyzer->node_data->getType($case->cond))
                 && (($switch_condition_type->isString() && $case_cond_type->isString())
                     || ($switch_condition_type->isInt() && $case_cond_type->isInt())
                     || ($switch_condition_type->isFloat() && $case_cond_type->isFloat())
                 )
             ) {
-                $case_equality_expr = new PhpParser\Node\Expr\BinaryOp\Identical(
+                $case_equality_expr = new VirtualIdentical(
                     $switch_condition,
                     $case->cond,
                     $case->cond->getAttributes()
                 );
             } else {
-                $case_equality_expr = new PhpParser\Node\Expr\BinaryOp\Equal(
+                $case_equality_expr = new VirtualEqual(
                     $switch_condition,
                     $case->cond,
                     $case->cond->getAttributes()
@@ -221,18 +239,18 @@ class SwitchCaseAnalyzer
 
         if (!$has_leaving_statements && !$is_last) {
             if (!$case_equality_expr) {
-                $case_equality_expr = new PhpParser\Node\Expr\FuncCall(
-                    new PhpParser\Node\Name\FullyQualified(['rand']),
+                $case_equality_expr = new VirtualFuncCall(
+                    new VirtualFullyQualified(['rand']),
                     [
-                        new PhpParser\Node\Arg(new PhpParser\Node\Scalar\LNumber(0)),
-                        new PhpParser\Node\Arg(new PhpParser\Node\Scalar\LNumber(1)),
+                        new VirtualArg(new VirtualLNumber(0)),
+                        new VirtualArg(new VirtualLNumber(1)),
                     ],
                     $case->getAttributes()
                 );
             }
 
             $switch_scope->leftover_case_equality_expr = $switch_scope->leftover_case_equality_expr
-                ? new PhpParser\Node\Expr\BinaryOp\BooleanOr(
+                ? new VirtualBooleanOr(
                     $switch_scope->leftover_case_equality_expr,
                     $case_equality_expr,
                     $case->cond ? $case->cond->getAttributes() : $case->getAttributes()
@@ -245,7 +263,7 @@ class SwitchCaseAnalyzer
                 $case_if_stmt = $switch_scope->leftover_statements[0];
                 $case_if_stmt->cond = $switch_scope->leftover_case_equality_expr;
             } else {
-                $case_if_stmt = new PhpParser\Node\Stmt\If_(
+                $case_if_stmt = new VirtualIf(
                     $switch_scope->leftover_case_equality_expr,
                     ['stmts' => $case_stmts],
                     $case->getAttributes()
@@ -268,17 +286,17 @@ class SwitchCaseAnalyzer
             $case_or_default_equality_expr = $case_equality_expr;
 
             if (!$case_or_default_equality_expr) {
-                $case_or_default_equality_expr = new PhpParser\Node\Expr\FuncCall(
-                    new PhpParser\Node\Name\FullyQualified(['rand']),
+                $case_or_default_equality_expr = new VirtualFuncCall(
+                    new VirtualFullyQualified(['rand']),
                     [
-                        new PhpParser\Node\Arg(new PhpParser\Node\Scalar\LNumber(0)),
-                        new PhpParser\Node\Arg(new PhpParser\Node\Scalar\LNumber(1)),
+                        new VirtualArg(new VirtualLNumber(0)),
+                        new VirtualArg(new VirtualLNumber(1)),
                     ],
                     $case->getAttributes()
                 );
             }
 
-            $case_equality_expr = new PhpParser\Node\Expr\BinaryOp\BooleanOr(
+            $case_equality_expr = new VirtualBooleanOr(
                 $switch_scope->leftover_case_equality_expr,
                 $case_or_default_equality_expr,
                 $case_or_default_equality_expr->getAttributes()
@@ -418,7 +436,7 @@ class SwitchCaseAnalyzer
                     $negated_case_clauses = FormulaGenerator::getFormula(
                         $case_equality_expr_id,
                         $case_equality_expr_id,
-                        new PhpParser\Node\Expr\BooleanNot($case_equality_expr),
+                        new VirtualBooleanNot($case_equality_expr),
                         $context->self,
                         $statements_analyzer,
                         $codebase,
@@ -668,17 +686,17 @@ class SwitchCaseAnalyzer
             $nested_or_options = self::getOptionsFromNestedOr($case_equality_expr, $var);
 
             if ($nested_or_options) {
-                return new PhpParser\Node\Expr\FuncCall(
-                    new PhpParser\Node\Name\FullyQualified(['in_array']),
+                return new VirtualFuncCall(
+                    new VirtualFullyQualified(['in_array']),
                     [
-                        new PhpParser\Node\Arg(
+                        new VirtualArg(
                             $var,
                             false,
                             false,
                             $var->getAttributes()
                         ),
-                        new PhpParser\Node\Arg(
-                            new PhpParser\Node\Expr\Array_(
+                        new VirtualArg(
+                            new VirtualArray(
                                 $nested_or_options,
                                 $case_equality_expr->getAttributes()
                             ),
@@ -686,9 +704,9 @@ class SwitchCaseAnalyzer
                             false,
                             $case_equality_expr->getAttributes()
                         ),
-                        new PhpParser\Node\Arg(
-                            new PhpParser\Node\Expr\ConstFetch(
-                                new PhpParser\Node\Name\FullyQualified(['true'])
+                        new VirtualArg(
+                            new VirtualConstFetch(
+                                new VirtualFullyQualified(['true'])
                             )
                         ),
                     ]
@@ -712,7 +730,7 @@ class SwitchCaseAnalyzer
             && $case_equality_expr->left instanceof PhpParser\Node\Expr\Variable
             && $case_equality_expr->left->name === $var->name
         ) {
-            $in_array_values[] = new PhpParser\Node\Expr\ArrayItem(
+            $in_array_values[] = new VirtualArrayItem(
                 $case_equality_expr->right,
                 null,
                 false,
@@ -733,7 +751,7 @@ class SwitchCaseAnalyzer
             return null;
         }
 
-        $in_array_values[] = new PhpParser\Node\Expr\ArrayItem(
+        $in_array_values[] = new VirtualArrayItem(
             $case_equality_expr->right->right,
             null,
             false,

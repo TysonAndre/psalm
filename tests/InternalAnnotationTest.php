@@ -524,7 +524,7 @@ class InternalAnnotationTest extends TestCase
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -956,6 +956,21 @@ class InternalAnnotationTest extends TestCase
 
                     ',
                 'error_message' => 'psalm-internal annotation used without specifying namespace',
+            ],
+            'internalConstructor' => [
+                '<?php
+                    namespace A {
+                        class C {
+                            /** @internal */
+                            public function __construct() {}
+                        }
+                    }
+                    namespace B {
+                        use A\C;
+                        new C;
+                    }
+                ',
+                'error_message' => 'InternalMethod',
             ],
         ];
     }

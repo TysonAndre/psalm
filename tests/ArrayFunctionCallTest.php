@@ -157,12 +157,36 @@ class ArrayFunctionCallTest extends TestCase
                 '<?php
                     $c = array_combine(["a", "b", "c"], [1, 2, 3]);',
                 'assertions' => [
-                    '$c' => 'array<string, int>|false',
+                    '$c' => 'false|non-empty-array<string, int>',
                 ],
+                'error_levels' => [],
+                '7.4',
             ],
-            'arrayCombineFalse' => [
+            'arrayCombinePHP8' => [
                 '<?php
                     $c = array_combine(["a", "b"], [1, 2, 3]);',
+                'assertions' => [
+                    '$c' => 'non-empty-array<string, int>',
+                ],
+                'error_levels' => [],
+                '8.0',
+            ],
+            'arrayCombineNotMatching' => [
+                '<?php
+                    $c = array_combine(["a", "b"], [1, 2, 3]);',
+                'assertions' => [
+                    '$c' => 'false|non-empty-array<string, int>',
+                ],
+                'error_levels' => [],
+                '7.4',
+            ],
+            'arrayCombineDynamicParams' => [
+                '<?php
+                    /** @return array<string> */
+                    function getStrings(): array{ return []; }
+                    /** @return array<int> */
+                    function getInts(): array{ return []; }
+                    $c = array_combine(getStrings(), getInts());',
                 'assertions' => [
                     '$c' => 'array<string, int>|false',
                 ],
@@ -688,7 +712,7 @@ class ArrayFunctionCallTest extends TestCase
                         ARRAY_FILTER_USE_KEY
                     );',
                 'assertions' => [
-                    '$foo' => 'array<string, pure-Closure():string(baz)>',
+                    '$foo' => 'array<string, pure-Closure():"baz">',
                 ],
             ],
             'ignoreFalsableCurrent' => [
@@ -884,6 +908,10 @@ class ArrayFunctionCallTest extends TestCase
                     function mapdef(string $_a, int $_b = 0): string {
                         return "a";
                     }',
+            ],
+            'arrayFillZeroLength' => [
+                '<?php
+                    count(array_fill(0, 0, 0)) === 0;',
             ],
             'implodeMultiDimensionalArray' => [
                 '<?php
@@ -1326,7 +1354,7 @@ class ArrayFunctionCallTest extends TestCase
                     $d = [1, 2, 3];
                     $e = array_splice($d, -1, 1);',
                 'assertions' => [
-                    '$e' => 'array<array-key, mixed>'
+                    '$e' => 'list<int>'
                 ],
             ],
             'arraySpliceOtherType' => [
@@ -1737,22 +1765,6 @@ class ArrayFunctionCallTest extends TestCase
                 'error_levels' => [],
                 '7.4',
             ],
-            'allowUnpackWithArrayKey' => [
-                '<?php
-                    class Foo {
-                        protected function one(): array {
-                            return [];
-                        }
-
-                        protected function two(): array {
-                            return [];
-                        }
-
-                        public function three(): array {
-                            return [...$this->one(), ...$this->two()];
-                        }
-                    }'
-            ],
             'spliceTurnsintKeyedInputToList' => [
                 '<?php
                     /**
@@ -1869,11 +1881,36 @@ class ArrayFunctionCallTest extends TestCase
                         array_multisort($formLayoutFields, SORT_ASC, array_column($foos, "y"));
                     }'
             ],
+            'arrayMapGenericObject' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface Container
+                    {
+                        /**
+                         * @return T
+                         */
+                        public function get(string $name);
+                    }
+
+                    /**
+                     * @param Container<stdClass> $container
+                     * @param array<string> $data
+                     * @return array<stdClass>
+                     */
+                    function bar(Container $container, array $data): array {
+                        return array_map(
+                            [$container, "get"],
+                            $data
+                        );
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -1919,6 +1956,11 @@ class ArrayFunctionCallTest extends TestCase
 
                     array_filter(["hello"], "foo");',
                 'error_message' => 'InvalidScalarArgument',
+            ],
+            'arrayFillPositiveConstantLength' => [
+                '<?php
+                    count(array_fill(0, 1, 0)) === 0;',
+                'error_message' => 'TypeDoesNotContainType'
             ],
             'arrayFilterTooFewArgs' => [
                 '<?php
@@ -2055,9 +2097,9 @@ class ArrayFunctionCallTest extends TestCase
                     $list = [3, 2, 5, 9];
                     usort($list, fn(int $a, string $b): int => (int) ($a > $b));',
                 'error_message' => 'InvalidScalarArgument',
-                2 => [],
-                3 => false,
-                4 => '7.4',
+                [],
+                false,
+                '7.4',
             ],
             'usortInvalidComparison' => [
                 '<?php

@@ -1,6 +1,14 @@
 <?php
 namespace Psalm\Internal\Provider\ReturnTypeProvider;
 
+use Psalm\Node\Expr\VirtualArrayDimFetch;
+use Psalm\Node\Expr\VirtualFuncCall;
+use Psalm\Node\Expr\VirtualMethodCall;
+use Psalm\Node\Expr\VirtualStaticCall;
+use Psalm\Node\Expr\VirtualVariable;
+use Psalm\Node\Name\VirtualFullyQualified;
+use Psalm\Node\VirtualArg;
+use Psalm\Node\VirtualIdentifier;
 use Psalm\Plugin\EventHandler\Event\FunctionReturnTypeProviderEvent;
 use function array_map;
 use function count;
@@ -90,7 +98,8 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
                 $generic_key_type = Type::getInt();
             }
 
-            if ($closure_types = $function_call_type->getClosureTypes()) {
+            if ($function_call_type->hasCallableType()) {
+                $closure_types = $function_call_type->getClosureTypes() ?: $function_call_type->getCallableTypes();
                 $closure_atomic_type = \reset($closure_types);
 
                 $closure_return_type = $closure_atomic_type->return_type ?: Type::getMixed();
@@ -133,13 +142,13 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
                         if ($variable_atomic_type instanceof Type\Atomic\TTemplateParam
                             || $variable_atomic_type instanceof Type\Atomic\TTemplateParamClass
                         ) {
-                            $fake_method_call = new PhpParser\Node\Expr\StaticCall(
+                            $fake_method_call = new VirtualStaticCall(
                                 $function_call_arg->value->items[0]->value,
                                 $function_call_arg->value->items[1]->value->value,
                                 []
                             );
                         } elseif ($variable_atomic_type instanceof Type\Atomic\TTemplateParamClass) {
-                            $fake_method_call = new PhpParser\Node\Expr\StaticCall(
+                            $fake_method_call = new VirtualStaticCall(
                                 $function_call_arg->value->items[0]->value,
                                 $function_call_arg->value->items[1]->value->value,
                                 []
@@ -329,10 +338,10 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
                 $fake_args = [];
 
                 foreach ($array_args as $array_arg) {
-                    $fake_args[] = new PhpParser\Node\Arg(
-                        new PhpParser\Node\Expr\ArrayDimFetch(
+                    $fake_args[] = new VirtualArg(
+                        new VirtualArrayDimFetch(
                             $array_arg->value,
-                            new PhpParser\Node\Expr\Variable(
+                            new VirtualVariable(
                                 '__fake_offset_var__',
                                 $array_arg->value->getAttributes()
                             ),
@@ -356,12 +365,12 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
                     [$callable_fq_class_name, $callable_method_name] = $method_id_parts;
 
                     if ($is_instance) {
-                        $fake_method_call = new PhpParser\Node\Expr\MethodCall(
-                            new PhpParser\Node\Expr\Variable(
+                        $fake_method_call = new VirtualMethodCall(
+                            new VirtualVariable(
                                 '__fake_method_call_var__',
                                 $function_call_arg->getAttributes()
                             ),
-                            new PhpParser\Node\Identifier(
+                            new VirtualIdentifier(
                                 $callable_method_name,
                                 $function_call_arg->getAttributes()
                             ),
@@ -369,10 +378,26 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
                             $function_call_arg->getAttributes()
                         );
 
+                        $lhs_instance_type = null;
+
+                        $callable_type = $statements_source->node_data->getType($function_call_arg->value);
+
+                        if ($callable_type) {
+                            foreach ($callable_type->getAtomicTypes() as $atomic_type) {
+                                if ($atomic_type instanceof Type\Atomic\TKeyedArray
+                                    && \count($atomic_type->properties) === 2
+                                    && isset($atomic_type->properties[0])
+                                ) {
+                                    $lhs_instance_type = clone $atomic_type->properties[0];
+                                }
+                            }
+                        }
+
                         $context->vars_in_scope['$__fake_offset_var__'] = Type::getMixed();
-                        $context->vars_in_scope['$__fake_method_call_var__'] = new Type\Union([
-                            new Type\Atomic\TNamedObject($callable_fq_class_name)
-                        ]);
+                        $context->vars_in_scope['$__fake_method_call_var__'] = $lhs_instance_type
+                            ?: new Type\Union([
+                                new Type\Atomic\TNamedObject($callable_fq_class_name)
+                            ]);
 
                         $fake_method_return_type = self::executeFakeCall(
                             $statements_source,
@@ -384,12 +409,12 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
                         unset($context->vars_in_scope['$__fake_offset_var__']);
                         unset($context->vars_in_scope['$__method_call_var__']);
                     } else {
-                        $fake_method_call = new PhpParser\Node\Expr\StaticCall(
-                            new PhpParser\Node\Name\FullyQualified(
+                        $fake_method_call = new VirtualStaticCall(
+                            new VirtualFullyQualified(
                                 $callable_fq_class_name,
                                 $function_call_arg->getAttributes()
                             ),
-                            new PhpParser\Node\Identifier(
+                            new VirtualIdentifier(
                                 $callable_method_name,
                                 $function_call_arg->getAttributes()
                             ),
@@ -411,8 +436,8 @@ class ArrayMapReturnTypeProvider implements \Psalm\Plugin\EventHandler\FunctionR
 
                     $function_id_return_type = $fake_method_return_type ?: Type::getMixed();
                 } else {
-                    $fake_function_call = new PhpParser\Node\Expr\FuncCall(
-                        new PhpParser\Node\Name\FullyQualified(
+                    $fake_function_call = new VirtualFuncCall(
+                        new VirtualFullyQualified(
                             $mapping_function_id_part,
                             $function_call_arg->getAttributes()
                         ),

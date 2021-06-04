@@ -3,7 +3,7 @@
 namespace Psalm;
 
 use Composer\Autoload\ClassLoader;
-use Composer\Semver\Semver;
+use Composer\Semver\VersionParser;
 use DOMDocument;
 use LogicException;
 use Psalm\Config\IssueHandler;
@@ -848,6 +848,15 @@ class Config
             $config->level = 2;
         }
 
+        // turn on unused variable detection in level 1
+        if (!isset($config_xml['findUnusedCode'])
+            && !isset($config_xml['findUnusedVariablesAndParams'])
+            && $config->level === 1
+            && $config->show_mixed_issues !== false
+        ) {
+            $config->find_unused_variables = true;
+        }
+
         if (isset($config_xml['errorBaseline'])) {
             $attribute_text = (string) $config_xml['errorBaseline'];
             $config->error_baseline = $attribute_text;
@@ -951,7 +960,10 @@ class Config
 
                 if (!$file_path) {
                     throw new Exception\ConfigException(
-                        'Cannot resolve stubfile path ' . $config->base_dir . DIRECTORY_SEPARATOR . $stub_file['name']
+                        'Cannot resolve stubfile path '
+                            . rtrim($config->base_dir, DIRECTORY_SEPARATOR)
+                            . DIRECTORY_SEPARATOR
+                            . $stub_file['name']
                     );
                 }
 
@@ -1094,7 +1106,7 @@ class Config
         $this->plugin_classes[] = ['class' => $class_name, 'config' => $plugin_config];
     }
 
-    /** @return array<array{class:string, config:?SimpleXmlElement}> */
+    /** @return array<array{class:string, config:?SimpleXMLElement}> */
     public function getPluginClasses(): array
     {
         return $this->plugin_classes;
@@ -1655,10 +1667,20 @@ class Config
         $core_generic_files = [];
 
         if (\PHP_VERSION_ID < 80000 && $codebase->php_major_version >= 8) {
-            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php80.php';
+            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php80.phpstub';
 
             if (!file_exists($stringable_path)) {
                 throw new \UnexpectedValueException('Cannot locate PHP 8.0 classes');
+            }
+
+            $core_generic_files[] = $stringable_path;
+        }
+
+        if (\PHP_VERSION_ID < 80100 && $codebase->php_major_version >= 8 && $codebase->php_minor_version >= 1) {
+            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php81.phpstub';
+
+            if (!file_exists($stringable_path)) {
+                throw new \UnexpectedValueException('Cannot locate PHP 8.1 classes');
             }
 
             $core_generic_files[] = $stringable_path;
@@ -1694,43 +1716,24 @@ class Config
 
         $codebase->register_stub_files = true;
 
-        // note: don't realpath $generic_stubs_path, or phar version will fail
-        $generic_stubs_path = dirname(__DIR__, 2) . '/stubs/CoreGenericFunctions.phpstub';
-
-        if (!file_exists($generic_stubs_path)) {
-            throw new \UnexpectedValueException('Cannot locate core generic stubs');
-        }
-
-        // note: don't realpath $generic_classes_path, or phar version will fail
-        $generic_classes_path = dirname(__DIR__, 2) . '/stubs/CoreGenericClasses.phpstub';
-
-        if (!file_exists($generic_classes_path)) {
-            throw new \UnexpectedValueException('Cannot locate core generic classes');
-        }
-
-        // note: don't realpath $generic_iterator_path, or phar version will fail
-        $generic_iterator_path = dirname(__DIR__, 2) . '/stubs/CoreGenericIterators.phpstub';
-
-        if (!file_exists($generic_iterator_path)) {
-            throw new \UnexpectedValueException('Cannot locate core generic Iterator classes');
-        }
-
-        // note: don't realpath $immutable_classes_path, or phar version will fail
-        $immutable_classes_path = dirname(__DIR__, 2) . '/stubs/CoreImmutableClasses.phpstub';
-
-        if (!file_exists($immutable_classes_path)) {
-            throw new \UnexpectedValueException('Cannot locate core immutable classes');
-        }
-
         $core_generic_files = [
-            $generic_stubs_path,
-            $generic_classes_path,
-            $generic_iterator_path,
-            $immutable_classes_path
+            dirname(__DIR__, 2) . '/stubs/CoreGenericFunctions.phpstub',
+            dirname(__DIR__, 2) . '/stubs/CoreGenericClasses.phpstub',
+            dirname(__DIR__, 2) . '/stubs/CoreGenericIterators.phpstub',
+            dirname(__DIR__, 2) . '/stubs/CoreImmutableClasses.phpstub',
+            dirname(__DIR__, 2) . '/stubs/DOM.phpstub',
+            dirname(__DIR__, 2) . '/stubs/Reflection.phpstub',
+            dirname(__DIR__, 2) . '/stubs/SPL.phpstub',
         ];
 
+        foreach ($core_generic_files as $stub_path) {
+            if (!file_exists($stub_path)) {
+                throw new \UnexpectedValueException('Cannot locate ' . $stub_path);
+            }
+        }
+
         if (\PHP_VERSION_ID >= 80000 && $codebase->php_major_version >= 8) {
-            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php80.php';
+            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php80.phpstub';
 
             if (!file_exists($stringable_path)) {
                 throw new \UnexpectedValueException('Cannot locate PHP 8.0 classes');
@@ -1739,8 +1742,18 @@ class Config
             $core_generic_files[] = $stringable_path;
         }
 
+        if (\PHP_VERSION_ID >= 80100 && $codebase->php_major_version >= 8 && $codebase->php_minor_version >= 1) {
+            $stringable_path = dirname(__DIR__, 2) . '/stubs/Php81.phpstub';
+
+            if (!file_exists($stringable_path)) {
+                throw new \UnexpectedValueException('Cannot locate PHP 8.1 classes');
+            }
+
+            $core_generic_files[] = $stringable_path;
+        }
+
         if (\extension_loaded('PDO')) {
-            $ext_pdo_path = dirname(__DIR__, 2) . '/stubs/pdo.php';
+            $ext_pdo_path = dirname(__DIR__, 2) . '/stubs/pdo.phpstub';
 
             if (!file_exists($ext_pdo_path)) {
                 throw new \UnexpectedValueException('Cannot locate pdo classes');
@@ -1750,17 +1763,17 @@ class Config
         }
 
         if (\extension_loaded('soap')) {
-            $ext_pdo_path = dirname(__DIR__, 2) . '/stubs/soap.php';
+            $ext_soap_path = dirname(__DIR__, 2) . '/stubs/soap.phpstub';
 
-            if (!file_exists($ext_pdo_path)) {
+            if (!file_exists($ext_soap_path)) {
                 throw new \UnexpectedValueException('Cannot locate soap classes');
             }
 
-            $core_generic_files[] = $ext_pdo_path;
+            $core_generic_files[] = $ext_soap_path;
         }
 
         if (\extension_loaded('ds')) {
-            $ext_ds_path = dirname(__DIR__, 2) . '/stubs/ext-ds.php';
+            $ext_ds_path = dirname(__DIR__, 2) . '/stubs/ext-ds.phpstub';
 
             if (!file_exists($ext_ds_path)) {
                 throw new \UnexpectedValueException('Cannot locate ext-ds classes');
@@ -1769,10 +1782,20 @@ class Config
             $core_generic_files[] = $ext_ds_path;
         }
 
+        if (\extension_loaded('mongodb')) {
+            $ext_mongodb_path = dirname(__DIR__, 2) . '/stubs/mongodb.phpstub';
+
+            if (!file_exists($ext_mongodb_path)) {
+                throw new \UnexpectedValueException('Cannot locate mongodb classes');
+            }
+
+            $core_generic_files[] = $ext_mongodb_path;
+        }
+
         $stub_files = array_merge($core_generic_files, $this->stub_files);
 
         if ($this->load_xdebug_stub) {
-            $xdebug_stub_path = dirname(__DIR__, 2) . '/stubs/Xdebug.php';
+            $xdebug_stub_path = dirname(__DIR__, 2) . '/stubs/Xdebug.phpstub';
 
             if (!file_exists($xdebug_stub_path)) {
                 throw new \UnexpectedValueException('Cannot locate Xdebug stub');
@@ -2068,13 +2091,20 @@ class Config
             $php_version = $composer_json['require']['php'] ?? null;
 
             if (\is_string($php_version)) {
+                $version_parser = new VersionParser();
+
+                $constraint = $version_parser->parseConstraints($php_version);
+
                 foreach (['5.4', '5.5', '5.6', '7.0', '7.1', '7.2', '7.3', '7.4', '8.0'] as $candidate) {
-                    if (Semver::satisfies($candidate, $php_version)) {
+                    if ($constraint->matches(new \Composer\Semver\Constraint\Constraint('<=', "$candidate.0.0-dev"))
+                        || $constraint->matches(new \Composer\Semver\Constraint\Constraint('<=', "$candidate.999"))
+                    ) {
                         return $candidate;
                     }
                 }
             }
         }
+
         return null;
     }
 

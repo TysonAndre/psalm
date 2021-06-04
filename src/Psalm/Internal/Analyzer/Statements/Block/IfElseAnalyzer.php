@@ -10,6 +10,7 @@ use Psalm\Internal\Clause;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\Scope\IfScope;
+use Psalm\Node\Expr\VirtualBooleanNot;
 use Psalm\Type;
 use Psalm\Internal\Algebra;
 use Psalm\Type\Reconciler;
@@ -67,23 +68,22 @@ class IfElseAnalyzer
         $if_scope = new IfScope();
 
         // We need to clone the original context for later use if we're exiting in this if conditional
-        if (!$stmt->else && !$stmt->elseifs
-            && ($stmt->cond instanceof PhpParser\Node\Expr\BinaryOp
-                || ($stmt->cond instanceof PhpParser\Node\Expr\BooleanNot
-                    && $stmt->cond->expr instanceof PhpParser\Node\Expr\BinaryOp))
+        if ($stmt->cond instanceof PhpParser\Node\Expr\BinaryOp
+            || ($stmt->cond instanceof PhpParser\Node\Expr\BooleanNot
+                && $stmt->cond->expr instanceof PhpParser\Node\Expr\BinaryOp)
         ) {
             $final_actions = ScopeAnalyzer::getControlActions(
                 $stmt->stmts,
                 null,
                 $codebase->config->exit_functions,
-                $context->break_types
+                []
             );
 
             $has_leaving_statements = $final_actions === [ScopeAnalyzer::ACTION_END]
                 || (count($final_actions) && !in_array(ScopeAnalyzer::ACTION_NONE, $final_actions, true));
 
             if ($has_leaving_statements) {
-                $if_scope->mic_drop_context = clone $context;
+                $if_scope->post_leaving_if_context = clone $context;
             }
         }
 
@@ -99,7 +99,7 @@ class IfElseAnalyzer
 
             $if_context = $if_conditional_scope->if_context;
 
-            $original_context = $if_conditional_scope->original_context;
+            $post_if_context = $if_conditional_scope->post_if_context;
             $cond_referenced_var_ids = $if_conditional_scope->cond_referenced_var_ids;
             $assigned_in_conditional_var_ids = $if_conditional_scope->assigned_in_conditional_var_ids;
         } catch (\Psalm\Exception\ScopeAnalysisException $e) {
@@ -204,7 +204,7 @@ class IfElseAnalyzer
                 $if_scope->negated_clauses = FormulaGenerator::getFormula(
                     $cond_object_id,
                     $cond_object_id,
-                    new PhpParser\Node\Expr\BooleanNot($stmt->cond),
+                    new VirtualBooleanNot($stmt->cond),
                     $context->self,
                     $statements_analyzer,
                     $codebase,
@@ -289,6 +289,17 @@ class IfElseAnalyzer
 
             if ($changed_var_ids) {
                 $if_context->clauses = Context::removeReconciledClauses($if_context->clauses, $changed_var_ids)[0];
+
+                foreach ($changed_var_ids as $changed_var_id => $_) {
+                    foreach ($if_context->vars_in_scope as $var_id => $_) {
+                        if (preg_match('/' . preg_quote($changed_var_id, '/') . '[\]\[\-]/', $var_id)
+                            && !\array_key_exists($var_id, $changed_var_ids)
+                            && !\array_key_exists($var_id, $cond_referenced_var_ids)
+                        ) {
+                            unset($if_context->vars_in_scope[$var_id]);
+                        }
+                    }
+                }
             }
 
             $if_scope->if_cond_changed_var_ids = $changed_var_ids;
@@ -307,7 +318,7 @@ class IfElseAnalyzer
             $context->referenced_var_ids
         );
 
-        $temp_else_context = clone $original_context;
+        $temp_else_context = clone $post_if_context;
 
         $changed_var_ids = [];
 
@@ -355,8 +366,9 @@ class IfElseAnalyzer
             return false;
         }
 
-        // check the else
-        $else_context = clone $original_context;
+        // this has to go on a separate line because the phar compactor messes with precedence
+        $scope_to_clone = $if_scope->post_leaving_if_context ?? $post_if_context;
+        $else_context = clone $scope_to_clone;
 
         // check the elseifs
         foreach ($stmt->elseifs as $elseif) {

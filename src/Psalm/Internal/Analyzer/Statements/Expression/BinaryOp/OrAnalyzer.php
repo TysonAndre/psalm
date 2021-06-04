@@ -11,6 +11,9 @@ use Psalm\Internal\Analyzer\Statements\Block\IfElse\IfAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Block\IfConditionalAnalyzer;
 use Psalm\CodeLocation;
 use Psalm\Context;
+use Psalm\Node\Expr\VirtualBooleanNot;
+use Psalm\Node\Stmt\VirtualExpression;
+use Psalm\Node\Stmt\VirtualIf;
 use Psalm\Type;
 use Psalm\Internal\Algebra;
 use Psalm\Type\Reconciler;
@@ -33,11 +36,11 @@ class OrAnalyzer
         bool $from_stmt = false
     ) : bool {
         if ($from_stmt) {
-            $fake_if_stmt = new PhpParser\Node\Stmt\If_(
-                new PhpParser\Node\Expr\BooleanNot($stmt->left, $stmt->left->getAttributes()),
+            $fake_if_stmt = new VirtualIf(
+                new VirtualBooleanNot($stmt->left, $stmt->left->getAttributes()),
                 [
                     'stmts' => [
-                        new PhpParser\Node\Stmt\Expression(
+                        new VirtualExpression(
                             $stmt->right
                         )
                     ]
@@ -50,7 +53,7 @@ class OrAnalyzer
 
         $codebase = $statements_analyzer->getCodebase();
 
-        $mic_drop_context = null;
+        $post_leaving_if_context = null;
 
         if (!$stmt->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr
             || !$stmt->left->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr
@@ -74,7 +77,7 @@ class OrAnalyzer
                 $left_assigned_var_ids = $if_conditional_scope->assigned_in_conditional_var_ids;
 
                 if ($stmt->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr) {
-                    $mic_drop_context = clone $context;
+                    $post_leaving_if_context = clone $context;
                 }
             } catch (\Psalm\Exception\ScopeAnalysisException $e) {
                 return false;
@@ -85,7 +88,7 @@ class OrAnalyzer
 
             $pre_assigned_var_ids = $context->assigned_var_ids;
 
-            $mic_drop_context = clone $context;
+            $post_leaving_if_context = clone $context;
 
             $left_context = clone $context;
             $left_context->parent_context = $context;
@@ -137,7 +140,7 @@ class OrAnalyzer
                 $negated_left_clauses = FormulaGenerator::getFormula(
                     $left_cond_id,
                     $left_cond_id,
-                    new PhpParser\Node\Expr\BooleanNot($stmt->left),
+                    new VirtualBooleanNot($stmt->left),
                     $context->self,
                     $statements_analyzer,
                     $codebase,
@@ -190,12 +193,12 @@ class OrAnalyzer
 
         if ($stmt->left instanceof PhpParser\Node\Expr\BinaryOp\BooleanOr
             && $left_assigned_var_ids
-            && $mic_drop_context
+            && $post_leaving_if_context
         ) {
             IfAnalyzer::addConditionallyAssignedVarsToContext(
                 $statements_analyzer,
                 $stmt->left,
-                $mic_drop_context,
+                $post_leaving_if_context,
                 $right_context,
                 $left_assigned_var_ids
             );
@@ -365,7 +368,11 @@ class OrAnalyzer
                         $codebase
                     );
                 } elseif (isset($left_context->vars_in_scope[$var_id])) {
-                    $if_context->vars_in_scope[$var_id] = $left_context->vars_in_scope[$var_id];
+                    $if_context->vars_in_scope[$var_id] = Type::combineUnionTypes(
+                        $type,
+                        $left_context->vars_in_scope[$var_id],
+                        $codebase
+                    );
                 }
             }
 

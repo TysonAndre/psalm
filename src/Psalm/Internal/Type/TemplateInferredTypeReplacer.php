@@ -117,7 +117,7 @@ class TemplateInferredTypeReplacer
                             $is_mixed = true;
                         }
 
-                        $new_types[$template_type_part->getKey()] = $template_type_part;
+                        $new_types[] = $template_type_part;
                     }
                 }
             } elseif ($atomic_type instanceof Atomic\TTemplateParamClass) {
@@ -153,7 +153,7 @@ class TemplateInferredTypeReplacer
 
                 if ($class_template_type) {
                     $keys_to_unset[] = $key;
-                    $new_types[$class_template_type->getKey()] = $class_template_type;
+                    $new_types[] = $class_template_type;
                 }
             } elseif ($atomic_type instanceof Atomic\TTemplateIndexedAccess) {
                 $keys_to_unset[] = $key;
@@ -194,10 +194,10 @@ class TemplateInferredTypeReplacer
                             $is_mixed = true;
                         }
 
-                        $new_types[$template_type_part->getKey()] = $template_type_part;
+                        $new_types[] = $template_type_part;
                     }
                 } else {
-                    $new_types[$key] = new Atomic\TMixed();
+                    $new_types[] = new Atomic\TMixed();
                 }
             } elseif ($atomic_type instanceof Atomic\TConditional
                 && $codebase
@@ -229,7 +229,12 @@ class TemplateInferredTypeReplacer
                         if (UnionTypeComparator::isContainedBy(
                             $codebase,
                             new Type\Union([$candidate_atomic_type]),
-                            $atomic_type->conditional_type
+                            $atomic_type->conditional_type,
+                            false,
+                            false,
+                            null,
+                            false,
+                            false
                         )
                             && (!$candidate_atomic_type instanceof Type\Atomic\TInt
                                 || $atomic_type->conditional_type->getId() !== 'float')
@@ -238,7 +243,12 @@ class TemplateInferredTypeReplacer
                         } elseif (!UnionTypeComparator::isContainedBy(
                             $codebase,
                             $atomic_type->conditional_type,
-                            new Type\Union([$candidate_atomic_type])
+                            new Type\Union([$candidate_atomic_type]),
+                            false,
+                            false,
+                            null,
+                            false,
+                            false
                         )) {
                             $matching_else_types[] = $candidate_atomic_type;
                         }
@@ -251,7 +261,12 @@ class TemplateInferredTypeReplacer
                         && UnionTypeComparator::isContainedBy(
                             $codebase,
                             $if_candidate_type,
-                            $atomic_type->conditional_type
+                            $atomic_type->conditional_type,
+                            false,
+                            false,
+                            null,
+                            false,
+                            false
                         )
                     ) {
                         $if_template_type = clone $atomic_type->if_type;
@@ -274,7 +289,12 @@ class TemplateInferredTypeReplacer
                         && UnionTypeComparator::isContainedBy(
                             $codebase,
                             $else_candidate_type,
-                            $atomic_type->as_type
+                            $atomic_type->as_type,
+                            false,
+                            false,
+                            null,
+                            false,
+                            false
                         )
                     ) {
                         $else_template_type = clone $atomic_type->else_type;
@@ -327,7 +347,7 @@ class TemplateInferredTypeReplacer
                 $keys_to_unset[] = $key;
 
                 foreach ($class_template_type->getAtomicTypes() as $class_template_atomic_type) {
-                    $new_types[$class_template_atomic_type->getKey()] = $class_template_atomic_type;
+                    $new_types[] = $class_template_atomic_type;
                 }
             }
         }
@@ -339,7 +359,12 @@ class TemplateInferredTypeReplacer
                 throw new \UnexpectedValueException('This array should be full');
             }
 
-            $union->replaceTypes($new_types);
+            $union->replaceTypes(
+                TypeCombiner::combine(
+                    $new_types,
+                    $codebase
+                )->getAtomicTypes()
+            );
 
             return;
         }

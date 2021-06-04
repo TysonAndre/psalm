@@ -87,7 +87,7 @@ class ObjectComparator
                             }
 
                             foreach ($intersection_input_type->as->getAtomicTypes() as $input_as_atomic) {
-                                if ($input_as_atomic->equals($intersection_container_type)) {
+                                if ($input_as_atomic->equals($intersection_container_type, false)) {
                                     continue 3;
                                 }
                             }
@@ -254,7 +254,8 @@ class ObjectComparator
                         continue 2;
                     }
 
-                    if ($codebase->classExists($intersection_input_type_lower)
+                    if (($codebase->classExists($intersection_input_type_lower)
+                            || $codebase->classlikes->enumExists($intersection_input_type_lower))
                         && $codebase->classOrInterfaceExists($intersection_container_type_lower)
                         && $codebase->classExtendsOrImplements(
                             $intersection_input_type_lower,

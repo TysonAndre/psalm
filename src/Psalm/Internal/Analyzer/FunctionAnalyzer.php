@@ -8,14 +8,10 @@ use function is_string;
 
 /**
  * @internal
+ * @extends FunctionLikeAnalyzer<PhpParser\Node\Stmt\Function_>
  */
 class FunctionAnalyzer extends FunctionLikeAnalyzer
 {
-    /**
-     * @var PhpParser\Node\Stmt\Function_
-     */
-    protected $function;
-
     public function __construct(PhpParser\Node\Stmt\Function_ $function, SourceAnalyzer $source)
     {
         $codebase = $source->getCodebase();
@@ -41,6 +37,7 @@ class FunctionAnalyzer extends FunctionLikeAnalyzer
 
     /**
      * @return non-empty-lowercase-string
+     * @throws \UnexpectedValueException if function is closure or arrow function.
      */
     public function getFunctionId(): string
     {

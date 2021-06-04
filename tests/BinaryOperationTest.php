@@ -166,10 +166,126 @@ class BinaryOperationTest extends TestCase
             ],
             'concatenationWithTwoInt' => [
                 '<?php
-                    /** @return numeric-string */
+                    /**
+                     * @param positive-int|0 $b
+                     * @return numeric-string
+                     */
                     function scope(int $a, int $b): string{
                         return $a . $b;
                     }',
+            ],
+            'concatenateUnion' => [
+                '<?php
+                    $arr = ["foobar" => false, "foobaz" => true, "barbaz" => true];
+                    $foo = random_int(0, 1) ? "foo" : "bar";
+                    $foo .= "baz";
+                    $val = $arr[$foo];
+                ',
+                'assertions' => ['$val' => 'true'],
+            ],
+            'concatenateLiteralIntAndString' => [
+                '<?php
+                    $arr = ["foobar" => false, "foo123" => true];
+                    $foo = "foo";
+                    $foo .= 123;
+                    $val = $arr[$foo];
+                ',
+                'assertions' => ['$val' => 'true'],
+            ],
+            'concatenateNonEmptyResultsInNonEmpty' => [
+                '<?php
+                    /** @param non-empty-lowercase-string $arg */
+                    function foobar($arg): string
+                    {
+                        return $arg;
+                    }
+
+                    /** @var "a"|"b" */
+                    $foo = "a";
+                    /** @var "c"|"d" */
+                    $bar = "c";
+                    $baz = $foo . $bar;
+                    foobar($baz);
+                ',
+            ],
+            'concatenateEmptyWithNonemptyCast' => [
+                '<?php
+                    class A
+                    {
+                        /** @psalm-return non-empty-lowercase-string */
+                        public function __toString(): string
+                        {
+                            return "foo";
+                        }
+                    }
+
+                    /** @param non-empty-lowercase-string $arg */
+                    function foo($arg): string
+                    {
+                        return $arg;
+                    }
+
+                    $bar = new A();
+                    foo("" . $bar);
+                ',
+            ],
+            'concatenateNegativeIntLeftSideIsNumeric' => [
+                '<?php
+                    /**
+                     * @param numeric-string $bar
+                     * @return int
+                     */
+                    function foo(string $bar): int
+                    {
+                        return (int) $bar;
+                    }
+
+                    foo(foo("-123") . 456);
+                ',
+            ],
+            'castToIntPreserveNarrowerIntType' => [
+                '<?php
+                    /**
+                     * @param positive-int $i
+                     * @return positive-int
+                     */
+                    function takesAnInt(int $i) {
+                        /** @psalm-suppress RedundantCast */
+                        return (int)$i;
+                    }
+                ',
+            ],
+            'concatenateFloatWithInt' => [
+                '<?php
+                    /**
+                     * @param numeric-string $bar
+                     * @return numeric-string
+                     */
+                    function foo(string $bar): string
+                    {
+                        return $bar;
+                    }
+
+                    foo(-123.456 . 789);
+                ',
+            ],
+            'concatenateIntIsLowercase' => [
+                '<?php
+                    /**
+                     * @param non-empty-lowercase-string $bar
+                     * @return non-empty-lowercase-string
+                     */
+                    function foobar(string $bar): string
+                    {
+                        return $bar;
+                    }
+
+                    /** @var lowercase-string */
+                    $foo = "abc";
+                    /** @var int */
+                    $bar = 123;
+                    foobar($foo . $bar);
+                ',
             ],
             'possiblyInvalidAdditionOnBothSides' => [
                 '<?php
@@ -195,6 +311,15 @@ class BinaryOperationTest extends TestCase
                     '$e' => 'int',
                     '$f' => 'string',
                 ],
+            ],
+            'ComplexLiteralBitwise' => [
+                '<?php
+                    /**
+                     * @return 7
+                     */
+                    function scope(){
+                        return 1 | 2 | 4 | (1 & 0);
+                    }',
             ],
             'booleanXor' => [
                 '<?php
@@ -257,6 +382,18 @@ class BinaryOperationTest extends TestCase
                     $a++;',
                 'assertions' => [
                     '$a' => 'string',
+                ],
+            ],
+            'stringIncrementWithCheck' => [
+                '<?php
+                    /** @psalm-suppress StringIncrement */
+                    for($a = "a"; $a != "z"; $a++){
+                        if($a === "b"){
+                            echo "b reached";
+                        }
+                    }',
+                'assertions' => [
+                    '$a===' => 'non-empty-string',
                 ],
             ],
             'nullCoalescingAssignment' => [
@@ -348,12 +485,57 @@ class BinaryOperationTest extends TestCase
                      function foo($a, $b): void {
                          onlyZeroOrPlusMinusOne($a <=> $b);
                      }'
-            ]
+            ],
+            'notAlwaysPositiveBitOperations' => [
+                '<?php
+
+                    $a = 1;
+                    $b = 1;
+                    $c = 32;
+                    $d = 64;
+                    $e = 2;
+
+                    if (0 === ($a ^ $b)) {
+                        echo "Actually, zero\n";
+                    }
+
+                    if (0 === ($a & $e)) {
+                        echo "Actually, zero\n";
+                    }
+
+                    if (0 === ($a >> $b)) {
+                        echo "Actually, zero\n";
+                    }
+
+                    if (8 === PHP_INT_SIZE) {
+                        if (0 === ($a << $d)) {
+                            echo "Actually, zero\n";
+                        }
+                    } else {
+                        if (0 === ($a << $c)) {
+                            echo "Actually, zero\n";
+                        }
+                    }'
+            ],
+            'IntOverflowMul' => [
+                '<?php
+                    $a = (1024 * 1024 * 1024 * 1024 * 1024 * 1024 * 1024);',
+                'assertions' => [
+                    '$a' => 'float'
+                ],
+            ],
+            'IntOverflowPow' => [
+                '<?php
+                    $a = 2 ** 80;',
+                'assertions' => [
+                    '$a' => 'float'
+                ],
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -376,6 +558,21 @@ class BinaryOperationTest extends TestCase
                 'error_message' => 'InvalidOperand',
                 'error_levels' => [],
                 'strict_mode' => true,
+            ],
+            'concatenateNegativeIntRightSideIsNotNumeric' => [
+                '<?php
+                    /**
+                     * @param numeric-string $bar
+                     * @return int
+                     */
+                    function foo(string $bar): int
+                    {
+                        return (int) $bar;
+                    }
+
+                    foo(foo("123") . foo("-456"));
+                ',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
             'addArrayToNumber' => [
                 '<?php

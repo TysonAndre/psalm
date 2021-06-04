@@ -244,6 +244,17 @@ class ElseIfAnalyzer
                     $elseif_context->clauses,
                     $newly_reconciled_var_ids
                 )[0];
+
+                foreach ($newly_reconciled_var_ids as $changed_var_id => $_) {
+                    foreach ($elseif_context->vars_in_scope as $var_id => $_) {
+                        if (preg_match('/' . preg_quote($changed_var_id, '/') . '[\]\[\-]/', $var_id)
+                            && !\array_key_exists($var_id, $newly_reconciled_var_ids)
+                            && !\array_key_exists($var_id, $cond_referenced_var_ids)
+                        ) {
+                            unset($elseif_context->vars_in_scope[$var_id]);
+                        }
+                    }
+                }
             }
         }
 
@@ -297,7 +308,7 @@ class ElseIfAnalyzer
             $elseif->stmts,
             $statements_analyzer->node_data,
             $codebase->config->exit_functions,
-            $outer_context->break_types
+            []
         );
         // has a return/throw at end
         $has_ending_statements = $final_actions === [ScopeAnalyzer::ACTION_END];
@@ -355,12 +366,14 @@ class ElseIfAnalyzer
                 $implied_outer_context = clone $elseif_context;
                 $implied_outer_context->vars_in_scope = $leaving_vars_reconciled;
 
+                $updated_vars = [];
+
                 $outer_context->update(
                     $elseif_context,
                     $implied_outer_context,
                     false,
                     array_keys($negated_elseif_types),
-                    $if_scope->updated_vars
+                    $updated_vars
                 );
             }
         }

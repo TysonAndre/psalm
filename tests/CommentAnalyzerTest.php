@@ -1,33 +1,76 @@
 <?php
 namespace Psalm\Tests;
 
+use PHPUnit\Framework\TestCase as BaseTestCase;
+use Psalm\Internal\RuntimeCaches;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
+use Psalm\Internal\Scanner\FileScanner;
+use Psalm\Aliases;
 
-class CommentAnalyzerTest extends TestCase
+class CommentAnalyzerTest extends BaseTestCase
 {
-    /** @return void */
-    public function testParseDocComment()
+    public function setUp(): void
     {
-        $input_doc_comment = <<<'EOT'
-   /**
-    * Description
-    *  Rest of description
-    * @param int $value
-    */
-EOT;
-        $expected_doc_comment = <<<'EOT'
-Description
- Rest of description
-EOT;
-        $actual = CommentAnalyzer::parseDocComment($input_doc_comment);
-        $expected = [
-            'description' => $expected_doc_comment,
-            'specials' => [
-                'param' => [
-                    'int $value',
-                ],
-            ],
-        ];
-        $this->assertSame($expected, $actual, 'Expected whitespace and leading comment text to be trimmed');
+        RuntimeCaches::clearAll();
+    }
+
+    public function testDocblockVarDescription(): void
+    {
+        $doc = '/**
+ * @var string Some Description
+ */
+';
+        $php_parser_doc = new \PhpParser\Comment\Doc($doc);
+        $comment_docblock = CommentAnalyzer::getTypeFromComment($php_parser_doc, new FileScanner('somefile.php', 'somefile.php', false), new Aliases);
+        $this->assertSame('Some Description', $comment_docblock[0]->description);
+    }
+
+    public function testDocblockVarDescriptionWithVarId(): void
+    {
+        $doc = '/**
+ * @var string $foo Some Description
+ */
+';
+        $php_parser_doc = new \PhpParser\Comment\Doc($doc);
+        $comment_docblock = CommentAnalyzer::getTypeFromComment($php_parser_doc, new FileScanner('somefile.php', 'somefile.php', false), new Aliases);
+        $this->assertSame('Some Description', $comment_docblock[0]->description);
+    }
+
+    public function testDocblockVarDescriptionMultiline(): void
+    {
+        $doc = '/**
+ * @var string $foo Some Description
+ *                  with a long description.
+ */
+';
+        $php_parser_doc = new \PhpParser\Comment\Doc($doc);
+        $comment_docblock = CommentAnalyzer::getTypeFromComment($php_parser_doc, new FileScanner('somefile.php', 'somefile.php', false), new Aliases);
+        $this->assertSame('Some Description with a long description.', $comment_docblock[0]->description);
+    }
+
+    public function testDocblockDescription(): void
+    {
+        $doc = '/**
+ * Some Description
+ *
+ * @var string
+ */
+';
+        $php_parser_doc = new \PhpParser\Comment\Doc($doc);
+        $comment_docblock = CommentAnalyzer::getTypeFromComment($php_parser_doc, new FileScanner('somefile.php', 'somefile.php', false), new Aliases);
+        $this->assertSame('Some Description', $comment_docblock[0]->description);
+    }
+
+    public function testDocblockDescriptionWithVarDescription(): void
+    {
+        $doc = '/**
+ * Some Description
+ *
+ * @var string Use a string
+ */
+';
+        $php_parser_doc = new \PhpParser\Comment\Doc($doc);
+        $comment_docblock = CommentAnalyzer::getTypeFromComment($php_parser_doc, new FileScanner('somefile.php', 'somefile.php', false), new Aliases);
+        $this->assertSame('Use a string', $comment_docblock[0]->description);
     }
 }

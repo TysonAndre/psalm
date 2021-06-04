@@ -29,7 +29,7 @@ Psalm recognises a number of taint types by default, defined in the [Psalm\Type\
 - `shell` - used for strings that could contain shell commands
 - `callable` - used for callable strings that could be user-controlled
 - `unserialize` - used for strings that could contain a serialized string
-- `include` - used for strings that could contain a path beeing included
+- `include` - used for strings that could contain a path being included
 - `eval` - used for strings that could contain code
 - `ssrf` - used for strings that could contain text passed to Curl or similar
 - `file` - used for strings that could contain a path
@@ -48,7 +48,7 @@ You can also [define your own taint sources](custom_taint_sources.md).
 
 ## Taint Sinks
 
-Psalm currently defines a number of different for builtin functions and methods, including `echo`, `include`, `header`.
+Psalm currently defines a number of different sinks for builtin functions and methods, including `echo`, `include`, `header`.
 
 You can also [define your own taint sinks](custom_taint_sinks.md).
 
@@ -80,4 +80,13 @@ To generate a SARIF report run Psalm with the `--report` flag and a `.sarif` ext
 
 ```bash
 psalm --report=results.sarif
+```
+
+## Debugging the taint graph
+
+Psalm can output the taint graph using the DOT language. This is useful when expected taints are not detected. To generate a DOT graph run Psalm with the `--dump-taint-graph` flag. For example:
+
+```bash
+psalm --taint-analysis --dump-taint-graph=taints.dot
+dot -Tsvg -o taints.svg taints.dot
 ```

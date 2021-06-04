@@ -20,6 +20,11 @@ use Psalm\Issue\PossiblyInvalidFunctionCall;
 use Psalm\Issue\PossiblyNullFunctionCall;
 use Psalm\Issue\UnusedFunctionCall;
 use Psalm\IssueBuffer;
+use Psalm\Node\Expr\VirtualFuncCall;
+use Psalm\Node\Expr\VirtualMethodCall;
+use Psalm\Node\Name\VirtualFullyQualified;
+use Psalm\Node\VirtualArg;
+use Psalm\Node\VirtualIdentifier;
 use Psalm\Plugin\EventHandler\Event\AfterEveryFunctionCallAnalysisEvent;
 use Psalm\Storage\Assertion;
 use Psalm\Type;
@@ -42,6 +47,7 @@ use function array_merge;
 use function array_map;
 use function strpos;
 use Psalm\Internal\Type\TemplateResult;
+use Psalm\Plugin\EventHandler\Event\AddRemoveTaintsEvent;
 use Psalm\Storage\FunctionLikeParameter;
 use function explode;
 
@@ -75,7 +81,7 @@ class FunctionCallAnalyzer extends CallAnalyzer
 
                 $function_name = $stmt->args[0]->value;
 
-                $stmt = new PhpParser\Node\Expr\FuncCall(
+                $stmt = new VirtualFuncCall(
                     $function_name,
                     $other_args,
                     $stmt->getAttributes()
@@ -85,9 +91,9 @@ class FunctionCallAnalyzer extends CallAnalyzer
             if ($original_function_id === 'call_user_func_array' && isset($stmt->args[1])) {
                 $function_name = $stmt->args[0]->value;
 
-                $stmt = new PhpParser\Node\Expr\FuncCall(
+                $stmt = new VirtualFuncCall(
                     $function_name,
-                    [new PhpParser\Node\Arg($stmt->args[1]->value, false, true)],
+                    [new VirtualArg($stmt->args[1]->value, false, true)],
                     $stmt->getAttributes()
                 );
             }
@@ -554,7 +560,16 @@ class FunctionCallAnalyzer extends CallAnalyzer
             $invalid_function_call_types = [];
             $has_valid_function_call_type = false;
 
-            foreach ($stmt_name_type->getAtomicTypes() as $var_type_part) {
+            $var_atomic_types = $stmt_name_type->getAtomicTypes();
+
+            while ($var_atomic_types) {
+                $var_type_part = \array_shift($var_atomic_types);
+
+                if ($var_type_part instanceof TTemplateParam) {
+                    $var_atomic_types = \array_merge($var_atomic_types, $var_type_part->as->getAtomicTypes());
+                    continue;
+                }
+
                 if ($var_type_part instanceof Type\Atomic\TClosure || $var_type_part instanceof TCallable) {
                     if (!$var_type_part->is_pure && $context->pure) {
                         if (IssueBuffer::accepts(
@@ -592,8 +607,6 @@ class FunctionCallAnalyzer extends CallAnalyzer
                     }
 
                     $function_call_info->function_exists = true;
-                    $has_valid_function_call_type = true;
-                } elseif ($var_type_part instanceof TTemplateParam && $var_type_part->as->hasCallableType()) {
                     $has_valid_function_call_type = true;
                 } elseif ($var_type_part instanceof TMixed || $var_type_part instanceof TTemplateParam) {
                     $has_valid_function_call_type = true;
@@ -646,7 +659,7 @@ class FunctionCallAnalyzer extends CallAnalyzer
                             $fq_class_name = \preg_replace('/^\\\\/', '', $fq_class_name);
                             $potential_method_id = new \Psalm\Internal\MethodIdentifier($fq_class_name, $parts[1]);
                         } else {
-                            $function_call_info->new_function_name = new PhpParser\Node\Name\FullyQualified(
+                            $function_call_info->new_function_name = new VirtualFullyQualified(
                                 $var_type_part->value,
                                 $function_name->getAttributes()
                             );
@@ -736,8 +749,19 @@ class FunctionCallAnalyzer extends CallAnalyzer
 
                 $statements_analyzer->data_flow_graph->addSink($custom_call_sink);
 
+                $event = new AddRemoveTaintsEvent($stmt, $context, $statements_analyzer, $codebase);
+
+                $added_taints = $codebase->config->eventDispatcher->dispatchAddTaints($event);
+                $removed_taints = $codebase->config->eventDispatcher->dispatchRemoveTaints($event);
+
                 foreach ($stmt_name_type->parent_nodes as $parent_node) {
-                    $statements_analyzer->data_flow_graph->addPath($parent_node, $custom_call_sink, 'call');
+                    $statements_analyzer->data_flow_graph->addPath(
+                        $parent_node,
+                        $custom_call_sink,
+                        'call',
+                        $added_taints,
+                        $removed_taints
+                    );
                 }
             }
         }
@@ -761,24 +785,16 @@ class FunctionCallAnalyzer extends CallAnalyzer
 
         $statements_analyzer->node_data = clone $statements_analyzer->node_data;
 
-        $fake_method_call = new PhpParser\Node\Expr\MethodCall(
+        $fake_method_call = new VirtualMethodCall(
             $function_name,
-            new PhpParser\Node\Identifier('__invoke', $function_name->getAttributes()),
+            new VirtualIdentifier('__invoke', $function_name->getAttributes()),
             $stmt->args
         );
 
         $suppressed_issues = $statements_analyzer->getSuppressedIssues();
 
-        if (!in_array('PossiblyNullReference', $suppressed_issues, true)) {
-            $statements_analyzer->addSuppressedIssues(['PossiblyNullReference']);
-        }
-
         if (!in_array('InternalMethod', $suppressed_issues, true)) {
             $statements_analyzer->addSuppressedIssues(['InternalMethod']);
-        }
-
-        if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
-            $statements_analyzer->addSuppressedIssues(['PossiblyInvalidMethodCall']);
         }
 
         $statements_analyzer->node_data->setType($function_name, new Type\Union([$atomic_type]));
@@ -790,16 +806,8 @@ class FunctionCallAnalyzer extends CallAnalyzer
             false
         );
 
-        if (!in_array('PossiblyNullReference', $suppressed_issues, true)) {
-            $statements_analyzer->removeSuppressedIssues(['PossiblyNullReference']);
-        }
-
         if (!in_array('InternalMethod', $suppressed_issues, true)) {
             $statements_analyzer->removeSuppressedIssues(['InternalMethod']);
-        }
-
-        if (!in_array('PossiblyInvalidMethodCall', $suppressed_issues, true)) {
-            $statements_analyzer->removeSuppressedIssues(['PossiblyInvalidMethodCall']);
         }
 
         $fake_method_call_type = $statements_analyzer->node_data->getType($fake_method_call);
@@ -979,7 +987,21 @@ class FunctionCallAnalyzer extends CallAnalyzer
                 && !$context->inside_conditional
                 && !$context->inside_unset
             ) {
-                if (!$context->inside_assignment && !$context->inside_call && !$context->inside_use) {
+                /**
+                 * If a function is pure, and has the return type of 'no-return',
+                 * it's okay to dismiss it's return value.
+                 */
+                if (!$context->inside_assignment
+                    && !$context->inside_call
+                    && !$context->inside_use
+                    && !$context->inside_throw
+                    && !self::callUsesByReferenceArguments($function_call_info, $stmt)
+                    && !(
+                        $function_call_info->function_storage &&
+                        $function_call_info->function_storage->return_type &&
+                        $function_call_info->function_storage->return_type->isNever()
+                    )
+                ) {
                     if (IssueBuffer::accepts(
                         new UnusedFunctionCall(
                             'The call to ' . $function_call_info->function_id . ' is not used',
@@ -996,5 +1018,44 @@ class FunctionCallAnalyzer extends CallAnalyzer
                 }
             }
         }
+    }
+
+    private static function callUsesByReferenceArguments(
+        FunctionCallInfo $function_call_info,
+        PhpParser\Node\Expr\FuncCall $stmt
+    ): bool {
+        // If the function doesn't have any by-reference parameters
+        // we shouldn't look any further.
+        if (!$function_call_info->hasByReferenceParameters() || null === $function_call_info->function_params) {
+            return false;
+        }
+
+        $parameters = $function_call_info->function_params;
+
+        // If no arguments were passed
+        if (0 === \count($stmt->args)) {
+            return false;
+        }
+
+        foreach ($stmt->args as $index => $argument) {
+            $parameter = null;
+            if (null !== $argument->name) {
+                $argument_name = $argument->name->toString();
+                foreach ($parameters as $param) {
+                    if ($param->name === $argument_name) {
+                        $parameter = $param;
+                        break;
+                    }
+                }
+            } else {
+                $parameter = $parameters[$index] ?? null;
+            }
+
+            if ($parameter && $parameter->by_ref) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

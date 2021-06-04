@@ -9,10 +9,10 @@ use function substr;
  */
 class TIntMask extends TInt
 {
-    /** @var non-empty-array<TLiteralInt|TScalarClassConstant> */
+    /** @var non-empty-array<TLiteralInt|TClassConstant> */
     public $values;
 
-    /** @param non-empty-array<TLiteralInt|TScalarClassConstant> $values */
+    /** @param non-empty-array<TLiteralInt|TClassConstant> $values */
     public function __construct(array $values)
     {
         $this->values = $values;
@@ -31,7 +31,13 @@ class TIntMask extends TInt
 
     public function getId(bool $nested = false): string
     {
-        return $this->getKey();
+        $s = '';
+
+        foreach ($this->values as $value) {
+            $s .= $value->getId() . ', ';
+        }
+
+        return 'int-mask<' . substr($s, 0, -2) . '>';
     }
 
     /**

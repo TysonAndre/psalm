@@ -116,6 +116,10 @@ class Methods
             return false;
         }
 
+        if ($class_storage->is_enum && $method_name === 'cases') {
+            return true;
+        }
+
         $source_file_path = $source ? $source->getFilePath() : $source_file_path;
 
         $calling_class_name = $source ? $source->getFQCLN() : null;
@@ -668,6 +672,24 @@ class Methods
 
         $appearing_fq_class_storage = $this->classlike_storage_provider->get($appearing_fq_class_name);
 
+        if ($appearing_fq_class_name === 'UnitEnum'
+            && $original_method_name === 'cases'
+            && $original_class_storage->is_enum
+            && $original_class_storage->enum_cases
+        ) {
+            $types = [];
+
+            foreach ($original_class_storage->enum_cases as $case_name => $_) {
+                $types[] = new Type\Union([new Type\Atomic\TEnumCase($original_fq_class_name, $case_name)]);
+            }
+
+            $list = new Type\Atomic\TKeyedArray($types);
+            $list->is_list = true;
+            $list->sealed = true;
+
+            return new Type\Union([$list]);
+        }
+
         if (!$appearing_fq_class_storage->user_defined
             && !$appearing_fq_class_storage->stubbed
             && InternalCallMapHandler::inCallMap((string) $appearing_method_id)
@@ -764,15 +786,29 @@ class Methods
                     return clone $candidate_type;
                 }
 
+                $overridden_class_storage =
+                    $this->classlike_storage_provider->get($overridden_method_id->fq_class_name);
+
+                $overridden_storage_return_type = \Psalm\Internal\Type\TypeExpander::expandUnion(
+                    $source_analyzer->getCodebase(),
+                    clone $overridden_storage->return_type,
+                    $overridden_method_id->fq_class_name,
+                    $appearing_fq_class_name,
+                    $overridden_class_storage->parent_class,
+                    true,
+                    false,
+                    $storage->final
+                );
+
                 $old_contained_by_new = UnionTypeComparator::isContainedBy(
                     $source_analyzer->getCodebase(),
                     $candidate_type,
-                    $overridden_storage->return_type
+                    $overridden_storage_return_type
                 );
 
                 $new_contained_by_old = UnionTypeComparator::isContainedBy(
                     $source_analyzer->getCodebase(),
-                    $overridden_storage->return_type,
+                    $overridden_storage_return_type,
                     $candidate_type
                 );
 
@@ -1065,6 +1101,10 @@ class Methods
         $declaring_method_id = $this->getDeclaringMethodId($method_id);
 
         if (!$declaring_method_id) {
+            if (\Psalm\Internal\Codebase\InternalCallMapHandler::inCallMap((string) $method_id)) {
+                return null;
+            }
+
             throw new \UnexpectedValueException('$storage should not be null for ' . $method_id);
         }
 

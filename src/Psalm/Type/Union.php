@@ -2,6 +2,7 @@
 namespace Psalm\Type;
 
 use function array_filter;
+use function array_merge;
 use function array_values;
 use function count;
 use function get_class;
@@ -55,6 +56,16 @@ class Union implements TypeNode
      * @var bool
      */
     public $from_property = false;
+
+    /**
+     * Whether the type originated from *static* property
+     *
+     * Unlike non-static properties, static properties have no prescribed place
+     * like __construct() to be initialized in
+     *
+     * @var bool
+     */
+    public $from_static_property = false;
 
     /**
      * Whether the property that this type has been derived from has been initialized in a constructor
@@ -416,29 +427,44 @@ class Union implements TypeNode
         ?string $this_class,
         bool $use_phpdoc_format
     ): string {
-        $types = [];
+        $other_types = [];
 
-        $multi_ints = count($this->literal_int_types) > 1
-            || $this->hasPositiveInt();
-        $multi_strings = count($this->literal_string_types) > 1;
-        $multi_floats = count($this->literal_float_types) > 1;
+        $literal_ints = [];
+        $literal_strings = [];
+
+        $has_non_literal_int = false;
+        $has_non_literal_string = false;
 
         foreach ($this->types as $type) {
-            if ($type instanceof TLiteralInt && !$multi_ints) {
-                $type_string = 'int';
-            } elseif ($type instanceof TLiteralFloat && !$multi_floats) {
-                $type_string = 'float';
-            } elseif ($type instanceof TLiteralString && !$multi_strings) {
-                $type_string = 'string';
+            $type_string = $type->toNamespacedString($namespace, $aliased_classes, $this_class, $use_phpdoc_format);
+            if ($type instanceof TLiteralInt) {
+                $literal_ints[] = $type_string;
+            } elseif ($type instanceof TLiteralString) {
+                $literal_strings[] = $type_string;
             } else {
-                $type_string = $type->toNamespacedString($namespace, $aliased_classes, $this_class, $use_phpdoc_format);
+                if (get_class($type) === TString::class) {
+                    $has_non_literal_string = true;
+                } elseif (get_class($type) === TInt::class) {
+                    $has_non_literal_int = true;
+                }
+                $other_types[] = $type_string;
             }
-
-            $types[] = $type_string;
         }
 
-        sort($types);
-        return implode('|', \array_unique($types));
+        if (count($literal_ints) <= 3 && !$has_non_literal_int) {
+            $other_types = array_merge($other_types, $literal_ints);
+        } else {
+            $other_types[] = 'int';
+        }
+
+        if (count($literal_strings) <= 3 && !$has_non_literal_string) {
+            $other_types = array_merge($other_types, $literal_strings);
+        } else {
+            $other_types[] = 'string';
+        }
+
+        sort($other_types);
+        return implode('|', \array_unique($other_types));
     }
 
     /**
@@ -580,6 +606,11 @@ class Union implements TypeNode
         return isset($this->types['array']);
     }
 
+    public function hasIterable(): bool
+    {
+        return isset($this->types['iterable']);
+    }
+
     public function hasList(): bool
     {
         return isset($this->types['array']) && $this->types['array'] instanceof Atomic\TList;
@@ -628,7 +659,7 @@ class Union implements TypeNode
     /**
      * @return array<string, Atomic\TCallable>
      */
-    private function getCallableTypes(): array
+    public function getCallableTypes(): array
     {
         return array_filter(
             $this->types,
@@ -757,6 +788,7 @@ class Union implements TypeNode
             || isset($this->types['trait-string'])
             || isset($this->types['numeric-string'])
             || isset($this->types['callable-string'])
+            || isset($this->types['array-key'])
             || $this->literal_string_types
             || $this->typed_class_strings;
     }
@@ -798,6 +830,7 @@ class Union implements TypeNode
         return isset($this->types['int'])
             || isset($this->types['float'])
             || isset($this->types['numeric-string'])
+            || isset($this->types['numeric'])
             || ($include_literal_int && $this->literal_int_types)
             || $this->literal_float_types;
     }
@@ -943,7 +976,7 @@ class Union implements TypeNode
 
     public function isNever(): bool
     {
-        return isset($this->types['never-return']);
+        return isset($this->types['never']);
     }
 
     public function isGenerator(): bool
@@ -1343,7 +1376,7 @@ class Union implements TypeNode
         }
     }
 
-    public function equals(Union $other_type): bool
+    public function equals(Union $other_type, bool $ensure_source_equality = true): bool
     {
         if ($other_type === $this) {
             return true;
@@ -1373,7 +1406,7 @@ class Union implements TypeNode
             return false;
         }
 
-        if ($this->from_docblock !== $other_type->from_docblock) {
+        if ($ensure_source_equality && $this->from_docblock !== $other_type->from_docblock) {
             return false;
         }
 
@@ -1396,7 +1429,7 @@ class Union implements TypeNode
                 return false;
             }
 
-            if (!$atomic_type->equals($other_atomic_types[$key])) {
+            if (!$atomic_type->equals($other_atomic_types[$key], $ensure_source_equality)) {
                 return false;
             }
         }

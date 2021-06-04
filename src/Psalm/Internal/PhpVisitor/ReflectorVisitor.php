@@ -3,7 +3,6 @@ namespace Psalm\Internal\PhpVisitor;
 
 use Psalm\Plugin\EventHandler\Event\AfterClassLikeVisitEvent;
 use function array_pop;
-use function count;
 use function end;
 use function implode;
 use function in_array;
@@ -515,7 +514,6 @@ class ReflectorVisitor extends PhpParser\NodeVisitorAbstract implements FileSour
                         && $meta_stmt->expr instanceof PhpParser\Node\Expr\FuncCall
                         && $meta_stmt->expr->name instanceof PhpParser\Node\Name
                         && $meta_stmt->expr->name->parts === ['override']
-                        && count($meta_stmt->expr->args) > 1
                     ) {
                         PhpStormMetaScanner::handleOverride($meta_stmt->expr->args, $this->codebase);
                     }

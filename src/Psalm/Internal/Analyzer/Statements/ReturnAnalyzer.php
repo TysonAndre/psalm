@@ -4,6 +4,7 @@ namespace Psalm\Internal\Analyzer\Statements;
 use PhpParser;
 use Psalm\Codebase;
 use Psalm\Internal\Analyzer\ClassLikeAnalyzer;
+use Psalm\Internal\Analyzer\ClassLikeNameOptions;
 use Psalm\Internal\Analyzer\ClosureAnalyzer;
 use Psalm\Internal\Analyzer\CommentAnalyzer;
 use Psalm\Internal\Analyzer\FunctionLikeAnalyzer;
@@ -16,6 +17,7 @@ use Psalm\Context;
 use Psalm\Exception\DocblockParseException;
 use Psalm\Internal\DataFlow\DataFlowNode;
 use Psalm\Internal\Codebase\TaintFlowGraph;
+use Psalm\Internal\Codebase\VariableUseGraph;
 use Psalm\Internal\Type\TemplateResult;
 use Psalm\Internal\Type\TemplateInferredTypeReplacer;
 use Psalm\Issue\FalsableReturnStatement;
@@ -31,6 +33,9 @@ use Psalm\IssueBuffer;
 use Psalm\Type;
 use function explode;
 use function strtolower;
+use function array_merge;
+use function count;
+use function reset;
 
 /**
  * @internal
@@ -310,10 +315,30 @@ class ReturnAnalyzer
                         }
 
                         if ($stmt_type->isMixed()) {
+                            $origin_locations = [];
+
+                            if ($statements_analyzer->data_flow_graph instanceof VariableUseGraph) {
+                                foreach ($stmt_type->parent_nodes as $parent_node) {
+                                    $origin_locations = array_merge(
+                                        $origin_locations,
+                                        $statements_analyzer->data_flow_graph->getOriginLocations($parent_node)
+                                    );
+                                }
+                            }
+
+                            $origin_location = count($origin_locations) === 1 ? reset($origin_locations) : null;
+
+                            $return_location = new CodeLocation($source, $stmt->expr);
+
+                            if ($origin_location && $origin_location->getHash() === $return_location->getHash()) {
+                                $origin_location = null;
+                            }
+
                             if (IssueBuffer::accepts(
                                 new MixedReturnStatement(
                                     'Could not infer a return type',
-                                    new CodeLocation($source, $stmt->expr)
+                                    $return_location,
+                                    $origin_location
                                 ),
                                 $statements_analyzer->getSuppressedIssues()
                             )) {
@@ -423,7 +448,8 @@ class ReturnAnalyzer
                                         new CodeLocation($source, $stmt->expr),
                                         $context->self,
                                         $context->calling_method_id,
-                                        $statements_analyzer->getSuppressedIssues()
+                                        $statements_analyzer->getSuppressedIssues(),
+                                        new ClassLikeNameOptions(true)
                                     ) === false
                                     ) {
                                         return false;
@@ -443,7 +469,8 @@ class ReturnAnalyzer
                                                         new CodeLocation($source, $item->value),
                                                         $context->self,
                                                         $context->calling_method_id,
-                                                        $statements_analyzer->getSuppressedIssues()
+                                                        $statements_analyzer->getSuppressedIssues(),
+                                                        new ClassLikeNameOptions(true)
                                                     ) === false
                                                     ) {
                                                         return false;

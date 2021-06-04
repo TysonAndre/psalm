@@ -15,6 +15,7 @@ use Psalm\Internal\Analyzer\SourceAnalyzer;
 use Psalm\Internal\Analyzer\Statements\Expression\Call\ClassTemplateParamCollector;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
+use Psalm\Internal\Type\Comparator\TypeComparisonResult;
 use Psalm\CodeLocation;
 use Psalm\Context;
 use Psalm\Internal\FileManipulation\FunctionDocblockManipulator;
@@ -37,10 +38,12 @@ use Psalm\StatementsSource;
 use Psalm\Storage\FunctionLikeStorage;
 use Psalm\Storage\MethodStorage;
 use Psalm\Type;
+
 use function strtolower;
 use function substr;
 use function count;
 use function in_array;
+use function array_diff;
 
 /**
  * @internal
@@ -140,7 +143,8 @@ class ReturnTypeAnalyzer
             && ScopeAnalyzer::getControlActions(
                 $function_stmts,
                 $type_provider,
-                $codebase->config->exit_functions
+                $codebase->config->exit_functions,
+                []
             ) !== [ScopeAnalyzer::ACTION_END]
             && !$inferred_yield_types
             && count($inferred_return_type_parts)
@@ -157,6 +161,21 @@ class ReturnTypeAnalyzer
             }
         }
 
+        $control_actions = ScopeAnalyzer::getControlActions(
+            $function_stmts,
+            $type_provider,
+            $codebase->config->exit_functions,
+            [],
+            false
+        );
+
+        $function_always_exits = $control_actions === [ScopeAnalyzer::ACTION_END];
+
+        $function_returns_implicitly = !!array_diff(
+            $control_actions,
+            [ScopeAnalyzer::ACTION_END, ScopeAnalyzer::ACTION_RETURN]
+        );
+
         /** @psalm-suppress PossiblyUndefinedStringArrayOffset */
         if ($return_type
             && (!$return_type->from_docblock
@@ -168,11 +187,7 @@ class ReturnTypeAnalyzer
             && !$return_type->isVoid()
             && !$inferred_yield_types
             && (!$function_like_storage || !$function_like_storage->has_yield)
-            && ScopeAnalyzer::getControlActions(
-                $function_stmts,
-                $type_provider,
-                $codebase->config->exit_functions
-            ) !== [ScopeAnalyzer::ACTION_END]
+            && $function_returns_implicitly
         ) {
             if (IssueBuffer::accepts(
                 new InvalidReturnType(
@@ -188,16 +203,11 @@ class ReturnTypeAnalyzer
             return null;
         }
 
+
         if ($return_type
             && $return_type->isNever()
             && !$inferred_yield_types
-            && ScopeAnalyzer::getControlActions(
-                $function_stmts,
-                $type_provider,
-                $codebase->config->exit_functions,
-                [],
-                false
-            ) !== [ScopeAnalyzer::ACTION_END]
+            && !$function_always_exits
         ) {
             if (IssueBuffer::accepts(
                 new InvalidReturnType(
@@ -216,6 +226,11 @@ class ReturnTypeAnalyzer
         $inferred_return_type = $inferred_return_type_parts
             ? \Psalm\Type::combineUnionTypeArray($inferred_return_type_parts, $codebase)
             : Type::getVoid();
+
+        if ($function_always_exits) {
+            $inferred_return_type = new Type\Union([new Type\Atomic\TNever]);
+        }
+
         $inferred_yield_type = $inferred_yield_types
             ? \Psalm\Type::combineUnionTypeArray($inferred_yield_types, $codebase)
             : null;
@@ -454,7 +469,7 @@ class ReturnTypeAnalyzer
                 return null;
             }
 
-            $union_comparison_results = new \Psalm\Internal\Type\Comparator\TypeComparisonResult();
+            $union_comparison_results = new TypeComparisonResult();
 
             if (!UnionTypeComparator::isContainedBy(
                 $codebase,
@@ -842,11 +857,16 @@ class ReturnTypeAnalyzer
             }
         }
 
+        $union_comparison_result = new TypeComparisonResult();
+
         if (!UnionTypeComparator::isContainedBy(
             $codebase,
             $fleshed_out_return_type,
-            $fleshed_out_signature_type
-        )
+            $fleshed_out_signature_type,
+            false,
+            false,
+            $union_comparison_result
+        ) && !$union_comparison_result->type_coerced_from_mixed
         ) {
             if ($codebase->alter_code
                 && isset($project_analyzer->getIssuesToFix()['MismatchingDocblockReturnType'])

@@ -1014,11 +1014,54 @@ class SwitchTypeTest extends TestCase
                         }
                     }',
             ],
+            'noCrashWithComplexMethodCallSwitches' => [
+                '<?php
+                    function fromFoo(): int {
+                       switch (true) {
+                           case (rand(0, 1) && rand(0, 2)):
+                           case (rand(0, 3) && rand(0, 4)):
+                           case (rand(0, 5) && rand(0, 6)):
+                           case (rand(0, 7) && rand(0, 8)):
+                           case (rand(0, 7) && rand(0, 8)):
+                           case (rand(0, 7) && rand(0, 8)):
+                           case (rand(0, 7) && rand(0, 8)):
+                               return 1;
+                           default:
+                               return 0;
+                       }
+                   }'
+            ],
+            'terminatesAfterContinueInsideWhile' => [
+                '<?php
+                    function foo(): int {
+                        switch (true) {
+                            default:
+                                while (rand(0, 1)) {
+                                    if (rand(0, 1)) {
+                                        continue;
+                                    }
+                                    return 1;
+                                }
+                                return 2;
+                        }
+                    }'
+            ],
+            'switchDoesNotReturnNever' => [
+                '<?php
+                    function a(int $i): ?bool {
+                        switch($i) {
+                            case 1:
+                                return false;
+                            default:
+                                return null;
+                        }
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {

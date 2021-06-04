@@ -13,6 +13,11 @@ use Psalm\Issue\ConflictingReferenceConstraint;
 use Psalm\IssueBuffer;
 use Psalm\Internal\Scope\IfScope;
 use Psalm\Internal\Scope\IfConditionalScope;
+use Psalm\Node\Expr\BinaryOp\VirtualBooleanOr;
+use Psalm\Node\Expr\VirtualBooleanNot;
+use Psalm\Node\Expr\VirtualFuncCall;
+use Psalm\Node\Name\VirtualFullyQualified;
+use Psalm\Node\VirtualArg;
 use Psalm\Type;
 use Psalm\Internal\Algebra;
 use Psalm\Type\Reconciler;
@@ -64,7 +69,7 @@ class IfAnalyzer
             $stmt->stmts,
             $statements_analyzer->node_data,
             $codebase->config->exit_functions,
-            $outer_context->break_types
+            []
         );
 
         $has_ending_statements = $final_actions === [ScopeAnalyzer::ACTION_END];
@@ -142,12 +147,24 @@ class IfAnalyzer
             if (!$has_break_statement) {
                 $if_scope->reasonable_clauses = [];
 
+                // If we're assigning inside
+                if ($if_conditional_scope->assigned_in_conditional_var_ids
+                    && $if_scope->post_leaving_if_context
+                ) {
+                    self::addConditionallyAssignedVarsToContext(
+                        $statements_analyzer,
+                        $stmt->cond,
+                        $if_scope->post_leaving_if_context,
+                        $outer_context,
+                        $if_conditional_scope->assigned_in_conditional_var_ids
+                    );
+                }
+
                 if (!$stmt->else && !$stmt->elseifs) {
                     $mic_drop = self::handleMicDrop(
                         $statements_analyzer,
                         $stmt->cond,
                         $if_scope,
-                        $if_conditional_scope,
                         $outer_context,
                         $new_assigned_var_ids
                     );
@@ -241,50 +258,36 @@ class IfAnalyzer
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr $cond,
         IfScope $if_scope,
-        IfConditionalScope $if_conditional_scope,
-        Context $outer_context,
+        Context $post_if_context,
         array $new_assigned_var_ids
     ) : bool {
-        // If we're assigning inside
-        if ($if_conditional_scope->assigned_in_conditional_var_ids
-            && $if_scope->mic_drop_context
-        ) {
-            self::addConditionallyAssignedVarsToContext(
-                $statements_analyzer,
-                $cond,
-                $if_scope->mic_drop_context,
-                $outer_context,
-                $if_conditional_scope->assigned_in_conditional_var_ids
-            );
-        }
-
         if (!$if_scope->negated_types) {
             return false;
         }
 
         $newly_reconciled_var_ids = [];
 
-        $outer_context_vars_reconciled = Reconciler::reconcileKeyedTypes(
+        $post_if_context_vars_reconciled = Reconciler::reconcileKeyedTypes(
             $if_scope->negated_types,
             [],
-            $outer_context->vars_in_scope,
+            $post_if_context->vars_in_scope,
             $newly_reconciled_var_ids,
             [],
             $statements_analyzer,
             $statements_analyzer->getTemplateTypeMap() ?: [],
-            $outer_context->inside_loop,
+            $post_if_context->inside_loop,
             new CodeLocation(
                 $statements_analyzer->getSource(),
                 $cond instanceof PhpParser\Node\Expr\BooleanNot
                     ? $cond->expr
                     : $cond,
-                $outer_context->include_location,
+                $post_if_context->include_location,
                 false
             )
         );
 
         foreach ($newly_reconciled_var_ids as $changed_var_id => $_) {
-            $outer_context->removeVarFromConflictingClauses($changed_var_id);
+            $post_if_context->removeVarFromConflictingClauses($changed_var_id);
         }
 
         $newly_reconciled_var_ids += $new_assigned_var_ids;
@@ -300,13 +303,13 @@ class IfAnalyzer
             $first_appearance = $statements_analyzer->getFirstAppearance($var_id);
 
             if ($first_appearance
-                && isset($outer_context->vars_in_scope[$var_id])
-                && isset($outer_context_vars_reconciled[$var_id])
-                && $outer_context->vars_in_scope[$var_id]->hasMixed()
-                && !$outer_context_vars_reconciled[$var_id]->hasMixed()
+                && isset($post_if_context->vars_in_scope[$var_id])
+                && isset($post_if_context_vars_reconciled[$var_id])
+                && $post_if_context->vars_in_scope[$var_id]->hasMixed()
+                && !$post_if_context_vars_reconciled[$var_id]->hasMixed()
             ) {
-                if (!$outer_context->collect_initializations
-                    && !$outer_context->collect_mutations
+                if (!$post_if_context->collect_initializations
+                    && !$post_if_context->collect_mutations
                     && $statements_analyzer->getFilePath() === $statements_analyzer->getRootFilePath()
                     && (!(($parent_source = $statements_analyzer->getSource())
                                 instanceof \Psalm\Internal\Analyzer\FunctionLikeAnalyzer)
@@ -324,7 +327,7 @@ class IfAnalyzer
             }
         }
 
-        $outer_context->vars_in_scope = $outer_context_vars_reconciled;
+        $post_if_context->vars_in_scope = $post_if_context_vars_reconciled;
 
         return true;
     }
@@ -335,8 +338,8 @@ class IfAnalyzer
     public static function addConditionallyAssignedVarsToContext(
         StatementsAnalyzer $statements_analyzer,
         PhpParser\Node\Expr $cond,
-        Context $mic_drop_context,
-        Context $outer_context,
+        Context $post_leaving_if_context,
+        Context $post_if_context,
         array $assigned_in_conditional_var_ids
     ) : void {
         // this filters out coercions to expeccted types in ArgumentAnalyzer
@@ -356,7 +359,7 @@ class IfAnalyzer
 
         foreach ($exprs as $expr) {
             if ($expr instanceof PhpParser\Node\Expr\BinaryOp\BooleanAnd) {
-                $fake_not = new PhpParser\Node\Expr\BinaryOp\BooleanOr(
+                $fake_not = new VirtualBooleanOr(
                     self::negateExpr($expr->left),
                     self::negateExpr($expr->right),
                     $expr->getAttributes()
@@ -365,9 +368,9 @@ class IfAnalyzer
                 $fake_not = self::negateExpr($expr);
             }
 
-            $fake_negated_expr = new PhpParser\Node\Expr\FuncCall(
-                new PhpParser\Node\Name\FullyQualified('assert'),
-                [new PhpParser\Node\Arg(
+            $fake_negated_expr = new VirtualFuncCall(
+                new VirtualFullyQualified('assert'),
+                [new VirtualArg(
                     $fake_not,
                     false,
                     false,
@@ -376,15 +379,15 @@ class IfAnalyzer
                 $expr->getAttributes()
             );
 
-            $mic_drop_context->inside_negation = !$mic_drop_context->inside_negation;
+            $post_leaving_if_context->inside_negation = !$post_leaving_if_context->inside_negation;
 
             ExpressionAnalyzer::analyze(
                 $statements_analyzer,
                 $fake_negated_expr,
-                $mic_drop_context
+                $post_leaving_if_context
             );
 
-            $mic_drop_context->inside_negation = !$mic_drop_context->inside_negation;
+            $post_leaving_if_context->inside_negation = !$post_leaving_if_context->inside_negation;
         }
 
         IssueBuffer::clearRecordingLevel();
@@ -393,8 +396,8 @@ class IfAnalyzer
         $statements_analyzer->node_data = $old_node_data;
 
         foreach ($assigned_in_conditional_var_ids as $var_id => $_) {
-            if (isset($mic_drop_context->vars_in_scope[$var_id])) {
-                $outer_context->vars_in_scope[$var_id] = clone $mic_drop_context->vars_in_scope[$var_id];
+            if (isset($post_leaving_if_context->vars_in_scope[$var_id])) {
+                $post_if_context->vars_in_scope[$var_id] = clone $post_leaving_if_context->vars_in_scope[$var_id];
             }
         }
     }
@@ -424,7 +427,7 @@ class IfAnalyzer
             return $expr->expr;
         }
 
-        return new PhpParser\Node\Expr\BooleanNot($expr, $expr->getAttributes());
+        return new VirtualBooleanNot($expr, $expr->getAttributes());
     }
 
     /**

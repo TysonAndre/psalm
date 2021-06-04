@@ -52,6 +52,7 @@ class FunctionReturnTypeProvider
         $this->registerClass(ReturnTypeProvider\ArrayRandReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ArrayReduceReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ArraySliceReturnTypeProvider::class);
+        $this->registerClass(ReturnTypeProvider\ArraySpliceReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ArrayReverseReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ArrayUniqueReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\ArrayValuesReturnTypeProvider::class);
@@ -68,6 +69,7 @@ class FunctionReturnTypeProvider
         $this->registerClass(ReturnTypeProvider\GetClassMethodsReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\FirstArgStringReturnTypeProvider::class);
         $this->registerClass(ReturnTypeProvider\HexdecReturnTypeProvider::class);
+        $this->registerClass(ReturnTypeProvider\MinMaxReturnTypeProvider::class);
     }
 
     /**
@@ -131,6 +133,20 @@ class FunctionReturnTypeProvider
         Context $context,
         CodeLocation $code_location
     ): ?Type\Union {
+        foreach (self::$legacy_handlers[strtolower($function_id)] ?? [] as $function_handler) {
+            $return_type = $function_handler(
+                $statements_source,
+                $function_id,
+                $call_args,
+                $context,
+                $code_location
+            );
+
+            if ($return_type) {
+                return $return_type;
+            }
+        }
+
         foreach (self::$handlers[strtolower($function_id)] ?? [] as $function_handler) {
             $event = new FunctionReturnTypeProviderEvent(
                 $statements_source,
@@ -140,20 +156,6 @@ class FunctionReturnTypeProvider
                 $code_location
             );
             $return_type = $function_handler($event);
-
-            if ($return_type) {
-                return $return_type;
-            }
-        }
-
-        foreach (self::$legacy_handlers[strtolower($function_id)] ?? [] as $function_handler) {
-            $return_type = $function_handler(
-                $statements_source,
-                $function_id,
-                $call_args,
-                $context,
-                $code_location
-            );
 
             if ($return_type) {
                 return $return_type;

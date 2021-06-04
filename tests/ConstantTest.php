@@ -228,6 +228,92 @@ class ConstantTest extends TestCase
                     '$b' => 'string',
                 ],
             ],
+            'lateConstantResolutionParentArrayPlus' => [
+                '<?php
+                    class A {
+                        public const ARR = ["a" => true];
+                    }
+
+                    class B extends A {
+                        public const ARR = parent::ARR + ["b" => true];
+                    }
+
+                    class C extends B {
+                        public const ARR = parent::ARR + ["c" => true];
+                    }
+
+                    /** @param array{a: true, b: true, c: true} $arg */
+                    function foo(array $arg): void {}
+                    foo(C::ARR);
+                ',
+            ],
+            'lateConstantResolutionParentArraySpread' => [
+                '<?php
+                    class A {
+                        public const ARR = ["a"];
+                    }
+
+                    class B extends A {
+                        public const ARR = [...parent::ARR, "b"];
+                    }
+
+                    class C extends B {
+                        public const ARR = [...parent::ARR, "c"];
+                    }
+
+                    /** @param array{"a", "b", "c"} $arg */
+                    function foo(array $arg): void {}
+                    foo(C::ARR);
+                ',
+            ],
+            'lateConstantResolutionParentStringConcat' => [
+                '<?php
+                    class A {
+                        public const STR = "a";
+                    }
+
+                    class B extends A {
+                        public const STR = parent::STR . "b";
+                    }
+
+                    class C extends B {
+                        public const STR = parent::STR . "c";
+                    }
+
+                    /** @param "abc" $foo */
+                    function foo(string $foo): void {}
+                    foo(C::STR);
+                ',
+            ],
+            'lateConstantResolutionSpreadEmptyArray' => [
+                '<?php
+                    class A {
+                        public const ARR = [];
+                    }
+
+                    class B extends A {
+                        public const ARR = [...parent::ARR];
+                    }
+
+                    class C extends B {
+                        public const ARR = [...parent::ARR];
+                    }
+
+                    /** @param array<empty, empty> $arg */
+                    function foo(array $arg): void {}
+                    foo(C::ARR);
+                ',
+            ],
+            'classConstConcatEol' => [
+                '<?php
+                    class Foo {
+                        public const BAR = "bar" . PHP_EOL;
+                    }
+
+                    $foo = Foo::BAR;
+                ',
+                'assertions' => ['$foo' => 'string'],
+            ],
             'allowConstCheckForDifferentPlatforms' => [
                 '<?php
                     if ("phpdbg" === \PHP_SAPI) {}',
@@ -947,12 +1033,24 @@ class ConstantTest extends TestCase
                     '$dir===' => 'non-empty-string',
                     '$file===' => 'non-empty-string',
                 ]
-            ]
+            ],
+            'noCrashWithStaticInDocblock' => [
+                '<?php
+                    class Test {
+                        const CONST1 = 1;
+
+                        public function test(): void
+                        {
+                            /** @var static::CONST1 */
+                            $a = static::CONST1;
+                        }
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -1180,7 +1278,7 @@ class ConstantTest extends TestCase
                     function foo(int $s): string {
                         return [1 => "a", 2 => "b"][$s];
                     }',
-                'error_message' => 'offset value of 1|0'
+                'error_message' => "offset value of '1|0"
             ],
         ];
     }

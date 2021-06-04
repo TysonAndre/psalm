@@ -335,6 +335,25 @@ class ArrayAccessTest extends TestCase
         $this->analyzeFile('somefile.php', new \Psalm\Context());
     }
 
+    public function testDontWorryWhenUnionedWithPositiveInt(): void
+    {
+        \Psalm\Config::getInstance()->ensure_array_int_offsets_exist = true;
+
+        $this->addFile(
+            'somefile.php',
+            '<?php
+                /**
+                 * @param list<string> $a
+                 * @param 0|positive-int $b
+                 */
+                function foo(array $a, int $b): void {
+                    echo $a[$b];
+                }'
+        );
+
+        $this->analyzeFile('somefile.php', new \Psalm\Context());
+    }
+
     /**
      * @return iterable<string,array{string,assertions?:array<string,string>,error_levels?:string[]}>
      */
@@ -983,11 +1002,26 @@ class ArrayAccessTest extends TestCase
                         echo $arr[$s]["c"];
                     }'
             ],
+            'TransformBadOffsetToGoodOnes' => [
+                '<?php
+                    $index = 1.1;
+
+                    /** @psalm-suppress InvalidArrayOffset */
+                    $_arr1 = [$index => 5];
+
+                    $_arr2 = [];
+                    /** @psalm-suppress InvalidArrayOffset */
+                    $_arr2[$index] = 5;',
+                [
+                    '$_arr1===' => 'non-empty-array<1, 5>',
+                    '$_arr2===' => 'non-empty-array<1, 5>',
+                ]
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {

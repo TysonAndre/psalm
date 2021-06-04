@@ -954,7 +954,7 @@ class FunctionTemplateTest extends TestCase
                     }
 
                     /**
-                     * @return Generator<array<int>>
+                     * @return Generator<int, array<int>>
                      */
                     function genIters(): Generator {
                         yield [1,2,3];
@@ -1508,11 +1508,52 @@ class FunctionTemplateTest extends TestCase
                         }
                     }'
             ],
+            'isArrayCheckOnTemplated' => [
+                '<?php
+                    /**
+                     * @template TIterable of iterable
+                     */
+                    function toList(iterable $iterable): void {
+                        if (is_array($iterable)) {}
+                    }'
+            ],
+            'SKIPPED-transformNestedTemplateWherePossible' => [
+                '<?php
+                    /**
+                     * @template TValue
+                     * @template TArray of non-empty-array<TValue>
+                     * @param TArray $arr
+                     * @return TValue
+                     */
+                    function toList(array $arr): array {
+                        return reset($arr);
+                    }'
+            ],
+            'callTemplatedFunctionWithTemplatedClassString' => [
+                '<?php
+                    /**
+                     * @template Ta of object
+                     * @psalm-param Ta $obj
+                     * @return Ta
+                     */
+                    function a(string $str, object $obj) {
+                        $class = get_class($obj);
+                        return deserialize_object($str, $class);
+                    }
+
+                    /**
+                     * @psalm-template Tb
+                     * @psalm-param class-string<Tb> $type
+                     * @psalm-return Tb
+                     * @psalm-suppress InvalidReturnType
+                     */
+                    function deserialize_object(string $data, string $type) {}'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -2048,6 +2089,63 @@ class FunctionTemplateTest extends TestCase
 
                     createProxy(A::class, \'Ns\foo\')->bar();',
                 'error_message' => 'InvalidArgument'
+            ],
+            'preventBadArraySubtyping' => [
+                '<?php
+                    /**
+                     * @template T as array{a: int}
+                     * @return T
+                     */
+                    function foo() : array {
+                        $b = ["a" => 123];
+                        return $b;
+                    }',
+                'error_message' => 'InvalidReturnStatement'
+            ],
+            'modifyTemplatedShape' => [
+                '<?php
+                    /**
+                     * @template T as array{a: int}
+                     * @param T $s
+                     * @return T
+                     */
+                    function foo(array $s) : array {
+                        $s["a"] = 123;
+                        return $s;
+                    }',
+                'error_message' => 'InvalidReturnStatement'
+            ],
+            'preventArrayOverwriting' => [
+                '<?php
+                    /**
+                     * @template T
+                     * @return T
+                     */
+                    function foo(array $b) : array {
+                        return $b;
+                    }',
+                'error_message' => 'InvalidReturnStatement'
+            ],
+            'catchIssueInTemplatedFunctionInsideClass' => [
+                '<?php
+                    /**
+                     * @template T
+                     */
+                    interface Container {
+                        /** @param T $value */
+                        public function take($value): void;
+                    }
+
+                    class Foo {
+                        /**
+                         * @template T
+                         * @param Container<T> $c
+                         */
+                        function jsonFromEntityCollection(Container $c): void {
+                            $c->take("foo");
+                        }
+                    }',
+                'error_message' => 'InvalidArgument',
             ],
         ];
     }

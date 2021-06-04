@@ -248,10 +248,13 @@ class FileAnalyzer extends SourceAnalyzer
                         null,
                         null,
                         $this->suppressed_issues,
-                        true,
-                        false,
-                        true,
-                        true
+                        new ClassLikeNameOptions(
+                            true,
+                            false,
+                            true,
+                            true,
+                            true
+                        )
                     ) === false) {
                         continue;
                     }
@@ -323,13 +326,15 @@ class FileAnalyzer extends SourceAnalyzer
 
     private function populateClassLikeAnalyzers(PhpParser\Node\Stmt\ClassLike $stmt): void
     {
-        if ($stmt instanceof PhpParser\Node\Stmt\Class_) {
+        if ($stmt instanceof PhpParser\Node\Stmt\Class_ || $stmt instanceof PhpParser\Node\Stmt\Enum_) {
             if (!$stmt->name) {
                 return;
             }
 
             // this can happen when stubbing
-            if (!$this->codebase->classExists($stmt->name->name)) {
+            if (!$this->codebase->classExists($stmt->name->name)
+                && !$this->codebase->classlikes->enumExists($stmt->name->name)
+            ) {
                 return;
             }
 

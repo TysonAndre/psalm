@@ -11,7 +11,6 @@ use function microtime;
 use function ob_end_clean;
 use function ob_get_clean;
 use function ob_start;
-use Psalm\Codebase;
 use Psalm\Config;
 use Psalm\Internal\IncludeCollector;
 use Psalm\Internal\RuntimeCaches;
@@ -33,7 +32,7 @@ class ProjectCheckerTest extends TestCase
         self::$config = new TestConfig();
 
         if (!defined('PSALM_VERSION')) {
-            define('PSALM_VERSION', '2.0.0');
+            define('PSALM_VERSION', '4.0.0');
         }
 
         if (!defined('PHP_PARSER_VERSION')) {

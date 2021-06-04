@@ -9,6 +9,10 @@ use PhpParser\Node\Expr\PreDec;
 use Psalm\Internal\Analyzer\Statements\ExpressionAnalyzer;
 use Psalm\Internal\Analyzer\StatementsAnalyzer;
 use Psalm\Context;
+use Psalm\Node\Expr\BinaryOp\VirtualMinus;
+use Psalm\Node\Expr\BinaryOp\VirtualPlus;
+use Psalm\Node\Expr\VirtualAssign;
+use Psalm\Node\Scalar\VirtualLNumber;
 use Psalm\Type;
 
 class IncDecExpressionAnalyzer
@@ -38,7 +42,7 @@ class IncDecExpressionAnalyzer
         $stmt_var_type = $statements_analyzer->node_data->getType($stmt->var);
 
         if ($stmt instanceof PostInc || $stmt instanceof PostDec) {
-            $statements_analyzer->node_data->setType($stmt, $stmt_var_type ?: Type::getMixed());
+            $statements_analyzer->node_data->setType($stmt, $stmt_var_type ?? Type::getMixed());
         }
 
         if (($stmt_var_type = $statements_analyzer->node_data->getType($stmt->var))
@@ -47,7 +51,7 @@ class IncDecExpressionAnalyzer
         ) {
             $return_type = null;
 
-            $fake_right_expr = new PhpParser\Node\Scalar\LNumber(1, $stmt->getAttributes());
+            $fake_right_expr = new VirtualLNumber(1, $stmt->getAttributes());
             $statements_analyzer->node_data->setType($fake_right_expr, Type::getInt());
 
             BinaryOp\NonDivArithmeticOpAnalyzer::analyze(
@@ -60,9 +64,8 @@ class IncDecExpressionAnalyzer
                 $context
             );
 
-            $stmt_type = clone $stmt_var_type;
-
-            $statements_analyzer->node_data->setType($stmt, $stmt_type);
+            $result_type = $return_type ?? Type::getMixed();
+            $statements_analyzer->node_data->setType($stmt, $result_type);
 
             BinaryOpAnalyzer::addDataFlow(
                 $statements_analyzer,
@@ -77,7 +80,7 @@ class IncDecExpressionAnalyzer
             $codebase = $statements_analyzer->getCodebase();
 
             if ($var_id && isset($context->vars_in_scope[$var_id])) {
-                $context->vars_in_scope[$var_id] = $stmt_type;
+                $context->vars_in_scope[$var_id] = $result_type;
 
                 if ($codebase->find_unused_variables && $stmt->var instanceof PhpParser\Node\Expr\Variable) {
                     $context->assigned_var_ids[$var_id] = (int) $stmt->var->getAttribute('startFilePos');
@@ -93,21 +96,21 @@ class IncDecExpressionAnalyzer
                 );
             }
         } else {
-            $fake_right_expr = new PhpParser\Node\Scalar\LNumber(1, $stmt->getAttributes());
+            $fake_right_expr = new VirtualLNumber(1, $stmt->getAttributes());
 
             $operation = $stmt instanceof PostInc || $stmt instanceof PreInc
-                ? new PhpParser\Node\Expr\BinaryOp\Plus(
+                ? new VirtualPlus(
                     $stmt->var,
                     $fake_right_expr,
                     $stmt->var->getAttributes()
                 )
-                : new PhpParser\Node\Expr\BinaryOp\Minus(
+                : new VirtualMinus(
                     $stmt->var,
                     $fake_right_expr,
                     $stmt->var->getAttributes()
                 );
 
-            $fake_assignment = new PhpParser\Node\Expr\Assign(
+            $fake_assignment = new VirtualAssign(
                 $stmt->var,
                 $operation,
                 $stmt->getAttributes()

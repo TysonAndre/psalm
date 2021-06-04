@@ -23,6 +23,7 @@ use Psalm\Type\Atomic\TCallableKeyedArray;
 use Psalm\Type\Atomic\TCallableString;
 use Psalm\Type\Atomic\TClassString;
 use Psalm\Type\Atomic\TEmpty;
+use Psalm\Type\Atomic\TEmptyScalar;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TFloat;
 use Psalm\Type\Atomic\THtmlEscapedString;
@@ -36,6 +37,7 @@ use Psalm\Type\Atomic\TNamedObject;
 use Psalm\Type\Atomic\TNever;
 use Psalm\Type\Atomic\TNonEmptyArray;
 use Psalm\Type\Atomic\TNonEmptyList;
+use Psalm\Type\Atomic\TNonEmptyScalar;
 use Psalm\Type\Atomic\TNull;
 use Psalm\Type\Atomic\TNumeric;
 use Psalm\Type\Atomic\TNumericString;
@@ -43,7 +45,7 @@ use Psalm\Type\Atomic\TObject;
 use Psalm\Type\Atomic\TPositiveInt;
 use Psalm\Type\Atomic\TResource;
 use Psalm\Type\Atomic\TScalar;
-use Psalm\Type\Atomic\TScalarClassConstant;
+use Psalm\Type\Atomic\TClassConstant;
 use Psalm\Type\Atomic\TString;
 use Psalm\Type\Atomic\TTemplateParam;
 use Psalm\Type\Atomic\TTraitString;
@@ -134,9 +136,18 @@ abstract class Atomic implements TypeNode
 
                 break;
 
+            case 'never':
+                if ($php_version === null
+                    || ($php_version[0] > 8)
+                    || ($php_version[0] === 8 && $php_version[1] >= 1)
+                ) {
+                    return new TNever();
+                }
+
+                break;
+
             case 'never-return':
             case 'never-returns':
-            case 'never':
             case 'no-return':
                 return new TNever();
 
@@ -176,6 +187,9 @@ abstract class Atomic implements TypeNode
 
             case 'non-empty-string':
                 return new Type\Atomic\TNonEmptyString();
+
+            case 'non-falsy-string':
+                return new Type\Atomic\TNonFalsyString();
 
             case 'lowercase-string':
                 return new Type\Atomic\TLowercaseString();
@@ -250,6 +264,12 @@ abstract class Atomic implements TypeNode
 
             case '$this':
                 return new TNamedObject('static');
+
+            case 'non-empty-scalar':
+                return new TNonEmptyScalar;
+
+            case 'empty-scalar':
+                return new TEmptyScalar;
         }
 
         if (strpos($value, '-') && substr($value, 0, 4) !== 'OCI-') {
@@ -459,7 +479,7 @@ abstract class Atomic implements TypeNode
             }
         }
 
-        if ($this instanceof TScalarClassConstant) {
+        if ($this instanceof TClassConstant) {
             if (strtolower($this->fq_classlike_name) === $old) {
                 $this->fq_classlike_name = $new;
             }
@@ -594,7 +614,7 @@ abstract class Atomic implements TypeNode
         // do nothing
     }
 
-    public function equals(Atomic $other_type): bool
+    public function equals(Atomic $other_type, bool $ensure_source_equality): bool
     {
         return get_class($other_type) === get_class($this);
     }

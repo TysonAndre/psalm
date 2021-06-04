@@ -2,8 +2,8 @@
 namespace Psalm\Internal\Provider\ReturnTypeProvider;
 
 use Psalm\Plugin\EventHandler\Event\FunctionReturnTypeProviderEvent;
+use function array_shift;
 use function assert;
-use PhpParser;
 use Psalm\Internal\Analyzer\Statements\Block\ForeachAnalyzer;
 use Psalm\Internal\Type\Comparator\AtomicTypeComparator;
 use Psalm\Internal\Codebase\InternalCallMapHandler;
@@ -33,15 +33,20 @@ class IteratorToArrayReturnTypeProvider implements \Psalm\Plugin\EventHandler\Fu
             return Type::getMixed();
         }
 
-        if (($first_arg_type = $statements_source->node_data->getType($call_args[0]->value))
-            && $first_arg_type->hasObjectType()
-        ) {
+        if (($first_arg_type = $statements_source->node_data->getType($call_args[0]->value))) {
             $key_type = null;
             $value_type = null;
 
             $codebase = $statements_source->getCodebase();
 
-            foreach ($first_arg_type->getAtomicTypes() as $call_arg_atomic_type) {
+            $atomic_types = $first_arg_type->getAtomicTypes();
+
+            while ($call_arg_atomic_type = array_shift($atomic_types)) {
+                if ($call_arg_atomic_type instanceof Type\Atomic\TTemplateParam) {
+                    $atomic_types = \array_merge($atomic_types, $call_arg_atomic_type->as->getAtomicTypes());
+                    continue;
+                }
+
                 if ($call_arg_atomic_type instanceof Type\Atomic\TNamedObject
                     && AtomicTypeComparator::isContainedBy(
                         $codebase,
@@ -84,6 +89,15 @@ class IteratorToArrayReturnTypeProvider implements \Psalm\Plugin\EventHandler\Fu
 
                 if ($key_type->hasMixed()) {
                     $key_type = Type::getArrayKey();
+                }
+
+                if ($key_type->isSingle() && $key_type->hasTemplate()) {
+                    $template_types = $key_type->getTemplateTypes();
+                    $template_type = array_shift($template_types);
+                    if ($template_type->as->hasMixed()) {
+                        $template_type->as = Type::getArrayKey();
+                        $key_type = new Type\Union([$template_type]);
+                    }
                 }
 
                 return new Type\Union([

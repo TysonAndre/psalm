@@ -19,6 +19,9 @@ use Psalm\Issue\MixedArgumentTypeCoercion;
 use Psalm\Issue\ArgumentTypeCoercion;
 use Psalm\Issue\UndefinedFunction;
 use Psalm\IssueBuffer;
+use Psalm\Node\Expr\BinaryOp\VirtualIdentical;
+use Psalm\Node\Expr\VirtualConstFetch;
+use Psalm\Node\VirtualName;
 use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic\TNamedObject;
@@ -438,36 +441,24 @@ class CallAnalyzer
         string $fq_class_name,
         string $template_name,
         array $template_extended_params,
-        array $found_generic_params,
-        bool $mapped = false
+        array $found_generic_params
     ): Type\Union {
         if (isset($found_generic_params[$template_name][$fq_class_name])) {
-            if (!$mapped && isset($template_extended_params[$fq_class_name][$template_name])) {
-                foreach ($template_extended_params[$fq_class_name][$template_name]->getAtomicTypes() as $t) {
-                    if ($t instanceof Type\Atomic\TTemplateParam) {
-                        if ($t->param_name !== $template_name) {
-                            return $t->as;
-                        }
-                    }
-                }
-            }
-
             return $found_generic_params[$template_name][$fq_class_name];
         }
 
-        foreach ($template_extended_params as $type_map) {
+        foreach ($template_extended_params as $extended_class_name => $type_map) {
             foreach ($type_map as $extended_template_name => $extended_type) {
                 foreach ($extended_type->getAtomicTypes() as $extended_atomic_type) {
                     if ($extended_atomic_type instanceof Type\Atomic\TTemplateParam
                         && $extended_atomic_type->param_name === $template_name
-                        && $extended_template_name !== $template_name
+                        && $extended_atomic_type->defining_class === $fq_class_name
                     ) {
                         return self::getGenericParamForOffset(
-                            $fq_class_name,
+                            $extended_class_name,
                             $extended_template_name,
                             $template_extended_params,
-                            $found_generic_params,
-                            true
+                            $found_generic_params
                         );
                     }
                 }
@@ -747,9 +738,9 @@ class CallAnalyzer
                 }
             } elseif ($arg_value && ($assertion->rule === [['!falsy']] || $assertion->rule === [['true']])) {
                 if ($assertion->rule === [['true']]) {
-                    $conditional = new PhpParser\Node\Expr\BinaryOp\Identical(
+                    $conditional = new VirtualIdentical(
                         $arg_value,
-                        new PhpParser\Node\Expr\ConstFetch(new PhpParser\Node\Name('true'))
+                        new VirtualConstFetch(new VirtualName('true'))
                     );
 
                     $assert_clauses = FormulaGenerator::getFormula(

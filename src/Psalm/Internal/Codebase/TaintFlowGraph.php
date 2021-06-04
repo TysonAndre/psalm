@@ -189,6 +189,7 @@ class TaintFlowGraph extends DataFlowGraph
         \ksort($this->specializations);
         \ksort($this->forward_edges);
 
+        // reprocess resolved descendants up to a maximum nesting level of 40
         for ($i = 0; count($sinks) && count($sources) && $i < 40; $i++) {
             $new_sources = [];
 
@@ -222,7 +223,7 @@ class TaintFlowGraph extends DataFlowGraph
     /**
      * @param array<string> $source_taints
      * @param array<DataFlowNode> $sinks
-     * @return list<DataFlowNode>
+     * @return array<string, DataFlowNode>
      */
     private function getChildNodes(
         DataFlowNode $generated_source,
@@ -245,6 +246,8 @@ class TaintFlowGraph extends DataFlowGraph
                 continue;
             }
 
+            $destination_node = $this->nodes[$to_id];
+
             $new_taints = \array_unique(
                 \array_diff(
                     \array_merge($source_taints, $added_taints),
@@ -254,13 +257,15 @@ class TaintFlowGraph extends DataFlowGraph
 
             \sort($new_taints);
 
-            $destination_node = $this->nodes[$to_id];
-
             if (isset($visited_source_ids[$to_id][implode(',', $new_taints)])) {
                 continue;
             }
 
-            if (self::shouldIgnoreFetch($path_type, 'array', $generated_source->path_types)) {
+            if (self::shouldIgnoreFetch($path_type, 'arraykey', $generated_source->path_types)) {
+                continue;
+            }
+
+            if (self::shouldIgnoreFetch($path_type, 'arrayvalue', $generated_source->path_types)) {
                 continue;
             }
 
@@ -430,8 +435,6 @@ class TaintFlowGraph extends DataFlowGraph
 
                         IssueBuffer::accepts($issue);
                     }
-
-                    continue;
                 }
             }
 
@@ -441,7 +444,10 @@ class TaintFlowGraph extends DataFlowGraph
             $new_destination->specialized_calls = $generated_source->specialized_calls;
             $new_destination->path_types = array_merge($generated_source->path_types, [$path_type]);
 
-            $new_sources[] = $new_destination;
+            $key = $to_id .
+                ' ' . \json_encode($new_destination->specialized_calls) .
+                ' ' . \json_encode($new_destination->taints);
+            $new_sources[$key] = $new_destination;
         }
 
         return $new_sources;

@@ -183,7 +183,7 @@ class IssueSuppressionTest extends TestCase
             'somefile.php',
             '<?php
                 /** @psalm-suppress UncaughtThrowInGlobalScope */
-                strlen("a");'
+                echo "hello";'
         );
 
         $context = new Context();
@@ -277,11 +277,44 @@ class IssueSuppressionTest extends TestCase
                         strlen(123, 456, 789);
                     }',
             ],
+            'possiblyNullSuppressedAtClassLevel' => [
+                '<?php
+                    /** @psalm-suppress PossiblyNullReference */
+                    class C {
+                        private ?DateTime $mightBeNull = null;
+
+                        public function m(): string {
+                            return $this->mightBeNull->format("");
+                        }
+                    }
+                ',
+            ],
+            'methodSignatureMismatchSuppressedAtClassLevel' => [
+                '<?php
+                    class ParentClass {
+                        /**
+                         * @psalm-suppress MissingParamType
+                         * @return mixed
+                         */
+                        public function func($var) {
+                            return $var;
+                        }
+                    }
+
+                    /** @psalm-suppress MethodSignatureMismatch */
+                    class MismatchMethod extends ParentClass {
+                        /** @return mixed */
+                        public function func(string $var) {
+                            return $var;
+                        }
+                    }
+                ',
+            ]
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -297,7 +330,7 @@ class IssueSuppressionTest extends TestCase
                             new C();
                         }
                     }',
-                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:33 - Class or interface C',
+                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:8:33 - Class, interface or enum named C',
             ],
             'undefinedClassOneLineInFileAfter' => [
                 '<?php
@@ -306,7 +339,7 @@ class IssueSuppressionTest extends TestCase
                      */
                     new B();
                     new C();',
-                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:25 - Class or interface C',
+                'error_message' => 'UndefinedClass - src' . DIRECTORY_SEPARATOR . 'somefile.php:6:25 - Class, interface or enum named C',
             ],
             'missingParamTypeShouldntPreventUndefinedClassError' => [
                 '<?php

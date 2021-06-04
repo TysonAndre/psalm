@@ -350,6 +350,30 @@ class AnnotationTest extends TestCase
 
                     $a[0]->getMessage();',
             ],
+            'ignoreVarDocblock' => [
+                '<?php
+                    /**
+                     * @var array<Exception>
+                     * @ignore-var
+                     */
+                    $a = [];
+
+                    $a[0]->getMessage();',
+                'assertions' => [],
+                'error_level' => ['EmptyArrayAccess', 'MixedMethodCall'],
+            ],
+            'psalmIgnoreVarDocblock' => [
+                '<?php
+                    /**
+                     * @var array<Exception>
+                     * @psalm-ignore-var
+                     */
+                    $a = [];
+
+                    $a[0]->getMessage();',
+                'assertions' => [],
+                'error_level' => ['EmptyArrayAccess', 'MixedMethodCall'],
+            ],
             'mixedDocblockParamTypeDefinedInParent' => [
                 '<?php
                     class A {
@@ -1184,11 +1208,20 @@ class AnnotationTest extends TestCase
 
                     takesFlags(FileFlag::MODIFIED | FileFlag::NEW);'
             ],
+            'emptyStringFirst' => [
+                '<?php
+                    /**
+                     * @param \'\'|\'a\'|\'b\' $v
+                     */
+                    function testBad(string $v): void {
+                        echo $v;
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -1725,6 +1758,20 @@ class AnnotationTest extends TestCase
                         public function run() {}
                     }',
                 'error_message' => 'ImplementedReturnTypeMismatch'
+            ],
+            'unexpectedImportType' => [
+                '<?php
+                    /** @psalm-import-type asd */
+                    function f(): void {}
+                ',
+                'error_message' => 'PossiblyInvalidDocblockTag',
+            ],
+            'unexpectedVarOnFunction' => [
+                '<?php
+                    /** @var int $p */
+                    function f($p): void {}
+                ',
+                'error_message' => 'PossiblyInvalidDocblockTag',
             ],
         ];
     }

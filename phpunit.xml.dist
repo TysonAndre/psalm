@@ -49,4 +49,7 @@
             <exclude>tests/integration</exclude>
         </testsuite>
     </testsuites>
+    <extensions>
+        <extension class="Weirdan\PhpUnitAppVeyorReporter\Listener"></extension>
+    </extensions>
 </phpunit>

@@ -23,6 +23,7 @@ use function preg_match;
 use function count;
 use function reset;
 use function preg_split;
+use function array_merge;
 use function array_shift;
 use function implode;
 use function substr;
@@ -52,6 +53,7 @@ class ClassLikeDocblockParser
 
         $info = new ClassLikeDocblockComment();
 
+        $templates = [];
         if (isset($parsed_docblock->combined_tags['template'])) {
             foreach ($parsed_docblock->combined_tags['template'] as $offset => $template_line) {
                 $template_type = preg_split('/[\s]+/', preg_replace('@^[ \t]*\*@m', '', $template_line));
@@ -62,11 +64,18 @@ class ClassLikeDocblockParser
                     throw new IncorrectDocblockException('Empty @template tag');
                 }
 
+                $source_prefix = 'none';
+                if (isset($parsed_docblock->tags['psalm-template'][$offset])) {
+                    $source_prefix = 'psalm';
+                } elseif (isset($parsed_docblock->tags['phpstan-template'][$offset])) {
+                    $source_prefix = 'phpstan';
+                }
+
                 if (count($template_type) > 1
                     && in_array(strtolower($template_type[0]), ['as', 'super', 'of'], true)
                 ) {
                     $template_modifier = strtolower(array_shift($template_type));
-                    $info->templates[] = [
+                    $templates[$template_name][$source_prefix] = [
                         $template_name,
                         $template_modifier,
                         implode(' ', $template_type),
@@ -74,7 +83,7 @@ class ClassLikeDocblockParser
                         $offset
                     ];
                 } else {
-                    $info->templates[] = [$template_name, null, null, false, $offset];
+                    $templates[$template_name][$source_prefix] = [$template_name, null, null, false, $offset];
                 }
             }
         }
@@ -89,11 +98,18 @@ class ClassLikeDocblockParser
                     throw new IncorrectDocblockException('Empty @template-covariant tag');
                 }
 
+                $source_prefix = 'none';
+                if (isset($parsed_docblock->tags['psalm-template-covariant'][$offset])) {
+                    $source_prefix = 'psalm';
+                } elseif (isset($parsed_docblock->tags['phpstan-template-covariant'][$offset])) {
+                    $source_prefix = 'phpstan';
+                }
+
                 if (count($template_type) > 1
                     && in_array(strtolower($template_type[0]), ['as', 'super', 'of'], true)
                 ) {
                     $template_modifier = strtolower(array_shift($template_type));
-                    $info->templates[] = [
+                    $templates[$template_name][$source_prefix] = [
                         $template_name,
                         $template_modifier,
                         implode(' ', $template_type),
@@ -101,7 +117,16 @@ class ClassLikeDocblockParser
                         $offset
                     ];
                 } else {
-                    $info->templates[] = [$template_name, null, null, true, $offset];
+                    $templates[$template_name][$source_prefix] = [$template_name, null, null, true, $offset];
+                }
+            }
+        }
+
+        foreach ($templates as $template_entries) {
+            foreach (['psalm', 'phpstan', 'none'] as $source_prefix) {
+                if (isset($template_entries[$source_prefix])) {
+                    $info->templates[] = $template_entries[$source_prefix];
+                    break;
                 }
             }
         }
@@ -164,6 +189,10 @@ class ClassLikeDocblockParser
             $info->consistent_constructor = true;
         }
 
+        if (isset($parsed_docblock->tags['psalm-consistent-templates'])) {
+            $info->consistent_templates = true;
+        }
+
         if (isset($parsed_docblock->tags['psalm-internal'])) {
             $psalm_internal = reset($parsed_docblock->tags['psalm-internal']);
             if ($psalm_internal) {
@@ -186,12 +215,6 @@ class ClassLikeDocblockParser
                 } else {
                     throw new DocblockParseException('@mixin annotation used without specifying class');
                 }
-            }
-
-            // backwards compatibility
-            if ($info->mixins) {
-                /** @psalm-suppress DeprecatedProperty */
-                $info->mixin = reset($info->mixins);
             }
         }
 
@@ -235,15 +258,18 @@ class ClassLikeDocblockParser
             }
         }
 
-        if (isset($parsed_docblock->tags['psalm-import-type'])) {
-            foreach ($parsed_docblock->tags['psalm-import-type'] as $offset => $imported_type_entry) {
-                $info->imported_types[] = [
-                    'line_number' => $comment->getStartLine() + substr_count($comment->getText(), "\n", 0, $offset),
-                    'start_offset' => $comment->getStartFilePos() + $offset,
-                    'end_offset' => $comment->getStartFilePos() + $offset + strlen($imported_type_entry),
-                    'parts' => CommentAnalyzer::splitDocLine($imported_type_entry) ?: []
-                ];
-            }
+        $imported_types = array_merge(
+            $parsed_docblock->tags['phpstan-import-type'] ?? [],
+            $parsed_docblock->tags['psalm-import-type'] ?? []
+        );
+
+        foreach ($imported_types as $offset => $imported_type_entry) {
+            $info->imported_types[] = [
+                'line_number' => $comment->getStartLine() + substr_count($comment->getText(), "\n", 0, $offset),
+                'start_offset' => $comment->getStartFilePos() + $offset,
+                'end_offset' => $comment->getStartFilePos() + $offset + strlen($imported_type_entry),
+                'parts' => CommentAnalyzer::splitDocLine($imported_type_entry) ?: []
+            ];
         }
 
         if (isset($parsed_docblock->combined_tags['method'])) {
@@ -370,9 +396,12 @@ class ClassLikeDocblockParser
                 $php_string = '<?php class A { ' . $function_docblock . ' public ' . $function_string . '{} }';
 
                 try {
+                    $has_errors = false;
+
                     $statements = \Psalm\Internal\Provider\StatementsProvider::parseStatements(
                         $php_string,
-                        $codebase->php_major_version . '.' . $codebase->php_minor_version
+                        $codebase->php_major_version . '.' . $codebase->php_minor_version,
+                        $has_errors
                     );
                 } catch (\Exception $e) {
                     throw new DocblockParseException('Badly-formatted @method string ' . $method_entry);
@@ -409,6 +438,10 @@ class ClassLikeDocblockParser
 
         if (isset($parsed_docblock->tags['psalm-stub-override'])) {
             $info->stub_override = true;
+        }
+
+        if ($parsed_docblock->description) {
+            $info->description = $parsed_docblock->description;
         }
 
         self::addMagicPropertyToInfo($comment, $info, $parsed_docblock->tags, 'property');

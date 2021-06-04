@@ -854,11 +854,43 @@ class ValueTest extends \Psalm\Tests\TestCase
                 [],
                 '7.4'
             ],
+            'zeroIsNonEmptyString' => [
+                '<?php
+                    /**
+                     * @param non-empty-string $s
+                     */
+                    function foo(string $s) : void {}
+
+                    foo("0");',
+            ],
+            'notLiteralEmptyCanBeNotEmptyString' => [
+                '<?php
+                    /**
+                     * @param non-empty-string $s
+                     */
+                    function foo(string $s) : void {}
+
+                    function takesString(string $s) : void {
+                        if ($s !== "") {
+                            foo($s);
+                        }
+                    }',
+            ],
+            'nonEmptyStringCanBeStringZero' => [
+                '<?php
+                    /**
+                     * @param non-empty-string $s
+                     */
+                    function foo(string $s) : void {
+                        if ($s === "0") {}
+                        if (empty($s)) {}
+                    }',
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -1052,6 +1084,18 @@ class ValueTest extends \Psalm\Tests\TestCase
                         }
                     }',
                 'error_message' => 'ArgumentTypeCoercion'
+            ],
+            'stringCoercedToNonEmptyString' => [
+                '<?php
+                    /**
+                     * @param non-empty-string $name
+                     */
+                    function sayHello(string $name) : void {}
+
+                    function takeInput(string $name) : void {
+                        sayHello($name);
+                    }',
+                'error_message' => 'ArgumentTypeCoercion',
             ],
         ];
     }

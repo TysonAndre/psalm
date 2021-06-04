@@ -73,7 +73,7 @@ class ElseAnalyzer
                 $changed_var_ids,
                 [],
                 $statements_analyzer,
-                [],
+                $statements_analyzer->getTemplateTypeMap() ?: [],
                 $else_context->inside_loop,
                 $else
                     ? new CodeLocation($statements_analyzer->getSource(), $else, $outer_context->include_location)
@@ -83,6 +83,16 @@ class ElseAnalyzer
             $else_context->vars_in_scope = $else_vars_reconciled;
 
             $else_context->clauses = Context::removeReconciledClauses($else_context->clauses, $changed_var_ids)[0];
+
+            foreach ($changed_var_ids as $changed_var_id => $_) {
+                foreach ($else_context->vars_in_scope as $var_id => $_) {
+                    if (\preg_match('/' . \preg_quote($changed_var_id, '/') . '[\]\[\-]/', $var_id)
+                        && !\array_key_exists($var_id, $changed_var_ids)
+                    ) {
+                        unset($else_context->vars_in_scope[$var_id]);
+                    }
+                }
+            }
         }
 
         $old_else_context = clone $else_context;
@@ -142,7 +152,7 @@ class ElseAnalyzer
                 $else->stmts,
                 $statements_analyzer->node_data,
                 $codebase->config->exit_functions,
-                $outer_context->break_types
+                []
             )
             : [ScopeAnalyzer::ACTION_NONE];
         // has a return/throw at end

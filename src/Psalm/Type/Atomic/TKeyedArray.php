@@ -246,7 +246,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
         return $value_type;
     }
 
-    public function getGenericArrayType(): TArray
+    public function getGenericArrayType(bool $allow_non_empty = true): TArray
     {
         $key_types = [];
         $value_type = null;
@@ -268,7 +268,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
                 $value_type = Type::combineUnionTypes($property, $value_type);
             }
 
-            if (!$value_type->possibly_undefined) {
+            if (!$property->possibly_undefined) {
                 $has_defined_keys = true;
             }
         }
@@ -291,13 +291,24 @@ class TKeyedArray extends \Psalm\Type\Atomic
 
         $value_type->possibly_undefined = false;
 
-        if ($this->previous_value_type || $has_defined_keys) {
+        if ($allow_non_empty && ($this->previous_value_type || $has_defined_keys)) {
             $array_type = new TNonEmptyArray([$key_type, $value_type]);
         } else {
             $array_type = new TArray([$key_type, $value_type]);
         }
 
         return $array_type;
+    }
+
+    public function isNonEmpty(): bool
+    {
+        foreach ($this->properties as $property) {
+            if (!$property->possibly_undefined) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function __clone()
@@ -372,7 +383,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
         return $this->properties;
     }
 
-    public function equals(Atomic $other_type): bool
+    public function equals(Atomic $other_type, bool $ensure_source_equality): bool
     {
         if (get_class($other_type) !== static::class) {
             return false;
@@ -391,7 +402,7 @@ class TKeyedArray extends \Psalm\Type\Atomic
                 return false;
             }
 
-            if (!$property_type->equals($other_type->properties[$property_name])) {
+            if (!$property_type->equals($other_type->properties[$property_name], $ensure_source_equality)) {
                 return false;
             }
         }

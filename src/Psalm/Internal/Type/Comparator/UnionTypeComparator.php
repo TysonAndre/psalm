@@ -271,6 +271,10 @@ class UnionTypeComparator
         ?Type\Union $input_type,
         Type\Union $container_type
     ): bool {
+        if ($container_type->isMixed()) {
+            return true;
+        }
+
         if (!$input_type) {
             return false;
         }
@@ -357,7 +361,8 @@ class UnionTypeComparator
     public static function canExpressionTypesBeIdentical(
         Codebase $codebase,
         Type\Union $type1,
-        Type\Union $type2
+        Type\Union $type2,
+        bool $allow_interface_equality = true
     ): bool {
         if ($type1->hasMixed() || $type2->hasMixed()) {
             return true;
@@ -372,7 +377,8 @@ class UnionTypeComparator
                 $either_contains = AtomicTypeComparator::canBeIdentical(
                     $codebase,
                     $type1_part,
-                    $type2_part
+                    $type2_part,
+                    $allow_interface_equality
                 );
 
                 if ($either_contains) {

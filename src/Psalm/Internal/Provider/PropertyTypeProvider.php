@@ -95,19 +95,9 @@ class PropertyTypeProvider
         ?StatementsSource $source = null,
         ?Context $context = null
     ): ?Type\Union {
-        foreach (self::$handlers[strtolower($fq_classlike_name)] ?? [] as $property_handler) {
-            $event = new PropertyTypeProviderEvent(
-                $fq_classlike_name,
-                $property_name,
-                $read_mode,
-                $source,
-                $context
-            );
-            $property_type = $property_handler($event);
 
-            if ($property_type !== null) {
-                return $property_type;
-            }
+        if ($source) {
+            $source->addSuppressedIssues(['NonInvariantDocblockPropertyType']);
         }
 
         foreach (self::$legacy_handlers[strtolower($fq_classlike_name)] ?? [] as $property_handler) {
@@ -118,6 +108,21 @@ class PropertyTypeProvider
                 $source,
                 $context
             );
+
+            if ($property_type !== null) {
+                return $property_type;
+            }
+        }
+
+        foreach (self::$handlers[strtolower($fq_classlike_name)] ?? [] as $property_handler) {
+            $event = new PropertyTypeProviderEvent(
+                $fq_classlike_name,
+                $property_name,
+                $read_mode,
+                $source,
+                $context
+            );
+            $property_type = $property_handler($event);
 
             if ($property_type !== null) {
                 return $property_type;

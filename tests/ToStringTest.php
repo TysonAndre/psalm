@@ -184,11 +184,20 @@ class ToStringTest extends TestCase
                 [],
                 '8.0',
             ],
+            'toStringNever' => [
+                '<?php
+                    class B{
+                        public function __toString() {
+                            throw new BadMethodCallException("bad");
+                        }
+                    }
+                '
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -407,6 +416,66 @@ class ToStringTest extends TestCase
                 [],
                 false,
                 '7.4',
+            ],
+            'implicitCastInArray' => [
+                '<?php
+                    interface S {
+                        public function __toString(): string;
+                    }
+                    /** @return array<array-key, string> */
+                    function f(S $s): array {
+                        return [$s];
+                    }
+                ',
+                'error_message' => 'ImplicitToStringCast'
+            ],
+            'implicitCastInList' => [
+                '<?php
+                    interface S {
+                        public function __toString(): string;
+                    }
+                    /** @return list<string> */
+                    function f(S $s): array {
+                        return [$s];
+                    }
+                ',
+                'error_message' => 'ImplicitToStringCast'
+            ],
+            'implicitCastInTuple' => [
+                '<?php
+                    interface S {
+                        public function __toString(): string;
+                    }
+                    /** @return array{string} */
+                    function f(S $s): array {
+                        return [$s];
+                    }
+                ',
+                'error_message' => 'ImplicitToStringCast'
+            ],
+            'implicitCastInShape' => [
+                '<?php
+                    interface S {
+                        public function __toString(): string;
+                    }
+                    /** @return array{0:string} */
+                    function f(S $s): array {
+                        return [$s];
+                    }
+                ',
+                'error_message' => 'ImplicitToStringCast'
+            ],
+            'implicitCastInIterable' => [
+                '<?php
+                    interface S {
+                        public function __toString(): string;
+                    }
+                    /** @return iterable<int, string> */
+                    function f(S $s) {
+                        return [$s];
+                    }
+                ',
+                'error_message' => 'ImplicitToStringCast'
             ],
         ];
     }

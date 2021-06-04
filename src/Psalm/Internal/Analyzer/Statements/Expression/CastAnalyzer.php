@@ -44,10 +44,12 @@ class CastAnalyzer
             }
 
             $as_int = true;
+            $valid_int_type = null;
             $maybe_type = $statements_analyzer->node_data->getType($stmt->expr);
 
             if ($maybe_type) {
                 if ($maybe_type->isInt()) {
+                    $valid_int_type = $maybe_type;
                     if (!$maybe_type->from_calculation) {
                         if ($maybe_type->from_docblock) {
                             $issue = new RedundantCastGivenDocblockType(
@@ -71,15 +73,23 @@ class CastAnalyzer
 
                 if (count($maybe) === 1 && current($maybe) instanceof Type\Atomic\TBool) {
                     $as_int = false;
-                    $statements_analyzer->node_data->setType($stmt, new Type\Union([
+                    $type = new Type\Union([
                         new Type\Atomic\TLiteralInt(0),
                         new Type\Atomic\TLiteralInt(1),
-                    ]));
+                    ]);
+
+                    if ($statements_analyzer->data_flow_graph
+                        && $statements_analyzer->data_flow_graph instanceof \Psalm\Internal\Codebase\VariableUseGraph
+                    ) {
+                        $type->parent_nodes = $maybe_type->parent_nodes;
+                    }
+
+                    $statements_analyzer->node_data->setType($stmt, $type);
                 }
             }
 
             if ($as_int) {
-                $type = Type::getInt();
+                $type = $valid_int_type ?? Type::getInt();
 
                 if ($statements_analyzer->data_flow_graph
                     && $statements_analyzer->data_flow_graph instanceof \Psalm\Internal\Codebase\VariableUseGraph
@@ -272,7 +282,9 @@ class CastAnalyzer
 
                 foreach ($stmt_expr_type->getAtomicTypes() as $type) {
                     if ($type instanceof Scalar) {
-                        $permissible_atomic_types[] = new TKeyedArray([new Type\Union([$type])]);
+                        $keyed_array = new TKeyedArray([new Type\Union([$type])]);
+                        $keyed_array->is_list = true;
+                        $permissible_atomic_types[] = $keyed_array;
                     } elseif ($type instanceof TNull) {
                         $permissible_atomic_types[] = new TArray([Type::getEmpty(), Type::getEmpty()]);
                     } elseif ($type instanceof TArray
@@ -416,6 +428,7 @@ class CastAnalyzer
                                 $return_type,
                                 $stmt,
                                 $stmt,
+                                [],
                                 $intersection_method_id,
                                 $declaring_method_id,
                                 $intersection_type->value . '::__toString',

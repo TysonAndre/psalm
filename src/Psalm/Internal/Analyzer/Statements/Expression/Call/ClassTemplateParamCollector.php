@@ -7,7 +7,7 @@ use Psalm\Storage\ClassLikeStorage;
 use Psalm\Type;
 use Psalm\Type\Atomic;
 use Psalm\Type\Atomic\TGenericObject;
-use Psalm\Type\Atomic\TScalarClassConstant;
+use Psalm\Type\Atomic\TClassConstant;
 
 use function array_merge;
 use function array_search;
@@ -17,7 +17,9 @@ class ClassTemplateParamCollector
 {
     /**
      * @param lowercase-string $method_name
-     * @return array<string, array<string, Type\Union>>|null
+     * @return array<string, non-empty-array<string, Type\Union>>|null
+     * @psalm-suppress MoreSpecificReturnType
+     * @psalm-suppress LessSpecificReturnStatement
      */
     public static function collect(
         Codebase $codebase,
@@ -251,7 +253,7 @@ class ClassTemplateParamCollector
                         $static_template_types
                     )
                 );
-            } elseif ($type_extends_atomic instanceof TScalarClassConstant) {
+            } elseif ($type_extends_atomic instanceof TClassConstant) {
                 $expanded = TypeExpander::expandAtomic(
                     $codebase,
                     $type_extends_atomic,

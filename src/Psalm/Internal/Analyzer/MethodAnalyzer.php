@@ -18,14 +18,10 @@ use function in_array;
 
 /**
  * @internal
+ * @extends FunctionLikeAnalyzer<PhpParser\Node\Stmt\ClassMethod>
  */
 class MethodAnalyzer extends FunctionLikeAnalyzer
 {
-    /**
-     * @var PhpParser\Node\Stmt\ClassMethod
-     */
-    protected $function;
-
     public function __construct(
         PhpParser\Node\Stmt\ClassMethod $function,
         SourceAnalyzer $source,
@@ -91,6 +87,10 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
         $method_id = $codebase_methods->getDeclaringMethodId($method_id);
 
         if (!$method_id) {
+            if (\Psalm\Internal\Codebase\InternalCallMapHandler::inCallMap((string) $original_method_id)) {
+                return true;
+            }
+
             throw new \LogicException('Declaring method for ' . $original_method_id . ' should not be null');
         }
 
@@ -165,7 +165,7 @@ class MethodAnalyzer extends FunctionLikeAnalyzer
 
         return null;
     }
-    
+
     public static function isMethodVisible(
         \Psalm\Internal\MethodIdentifier $method_id,
         Context $context,

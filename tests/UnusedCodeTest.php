@@ -50,6 +50,8 @@ class UnusedCodeTest extends TestCase
             $code
         );
 
+        $this->project_analyzer->setPhpVersion('8.0');
+
         foreach ($error_levels as $error_level) {
             $this->project_analyzer->getCodebase()->config->setCustomErrorLevel($error_level, Config::REPORT_SUPPRESS);
         }
@@ -372,18 +374,22 @@ class UnusedCodeTest extends TestCase
                 '<?php
 
                 class C {
-                    /** @var int */
-                    protected $foo = 1;
+                    protected int $foo = 1;
                     public function bar() : void {
                         $this->foo = 5;
+                    }
+
+                    public function getFoo(): void {
+                        echo $this->foo;
                     }
                 }
 
                 class D extends C {
-                    protected $foo = 2;
+                    protected int $foo = 2;
                 }
 
-                (new D)->bar();',
+                (new D)->bar();
+                (new D)->getFoo();',
             ],
             'usedClassAfterExtensionLoaded' => [
                 '<?php
@@ -743,6 +749,238 @@ class UnusedCodeTest extends TestCase
 
                     (new References)->bar(["a" => "b"]);'
             ],
+            'promotedPropertyIsUsed' => [
+                '<?php
+                    class Test {
+                        public function __construct(public int $id, public string $name) {}
+                    }
+
+                    $test = new Test(1, "ame");
+                    echo $test->id;
+                    echo $test->name;'
+            ],
+            'unusedNoReturnFunctionCall' => [
+                '<?php
+                    /**
+                     * @return no-return
+                     *
+                     * @pure
+                     *
+                     * @throws RuntimeException
+                     */
+                    function invariant_violation(string $message): void
+                    {
+                        throw new RuntimeException($message);
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function reverse(string $string): string
+                    {
+                        if ("" === $string) {
+                            invariant_violation("i do not like empty strings.");
+                        }
+
+                        return strrev($string);
+                    }'
+            ],
+            'unusedByReferenceFunctionCall' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string &$str): string
+                    {
+                        $str .= "foo";
+
+                        return $str;
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar($f);
+
+                        return $f;
+                    }'
+            ],
+            'unusedVoidByReferenceFunctionCall' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string &$str): void
+                    {
+                        $str .= "foo";
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar($f);
+
+                        return $f;
+                    }'
+            ],
+            'unusedNamedByReferenceFunctionCall' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string $c = "", string &$str = ""): string
+                    {
+                        $c .= $str;
+                        $str .= $c;
+
+                        return $c;
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar(str: $f);
+
+                        return $f;
+                    }'
+            ],
+            'unusedNamedByReferenceFunctionCallV2' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string &$st, string &$str = ""): string
+                    {
+                        $st .= $str;
+
+                        return $st;
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar(st: $f);
+
+                        return $f;
+                    }',
+            ],
+            'unusedNamedByReferenceFunctionCallV3' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string &$st, ?string &$str = ""): string
+                    {
+                        $st .= (string) $str;
+
+                        return $st;
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar(st: $f, str: $c);
+
+                        return $f;
+                    }',
+            ],
+            'functionCallUsedInThrow' => [
+                '<?php
+                    /**
+                     * @psalm-pure
+                     */
+                    function getException(): \Exception
+                    {
+                        return new \Exception();
+                    }
+
+                    throw getException();'
+            ],
+            'nullableMethodCallIsUsed' => [
+                '<?php
+                    final class Test {
+                        public function test(): void {
+                        }
+                    }
+
+                    final class TestFactory {
+                        /**
+                         * @psalm-pure
+                         */
+                        public function create(bool $returnNull): ?Test {
+                            if ($returnNull) {
+                                return null;
+                            }
+
+                            return new Test();
+                        }
+                    }
+
+                    $factory = new TestFactory();
+                    $factory->create(false)?->test();
+
+                    $exception = new \Exception();
+
+                    throw ($exception->getPrevious() ?? $exception);'
+            ],
+            'publicPropertyReadInFile' => [
+                '<?php
+                    class A {
+                        public string $a;
+
+                        public function __construct() {
+                            $this->a = "hello";
+                        }
+                    }
+
+                    $foo = new A();
+                    echo $foo->a;',
+            ],
+            'publicPropertyReadInMethod' => [
+                '<?php
+                    class A {
+                        public string $a = "hello";
+                    }
+
+                    class B {
+                        public function foo(A $a): void {
+                            if ($a->a === "goodbye") {}
+                        }
+                    }
+
+                    (new B)->foo(new A());',
+            ],
+            'privatePropertyReadInMethod' => [
+                '<?php
+                    class A {
+                        private string $a;
+
+                        public function __construct() {
+                            $this->a = "hello";
+                        }
+
+                        public function emitA(): void {
+                            echo $this->a;
+                        }
+                    }
+
+                    (new A())->emitA();',
+            ],
         ];
     }
 
@@ -1056,6 +1294,70 @@ class UnusedCodeTest extends TestCase
                         return false;
                     }',
                 'error_message' => 'UnevaluatedCode',
+            ],
+            'UnusedFunctionCallWithOptionalByReferenceParameter' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string $c, string &$str = ""): string
+                    {
+                        $c .= $str;
+
+                        return $c;
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar($f);
+
+                        return $f;
+                    }',
+                'error_message' => 'UnusedFunctionCall',
+            ],
+            'UnusedFunctionCallWithOptionalByReferenceParameterV2' => [
+                '<?php
+                    /**
+                     * @pure
+                     */
+                    function bar(string $st, string &$str = ""): string
+                    {
+                        $st .= $str;
+
+                        return $st;
+                    }
+
+                    /**
+                     * @pure
+                     */
+                    function baz(): string
+                    {
+                        $f = "foo";
+                        bar(st: $f);
+
+                        return $f;
+                    }',
+                'error_message' => 'UnusedFunctionCall',
+            ],
+            'propertyWrittenButNotRead' => [
+                '<?php
+                    class A {
+                        public string $a = "hello";
+                        public string $b = "world";
+
+                        public function __construct() {
+                            $this->a = "hello";
+                            $this->b = "world";
+                        }
+                    }
+
+                    $foo = new A();
+                    echo $foo->a;',
+                'error_message' => 'PossiblyUnusedProperty',
             ],
         ];
     }

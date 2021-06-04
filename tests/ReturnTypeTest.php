@@ -909,11 +909,52 @@ class ReturnTypeTest extends TestCase
                 [],
                 '8.0'
             ],
+            'returnsNullSometimes' => [
+                '<?php
+                    /** @return null */
+                    function f() {
+                        if (rand(0, 1)) {
+                            return null;
+                        }
+                        throw new RuntimeException;
+                    }
+                '
+            ],
+            'scalarLiteralsInferredAfterUndefinedClass' => [
+                '<?php
+                    /** @param object $arg */
+                    function test($arg): ?string
+                    {
+                        /** @psalm-suppress UndefinedClass */
+                        if ($arg instanceof SomeClassThatDoesNotExist) {
+                            return null;
+                        }
+
+                        return "b";
+                    }
+                '
+            ],
+            'docblockNeverReturn' => [
+                '<?php
+                    /** @return never */
+                    function returnsNever() {
+                        exit();
+                    }
+
+                    /** @return false */
+                    function foo() : bool {
+                        if (rand(0, 1)) {
+                            return false;
+                        }
+
+                        returnsNever();
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
@@ -1335,7 +1376,7 @@ class ReturnTypeTest extends TestCase
                         return 1;
                     };
                 }',
-                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:28 - The inferred type \'pure-Closure(iterable<int, T:fn-map as mixed>):int(1)\' does not match the declared return type \'callable(iterable<int, T:fn-map as mixed>):iterable<int, U:fn-map as mixed>\' for map',
+                'error_message' => 'InvalidReturnStatement - src' . DIRECTORY_SEPARATOR . 'somefile.php:9:28 - The inferred type \'pure-Closure(iterable<int, T:fn-map as mixed>):1\' does not match the declared return type \'callable(iterable<int, T:fn-map as mixed>):iterable<int, U:fn-map as mixed>\' for map',
             ],
             'cannotInferReturnClosureWithDifferentTypes' => [
                 '<?php
@@ -1375,6 +1416,19 @@ class ReturnTypeTest extends TestCase
                         }
                     }',
                 'error_message' => 'InvalidReturnType',
+            ],
+            'objectWhereObjectWithPropertiesIsExpected' => [
+                '<?php
+                    function makeObj(): object {
+                        return (object)["a" => 42];
+                    }
+
+                    /** @return object{hmm:float} */
+                    function f(): object {
+                        return makeObj();
+                    }
+                ',
+                'error_message' => 'LessSpecificReturnStatement',
             ],
         ];
     }

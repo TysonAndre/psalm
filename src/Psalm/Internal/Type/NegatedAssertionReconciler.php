@@ -13,7 +13,6 @@ use Psalm\Issue\RedundantPropertyInitializationCheck;
 use Psalm\Internal\Type\Comparator\UnionTypeComparator;
 use Psalm\IssueBuffer;
 use Psalm\Type;
-use Psalm\Type\Atomic;
 use Psalm\Type\Atomic\TArray;
 use Psalm\Type\Atomic\TFalse;
 use Psalm\Type\Atomic\TNamedObject;
@@ -23,6 +22,9 @@ use Psalm\Type\Reconciler;
 use function strpos;
 use function strtolower;
 use function substr;
+use function explode;
+use function get_class;
+use function array_values;
 
 class NegatedAssertionReconciler extends Reconciler
 {
@@ -90,10 +92,22 @@ class NegatedAssertionReconciler extends Reconciler
                             $failed_reconciliation = 2;
 
                             if ($code_location) {
-                                if ($existing_var_type->from_property) {
+                                if ($existing_var_type->from_static_property) {
                                     if (IssueBuffer::accepts(
                                         new RedundantPropertyInitializationCheck(
-                                            'Property type ' . $key . ' with type '
+                                            'Static property ' . $key . ' with type '
+                                                . $existing_var_type
+                                                . ' has unexpected isset check — should it be nullable?',
+                                            $code_location
+                                        ),
+                                        $suppressed_issues
+                                    )) {
+                                        // fall through
+                                    }
+                                } elseif ($existing_var_type->from_property) {
+                                    if (IssueBuffer::accepts(
+                                        new RedundantPropertyInitializationCheck(
+                                            'Property ' . $key . ' with type '
                                                 . $existing_var_type . ' should already be set in the constructor',
                                             $code_location
                                         ),
@@ -224,7 +238,13 @@ class NegatedAssertionReconciler extends Reconciler
                         continue;
                     }
 
-                    $new_type_part = Atomic::create($assertion);
+                    $assertion_type = Type::parseString($assertion, null, $template_type_map);
+
+                    if (!$assertion_type->isSingle()) {
+                        continue;
+                    }
+
+                    $new_type_part = array_values($assertion_type->getAtomicTypes())[0];
 
                     if (!$new_type_part instanceof TNamedObject) {
                         continue;
@@ -383,6 +403,41 @@ class NegatedAssertionReconciler extends Reconciler
             } else {
                 $scalar_value = substr($assertion, $bracket_pos + 1, -1);
                 $scalar_var_type = Type::getFloat((float) $scalar_value);
+            }
+        } elseif ($scalar_type === 'enum') {
+            list($fq_enum_name, $case_name) = explode('::', substr($assertion, $bracket_pos + 1, -1));
+
+            foreach ($existing_var_type->getAtomicTypes() as $atomic_key => $atomic_type) {
+                if (get_class($atomic_type) === Type\Atomic\TNamedObject::class
+                    && $atomic_type->value === $fq_enum_name
+                ) {
+                    $codebase = $statements_analyzer->getCodebase();
+
+                    $enum_storage = $codebase->classlike_storage_provider->get($fq_enum_name);
+
+                    if (!$enum_storage->is_enum || !$enum_storage->enum_cases) {
+                        $scalar_var_type = new Type\Union([new Type\Atomic\TEnumCase($fq_enum_name, $case_name)]);
+                    } else {
+                        $existing_var_type->removeType($atomic_type->getKey());
+                        $did_remove_type = true;
+
+                        foreach ($enum_storage->enum_cases as $alt_case_name => $_) {
+                            if ($alt_case_name === $case_name) {
+                                continue;
+                            }
+
+                            $existing_var_type->addType(new Type\Atomic\TEnumCase($fq_enum_name, $alt_case_name));
+                        }
+                    }
+                } elseif ($atomic_type instanceof Type\Atomic\TEnumCase
+                    && $atomic_type->value === $fq_enum_name
+                    && $atomic_type->case_name !== $case_name
+                ) {
+                    $did_match_literal_type = true;
+                } elseif ($atomic_key === $assertion) {
+                    $existing_var_type->removeType($assertion);
+                    $did_remove_type = true;
+                }
             }
         }
 

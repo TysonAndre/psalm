@@ -71,11 +71,24 @@ class ClassStringMapTest extends TestCase
                         }
                     }',
             ],
+            'noCrashWithSplatMap' => [
+                '<?php
+                    class A {}
+
+                    /** @param array<array-key, mixed> $args */
+                    function takesVariadic(...$args): void {
+                    }
+
+                    /** @param class-string-map<A, A> $arr */
+                    function foo(array $arr) : void {
+                        takesVariadic(...$arr);
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {

@@ -26,6 +26,9 @@ class Properties
      */
     private $classlike_storage_provider;
 
+    /** @var ClassLikes */
+    private $classlikes;
+
     /**
      * @var bool
      */
@@ -51,15 +54,18 @@ class Properties
      */
     public $property_visibility_provider;
 
+
     public function __construct(
         ClassLikeStorageProvider $storage_provider,
-        FileReferenceProvider $file_reference_provider
+        FileReferenceProvider $file_reference_provider,
+        ClassLikes $classlikes
     ) {
         $this->classlike_storage_provider = $storage_provider;
         $this->file_reference_provider = $file_reference_provider;
         $this->property_existence_provider = new PropertyExistenceProvider();
         $this->property_visibility_provider = new PropertyVisibilityProvider();
         $this->property_type_provider = new PropertyTypeProvider();
+        $this->classlikes = $classlikes;
     }
 
     /**
@@ -94,7 +100,11 @@ class Properties
             }
         }
 
-        $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        $class_storage = $this->classlikes->getStorageFor($fq_class_name);
+
+        if (!$class_storage) {
+            return false;
+        }
 
         if ($source
             && $context
@@ -123,11 +133,25 @@ class Properties
                     $context->calling_method_id,
                     strtolower($declaring_property_class) . '::$' . $property_name
                 );
+
+                if ($read_mode) {
+                    $this->file_reference_provider->addMethodReferenceToClassProperty(
+                        $context->calling_method_id,
+                        strtolower($declaring_property_class) . '::$' . $property_name
+                    );
+                }
             } elseif ($source) {
                 $this->file_reference_provider->addFileReferenceToClassMember(
                     $source->getFilePath(),
                     strtolower($declaring_property_class) . '::$' . $property_name
                 );
+
+                if ($read_mode) {
+                    $this->file_reference_provider->addFileReferenceToClassProperty(
+                        $source->getFilePath(),
+                        strtolower($declaring_property_class) . '::$' . $property_name
+                    );
+                }
             }
 
             if ($this->collect_locations && $code_location) {
@@ -174,9 +198,9 @@ class Properties
             }
         }
 
-        $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        $class_storage = $this->classlikes->getStorageFor($fq_class_name);
 
-        if (isset($class_storage->declaring_property_ids[$property_name])) {
+        if ($class_storage && isset($class_storage->declaring_property_ids[$property_name])) {
             return $class_storage->declaring_property_ids[$property_name];
         }
 
@@ -205,9 +229,9 @@ class Properties
             }
         }
 
-        $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        $class_storage = $this->classlikes->getStorageFor($fq_class_name);
 
-        if (isset($class_storage->appearing_property_ids[$property_name])) {
+        if ($class_storage && isset($class_storage->appearing_property_ids[$property_name])) {
             $appearing_property_id = $class_storage->appearing_property_ids[$property_name];
 
             return explode('::$', $appearing_property_id)[0];
@@ -262,9 +286,9 @@ class Properties
             }
         }
 
-        $class_storage = $this->classlike_storage_provider->get($fq_class_name);
+        $class_storage = $this->classlikes->getStorageFor($fq_class_name);
 
-        if (isset($class_storage->declaring_property_ids[$property_name])) {
+        if ($class_storage && isset($class_storage->declaring_property_ids[$property_name])) {
             $declaring_property_class = $class_storage->declaring_property_ids[$property_name];
             $declaring_class_storage = $this->classlike_storage_provider->get($declaring_property_class);
 

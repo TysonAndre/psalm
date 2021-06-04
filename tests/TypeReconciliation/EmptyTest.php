@@ -389,11 +389,35 @@ class EmptyTest extends \Psalm\Tests\TestCase
                         echo $arr["a"];
                     }'
             ],
+            'reconcileEmptyTwiceWithoutReturn' => [
+                '<?php
+                    function foo(array $arr): void {
+                        if (!empty($arr["a"])) {
+                        } else {
+                            if (empty($arr["dontcare"])) {}
+                        }
+
+                        if (empty($arr["a"])) {}
+                    }'
+            ],
+            'reconcileEmptyTwiceWithReturn' => [
+                '<?php
+                    function foo(array $arr): void {
+                        if (!empty($arr["a"])) {
+                        } else {
+                            if (empty($arr["dontcare"])) {
+                                return;
+                            }
+                        }
+
+                        if (empty($arr["a"])) {}
+                    }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {

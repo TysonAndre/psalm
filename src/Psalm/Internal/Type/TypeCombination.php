@@ -37,6 +37,9 @@ class TypeCombination
     /** @var array<string, non-empty-list<Union>> */
     public $object_type_params = [];
 
+    /** @var array<string, bool> */
+    public $object_static = [];
+
     /** @var array<int, bool>|null */
     public $array_counts = [];
 
@@ -60,9 +63,6 @@ class TypeCombination
 
     /** @var ?Union */
     public $objectlike_value_type = null;
-
-    /** @var bool */
-    public $has_mixed = false;
 
     /** @var bool */
     public $empty_mixed = false;

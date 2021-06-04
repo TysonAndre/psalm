@@ -2562,11 +2562,75 @@ class ConditionalTest extends \Psalm\Tests\TestCase
                         return "";
                     }'
             ],
+            'strictIntFloatComparison' => [
+                '<?php
+                    /**
+                     * @psalm-suppress InvalidReturnType
+                     * @psalm-suppress MismatchingDocblockReturnType
+                     * @return ($bar is int ? list<int> : list<float>)
+                     */
+                    function foo($bar): string {}
+
+                    /** @var int */
+                    $baz = 1;
+                    $a = foo($baz);
+
+                    /** @var float */
+                    $baz = 1.;
+                    $b = foo($baz);
+
+                    /** @var int|float */
+                    $baz = 1;
+                    $c = foo($baz);
+                ',
+                'assertions' => [
+                    '$a' => 'list<int>',
+                    '$b' => 'list<float>',
+                    '$c' => 'list<float|int>',
+                ],
+            ],
+            'negateTypeInGenericContext' => [
+                '<?php
+
+                 /**
+                  * @template T
+                  */
+                 final class Valid {}
+                 final class Invalid {}
+
+                 /**
+                  * @template T
+                  *
+                  * @param Valid<T>|Invalid $val
+                  * @psalm-assert-if-true Valid<T> $val
+                  */
+                 function isValid($val): bool
+                 {
+                     return $val instanceof Valid;
+                 }
+
+                 /**
+                  * @template T
+                  * @param Valid<T>|Invalid $val
+                  */
+                 function genericContext($val): void
+                 {
+                     $takesValid =
+                         /** @param Valid<T> $_valid */
+                         function ($_valid): void {};
+
+                     $takesInvalid =
+                         /** @param Invalid $_invalid */
+                         function ($_invalid): void {};
+
+                     isValid($val) ? $takesValid($val) : $takesInvalid($val);
+                 }'
+            ],
         ];
     }
 
     /**
-     * @return iterable<string,array{string,error_message:string,2?:string[],3?:bool,4?:string}>
+     * @return iterable<string,array{string,error_message:string,1?:string[],2?:bool,3?:string}>
      */
     public function providerInvalidCodeParse(): iterable
     {
